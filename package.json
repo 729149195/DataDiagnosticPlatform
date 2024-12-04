@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "ml-savitzky-golay": "^5.0.0",
+    "paper": "^0.12.18"
+  }
+}
