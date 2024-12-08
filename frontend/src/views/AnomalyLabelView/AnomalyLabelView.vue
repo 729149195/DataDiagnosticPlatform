@@ -196,7 +196,7 @@ import SingleChannelMultiRow from '@/views/AnomalyLabelView/DataExploration/Sing
 import HeatMap from '@/views/AnomalyLabelView/LabelResult/HeatMapResult.vue';
 import ListResult from '@/views/AnomalyLabelView/LabelResult/ListResult.vue';
 
-import Sketch from '@/views/AnomalyLabelView/Sketch/Sketchtest.vue';
+import Sketch from '@/views/AnomalyLabelView/Sketch/Sketch.vue';
 
 
 import ChannelCards from '@/views/ChannelAnalysisView/ChannelList/ChannelCards.vue';
