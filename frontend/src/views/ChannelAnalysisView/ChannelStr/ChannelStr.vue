@@ -200,7 +200,7 @@ watch(
         const isFunctionOrBracket = functionOrBracketPattern.test(newstr);
 
         if (isFunctionOrBracket) {
-            // 若为括号形式，将光标放在括号中间
+            // 若为括号形��，将光标放在括号中间
             currentCursorPosition += newstr.length - 1; // 移动光标到括号内部
         } else {
             // 否则，将光标放在新插入内容的后面
@@ -219,14 +219,35 @@ watch(
 
 // Handle input event
 const onInput = (event) => {
-    const textContent = getPlainText(event.target);
-    formulasarea.value = textContent;
-    currentCursorPosition = getCaretCharacterOffsetWithin(event.target); // 更新光标位置
+    const newText = getPlainText(event.target);
+    const channelIdentifiers = selectedChannels.value.map((channel) => 
+        `${channel.shot_number}_${channel.channel_name}`
+    );
+    
+    // 如果新文本比之前的短，说明可能发生了删除操作
+    if (newText.length < formulasarea.value.length) {
+        const deletedPosition = currentCursorPosition - 1; // 假设删除发生在光标位置前一个字符
+        const channelInfo = findChannelIdentifierAtPosition(formulasarea.value, deletedPosition, channelIdentifiers);
+        
+        if (channelInfo) {
+            // 如果删除的是通道标识符的一部分，删除整个标识符
+            const beforeChannel = formulasarea.value.substring(0, channelInfo.start);
+            const afterChannel = formulasarea.value.substring(channelInfo.end);
+            formulasarea.value = beforeChannel + afterChannel;
+            currentCursorPosition = channelInfo.start;
+        } else {
+            formulasarea.value = newText;
+            currentCursorPosition = getCaretCharacterOffsetWithin(event.target);
+        }
+    } else {
+        formulasarea.value = newText;
+        currentCursorPosition = getCaretCharacterOffsetWithin(event.target);
+    }
 
     highlightChannels();
 
     const editableDiv = document.querySelector('.editable-div');
-    restoreCursorPosition(editableDiv, currentCursorPosition); // 恢复光标位置
+    restoreCursorPosition(editableDiv, currentCursorPosition);
 };
 
 
@@ -251,6 +272,28 @@ const clearFormulas = () => {
     if (editableDiv) {
         editableDiv.innerHTML = '';
     }
+};
+
+// 在 script setup 部分添加一个新的辅助函数
+const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => {
+    for (const identifier of channelIdentifiers) {
+        // 检查position是否在某个通道标识符的范围内
+        const index = text.indexOf(identifier);
+        let currentIndex = 0;
+        while (currentIndex < text.length) {
+            const idx = text.indexOf(identifier, currentIndex);
+            if (idx === -1) break;
+            if (position >= idx && position < idx + identifier.length) {
+                return {
+                    identifier,
+                    start: idx,
+                    end: idx + identifier.length
+                };
+            }
+            currentIndex = idx + 1;
+        }
+    }
+    return null;
 };
 
 </script>
