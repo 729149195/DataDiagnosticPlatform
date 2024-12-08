@@ -49,9 +49,9 @@
           <el-button type="success" :icon="Search" @click="submitData" class="search-button">
             查询
           </el-button>
-          <el-button type="success" :icon="Search" @click="exportCurrentCurve" class="search-button">
+          <!-- <el-button type="success" :icon="Search" @click="exportCurrentCurve" class="search-button">
             导出当前曲线数据
-          </el-button>
+          </el-button> -->
         </div>
       </div>
       <div class="controls-wrapper">

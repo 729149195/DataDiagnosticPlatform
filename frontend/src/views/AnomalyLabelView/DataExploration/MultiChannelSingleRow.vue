@@ -745,7 +745,7 @@ const drawCombinedChart = () => {
     g.append('g')
         .attr('class', 'y-axis')
         .call(d3.axisLeft(y)
-            .tickFormat(d => (d >= -1 && d <= 1) ? d * 100 + '%' : '') // 仅在 -1 到 1 之间显示标签
+            .tickFormat(d => (d >= -1 && d <= 1) ? d : '') // 仅在 -1 到 1 之间显示标签
         ).style("font-size", "1em") // 增大字体大小
         .attr("font-weight", "bold");
 
