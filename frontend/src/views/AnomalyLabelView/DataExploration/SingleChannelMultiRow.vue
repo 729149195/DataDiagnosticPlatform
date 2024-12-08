@@ -385,30 +385,143 @@ const drawHighlightRects = (channelName, results) => {
         .domain(xDomains.value[channelName] || [-2, 6])
         .range([0, width]);
 
+    // 获取当前通道的数据
+    const channelData = channelDataCache.value[channelName];
+    if (!channelData) return;
+
+    // 计算y轴的范围，添加一定的padding
+    const allYValues = channelData.Y_value;
+    const yExtent = d3.extent(allYValues);
+    const yPadding = (yExtent[1] - yExtent[0]) * 0.001;
+    
+    // 创建y比例尺
+    const y = d3.scaleLinear()
+        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .range([height, 0]);
+
     // 移除之前的高亮区域
     svg.select(`.highlight-group-${channelName}`).remove();
 
-    // 创建新的高亮组
+    // 创建新的高亮区域
     const highlightGroup = svg.select('g')
         .append('g')
         .attr('class', `highlight-group-${channelName}`);
 
+    // 获取时间和边界值约束
+    const timeBegin = store.state.time_begin;
+    const timeEnd = store.state.time_end;
+    const timeDuring = store.state.time_during;
+    const upperBound = store.state.upper_bound;
+    const lowerBound = store.state.lower_bound;
+    const scopeBound = store.state.scope_bound;
+
     // 为每个匹配结果创建高亮矩形
     results.forEach(result => {
-        if (result.confidence > 0.8) {
+        if (result.confidence > 0.75) {
             const [startX, endX] = result.range;
-            
+
+            // 1. 时间范围过滤
+            if (startX < timeBegin || endX > timeEnd) {
+                return;
+            }
+
+            // 2. 持续时间过滤
+            const duration = endX - startX;
+            if (duration < timeDuring) {
+                return;
+            }
+
+            // 获取匹配区间内的所有数据点
+            const samplingInterval = Math.floor(1 / sampling.value);
+            const sampledData = {
+                X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
+                Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0)
+            };
+
+            // 找到区间内的数据点
+            const startIndex = sampledData.X_value.findIndex(x => x >= startX);
+            const endIndex = sampledData.X_value.findIndex(x => x > endX);
+            const rangeData = {
+                X: sampledData.X_value.slice(startIndex, endIndex),
+                Y: sampledData.Y_value.slice(startIndex, endIndex)
+            };
+
+            // 如果没有找到数据点，跳过
+            if (rangeData.Y.length === 0) return;
+
+            // 计算区间内的Y值范围
+            const minY = Math.min(...rangeData.Y);
+            const maxY = Math.max(...rangeData.Y);
+
+            // 3. Y值范围过滤
+            if (minY < lowerBound || maxY > upperBound) {
+                return;
+            }
+
+            // 4. Y值幅度过滤
+            const yRange = Math.abs(maxY - minY);
+            if (yRange < scopeBound) {
+                return;
+            }
+
+            // 计算矩形的位置和高度
+            const padding = (maxY - minY) * 0.05; // 计算上下延伸5%的padding
+            const rectY = y(maxY + padding); // 矩形的顶部位置
+            const rectHeight = y(minY - padding) - y(maxY + padding); // 矩形的高度
+
             highlightGroup.append('rect')
                 .attr('x', x(startX))
-                .attr('y', 0)
+                .attr('y', rectY)
                 .attr('width', x(endX) - x(startX))
-                .attr('height', height)
-                .attr('fill', 'rgba(128, 128, 128, 0.3)') // 灰色半透明
-                .attr('stroke', 'rgba(169, 169, 169, 0.8)') // 深灰色边框
+                .attr('height', rectHeight)
+                .attr('fill', 'rgba(255, 165, 0, 0.2)')
+                .attr('stroke', 'rgba(255, 140, 0, 0.8)')
                 .attr('stroke-width', 2)
-                .attr('opacity', result.confidence) // 使用置信度作为透明度
-                .append('title') // 添加悬停提示
-                .text(`置信度: ${(result.confidence * 100).toFixed(2)}%`);
+                .attr('opacity', result.confidence)
+                .style('filter', 'drop-shadow(2px 2px 2px rgba(0,0,0,0.2))')
+                .on('mouseover', function(event) {
+                    const tooltip = d3.select('body')
+                        .append('div')
+                        .attr('class', 'custom-tooltip')
+                        .style('position', 'absolute')
+                        .style('background-color', 'rgba(50, 50, 50, 0.9)')
+                        .style('color', 'white')
+                        .style('padding', '8px 12px')
+                        .style('border-radius', '4px')
+                        .style('font-size', '12px')
+                        .style('box-shadow', '0 2px 12px 0 rgba(0,0,0,0.3)')
+                        .style('z-index', 9999)
+                        .style('pointer-events', 'none')
+                        .style('transition', 'opacity 0.3s');
+                        
+                    tooltip.html(
+                        `<div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
+                            <span style="color: #67C23A;">置信度:</span> ${(result.confidence * 100).toFixed(2)}%
+                        </div>
+                        <div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
+                            <span style="color: #E6A23C;">持续时间:</span> ${duration.toFixed(3)}
+                        </div>
+                        <div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
+                            <span style="color: #409EFF;">Y值范围:</span> ${minY.toFixed(3)} - ${maxY.toFixed(3)}
+                        </div>
+                        <div>
+                            <span style="color: #F56C6C;">Y值幅度:</span> ${yRange.toFixed(3)}
+                        </div>`
+                    );
+
+                    // 设置提示框位置
+                    const tooltipWidth = tooltip.node().getBoundingClientRect().width;
+                    const tooltipHeight = tooltip.node().getBoundingClientRect().height;
+                    const mouseX = event.pageX;
+                    const mouseY = event.pageY;
+                    
+                    tooltip
+                        .style('left', `${mouseX - tooltipWidth/2}px`)
+                        .style('top', `${mouseY - tooltipHeight - 10}px`);
+                })
+                .on('mouseout', function() {
+                    d3.selectAll('.custom-tooltip').remove();
+                });
         }
     });
 };
@@ -502,7 +615,7 @@ const drawOverviewChart = () => {
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x))
         .selectAll("text") // 选择所有刻度标签
-        .style("font-size", "1.1em") // 增大字体大小
+        .style("font-size", "1.1em") // 增大字体���小
         .style("font-weight", "bold"); // 加粗字体;
 
     const brush = d3
@@ -628,7 +741,7 @@ const createGaussianKernel = (sigma, size) => {
     return kernel.map(value => value / sum);
 };
 
-// 应用高斯平滑
+// 应用高��平滑
 const gaussianSmooth = (data, sigma) => {
     const kernelSize = Math.ceil(sigma * 6); // 核大小（通常为 6 * sigma）
     const kernel = createGaussianKernel(sigma, kernelSize);
@@ -736,7 +849,7 @@ const drawChart = async (
             .attr('class', 'x-axis')
             .attr('transform', `translate(0,${height})`)
             .call(d3.axisBottom(x))
-            .selectAll("text") // 选择所有刻度标签
+            .selectAll("text") // 选择��有刻度标签
             .style("font-size", "1.3em") // 增大字体大小
             .style("font-weight", "bold");
 

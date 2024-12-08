@@ -17,23 +17,58 @@
           <el-option v-for="item in templates" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
 
-        <!-- 历史选择 -->
+        <!-- 历史选择
         <el-select v-model="historyvalue" placeholder="历史" class="select-history">
           <el-option v-for="item in historys" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
+        </el-select> -->
       </span>
     </div>
 
     <!-- 绘图区域 -->
     <div class="sketch-container">
-      <canvas ref="canvas"></canvas>
-      <div class="buttons">
-        <el-button type="danger" class="clear-button" @click="clearCanvas">
-          清除
-        </el-button>
-        <el-button type="success" :icon="Search" @click="submitData" class="search-button">
-          查询
-        </el-button>
+      <div class="canvas-container">
+        <canvas ref="canvas"></canvas>
+        <div class="buttons">
+          <el-button type="danger" class="clear-button" @click="clearCanvas">
+            清除
+          </el-button>
+          <el-button type="success" :icon="Search" @click="submitData" class="search-button">
+            查询
+          </el-button>
+        </div>
+      </div>
+      <div class="controls-wrapper">
+        <div class="inputs-container">
+          <div class="input-row">
+            <div class="input-group">
+              <span class="input-label">开始:</span>
+              <el-input-number v-model="time_begin" :precision="4" :step="0.01" size="small" class="time-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">持续:</span>
+              <el-input-number v-model="time_during" :precision="4" :step="0.01" size="small" class="time-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">结束:</span>
+              <el-input-number v-model="time_end" :precision="4" :step="0.01" size="small" class="time-input" />
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="input-group">
+              <span class="input-label">上界:</span>
+              <el-input-number v-model="upper_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">幅度:</span>
+              <el-input-number v-model="scope_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">下界:</span>
+              <el-input-number v-model="lower_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -63,9 +98,6 @@ const historyvalue = ref('');
 const selectedGunNumbers = ref([]);
 const smoothness = computed(() => store.state.smoothness);
 const sampling = computed(() => store.state.sampling);
-
-const brush_begin = computed(() => store.state.brush_begin);
-const brush_end = computed(() => store.state.brush_end);
 
 // 从 Vuex 获取 selectedChannels
 const selectedChannels = computed(() => store.state.selectedChannels);
@@ -103,14 +135,34 @@ const selectV2Options = computed(() => {
 });
 
 // 其他绑定的值
-const time_begin = ref(-0.25);
-const time_during = ref(0.15);
-const time_end = ref(-0.1);
-const upper_bound = ref(0.1);
-const scope_bound = ref(2.5);
-const lower_bound = ref(-2.4);
+const brush_begin = computed(() => store.state.brush_begin);
+const brush_end = computed(() => store.state.brush_end);
+const time_begin = computed({
+  get: () => store.state.time_begin,
+  set: (value) => store.dispatch('updateTimeBegin', value)
+});
+const time_during = computed({
+  get: () => store.state.time_during,
+  set: (value) => store.dispatch('updateTimeDuring', value)
+});
+const time_end = computed({
+  get: () => store.state.time_end,
+  set: (value) => store.dispatch('updateTimeEnd', value)
+});
+const upper_bound = computed({
+  get: () => store.state.upper_bound,
+  set: (value) => store.dispatch('updateUpperBound', value)
+});
+const scope_bound = computed({
+  get: () => store.state.scope_bound,
+  set: (value) => store.dispatch('updateScopeBound', value)
+});
+const lower_bound = computed({
+  get: () => store.state.lower_bound,
+  set: (value) => store.dispatch('updateLowerBound', value)
+});
 
-// ----------- 画布绘图逻辑开始 -----------
+// ----------- 画绘图逻辑开始 -----------
 
 class DrawingApp {
   constructor(canvasElement) {
@@ -266,7 +318,7 @@ class DrawingApp {
   drawGrid() {
     this.gridGroup.removeChildren();
     const gridSpacing = 20;
-    
+
     // 计算中心点
     const centerX = this.size.width / 2;
     const centerY = this.size.height / 2;
@@ -280,12 +332,12 @@ class DrawingApp {
         to: [x, this.size.height],
         strokeWidth: 1,
       });
-      
+
       // 计算当前线到中心的距离
       const distanceFromCenter = Math.abs(x - centerX);
-      // 计算透明度（距离中心越远越透明）
+      // 计算透明度（距离中心越���越透明）
       const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-      
+
       path.strokeColor = new paper.Color(0, 0, 0, opacity);
       path.guide = true;
       this.gridGroup.addChild(path);
@@ -298,12 +350,12 @@ class DrawingApp {
         to: [this.size.width, y],
         strokeWidth: 1,
       });
-      
+
       // 计算当前线到中心的距离
       const distanceFromCenter = Math.abs(y - centerY);
       // 计算透明度（距离中心越远越透明）
       const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-      
+
       path.strokeColor = new paper.Color(0, 0, 0, opacity);
       path.guide = true;
       this.gridGroup.addChild(path);
@@ -320,7 +372,7 @@ class DrawingApp {
       paper.view.viewSize = new paper.Size(this.canvas.width, this.canvas.height);
       this.size.width = paper.view.size.width;
       this.size.height = paper.view.size.height;
-      
+
       this.drawGrid();
     }
   }
@@ -390,7 +442,7 @@ const handleKeyDown = (e) => {
   }
 };
 
-// 生命周期钩子
+// 生命周���钩子
 onMounted(() => {
   if (canvas.value) {
     // 确保之前的实例被完全清理
@@ -417,9 +469,9 @@ onBeforeUnmount(() => {
 
 // 提交数据函数
 const submitData = async () => {
-  // 创建数据平滑器实例
+  // 创建数���平滑器实例
   const dataSmoother = new DataSmoother();
-  
+
   const patternMatcher = new PatternMatcher({
     distanceMetric: 'euclidean',
     matchThreshold: 1.0,
@@ -428,18 +480,18 @@ const submitData = async () => {
 
   const channelDataCache = store.state.channelDataCache;
   const rawQueryPattern = drawingApp ? drawingApp.getPathsData() : [];
-  
+
   if (rawQueryPattern.length > 0) {
     // 归一化查询模式的 x 和 y 值
     const minX = Math.min(...rawQueryPattern.map(p => p.x));
     const maxX = Math.max(...rawQueryPattern.map(p => p.x));
     const xRange = maxX - minX;
-    
+
     const minY = Math.min(...rawQueryPattern.map(p => p.y));
     const maxY = Math.max(...rawQueryPattern.map(p => p.y));
     const yRange = maxY - minY;
 
-    // 只在这里翻转 Y 值
+    // 只在里翻转 Y 值
     const queryPattern = rawQueryPattern.map((point, index) => ({
       x: -1 + (2 * (point.x - minX) / xRange),
       y: -(-1 + (2 * (point.y - minY) / yRange))  // 翻转 Y 值
@@ -475,22 +527,22 @@ const submitData = async () => {
           // 使用平滑后的数据进行模式匹配
           const matches = patternMatcher.findPatterns(
             queryPattern,
-            smoothedPoints.map(p => p.y),  // 使用平滑后的 Y 值
+            smoothedPoints.map(p => p.y),  // 用平滑后的 Y 值
             smoothedPoints.map(p => p.x)   // 使用平滑后的 X 值
           );
 
-          // 使用 selectV2Options 中的格式作为键
-          const channelInfo = selectV2Options.value.find(option => 
+          // 使用 selectV2Options 中格式作为键
+          const channelInfo = selectV2Options.value.find(option =>
             option.children.some(child => child.value === channel)
           );
-          
+
           if (channelInfo) {
             const child = channelInfo.children.find(child => child.value === channel);
             if (child) {
               const shotNumber = channel.split('_').pop();
               const channelName = child.label.split('_')[0];
               const key = `${channelName}_${shotNumber}`;
-              
+
               // 存储匹配结果，包含所有必要的指标
               matchResults[key] = matches.map(match => ({
                 range: match.range,                // X值区间 [startX, endX]
@@ -542,14 +594,16 @@ const clearCanvas = () => {
 .container {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
+  height: 100%;
+  overflow: hidden;
 }
 
 .header {
+  padding: 5px 0;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 5px;
 }
 
 .operate {
@@ -572,23 +626,78 @@ const clearCanvas = () => {
   position: relative;
   border: 0.5px solid #ccc;
   display: flex;
-  border-radius: 5px;
   flex-direction: column;
-  align-items: stretch;
+  border-radius: 5px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.canvas-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  /* 关键：确保canvas容器不会超出其父容器 */
+}
+
+canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
 }
 
-canvas {
+.controls-wrapper {
+  flex-shrink: 0;
+  padding: 8px;
+  background-color: #fff;
+}
+
+.inputs-container {
+  position: relative;
+}
+
+.input-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  gap: 12px;
+}
+
+.input-row+.input-row {
+  margin-top: 8px;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.input-label {
+  margin-right: 8px;
+  color: #606266;
+  font-size: 14px;
+  white-space: nowrap;
+  width: 40px;
+}
+
+.time-input,
+.bound-input {
+  flex: 1;
   width: 100%;
-  height: 100%;
 }
 
 .buttons {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  display: flex;
+  bottom: 0px;
+  right: 6px;
 }
 
 .search-button {

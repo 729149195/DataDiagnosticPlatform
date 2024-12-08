@@ -29,6 +29,12 @@ const store = createStore({
       dataCache: ref(new Map()),
 
       CalculateResult: {},
+      time_begin: -0.25,
+      time_during: 0,
+      time_end: 1.0,
+      upper_bound: 0.1,
+      scope_bound: 0,
+      lower_bound: -2.4,
     };
   },
   getters: {
@@ -222,7 +228,25 @@ const store = createStore({
     },
     clearMatchedResults(state) {
       state.matchedResults = [];
-    }
+    },
+    updateTimeBegin(state, value) {
+      state.time_begin = value;
+    },
+    updateTimeDuring(state, value) {
+      state.time_during = value;
+    },
+    updateTimeEnd(state, value) {
+      state.time_end = value;
+    },
+    updateUpperBound(state, value) {
+      state.upper_bound = value;
+    },
+    updateScopeBound(state, value) {
+      state.scope_bound = value;
+    },
+    updateLowerBound(state, value) {
+      state.lower_bound = value;
+    },
   },
   actions: {
     async fetchStructTree({ commit }, indices = []) {
@@ -266,7 +290,25 @@ const store = createStore({
     },
     clearMatchedResults({ commit }) {
       commit("clearMatchedResults");
-    }
+    },
+    updateTimeBegin({ commit }, value) {
+      commit('updateTimeBegin', value);
+    },
+    updateTimeDuring({ commit }, value) {
+      commit('updateTimeDuring', value);
+    },
+    updateTimeEnd({ commit }, value) {
+      commit('updateTimeEnd', value);
+    },
+    updateUpperBound({ commit }, value) {
+      commit('updateUpperBound', value);
+    },
+    updateScopeBound({ commit }, value) {
+      commit('updateScopeBound', value);
+    },
+    updateLowerBound({ commit }, value) {
+      commit('updateLowerBound', value);
+    },
   },
 });
 
