@@ -281,6 +281,7 @@ watch(clickedShownChannelList, async (newClickedShownChannelList, oldV) => {
 }, { deep: true });
 
 watch(CalculateResult, async (newCalculateResult, oldV) => {
+    resultData.value = newCalculateResult;
     await drawResult(newCalculateResult);
 }, { deep: true });
 

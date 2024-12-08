@@ -1,1 +1,16 @@
-[]
+[
+    {
+        "name": "NoiseThreshold",
+        "parameters": [
+            "channel_key",
+            "threshold"
+        ]
+    },
+    {
+        "name": "LargerThanThreshold",
+        "parameters": [
+            "channel_key",
+            "threshold"
+        ]
+    }
+]
