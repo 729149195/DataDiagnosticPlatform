@@ -8,11 +8,28 @@ function result = LargerThanThreshold(channel_key, threshold)
     X_value = json_data.X_value;
     Y_value = json_data.Y_value;
 
-    % Replace all Y_value entries with absolute value less than threshold to 0
-    Y_value(abs(Y_value) < threshold) = 0;
+    % Find the ranges of X_value where Y_value is greater than the threshold
+    above_threshold = abs(Y_value) > threshold;
+    ranges = [];
+    start_idx = -1;
+
+    for i = 1:length(above_threshold)
+        if above_threshold(i) && start_idx == -1
+            % Start of a new range
+            start_idx = i;
+        elseif ~above_threshold(i) && start_idx ~= -1
+            % End of the current range
+            ranges = [ranges; X_value(start_idx), X_value(i-1)];
+            start_idx = -1;
+        end
+    end
+
+    % If the last value was above threshold, close the range
+    if start_idx ~= -1
+        ranges = [ranges; X_value(start_idx), X_value(end)];
+    end
 
     % Prepare JSON output
-    result_struct.X_value = X_value;
-    result_struct.Y_value = Y_value;
+    result_struct.X_range = ranges;
     result = jsonencode(result_struct);
 end
