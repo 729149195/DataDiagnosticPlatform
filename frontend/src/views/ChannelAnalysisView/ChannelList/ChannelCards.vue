@@ -29,7 +29,8 @@ import * as d3 from 'd3';
 const store = useStore();
 
 const handleCardClick = (channel) => {
-    store.commit('updateChannelName', channel.channel_name);
+    const fullChannelIdentifier = `${channel.shot_number}_${channel.channel_name}`;
+    store.commit('updateChannelName', fullChannelIdentifier);
     store.commit('addClickedShownChannelList', channel);
 };
 

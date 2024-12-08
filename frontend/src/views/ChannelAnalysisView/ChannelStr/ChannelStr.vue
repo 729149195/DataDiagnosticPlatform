@@ -68,17 +68,19 @@ const highlightChannels = () => {
     if (!editableDiv) return;
 
     const content = formulasarea.value;
-    const channelNames = selectedChannels.value.map((channel) => channel.channel_name);
+    const channelIdentifiers = selectedChannels.value.map((channel) => 
+        `${channel.shot_number}_${channel.channel_name}`
+    );
     const colors = selectedChannels.value.reduce((acc, channel) => {
-        acc[channel.channel_name] = channel.color;
+        acc[`${channel.shot_number}_${channel.channel_name}`] = channel.color;
         return acc;
     }, {});
 
-    const tokens = tokenizeContent(content, channelNames);
+    const tokens = tokenizeContent(content, channelIdentifiers);
 
     const highlightedContent = tokens
         .map((token) => {
-            if (channelNames.includes(token)) {
+            if (channelIdentifiers.includes(token)) {
                 const color = colors[token] || '#409EFF';
                 return `<span class="tag" style="background-color: ${color};">${token}</span>`;
             } else {
@@ -137,16 +139,16 @@ const sendClickedChannelNames = async () => {
     }
 };
 
-const tokenizeContent = (content, channelNames) => {
+const tokenizeContent = (content, channelIdentifiers) => {
     const tokens = [];
     let index = 0;
     while (index < content.length) {
         let matched = false;
 
-        for (const name of channelNames.sort((a, b) => b.length - a.length)) {
-            if (content.substr(index, name.length) === name) {
-                tokens.push(name);
-                index += name.length;
+        for (const identifier of channelIdentifiers.sort((a, b) => b.length - a.length)) {
+            if (content.substr(index, identifier.length) === identifier) {
+                tokens.push(identifier);
+                index += identifier.length;
                 matched = true;
                 break;
             }
