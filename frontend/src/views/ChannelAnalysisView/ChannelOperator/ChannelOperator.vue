@@ -42,7 +42,7 @@
             :http-request="handleFileSelect"
             accept=".py, .m"
             :limit="3"
-            style="margin-left: 15px; padding-top: 10px"
+            style="margin-left: 105px;"
     >
       <el-button type="primary" plain
                  size="large">算法导入</el-button>
@@ -64,7 +64,7 @@
       </el-form-item>
       <el-form-item label="文件类型" :label-width="formLabelWidth">
         <el-select v-model="fileInfo.type" placeholder="请选择文件类型">
-          <el-option label="运算" value="运算"></el-option>
+<!--          <el-option label="运算" value="运算"></el-option>-->
           <el-option label="导入" value="导入"></el-option>
         </el-select>
       </el-form-item>
@@ -109,9 +109,9 @@
       </el-form-item>
       <el-form-item label="输出参数">
         <el-table :data="fileInfo.output" border>
-          <el-table-column label="输出名称">
+          <el-table-column label="输出参数名称">
             <template #default="scope">
-              <el-input v-model="scope.row.outputName" placeholder="输出名称"></el-input>
+              <el-input v-model="scope.row.outputName" placeholder="输出参数名称"></el-input>
             </template>
           </el-table-column>
           <el-table-column label="类型">
@@ -155,38 +155,38 @@ const store = useStore();
 
 const fileList = ref([]);
 const dialogVisible = ref(false);
-const fileInfo = ref({
-    name: '',
-    description: '',
-    type: '',
-    file: null,
-    input: [
-        { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
-        { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
-    ],
-    output: [
-        { outputName: 'new_channel_name', type: '新通道名', definition: {
-                X_label: '时间',
-                X_unit: 's',
-                Y_label: '电压',
-                Y_unit: 'V',
-            }},
-        { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
-    ]
-});
 // const fileInfo = ref({
-//     name: '',
-//     description: '',
-//     type: '',
+//     name: 'NoiseThreshold',
+//     description: '过滤噪声，产出新数据',
+//     type: '导入',
 //     file: null,
 //     input: [
 //         { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
 //         { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
 //     ],
 //     output: [
-//         { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+//         { outputName: 'new_channel_name', type: '新通道名', definition: {
+//                 X_label: '时间',
+//                 X_unit: 's',
+//                 Y_label: '电压',
+//                 Y_unit: 'V',
+//             }},
+//         { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
 //     ]
 // });
+const fileInfo = ref({
+    name: 'LargerThanThreshold',
+    description: '绝对值大于阈值的时间段都会被标记',
+    type: '导入',
+    file: null,
+    input: [
+        { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
+        { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
+    ],
+    output: [
+        { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+    ]
+});
 const formLabelWidth = '120px';
 
 const handleFileSelect = ({ file }) => {
@@ -228,12 +228,17 @@ const handleSubmit = async () => {
     }));
 
     try {
-        const response = await axios.post('/api/upload/', formData, {
+        const response = await axios.post('http://localhost:5000/api/upload/', formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
         });
         ElMessage.success('文件上传成功');
+
+        let tt = ["Pca()"]
+        // 更新 detect anomaly functions
+        const response2 = await axios.get(`http://localhost:5000/api/view-functions/`);
+        operators['da_functions'] = tt.concat(response2.data.imported_functions.map(d => d['name']+'()'));
         dialogVisible.value = false;
     } catch (error) {
         ElMessage.error('文件上传失败');

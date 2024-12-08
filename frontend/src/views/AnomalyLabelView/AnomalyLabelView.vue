@@ -168,7 +168,7 @@
               </span>
               <div style="display: flex; justify-content: center; align-items: center;">
                 <div style="width: 100%">
-                  <ChannelCalculationResults />
+                  <ChannelCalculationResults ref="resultRef"/>
                 </div>
               </div>
             </el-card>
