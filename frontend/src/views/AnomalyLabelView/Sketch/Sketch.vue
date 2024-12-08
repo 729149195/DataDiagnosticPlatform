@@ -1,463 +1,825 @@
 <template>
-  <div class="sketch-container">
-    <div class="canvas-container">
-      <canvas ref="canvas"></canvas>
-      <el-progress :percentage="match_percentage"  v-if="match_percentage >= 0 && match_percentage < 100"/>
-      <el-progress :percentage="match_percentage" status="success" v-if="match_percentage === 100"/>
-      <button class="clear-button" @click="clearCanvas">×</button>
+  <div class="container">
+    <!-- 顶部操作栏 -->
+    <div class="header">
+      <span class="title">查询</span>
+      <span class="operate">
+        <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable
+          collapse-tags-tooltip class="select-gun-numbers">
+          <el-option-group v-for="group in selectV2Options" :key="group.value" :label="group.label">
+            <el-option v-for="option in group.children" :key="option.value" :label="option.label"
+              :value="option.value" />
+          </el-option-group>
+        </el-select>
+
+        <!-- 模板选择 -->
+        <el-select 
+          v-model="selectedTemplate" 
+          placeholder="模板" 
+          class="select-template" 
+          @change="loadTemplate"
+          :value-key="'name'"
+        >
+          <el-option
+            v-for="template in templates"
+            :key="template.name"
+            :label="template.name"
+            :value="template"
+          >
+            <div class="template-preview">
+              <canvas
+                :ref="el => { if (el) previewTemplate(template, el) }"
+                width="120"
+                height="60"
+              ></canvas>
+            </div>
+          </el-option>
+        </el-select>
+      </span>
     </div>
-    <span style="position: absolute; bottom: 8px; left: 8px;">
-      起始
-      <el-input type="number" v-model.number="time_begin" @input="onInputChange('time_begin')"
-        style="width: 70px; margin-right: 8px;" placeholder="null" />/s
-      时长
-      <el-input type="number" v-model.number="time_during" @input="onInputChange('time_during')"
-        style="width: 70px; margin-right: 8px;" placeholder="null" />
-      终止
-      <el-input type="number" v-model.number="time_end" @input="onInputChange('time_end')" style="width: 70px"
-        placeholder="null" /> </span>
-    <span style="position: absolute; bottom: 20%; left: 8px;">
-      上界
-      <el-input type="number" v-model.number="upper_bound" @input="onInputChange('upper_bound')"
-        style="width: 70px; display: block; margin-bottom: 8px;" placeholder="null" />
-      幅度
-      <el-input type="number" v-model.number="scope_bound" @input="onInputChange('scope_bound')"
-        style="width: 70px; display: block; margin-bottom: 8px;" placeholder="null" />
-      下界
-      <el-input type="number" v-model.number="lower_bound" @input="onInputChange('lower_bound')"
-        style="width: 70px; display: block" placeholder="null" />
-    </span>
-    <span style="position: absolute; bottom: 8px; right: 8px;">
-      <el-button type="success" :icon="Search" @click="submitData">查询</el-button>
-    </span>
+
+    <!-- 绘图区域 -->
+    <div class="sketch-container">
+      <div class="canvas-container">
+        <canvas ref="canvas"></canvas>
+        <div class="buttons">
+          <el-button type="danger" class="clear-button" @click="clearCanvas">
+            清除
+          </el-button>
+          <el-button type="success" :icon="Search" @click="submitData" class="search-button">
+            查询
+          </el-button>
+          <el-button type="success" :icon="Search" @click="exportCurrentCurve" class="search-button">
+            导出当前曲线数据
+          </el-button>
+        </div>
+      </div>
+      <div class="controls-wrapper">
+        <div class="inputs-container">
+          <div class="input-row">
+            <div class="input-group">
+              <span class="input-label">开始:</span>
+              <el-input-number v-model="time_begin" :precision="4" :step="0.01" size="small" class="time-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">持续:</span>
+              <el-input-number v-model="time_during" :precision="4" :step="0.01" size="small" class="time-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">结束:</span>
+              <el-input-number v-model="time_end" :precision="4" :step="0.01" size="small" class="time-input" />
+            </div>
+          </div>
+
+          <div class="input-row">
+            <div class="input-group">
+              <span class="input-label">上界:</span>
+              <el-input-number v-model="upper_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">幅度:</span>
+              <el-input-number v-model="scope_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
+            </div>
+            <div class="input-group">
+              <span class="input-label">下界:</span>
+              <el-input-number v-model="lower_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
+import {
+  ref,
+  computed,
+  onMounted,
+  onBeforeUnmount,
+} from 'vue';
 import { Search } from '@element-plus/icons-vue';
-import axios from 'axios';
 import { useStore } from 'vuex';
-import { io } from 'socket.io-client';
+import paper from 'paper';
+import { DataSmoother } from './data-smoother'; // 导入数据平滑处理类
+import { PatternMatcher } from './pattern-matcher'; // 导入模式匹配类
+import curveTemplates from '@/assets/templates/curveTemplates.json'
 
-const store = useStore()
+// 使用 Vuex store
+const store = useStore();
 
-const socket = new WebSocket('ws://localhost:5000/ws/progress/');
-socket.onopen = function(e) {
-    console.log("WebSocket connection established.");
-};
-socket.onerror = function(error) {
-    console.log(`WebSocket error: ${error.message}`);
-};
-socket.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    if (data.progress !== undefined) {
-        console.log(`Progress: ${data.progress}%`);
-        // 更新进度条等 UI 元素
-        match_percentage.value = data.progress
+// 绑定的值
+const templatavalue = ref('');
+const historyvalue = ref('');
+
+// 选中的炮号数组
+const selectedGunNumbers = ref([]);
+const smoothness = computed(() => store.state.smoothness);
+const sampling = computed(() => store.state.sampling);
+
+// 从 Vuex 获取 selectedChannels
+const selectedChannels = computed(() => store.state.selectedChannels);
+
+// 历史选项
+const historys = [
+  { value: 'Option1', label: '历史1' },
+  { value: 'Option2', label: '历史2' },
+];
+
+// 模板选项
+const selectedTemplate = ref(null);
+const templates = ref(curveTemplates.templates || []);
+
+const selectV2Options = computed(() => {
+  const grouped = selectedChannels.value.reduce((acc, channel) => {
+    const { channel_type, channel_name, shot_number } = channel;
+    if (!acc[channel_type]) {
+      acc[channel_type] = [];
     }
-    if (data.matched_results !== undefined) {
-        console.log("Matched Results:", data.matched_results);
-        // 处理匹配结果，例如显示在界面上
-        store.dispatch('updateMatchedResults', data.matched_results);
-    }
-};
-const match_percentage = ref(-1)
-const matchedResults = ref([]);
+    acc[channel_type].push({
+      label: `${channel_name}_${shot_number}`,
+      value: `${channel_name}_${shot_number}`,
+    });
+    return acc;
+  }, {});
 
-const canvas = ref(null);
-let ctx = null;
-let isDrawing = false;
-let lastX = 0;
-let lastY = 0;
-let points = []; // 存储手绘点
-
-const time_begin = ref(-0.25);
-const time_during = ref(0.15);
-const time_end = ref(-0.1);
-const upper_bound = ref(0.1);
-const scope_bound = ref(2.5);
-const lower_bound = ref(-2.4);
-
-const canDraw = ref(true);
-
-let isManualChange = ref(false); // 标记是否为手动修改
-
-const BASE_DURATION = 200; // 固定的基准时长
-const BASE_SCOPE = 100; // 固定的基准幅度
-
-
-const submitData = async () => {
-  match_percentage.value = 0;
-  try {
-    const payload = {
-      selectedChannels: store.getters.getSelectedChannels,
-      actualPoints: actual_points,
-      time_begin: time_begin.value,
-      time_end: time_end.value,
-      upper_bound: upper_bound.value,
-      lower_bound: lower_bound.value
-    };
-    const response = await axios.post('http://localhost:5000/api/submit-data', payload);
-
-    console.log('Response from server:', response.data);
-  } catch (error) {
-    console.error('Failed to send data to server:', error);
-  }
-};
-
-function onInputChange(changedField) {
-  isManualChange.value = true;
-  updateValues(changedField);
-}
-
-function updateValues(changedField) {
-  if (changedField === 'time_begin' && time_begin.value !== null && time_during.value !== null) {
-    time_end.value = time_begin.value + time_during.value;
-  } else if (changedField === 'time_during' && time_during.value !== null && time_begin.value !== null) {
-    time_end.value = time_begin.value + time_during.value;
-  } else if (changedField === 'time_end' && time_end.value !== null && time_begin.value !== null) {
-    time_during.value = time_end.value - time_begin.value;
-  }
-
-  if (changedField === 'upper_bound' && upper_bound.value !== null && scope_bound.value !== null) {
-    lower_bound.value = upper_bound.value - scope_bound.value;
-  } else if (changedField === 'scope_bound' && scope_bound.value !== null && upper_bound.value !== null) {
-    lower_bound.value = upper_bound.value - scope_bound.value;
-  } else if (changedField === 'lower_bound' && lower_bound.value !== null && upper_bound.value !== null) {
-    scope_bound.value = upper_bound.value - lower_bound.value;
-  }
-
-  isManualChange.value = false; // 重置手动修改标记
-}
-
-// 监听输入值的变化，并在所有值都有时，允许绘制
-watch([time_begin, time_during, time_end, upper_bound, scope_bound, lower_bound], ([begin, during, end, upper, scope, lower]) => {
-  canDraw.value = begin !== null && during !== null && end !== null && upper !== null && scope !== null && lower !== null;
+  return Object.keys(grouped).map((type) => ({
+    label: type,
+    value: type,
+    children: grouped[type],
+  }));
 });
 
-function drawGrid() {
-  if (!ctx) return;
-  const { width, height } = canvas.value;
+// 其他绑定的值
+const brush_begin = computed(() => store.state.brush_begin);
+const brush_end = computed(() => store.state.brush_end);
+const time_begin = computed({
+  get: () => store.state.time_begin,
+  set: (value) => store.dispatch('updateTimeBegin', value)
+});
+const time_during = computed({
+  get: () => store.state.time_during,
+  set: (value) => store.dispatch('updateTimeDuring', value)
+});
+const time_end = computed({
+  get: () => store.state.time_end,
+  set: (value) => store.dispatch('updateTimeEnd', value)
+});
+const upper_bound = computed({
+  get: () => store.state.upper_bound,
+  set: (value) => store.dispatch('updateUpperBound', value)
+});
+const scope_bound = computed({
+  get: () => store.state.scope_bound,
+  set: (value) => store.dispatch('updateScopeBound', value)
+});
+const lower_bound = computed({
+  get: () => store.state.lower_bound,
+  set: (value) => store.dispatch('updateLowerBound', value)
+});
 
-  ctx.strokeStyle = '#e0e0e0';
-  ctx.lineWidth = 1.5;
+// ----------- 画绘图逻辑开始 -----------
 
-  for (let x = 0; x <= width; x += 20) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.stroke();
+class DrawingApp {
+  constructor(canvasElement) {
+    this.canvas = canvasElement;
+    // 确保先清理之前的项目和工具
+    if (paper.project) {
+      paper.project.remove();
+    }
+    if (paper.tools) {
+      paper.tools.forEach(tool => tool.remove());
+    }
+
+    // 重新初始化 paper
+    paper.setup(this.canvas);
+    this.project = paper.project;
+
+    this.size = { width: paper.view.size.width, height: paper.view.size.height };
+    this.hitOptions = {
+      segments: true,
+      stroke: true,
+      handles: true,
+      tolerance: 5,
+      guides: false,
+    };
+    this.path = null;
+    this.isDrawing = false;
+    this.segment = null;
+    this.handle = null;
+
+    this.gridGroup = new paper.Group();
+
+    // 绑定方法
+    this.onMouseDown = this.onMouseDown.bind(this);
+    this.onMouseDrag = this.onMouseDrag.bind(this);
+    this.onMouseUp = this.onMouseUp.bind(this);
+
+    this.setupTool();
+    this.drawGrid();
+
+    window.addEventListener('resize', this.resizeCanvas.bind(this));
   }
 
-  for (let y = 0; y <= height; y += 20) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
-  }
-}
-
-function initCanvas() {
-  const canvasEl = canvas.value;
-  ctx = canvasEl.getContext('2d');
-
-  resizeCanvas();
-  drawGrid();
-
-  ctx.strokeStyle = 'black';
-  ctx.lineWidth = 1;
-  ctx.lineCap = 'round';
-}
-
-function resizeCanvas() {
-  const canvasEl = canvas.value;
-  const container = canvasEl.parentElement;
-  canvasEl.width = container.clientWidth;
-  canvasEl.height = container.clientHeight;
-}
-
-function handleResize() {
-  if (!ctx) return;
-  const imageData = ctx.getImageData(0, 0, canvas.value.width, canvas.value.height);
-  ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  resizeCanvas();
-  drawGrid();
-  ctx.putImageData(imageData, 0, 0);
-}
-
-function startDrawing(e) {
-  if (!canDraw.value) {
-    alert("请先填写所有必要的参数（上界、下界、幅度、起始、时长、终止）。");
-    return;
+  setupTool() {
+    if (this.tool) {
+      this.tool.remove();
+    }
+    this.tool = new paper.Tool();
+    this.tool.activate();
+    this.tool.onMouseDown = this.onMouseDown;
+    this.tool.onMouseDrag = this.onMouseDrag;
+    this.tool.onMouseUp = this.onMouseUp;
   }
 
-  isDrawing = true;
-  points = [];
-  const { x, y } = getMousePos(e);
-  lastX = x;
-  lastY = y;
-  points.push({ x: lastX, y: lastY });
-}
+  onMouseDown(event) {
+    this.segment = null;
+    this.handle = null;
 
-function draw(e) {
-  if (!isDrawing) return;
-  const { x, y } = getMousePos(e);
+    let hitResult = this.project.hitTest(event.point, this.hitOptions);
 
-  ctx.beginPath();
-  ctx.moveTo(lastX, lastY);
-  ctx.lineTo(x, y);
-  ctx.stroke();
+    if (hitResult && hitResult.item) {
+      // 用户点击了一个项目
+      let clickedPath = hitResult.item;
+      if (!(clickedPath instanceof paper.Path)) {
+        // 如果点击不是 Path，而是其子项
+        clickedPath = clickedPath.parent;
+      }
 
-  lastX = x;
-  lastY = y;
-  points.push({ x: lastX, y: lastY });
-}
+      if (clickedPath === this.path) {
+        // 进入编辑模式
+        this.path.fullySelected = true;
 
-function stopDrawing() {
-  isDrawing = false;
-  if (points.length > 1) {
-    smoothAndReplaceCurve();
-  }
-}
+        if (hitResult.type === 'segment') {
+          if (event.modifiers.alt) {
+            // 删除点
+            hitResult.segment.remove();
+            paper.view.update();
+          } else {
+            // 移动点
+            this.segment = hitResult.segment;
+          }
+        } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
+          // 移动控制柄
+          this.segment = hitResult.segment;
+          this.handle = hitResult.type === 'handle-in' ? 'handleIn' : 'handleOut';
+        } else if (hitResult.type === 'stroke' && event.modifiers.shift) {
+          // 添加新点
+          const location = hitResult.location;
+          let newSegment = this.path.insert(location.index + 1, event.point);
+          this.segment = newSegment;
+        }
+      } else {
+        // 点击了其他项目，但只允许一个路径存在
+        console.log('Clicked on another item, but only one path is allowed.');
+      }
+    } else {
+      // 点击了空白区域
+      if (!this.path) {
+        // 开始新的绘制
+        this.isDrawing = true;
+        this.path = new paper.Path();
+        this.path.strokeColor = 'black';
+        this.path.strokeWidth = 6;
+        this.path.strokeCap = 'round';
+        this.path.strokeJoin = 'round';
+        this.path.fullySelected = false;
 
-let actual_points = []; // 用于保存实际范围内的点
-
-function smoothAndReplaceCurve() {
-  if (points.length < 4) return;
-  clearCanvas();
-
-  // 1. 简化曲线
-  const simplifiedPoints = simplifyRDP(points, 2);
-
-  // 2. 生成平滑曲线
-  const splinePoints = generateCatmullRomSpline(simplifiedPoints, 0.1);
-
-  // 3. 缩放曲线到用户指定的范围
-  const scaledPoints = scalePointsToRange(splinePoints, {
-    xMin: time_begin.value,
-    xMax: time_end.value,
-    yMin: lower_bound.value,
-    yMax: upper_bound.value
-  });
-
-  // 4. 保存实际的点到 actual_points 数组中，并转换为 {'X': [], 'Y': []} 格式
-  actual_points = {
-    X: splinePoints.map(point => 
-      ((point.x - Math.min(...points.map(p => p.x))) / (Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x)))) * (time_end.value - time_begin.value) + time_begin.value
-    ),
-    Y: splinePoints.map(point => 
-      ((point.y - Math.min(...points.map(p => p.y))) / (Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y)))) * (upper_bound.value - lower_bound.value) + lower_bound.value
-    )
-  };
-
-  // 5. 计算曲线的边界（最小和最大值）
-  const xMin = Math.min(...scaledPoints.map(p => p.x));
-  const xMax = Math.max(...scaledPoints.map(p => p.x));
-  const yMin = Math.min(...scaledPoints.map(p => p.y));
-  const yMax = Math.max(...scaledPoints.map(p => p.y));
-
-  // 6. 计算缩放系数（将曲线缩放到基准范围）
-  const scaleX = BASE_DURATION / (time_end.value - time_begin.value);
-  const scaleY = BASE_SCOPE / (upper_bound.value - lower_bound.value);
-
-  // 7. 计算画布的中心点
-  const canvasCenterX = canvas.value.width / 2;
-  const canvasCenterY = canvas.value.height / 2;
-
-  // 8. 计算曲线的中心点
-  const curveCenterX = (xMin + xMax) / 2;
-  const curveCenterY = (yMin + yMax) / 2;
-
-  // 9. 计算平移量，使曲线位于画布中心
-  const translateX = canvasCenterX - curveCenterX * scaleX;
-  const translateY = canvasCenterY - curveCenterY * scaleY;
-
-  // 10. 保存当前线条宽度
-  const originalLineWidth = ctx.lineWidth;
-
-  // 11. 平移和缩放画布，将曲线缩放到基准大小并居中
-  ctx.save(); // 保存当前的绘图状态
-  ctx.translate(translateX, translateY);
-  ctx.scale(scaleX, scaleY);
-
-  // 12. 恢复线条宽度，确保线条粗细不受缩放影响
-  ctx.lineWidth = originalLineWidth / Math.max(scaleX, scaleY);
-
-  // 13. 绘制缩放后的曲线，保持恒定粗细
-  ctx.beginPath();
-  ctx.moveTo(scaledPoints[0].x, scaledPoints[0].y);
-  for (let i = 1; i < scaledPoints.length; i++) {
-    ctx.lineTo(scaledPoints[i].x, scaledPoints[i].y);
-  }
-  ctx.stroke();
-
-  // 14. 恢复上下文的状态
-  ctx.restore();
-
-  // console.log("points", points);
-  // console.log("splinePoints", splinePoints);
-  // console.log("actual_points", actual_points);  // 输出新格式的 actual_points
-  
-}
-
-
-
-// 缩放点到指定的范围
-function scalePointsToRange(points, range) {
-  const xMin = Math.min(...points.map(p => p.x));
-  const xMax = Math.max(...points.map(p => p.x));
-  const yMin = Math.min(...points.map(p => p.y));
-  const yMax = Math.max(...points.map(p => p.y));
-
-  return points.map(point => ({
-    x: ((point.x - xMin) / (xMax - xMin)) * (range.xMax - range.xMin) + range.xMin,
-    y: ((point.y - yMin) / (yMax - yMin)) * (range.yMax - range.yMin) + range.yMin
-  }));
-}
-
-function simplifyRDP(points, epsilon) {
-  if (points.length < 3) return points;
-
-  const firstPoint = points[0];
-  const lastPoint = points[points.length - 1];
-
-  let maxDist = 0;
-  let index = 0;
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const dist = perpendicularDistance(points[i], firstPoint, lastPoint);
-    if (dist > maxDist) {
-      maxDist = dist;
-      index = i;
+        // 添加第一个点
+        this.previousPoint = event.point.clone();
+        this.path.add(this.previousPoint);
+      } else {
+        console.log('Path already exists, cannot start a new one.');
+      }
     }
   }
 
-  if (maxDist > epsilon) {
-    const left = simplifyRDP(points.slice(0, index + 1), epsilon);
-    const right = simplifyRDP(points.slice(index), epsilon);
-    return left.slice(0, left.length - 1).concat(right);
-  } else {
-    return [firstPoint, lastPoint];
-  }
-}
+  onMouseDrag(event) {
+    if (this.isDrawing) {
+      const newPoint = event.point.clone();
 
-function perpendicularDistance(point, lineStart, lineEnd) {
-  const x0 = point.x, y0 = point.y;
-  const x1 = lineStart.x, y1 = lineStart.y;
-  const x2 = lineEnd.x, y2 = lineEnd.y;
-
-  const numerator = Math.abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1);
-  const denominator = Math.sqrt(Math.pow(y2 - y1, 2) + Math.pow(x2 - x1, 2));
-
-  return numerator / denominator;
-}
-
-function generateCatmullRomSpline(points, step = 0.01) {
-  const splinePoints = [];
-  const alpha = 0.5;
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = i > 0 ? points[i - 1] : points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = i !== points.length - 2 ? points[i + 2] : points[i + 1];
-
-    for (let t = 0; t <= 1; t += step) {
-      const point = catmullRomInterpolate(p0, p1, p2, p3, t, alpha);
-      splinePoints.push(point);
+      // x 轴递增约束
+      if (newPoint.x >= this.previousPoint.x) {
+        this.path.add(newPoint);
+        this.previousPoint = newPoint.clone();
+        paper.view.update();
+      }
+    } else if (this.segment) {
+      if (this.handle) {
+        // 移动控制柄
+        this.segment[this.handle] = this.segment[this.handle].add(event.delta);
+      } else {
+        // 移动点
+        this.segment.point = this.segment.point.add(event.delta);
+      }
+      paper.view.update();
     }
   }
 
-  return splinePoints;
+  onMouseUp(event) {
+    if (this.isDrawing) {
+      this.isDrawing = false;
+      // 绘制完成后，对曲线进行平滑处理
+      this.path.simplify();
+      this.path.smooth({ type: 'catmull-rom', factor: 0.5 });
+      this.path.fullySelected = true; // 显示控制柄
+      paper.view.update();
+    }
+
+    // 重置选中的段和控制柄
+    this.segment = null;
+    this.handle = null;
+  }
+
+  drawGrid() {
+    this.gridGroup.removeChildren();
+    const gridSpacing = 20;
+
+    // 计算中心点
+    const centerX = this.size.width / 2;
+    const centerY = this.size.height / 2;
+    // 计算最大距离（从中心点到最远角落的距离）
+    const maxDistance = Math.sqrt(Math.pow(this.size.width, 2) + Math.pow(this.size.height, 2)) / 2;
+
+    // 绘制垂直线
+    for (let x = 0; x <= this.size.width; x += gridSpacing) {
+      const path = new paper.Path.Line({
+        from: [x, 0],
+        to: [x, this.size.height],
+        strokeWidth: 1,
+      });
+
+      // 计算当前线到中心的距离
+      const distanceFromCenter = Math.abs(x - centerX);
+      // 计算透明度（距离中心越远越透明）
+      const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
+
+      path.strokeColor = new paper.Color(0, 0, 0, opacity);
+      path.guide = true;
+      this.gridGroup.addChild(path);
+    }
+
+    // 绘制水平线
+    for (let y = 0; y <= this.size.height; y += gridSpacing) {
+      const path = new paper.Path.Line({
+        from: [0, y],
+        to: [this.size.width, y],
+        strokeWidth: 1,
+      });
+
+      // 计算当前线到中心的距离
+      const distanceFromCenter = Math.abs(y - centerY);
+      // 计算透明度（距离中心越远越透明）
+      const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
+
+      path.strokeColor = new paper.Color(0, 0, 0, opacity);
+      path.guide = true;
+      this.gridGroup.addChild(path);
+    }
+
+    this.gridGroup.sendToBack();
+    paper.view.update();
+  }
+
+  resizeCanvas() {
+    if (this.canvas) {
+      this.canvas.width = this.canvas.parentElement.clientWidth;
+      this.canvas.height = this.canvas.parentElement.clientHeight;
+      paper.view.viewSize = new paper.Size(this.canvas.width, this.canvas.height);
+      this.size.width = paper.view.size.width;
+      this.size.height = paper.view.size.height;
+
+      this.drawGrid();
+    }
+  }
+
+  clear() {
+    if (this.path) {
+      this.path.remove();
+      this.path = null;
+    }
+    if (this.tool) {
+      this.tool.remove();
+    }
+    if (paper.project) {
+      paper.project.clear();
+      // 重新初始化网格
+      this.gridGroup = new paper.Group();
+      this.drawGrid();
+      // 重新设置工具
+      this.setupTool();
+      // 确保视图更新
+      paper.view.update();
+    }
+  }
+
+  destroy() {
+    if (this.tool) {
+      this.tool.remove();
+    }
+    if (paper.project) {
+      paper.project.remove();
+    }
+    window.removeEventListener('resize', this.resizeCanvas.bind(this));
+  }
+
+  getPathsData() {
+    // 获取路径的数据
+    if (this.path) {
+      return this.path.segments.map((segment) => ({
+        x: segment.point.x,
+        y: segment.point.y,
+      }));
+    } else {
+      return [];
+    }
+  }
 }
 
-function catmullRomInterpolate(p0, p1, p2, p3, t, alpha) {
-  const t2 = t * t;
-  const t3 = t2 * t;
+let drawingApp = null;
 
-  const x = 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
-  const y = 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+// 引用画布
+const canvas = ref(null);
 
-  return { x, y };
-}
+// 键盘事件处理函数
+const handleKeyDown = (e) => {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    // 删除选中的路径或点
+    if (drawingApp && drawingApp.path) {
+      const selectedItems = drawingApp.project.selectedItems;
+      if (selectedItems.length > 0) {
+        selectedItems.forEach((item) => {
+          item.remove();
+        });
+        drawingApp.path = null;
+        paper.view.update();
+      }
+    }
+  }
+};
 
-function clearCanvas() {
-  if (!ctx) return;
-  ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);
-  drawGrid();
-  ctx.strokeStyle = 'black';
-  ctx.lineWidth = 2;
-  ctx.lineCap = 'round';
-}
-
-function getMousePos(e) {
-  const rect = canvas.value.getBoundingClientRect();
-  return {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  };
-}
-
+// 生命周期钩子
 onMounted(() => {
-  initCanvas();
-  canvas.value.addEventListener('mousedown', startDrawing);
-  canvas.value.addEventListener('mousemove', draw);
-  canvas.value.addEventListener('mouseup', stopDrawing);
-  canvas.value.addEventListener('mouseleave', stopDrawing);
-  window.addEventListener('resize', handleResize);
+  if (canvas.value) {
+    // 确保之前的实例被完全清理
+    if (drawingApp) {
+      drawingApp.destroy();
+      drawingApp = null;
+    }
+    // 创建新实例
+    drawingApp = new DrawingApp(canvas.value);
+  }
+
+  // 监听键盘事件
+  window.addEventListener('keydown', handleKeyDown);
 });
 
 onBeforeUnmount(() => {
-  canvas.value.removeEventListener('mousedown', startDrawing);
-  canvas.value.removeEventListener('mousemove', draw);
-  canvas.value.removeEventListener('mouseup', stopDrawing);
-  canvas.value.removeEventListener('mouseleave', stopDrawing);
-  window.removeEventListener('resize', handleResize);
+  if (drawingApp) {
+    drawingApp.destroy();
+    drawingApp = null;
+  }
+  // 移除全局键盘事件监听器
+  window.removeEventListener('keydown', handleKeyDown);
 });
+
+// 提交数据函数
+const submitData = async () => {
+  // 创建数据平滑器实例
+  const dataSmoother = new DataSmoother();
+
+  const patternMatcher = new PatternMatcher({
+    distanceMetric: 'euclidean',
+    matchThreshold: 1.0,
+    windowSize: 1.5
+  });
+
+  const channelDataCache = store.state.channelDataCache;
+  const rawQueryPattern = drawingApp ? drawingApp.getPathsData() : [];
+
+  if (rawQueryPattern.length > 0) {
+    // 归一化查询模式的 x 和 y 值
+    const minX = Math.min(...rawQueryPattern.map(p => p.x));
+    const maxX = Math.max(...rawQueryPattern.map(p => p.x));
+    const xRange = maxX - minX;
+
+    const minY = Math.min(...rawQueryPattern.map(p => p.y));
+    const maxY = Math.max(...rawQueryPattern.map(p => p.y));
+    const yRange = maxY - minY;
+
+    // 只在里翻转 Y 值
+    const queryPattern = rawQueryPattern.map((point, index) => ({
+      x: -1 + (2 * (point.x - minX) / xRange),
+      y: -(-1 + (2 * (point.y - minY) / yRange))  // 翻转 Y 值
+    }));
+
+    // 初始化结果对象
+    const matchResults = {};
+    const smoothedData = {};
+
+    selectedGunNumbers.value.forEach(channel => {
+      const channelData = channelDataCache[channel];
+      if (channelData && queryPattern.length > 0) {
+        // 进行采样处理
+        const samplingInterval = Math.floor(1 / sampling.value);
+        const sampledData = {
+          ...channelData,
+          X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
+          Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0),
+        };
+
+        // 创建数据点数组
+        const dataPoints = sampledData.Y_value.map((y, index) => ({
+          x: sampledData.X_value[index],
+          y: y,
+          origX: sampledData.X_value[index],
+          origY: y
+        }));
+
+        // 对数据进行平滑处理
+        const smoothedPoints = dataSmoother.smoothData(dataPoints, smoothness.value);
+
+        try {
+          // 使用平滑后的数据进行模式匹配
+          const matches = patternMatcher.findPatterns(
+            queryPattern,
+            smoothedPoints.map(p => p.y),  // 用平滑后的 Y 值
+            smoothedPoints.map(p => p.x)   // 使用平滑后的 X 值
+          );
+
+          // 使用 selectV2Options 中格式作为键
+          const channelInfo = selectV2Options.value.find(option =>
+            option.children.some(child => child.value === channel)
+          );
+
+          if (channelInfo) {
+            const child = channelInfo.children.find(child => child.value === channel);
+            if (child) {
+              const shotNumber = channel.split('_').pop();
+              const channelName = child.label.split('_')[0];
+              const key = `${channelName}_${shotNumber}`;
+
+              // 存储匹配结果，包含所有必要的指标
+              matchResults[key] = matches.map(match => ({
+                range: match.range,                // X值区间 [startX, endX]
+                distance: match.distance,          // DTW距离
+                confidence: match.confidence,      // 匹配置信度
+                timeSpan: match.range[1] - match.range[0],  // 时间跨度
+                startTime: match.range[0],        // 开始时间
+                endTime: match.range[1],          // 结束时间
+                channelName: channelName,         // 通道名称
+                shotNumber: shotNumber            // 炮号
+              }));
+
+              // 存储采样后的数据
+              smoothedData[key] = sampledData;
+            }
+          }
+        } catch (error) {
+          console.error(`处理通道 ${channel} 时出错:`, error);
+        }
+      }
+    });
+
+    // 输出结果
+    console.log('平滑后的数据:', smoothedData);
+    console.log('匹配结果:', matchResults);
+    console.log('查询模式:', queryPattern);
+
+    // 当获取到匹配结果后
+    if (Object.keys(matchResults).length > 0) {
+      // 将匹配结果存入 store
+      store.dispatch('updateMatchedResults', Object.values(matchResults));
+    }
+
+    console.log(store.state.matchedResults);
+  }
+};
+
+// 修改清除画布函数
+const clearCanvas = () => {
+  if (drawingApp) {
+    drawingApp.clear();
+    // 清除 store 中的匹配结果
+    store.dispatch('clearMatchedResults');
+  }
+};
+
+// 导出当前曲线数据到控制台
+const exportCurrentCurve = () => {
+  if (drawingApp) {
+    console.log(JSON.stringify({
+      name: "新模板",
+      points: drawingApp.getPathsData()
+    }, null, 2));
+  }
+}
+
+// 加载选中的模板
+const loadTemplate = (template) => {
+  if (drawingApp && template && template.points) {
+    // 清除当前的路径
+    drawingApp.clear();
+    
+    // 创建新路径
+    drawingApp.path = new paper.Path();
+    drawingApp.path.strokeColor = 'black';
+    drawingApp.path.strokeWidth = 6;
+    drawingApp.path.strokeCap = 'round';
+    drawingApp.path.strokeJoin = 'round';
+    
+    // 直接添加模板中的点
+    template.points.forEach(point => {
+      drawingApp.path.add(new paper.Point(point.x, point.y));
+    });
+    
+    // 平滑处理
+    drawingApp.path.simplify();
+    drawingApp.path.smooth({ type: 'catmull-rom', factor: 0.5 });
+    drawingApp.path.fullySelected = true;
+    
+    // 更新视图
+    paper.view.update();
+  }
+}
+
+// 预览模板
+const previewTemplate = (template, canvas) => {
+  const ctx = canvas.getContext('2d')
+  const width = canvas.width
+  const height = canvas.height
+  
+  ctx.clearRect(0, 0, width, height)
+  ctx.beginPath()
+  ctx.strokeStyle = '#409EFF'
+  ctx.lineWidth = 2
+  
+  if (template.points.length > 0) {
+    // 计算缩放比例
+    const templatePoints = template.points;
+    const minX = Math.min(...templatePoints.map(p => p.x));
+    const maxX = Math.max(...templatePoints.map(p => p.x));
+    const minY = Math.min(...templatePoints.map(p => p.y));
+    const maxY = Math.max(...templatePoints.map(p => p.y));
+    
+    const scaleX = width / (maxX - minX);
+    const scaleY = height / (maxY - minY);
+    const scale = Math.min(scaleX, scaleY) * 0.8; // 留出一些边距
+    
+    // 计算居中偏移
+    const offsetX = (width - (maxX - minX) * scale) / 2 - minX * scale;
+    const offsetY = (height - (maxY - minY) * scale) / 2 - minY * scale;
+    
+    templatePoints.forEach((point, index) => {
+      const x = point.x * scale + offsetX;
+      const y = point.y * scale + offsetY;
+      
+      if (index === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    });
+    
+    ctx.stroke();
+  }
+}
 </script>
 
 <style scoped>
-.sketch-container {
-  margin-top: 10px;
+.container {
   display: flex;
   flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+.header {
+  padding: 5px 0;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.operate {
+  display: flex;
+  align-items: center;
+}
+
+.select-gun-numbers {
+  margin-left: 8px;
+  width: 200px;
+}
+
+.select-template,
+.select-history {
+  width: 150px;
+  margin-left: 5px;
+}
+
+.sketch-container {
+  position: relative;
+  border: 0.5px solid #ccc;
+  display: flex;
+  flex-direction: column;
+  border-radius: 5px;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .canvas-container {
   position: relative;
   flex: 1;
-  margin-left: 75px;
-  height: 100%;
+  min-height: 0;
+  height: 0;
+  /* 关键：确保canvas容器不会超出其父容器 */
 }
 
 canvas {
-  border: 1px solid #ccc;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
-  cursor: crosshair;
-  display: block;
 }
 
-.clear-button {
+.controls-wrapper {
+  flex-shrink: 0;
+  padding: 8px;
+  background-color: #fff;
+}
+
+.inputs-container {
+  position: relative;
+}
+
+.input-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  gap: 12px;
+}
+
+.input-row+.input-row {
+  margin-top: 8px;
+}
+
+.input-group {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.input-label {
+  margin-right: 8px;
+  color: #606266;
+  font-size: 14px;
+  white-space: nowrap;
+  width: 40px;
+}
+
+.time-input,
+.bound-input {
+  flex: 1;
+  width: 100%;
+}
+
+.buttons {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(255, 255, 255, 0.8);
-  border: none;
-  color: #333;
-  font-size: 18px;
-  line-height: 1;
-  padding: 4px 8px;
-  cursor: pointer;
-  border-radius: 50%;
-  box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
-  transition: background 0.3s, color 0.3s;
+  bottom: 0px;
+  right: 6px;
 }
 
-.clear-button:hover {
-  background: rgba(255, 17, 0, 0.274);
-  color: #fff;
+.search-button {
+  margin-left: 5px;
+}
+
+.title {
+  color: #999;
+}
+
+.template-controls {
+  margin-bottom: 16px;
+  display: flex;
+  gap: 16px;
+}
+
+.template-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.template-preview canvas {
+  display: block;
 }
 </style>
