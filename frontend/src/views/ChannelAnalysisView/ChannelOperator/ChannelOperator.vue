@@ -124,7 +124,15 @@
           </el-table-column>
           <el-table-column label="定义">
             <template #default="scope">
-              <el-input v-model="scope.row.definition" placeholder="定义"></el-input>
+              <span v-if="scope.row.type !== '新通道名'">
+                  <span>通道定义</span><el-input v-model="scope.row.definition" placeholder="定义"></el-input>
+              </span>
+              <span v-else>
+                <span style="margin-right: 20px">X轴标签:</span><el-input class="special_input" v-model="scope.row.definition.X_label" placeholder="X轴标签"></el-input><br/>
+                <span style="margin-right: 20px">X轴单位:</span><el-input class="special_input" v-model="scope.row.definition.X_unit" placeholder="X轴单位"></el-input><br/>
+                <span style="margin-right: 20px">Y轴标签:</span><el-input class="special_input" v-model="scope.row.definition.Y_label" placeholder="Y轴标签"></el-input><br/>
+                <span style="margin-right: 20px">Y轴单位:</span><el-input class="special_input" v-model="scope.row.definition.Y_unit" placeholder="Y轴单位"></el-input><br/>
+              </span>
             </template>
           </el-table-column>
           <el-table-column label="操作">
@@ -155,28 +163,9 @@ const store = useStore();
 
 const fileList = ref([]);
 const dialogVisible = ref(false);
-// const fileInfo = ref({
-//     name: 'NoiseThreshold',
-//     description: '过滤噪声，产出新数据',
-//     type: '导入',
-//     file: null,
-//     input: [
-//         { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
-//         { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
-//     ],
-//     output: [
-//         { outputName: 'new_channel_name', type: '新通道名', definition: {
-//                 X_label: '时间',
-//                 X_unit: 's',
-//                 Y_label: '电压',
-//                 Y_unit: 'V',
-//             }},
-//         { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
-//     ]
-// });
 const fileInfo = ref({
-    name: 'LargerThanThreshold',
-    description: '绝对值大于阈值的时间段都会被标记',
+    name: 'NoiseThreshold',
+    description: '过滤噪声，产出新数据',
     type: '导入',
     file: null,
     input: [
@@ -184,9 +173,28 @@ const fileInfo = ref({
         { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
     ],
     output: [
-        { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+        { outputName: 'new_channel_name', type: '新通道名', definition: {
+                X_label: '时间',
+                X_unit: 's',
+                Y_label: '电压',
+                Y_unit: 'V',
+            }},
+        { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
     ]
 });
+// const fileInfo = ref({
+//     name: 'LargerThanThreshold',
+//     description: '绝对值大于阈值的时间段都会被标记',
+//     type: '导入',
+//     file: null,
+//     input: [
+//         { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
+//         { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
+//     ],
+//     output: [
+//         { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+//     ]
+// });
 const formLabelWidth = '120px';
 
 const handleFileSelect = ({ file }) => {
@@ -523,4 +531,9 @@ const getCategoryExplanation = (category) => {
 };
 </script>
 
-<style scoped lang="scss"></style>
+<style scoped lang="scss">
+  .special_input {
+    display: inline-block;
+    width: 60%;
+  }
+</style>
