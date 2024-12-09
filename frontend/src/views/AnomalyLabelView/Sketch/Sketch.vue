@@ -4,11 +4,42 @@
     <div class="header">
       <span class="title">查询</span>
       <span class="operate">
-        <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable
-          collapse-tags-tooltip class="select-gun-numbers">
-          <el-option-group v-for="group in selectV2Options" :key="group.value" :label="group.label">
-            <el-option v-for="option in group.children" :key="option.value" :label="option.label"
-              :value="option.value" />
+        <el-select 
+          v-model="selectedGunNumbers" 
+          placeholder="请选择需要匹配的通道" 
+          multiple 
+          collapse-tags 
+          clearable
+          collapse-tags-tooltip 
+          class="select-gun-numbers"
+        >
+          <!-- 添加全选选项 -->
+          <el-option
+            v-for="group in selectV2Options"
+            :key="'select-all-' + group.value"
+            :value="'select-all-' + group.value"
+            :label="'全选' + group.label"
+          >
+            <el-checkbox
+              v-model="groupSelectAll[group.value]"
+              @change="(val) => handleSelectAllGroup(val, group)"
+            >
+              全选{{ group.label }}
+            </el-checkbox>
+          </el-option>
+          
+          <!-- 原有的分组选项 -->
+          <el-option-group 
+            v-for="group in selectV2Options" 
+            :key="group.value" 
+            :label="group.label"
+          >
+            <el-option
+              v-for="option in group.children"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
           </el-option-group>
         </el-select>
 
@@ -97,6 +128,7 @@ import {
   computed,
   onMounted,
   onBeforeUnmount,
+  watch,
 } from 'vue';
 import { Search } from '@element-plus/icons-vue';
 import { useStore } from 'vuex';
@@ -183,7 +215,7 @@ const lower_bound = computed({
 class DrawingApp {
   constructor(canvasElement) {
     this.canvas = canvasElement;
-    // 确保先清理之前的项目和工具
+    // 确保先清理之前的项目��工具
     if (paper.project) {
       paper.project.remove();
     }
@@ -609,7 +641,7 @@ const clearCanvas = () => {
 const exportCurrentCurve = () => {
   if (drawingApp) {
     console.log(JSON.stringify({
-      name: "新模板",
+      name: "新模���",
       points: drawingApp.getPathsData()
     }, null, 2));
   }
@@ -684,6 +716,42 @@ const previewTemplate = (template, canvas) => {
     ctx.stroke();
   }
 }
+
+// 添加全选状态管理
+const groupSelectAll = ref({});
+
+// 处理分组全选
+const handleSelectAllGroup = (checked, group) => {
+  const groupValues = group.children.map(item => item.value);
+  
+  if (checked) {
+    // 全选当前分组
+    const newSelection = new Set([...selectedGunNumbers.value]);
+    groupValues.forEach(value => newSelection.add(value));
+    selectedGunNumbers.value = Array.from(newSelection);
+  } else {
+    // 取消全选当前分组
+    selectedGunNumbers.value = selectedGunNumbers.value.filter(
+      value => !groupValues.includes(value)
+    );
+  }
+};
+
+// 监听选择变化，更新全选状态
+watch(selectedGunNumbers, (newVal) => {
+  selectV2Options.value.forEach(group => {
+    const groupValues = group.children.map(item => item.value);
+    const selectedGroupValues = newVal.filter(value => groupValues.includes(value));
+    groupSelectAll.value[group.value] = selectedGroupValues.length === groupValues.length;
+  });
+});
+
+// 初始化全选状态
+onMounted(() => {
+  selectV2Options.value.forEach(group => {
+    groupSelectAll.value[group.value] = false;
+  });
+});
 </script>
 
 <style scoped>

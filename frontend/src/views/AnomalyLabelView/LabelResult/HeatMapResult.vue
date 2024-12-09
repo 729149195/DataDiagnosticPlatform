@@ -22,9 +22,11 @@
       <el-empty :image-size="80" description="请选择通道" />
     </div>
     <div v-else class="heatmap-scrollbar">
-      <div class="heatmap-container">
-        <svg id="heatmap" ref="HeatMapRef" preserveAspectRatio="xMidYMid slice"></svg>
-      </div>
+      <el-scrollbar height="25vh" :always="false">
+        <div class="heatmap-container">
+          <svg id="heatmap" ref="HeatMapRef" preserveAspectRatio="xMidYMid slice"></svg>
+        </div>
+      </el-scrollbar>
     </div>
     <el-dialog v-model="showAnomalyDialog" title="异常信息" :modal="true" :close-on-click-modal="false"
       @close="handleDialogClose" class="anomaly-dialog">
@@ -368,7 +370,7 @@ async function renderHeatmap(channels) {
   heatmap
     .attr(
       'viewBox',
-      `0 0 ${width + margin.left + margin.right + YaxisW/2} ${height + margin.top + margin.bottom}`
+      `0 0 ${width + margin.left + margin.right + YaxisW / 2} ${height + margin.top + margin.bottom}`
     )
     .attr('preserveAspectRatio', 'xMidYMid slice') // 修改为 'slice' 以确保自适应
     .attr('width', '100%') // 设置宽度为 100%
