@@ -1,8 +1,8 @@
 <template>
   <span style="display: flex; align-items: center; justify-content: space-between;">
     <span class="title">自动识别和人工标注结果</span>
-    <el-switch v-model="result_switch" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF"
-      active-text="他人标注模式" inactive-text="自己标注" />
+    <!-- <el-switch v-model="result_switch" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF"
+      active-text="他人标注模式" inactive-text="自己标注" /> -->
     <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend">
     <div>
       <el-button type="primary" @click="exportHeatMapSvg">

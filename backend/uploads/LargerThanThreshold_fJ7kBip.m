@@ -1,0 +1,35 @@
+function result = LargerThanThreshold(channel_key, threshold)
+    % Read JSON data from file based on channel_key
+    % Assuming channel_key is the filename
+    raw_data = fileread(strcat(channel_key, '.json'));
+    json_data = jsondecode(raw_data);
+
+    % Extract X_value and Y_value from the JSON data
+    X_value = json_data.X_value;
+    Y_value = json_data.Y_value;
+
+    % Find the ranges of X_value where Y_value is greater than the threshold
+    above_threshold = abs(Y_value) > threshold;
+    ranges = [];
+    start_idx = -1;
+
+    for i = 1:length(above_threshold)
+        if above_threshold(i) && start_idx == -1
+            % Start of a new range
+            start_idx = i;
+        elseif ~above_threshold(i) && start_idx ~= -1
+            % End of the current range
+            ranges = [ranges; X_value(start_idx), X_value(i-1)];
+            start_idx = -1;
+        end
+    end
+
+    % If the last value was above threshold, close the range
+    if start_idx ~= -1
+        ranges = [ranges; X_value(start_idx), X_value(end)];
+    end
+
+    % Prepare JSON output
+    result_struct.X_range = ranges;
+    result = jsonencode(result_struct);
+end
