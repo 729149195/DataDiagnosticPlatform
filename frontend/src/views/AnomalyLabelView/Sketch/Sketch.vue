@@ -13,7 +13,21 @@
           collapse-tags-tooltip 
           class="select-gun-numbers"
         >
-          <!-- 添加全选选项 -->
+          <!-- 添加全部全选选项 -->
+          <el-option
+            key="select-all"
+            value="select-all"
+            label="全选所有通道"
+          >
+            <el-checkbox
+              v-model="allSelected"
+              @change="handleSelectAll"
+            >
+              全选所有通道
+            </el-checkbox>
+          </el-option>
+
+          <!-- 添加分组全选选项 -->
           <el-option
             v-for="group in selectV2Options"
             :key="'select-all-' + group.value"
@@ -215,7 +229,7 @@ const lower_bound = computed({
 class DrawingApp {
   constructor(canvasElement) {
     this.canvas = canvasElement;
-    // 确保先清理之前的项目��工具
+    // 确保先清理之前的项目工具
     if (paper.project) {
       paper.project.remove();
     }
@@ -351,7 +365,7 @@ class DrawingApp {
   onMouseUp(event) {
     if (this.isDrawing) {
       this.isDrawing = false;
-      // 绘制完成后，对曲线进行平滑处理
+      // 绘制完成后，对曲线进行平滑��理
       this.path.simplify();
       this.path.smooth({ type: 'catmull-rom', factor: 0.5 });
       this.path.fullySelected = true; // 显示控制柄
@@ -641,7 +655,7 @@ const clearCanvas = () => {
 const exportCurrentCurve = () => {
   if (drawingApp) {
     console.log(JSON.stringify({
-      name: "新模���",
+      name: "新模板",
       points: drawingApp.getPathsData()
     }, null, 2));
   }
@@ -737,20 +751,48 @@ const handleSelectAllGroup = (checked, group) => {
   }
 };
 
-// 监听选择变化，更新全选状态
+// 添加全选状态
+const allSelected = ref(false);
+
+// 获取所有可选值
+const getAllOptions = computed(() => {
+  return selectV2Options.value.reduce((acc, group) => {
+    return acc.concat(group.children.map(item => item.value));
+  }, []);
+});
+
+// 处理全选所有通道
+const handleSelectAll = (checked) => {
+  if (checked) {
+    // 全选所有通道
+    selectedGunNumbers.value = getAllOptions.value;
+  } else {
+    // 取消全选
+    selectedGunNumbers.value = [];
+  }
+};
+
+// 修改原有的 watch 函数，增加对全选状态的监控
 watch(selectedGunNumbers, (newVal) => {
+  // 更新分组全选状态
   selectV2Options.value.forEach(group => {
     const groupValues = group.children.map(item => item.value);
     const selectedGroupValues = newVal.filter(value => groupValues.includes(value));
     groupSelectAll.value[group.value] = selectedGroupValues.length === groupValues.length;
   });
+
+  // 更新全部全选状态
+  const allOptions = getAllOptions.value;
+  allSelected.value = allOptions.length > 0 && 
+    allOptions.every(value => newVal.includes(value));
 });
 
-// 初始化全选状态
+// 修改原有的 onMounted，增加全选状态的初始化
 onMounted(() => {
   selectV2Options.value.forEach(group => {
     groupSelectAll.value[group.value] = false;
   });
+  allSelected.value = false;
 });
 </script>
 
