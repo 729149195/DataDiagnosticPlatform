@@ -385,18 +385,32 @@ const drawHighlightRects = (channelName, results) => {
         .domain(xDomains.value[channelName] || [-2, 6])
         .range([0, width]);
 
-    // 获取当前通道的数据
+    // 获取当前通道的数据并进行采样和平滑处理
     const channelData = channelDataCache.value[channelName];
     if (!channelData) return;
 
-    // 计算y轴的范围，添加一定的padding
-    const allYValues = channelData.Y_value;
-    const yExtent = d3.extent(allYValues);
-    const yPadding = (yExtent[1] - yExtent[0]) * 0.001;
-    
-    // 创建y比例尺
+    // 进行采样
+    const samplingInterval = Math.floor(1 / sampling.value);
+    const sampledData = {
+        X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
+        Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0)
+    };
+
+    // 应用平滑处理
+    let smoothedYValue = sampledData.Y_value;
+    if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
+        smoothedYValue = interpolateData(sampledData.Y_value, smoothnessValue.value);
+    }
+
+    // 使用与绘制曲线时相同的 Y 轴范围
+    const yExtent = d3.extent(smoothedYValue);
+    const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
+    const yMin = yExtent[0] - yRangePadding;
+    const yMax = yExtent[1] + yRangePadding;
+
+    // 创建与主图表相同的y比例尺
     const y = d3.scaleLinear()
-        .domain([yExtent[0] - yPadding, yExtent[1] + yPadding])
+        .domain([yMin, yMax])
         .range([height, 0]);
 
     // 移除之前的高亮区域
@@ -431,43 +445,28 @@ const drawHighlightRects = (channelName, results) => {
                 return;
             }
 
-            // 获取匹配区间内的所有数据点
-            const samplingInterval = Math.floor(1 / sampling.value);
-            const sampledData = {
-                X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
-                Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0)
-            };
-
-            // 找到区间内的数据点
+            // 使用平滑后的数据获取区间内的值
             const startIndex = sampledData.X_value.findIndex(x => x >= startX);
             const endIndex = sampledData.X_value.findIndex(x => x > endX);
             const rangeData = {
                 X: sampledData.X_value.slice(startIndex, endIndex),
-                Y: sampledData.Y_value.slice(startIndex, endIndex)
+                Y: smoothedYValue.slice(startIndex, endIndex)
             };
 
-            // 如果没有找到数据点，跳过
             if (rangeData.Y.length === 0) return;
 
-            // 计算区间内的Y值范围
             const minY = Math.min(...rangeData.Y);
             const maxY = Math.max(...rangeData.Y);
 
-            // 3. Y值范围过滤
-            if (minY < lowerBound || maxY > upperBound) {
-                return;
-            }
-
-            // 4. Y值幅度过滤
+            // Y值范围和幅度过滤保持不变
+            if (minY < lowerBound || maxY > upperBound) return;
             const yRange = Math.abs(maxY - minY);
-            if (yRange < scopeBound) {
-                return;
-            }
+            if (yRange < scopeBound) return;
 
-            // 计算矩形的位置和高度
-            const padding = (maxY - minY) * 0.05; // 计算上下延伸5%的padding
-            const rectY = y(maxY + padding); // 矩形的顶部位置
-            const rectHeight = y(minY - padding) - y(maxY + padding); // 矩形的高度
+            // 修改 padding 为范围的 5%
+            const padding = yRange * 0.05 + 0.2;
+            const rectY = y(maxY + padding);
+            const rectHeight = y(minY - padding) - y(maxY + padding);
 
             highlightGroup.append('rect')
                 .attr('x', x(startX))
@@ -615,7 +614,7 @@ const drawOverviewChart = () => {
         .attr('transform', `translate(0,${height})`)
         .call(d3.axisBottom(x))
         .selectAll("text") // 选择所有刻度标签
-        .style("font-size", "1.1em") // 增大字体���小
+        .style("font-size", "1.1em") // 增大字体大小
         .style("font-weight", "bold"); // 加粗字体;
 
     const brush = d3
@@ -741,7 +740,7 @@ const createGaussianKernel = (sigma, size) => {
     return kernel.map(value => value / sum);
 };
 
-// 应用高��平滑
+// 应用高斯平滑
 const gaussianSmooth = (data, sigma) => {
     const kernelSize = Math.ceil(sigma * 6); // 核大小（通常为 6 * sigma）
     const kernel = createGaussianKernel(sigma, kernelSize);
@@ -849,7 +848,7 @@ const drawChart = async (
             .attr('class', 'x-axis')
             .attr('transform', `translate(0,${height})`)
             .call(d3.axisBottom(x))
-            .selectAll("text") // 选择��有刻度标签
+            .selectAll("text") // 选择所有刻度标签
             .style("font-size", "1.3em") // 增大字体大小
             .style("font-weight", "bold");
 
