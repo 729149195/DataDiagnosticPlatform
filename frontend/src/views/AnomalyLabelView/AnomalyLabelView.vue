@@ -287,7 +287,7 @@ const exportChannelSVG = () => {
           const ctx = canvas.getContext('2d');
 
           // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-          ctx.drawImage(legendImg, 0, 0, legendWidth, legendHeight);
+          ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
 
           // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
           ctx.drawImage(svgImg, 0, legendHeight + padding);
@@ -345,7 +345,7 @@ const exportChannelSVG = () => {
               // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
               ctx.drawImage(divCanvas, 200, legendHeight + padding/2);
               // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-              ctx.drawImage(legendImg, 0, 0, legendWidth, legendHeight);
+              ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
               ctx.drawImage(svgImg, 0, legendHeight);
 
               // 导出为 PNG

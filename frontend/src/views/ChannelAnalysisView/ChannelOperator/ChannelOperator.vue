@@ -21,6 +21,7 @@
                 :type="button.type"
                 plain
                 size="large"
+                :class="{'importedFunc': importedFunc.includes(button.label)}"
                 @click.stop="handleButtonClick(button, index)"
         >
           {{ button.label }}
@@ -62,10 +63,10 @@
       <el-form-item label="文件描述" :label-width="formLabelWidth">
         <el-input v-model="fileInfo.description" autocomplete="off"></el-input>
       </el-form-item>
-      <el-form-item label="文件类型" :label-width="formLabelWidth">
-        <el-select v-model="fileInfo.type" placeholder="请选择文件类型">
-<!--          <el-option label="运算" value="运算"></el-option>-->
-          <el-option label="导入" value="导入"></el-option>
+      <el-form-item label="算法类型" :label-width="formLabelWidth">
+        <el-select v-model="fileInfo.type" placeholder="请选择算法类型">
+          <el-option label="诊断分析" value="诊断分析"></el-option>
+          <el-option label="通道运算" value="通道运算"></el-option>
         </el-select>
       </el-form-item>
       <el-form-item label="输入参数">
@@ -125,7 +126,7 @@
           <el-table-column label="定义">
             <template #default="scope">
               <span v-if="scope.row.type !== '新通道名'">
-                  <span>通道定义</span><el-input v-model="scope.row.definition" placeholder="定义"></el-input>
+                  <el-input v-model="scope.row.definition" placeholder="定义"></el-input>
               </span>
               <span v-else>
                 <span style="margin-right: 20px">X轴标签:</span><el-input class="special_input" v-model="scope.row.definition.X_label" placeholder="X轴标签"></el-input><br/>
@@ -163,39 +164,51 @@ const store = useStore();
 
 const fileList = ref([]);
 const dialogVisible = ref(false);
-const fileInfo = ref({
-    name: 'NoiseThreshold',
-    description: '过滤噪声，产出新数据',
-    type: '导入',
-    file: null,
-    input: [
-        { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
-        { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
-    ],
-    output: [
-        { outputName: 'new_channel_name', type: '新通道名', definition: {
-                X_label: '时间',
-                X_unit: 's',
-                Y_label: '电压',
-                Y_unit: 'V',
-            }},
-        { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
-    ]
-});
 // const fileInfo = ref({
-//     name: 'LargerThanThreshold',
-//     description: '绝对值大于阈值的时间段都会被标记',
-//     type: '导入',
+//     name: 'NoiseThreshold',
+//     description: '过滤噪声，产出新数据',
+//     type: '通道运算',
 //     file: null,
 //     input: [
 //         { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
 //         { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
 //     ],
 //     output: [
-//         { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+//         { outputName: 'new_channel_name', type: '新通道名', definition: {
+//                 X_label: '时间',
+//                 X_unit: 's',
+//                 Y_label: '电压',
+//                 Y_unit: 'V',
+//             }},
+//         { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
 //     ]
 // });
+const fileInfo = ref({
+    name: 'LargerThanThreshold',
+    description: '绝对值大于阈值的时间段都会被标记',
+    type: '诊断分析',
+    file: null,
+    input: [
+        { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
+        { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
+    ],
+    output: [
+        { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+    ]
+});
 const formLabelWidth = '120px';
+
+// 定义运算符分类
+const operators = {
+    arithmetic: ["+", "-", "*", "/", "%", "^", "()"],
+    comparison: [">", "<", ">=", "<=", "==", "!="],
+    logical: ["&&", "||", "!"],
+    functions: ["FFT()"],
+    // brackets: ["()", "[]", "{}"],
+    da_functions: ["Pca()"],
+};
+
+let importedFunc = ref([]);
 
 const handleFileSelect = ({ file }) => {
     fileInfo.value.file = file;
@@ -243,25 +256,30 @@ const handleSubmit = async () => {
         });
         ElMessage.success('文件上传成功');
 
-        let tt = ["Pca()"]
+        let ttda = ["Pca()"]
+        let ttcp = ['FFT()']
         // 更新 detect anomaly functions
         const response2 = await axios.get(`http://localhost:5000/api/view-functions/`);
-        operators['da_functions'] = tt.concat(response2.data.imported_functions.map(d => d['name']+'()'));
+        for(let func of response2.data.imported_functions) {
+            if(func.type === '诊断分析') {
+                ttda.push(func['name'] + '()')
+            }
+            else {
+                ttcp.push(func['name'] + '()')
+            }
+        }
+        operators['da_functions'] = ttda;
+        operators['functions'] = ttcp;
+        
         dialogVisible.value = false;
+        importedFunc.value = response2.data.imported_functions.map(d => d['name']+'()');
     } catch (error) {
         ElMessage.error('文件上传失败');
     }
 };
 
-// 定义运算符分类
-const operators = {
-    arithmetic: ["+", "-", "*", "/", "%", "^", "()"],
-    comparison: [">", "<", ">=", "<=", "==", "!="],
-    logical: ["&&", "||", "!"],
-    functions: ["FFT()", "sin()", "cos()", "tan()", "log()"],
-    // brackets: ["()", "[]", "{}"],
-    da_functions: ["Pca()"],
-};
+
+
 // 更新 detect anomaly functions
 
 
@@ -283,10 +301,6 @@ const explanations = {
     "||": "逻辑或运算符",
     "!": "逻辑非运算符",
     "FFT()": "快速傅里叶变换函数",
-    "sin()": "正弦函数",
-    "cos()": "余弦函数",
-    "tan()": "正切函数",
-    "log()": "对数函数",
     "()": "括号",
     "[]": "中括号",
     "{}": "左花括号",
@@ -297,7 +311,7 @@ const explanations = {
     运算函数: "展开运算函数",
     // 括号: "展开括号",
     诊断函数: "展开诊断函数",
-    自定义算法: "自定义算法",
+    // 自定义算法: "自定义算法",
     算法导入: "导入算法",
 };
 
@@ -339,12 +353,12 @@ const buttons = ref([
         category: "da_functions",
         explanation: "展开诊断函数",
     },
-    {
-        label: "自定义算法",
-        type: "info",
-        action: "custom",
-        explanation: "自定义算法",
-    },
+    // {
+    //     label: "自定义算法",
+    //     type: "info",
+    //     action: "custom",
+    //     explanation: "自定义算法",
+    // },
     // {
     //   label: "算法导入",
     //   type: "success",
@@ -468,12 +482,12 @@ const collapseAllCategories = () => {
             category: "da_functions",
             explanation: "展开诊断函数",
         },
-        {
-            label: "自定义算法",
-            type: "info",
-            action: "custom",
-            explanation: "自定义算法",
-        },
+        // {
+        //     label: "自定义算法",
+        //     type: "info",
+        //     action: "custom",
+        //     explanation: "自定义算法",
+        // },
         // {
         //   label: "算法导入",
         //   type: "success",
@@ -495,7 +509,18 @@ onMounted(async () => {
 
     // 更新 detect anomaly functions
     const response = await axios.get(`http://localhost:5000/api/view-functions/`);
-    operators['da_functions'] = operators['da_functions'].concat(response.data.imported_functions.map(d => d['name']+'()'));
+    let ttda = ["Pca()"]
+    let ttcp = ['FFT()']
+    for(let func of response.data.imported_functions) {
+        if(func.type === '诊断分析') {
+            ttda.push(func['name'] + '()')
+        }
+        else {
+            ttcp.push(func['name'] + '()')
+        }
+    }
+    operators['da_functions'] = ttda;
+    operators['functions'] = ttcp;
     console.log('xxx');
 });
 
@@ -535,5 +560,10 @@ const getCategoryExplanation = (category) => {
   .special_input {
     display: inline-block;
     width: 60%;
+  }
+  
+  .importedFunc {
+    background: lightpink;
+    color: deeppink;
   }
 </style>
