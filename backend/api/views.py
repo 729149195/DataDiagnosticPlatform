@@ -308,6 +308,7 @@ def upload_file(request):
     global loaded_module
     if request.method == 'POST' and request.FILES.get('file'):
         file = request.FILES['file']
+        fileInfo = json.loads(request.POST.get('fileInfo'))
         file_name = default_storage.save(f'uploads/{file.name}', file)
         file_path = os.path.join(settings.MEDIA_ROOT, file_name)
 
@@ -323,7 +324,7 @@ def upload_file(request):
 
         # Update the functions JSON file with the new functions
         for func_name, params in functions.items():
-            update_functions_file({"name": func_name, "parameters": params})
+            update_functions_file(fileInfo)
 
         return JsonResponse({"functions": [{"name": k, "parameters": v} for k, v in functions.items()]})
     ##
