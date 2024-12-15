@@ -7,8 +7,26 @@
             <el-empty description="请选择通道" style="margin-top: 15vh;" />
         </div>
         <div v-else>
+            <div v-if="!renderingStates.completed" class="progress-wrapper">
+                <div class="progress-title">
+                    <span>{{ !loadingStates.dataLoaded ? '数据加载中' : '图表渲染中' }}</span>
+                    <span class="progress-percentage">{{ getProgressPercentage }}%</span>
+                </div>
+                <el-progress 
+                    :percentage="getProgressPercentage"
+                    :stroke-width="10"
+                    :status="!loadingStates.dataLoaded ? 'warning' : ''"
+                    :color="loadingStates.dataLoaded ? '#409EFF' : ''"
+                />
+            </div>
             <div class="chart-wrapper">
-                <svg id="combined-chart" ref="channelsSvgRef"></svg>
+                <svg id="combined-chart" 
+                    ref="channelsSvgRef"
+                    :style="{ 
+                        opacity: renderingStates.completed ? 1 : 0,
+                        transition: 'opacity 0.3s ease-in-out'
+                    }"
+                ></svg>
             </div>
             <div class="overview-container">
                 <el-divider />
@@ -26,11 +44,25 @@
 <script setup>
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
-import { ref, watch, computed, onMounted, nextTick } from 'vue';
-import { ElInput, ElMessage, ElEmpty, ElDivider, ElTag } from 'element-plus';
+import { ref, watch, computed, onMounted, nextTick, reactive } from 'vue';
+import { ElInput, ElMessage, ElEmpty, ElDivider, ElTag, ElProgress } from 'element-plus';
 import { useStore } from 'vuex';
 import axios from 'axios';
 import LegendComponent from '@/components/LegendComponent.vue';
+import { 
+    sampleData, 
+    sampleErrorSegment, 
+    findStartIndex, 
+    findEndIndex 
+} from '@/utils/dataProcessing';
+import pLimit from 'p-limit';
+
+// 归一化函数
+const normalize = (yValues) => {
+    const yAbsMax = d3.max(yValues, d => Math.abs(d));
+    if (yAbsMax === 0) return yValues.map(() => 0);
+    return yValues.map(y => y / yAbsMax);
+};
 
 // Reactive references
 const overviewData = ref([]);
@@ -42,9 +74,17 @@ const channelsData = ref([]);
 const exposeData = ref([])
 const dataCache = computed(() => store.state.dataCache); // 数据缓存
 const channelsSvgRef = ref(null);
+const resetProgress = () => {
+    loadingStates.total = 0;
+    loadingStates.dataLoaded = false;
+    renderingStates.total = 0;
+    renderingStates.completed = false;
+    loadingStates.renderStarted = false;
+};
 defineExpose({
     channelsSvgRef: channelsSvgRef,
-    channelsData: exposeData
+    channelsData: exposeData,
+    resetProgress
 })
 
 const predefineColors = ref([
@@ -110,19 +150,6 @@ const updateChannelColor = ({ channelKey, color }) => {
     }
 };
 
-
-const normalize = (yValues) => {
-    const yAbsMax = d3.max(yValues, d => Math.abs(d));
-
-    if (yAbsMax === 0) {
-        // 如果所有值都是0，返回相同长度的0数组
-        return yValues.map(() => 0);
-    }
-
-    // 按最大绝对值进行归一化
-    return yValues.map(y => y / yAbsMax);
-};
-
 // 监听匹配结果并高亮
 watch(matchedResults, (newResults) => {
     if (newResults.length > 0) {
@@ -163,7 +190,7 @@ const drawHighlightRects = (channel_name, results) => {
         .attr('class', `highlight-group-${channel_name}`);
 
     results.forEach(({ start_X, end_X }) => {
-        // 检查 start_X 和 end_X 是否为有效数字
+        // 检查 start_X 和 end_X 否为有效数字
         if (isNaN(start_X) || isNaN(end_X)) {
             console.warn(`Invalid start_X or end_X for channel ${channel_name}:`, start_X, end_X);
             return;
@@ -190,40 +217,6 @@ const drawHighlightRects = (channel_name, results) => {
     });
 };
 
-
-// 二分查找起始索引
-const findStartIndex = (array, startX) => {
-    let low = 0;
-    let high = array.length - 1;
-    let result = -1;
-    while (low <= high) {
-        let mid = Math.floor((low + high) / 2);
-        if (array[mid] >= startX) {
-            result = mid;
-            high = mid - 1;
-        } else {
-            low = mid + 1;
-        }
-    }
-    return result;
-};
-
-// 二分查找结束索引
-const findEndIndex = (array, endX) => {
-    let low = 0;
-    let high = array.length - 1;
-    let result = -1;
-    while (low <= high) {
-        let mid = Math.floor((low + high) / 2);
-        if (array[mid] <= endX) {
-            result = mid;
-            low = mid + 1;
-        } else {
-            high = mid - 1;
-        }
-    }
-    return result;
-};
 
 // 渲染图表，防抖以避免频繁调用
 const renderCharts = debounce(async () => {
@@ -289,182 +282,131 @@ watch(
 );
 
 
+// 添加进度状态管理
+const loadingStates = reactive({ 
+    total: 0,
+    dataLoaded: false,    // 数据是否加载完成
+    renderStarted: false  // 渲染是否开始
+});
+const renderingStates = reactive({ 
+    total: 0,
+    completed: false     // 渲染是否完成
+});
+
+// 添加计算属性来处理度百分比
+const getProgressPercentage = computed(() => {
+    if (!loadingStates.dataLoaded) {
+        // 数据加载阶段 (0-50%)
+        return Math.floor(loadingStates.total / 2);
+    } else if (!renderingStates.completed) {
+        // 渲染阶段 (50-100%)
+        return Math.floor(50 + renderingStates.total / 2);
+    }
+    return 100;
+});
+
+// 创建并发限制器
+const limit = pLimit(3); // 限制最大并发请求数为3
+
+// 添加重试函数
+const retryRequest = async (fn, retries = 3, delay = 1000) => {
+    try {
+        return await fn();
+    } catch (err) {
+        if (retries <= 0) throw err;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retryRequest(fn, retries - 1, delay * 2);
+    }
+};
+
 // 获取数据并存储到 channelsData，同时利用缓存避免重复请求
 const fetchDataAndStore = async (channel) => {
     try {
-        // 构建 channelKey 和 channelType
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const channelType = channel.channel_type;
-        const channelshotnumber = channel.shot_number;
-        const channelName = channel.channel_name;
+        
+        // 重置状态
+        loadingStates.total = 0;
+        loadingStates.dataLoaded = false;
+        renderingStates.total = 0;
+        renderingStates.completed = false;
+        loadingStates.renderStarted = false;
 
-        // 检查缓存，包含采样率
+        // 构建缓存键，包含采样频率
         const cacheKey = `${channelKey}-sampling-${sampleRate.value}`;
+
+        let data;
         if (dataCache.value.has(cacheKey)) {
-            const cached = dataCache.value.get(cacheKey);
-
-            // 更新通道颜色
-            cached.color = channel.color;
-
-            // 更新错误数据的颜色
-            cached.errorsData.forEach((errorData, index) => {
-                errorData.color = channel.errors[index].color;
-            });
-
-            channelsData.value.push(cached);
-            exposeData.value.push({
-                channel_type: cached['channelType'],
-                channel_name: cached['channelName'],
-                X_value: cached['X_value'],
-                X_unit: cached['xUnit'],
-                Y_value: cached['Y_original'],
-                Y_unit: cached['yUnit'],
-                errorsData: cached['errorsData'],
-                shot_number: cached['channelshotnumber'],
-            });
-            overviewData.value.push({
-                channelName: channelName,
-                channelshotnumber: channelshotnumber,
-                X_value: cached.X_value,
-                Y_value: cached.Y_value,
-                color: cached.color,
-            });
-            return;
-        }
-
-        // 使用新的参数请求后端数据
-        const params = {
-            channel_key: channelKey,
-            channel_type: channelType,
-        };
-        const response = await axios.get(`http://localhost:5000/api/channel-data/`, { params });
-        const data = response.data;
-
-        const samplingInterval = Math.floor(1 / sampleRate.value);
-        const sampledData = {
-            X_value: data.X_value.filter((_, i) => i % samplingInterval === 0),
-            Y_value: data.Y_value.filter((_, i) => i % samplingInterval === 0),
-        };
-
-        // 存储归一化前的 Y 值
-        sampledData.Y_original = sampledData.Y_value.slice();
-
-        // 归一化 Y_value
-        sampledData.Y_value = normalize(sampledData.Y_value);
-
-        let errorsData = [];
-        for (const [errorIndex, error] of channel.errors.entries()) {
-            const error_name = error.error_name;
-            const error_color = error.color;
-
-            // 构建用于缓存的 errorCacheKey
-            const errorCacheKey = `${channelKey}-error-${error_name}-${errorIndex}-sampling-${sampleRate.value}`;
-            let errorResponseData;
-
-            // 检查错误数据缓存
-            if (dataCache.value.has(errorCacheKey)) {
-                errorResponseData = dataCache.value.get(errorCacheKey);
-            } else {
-                const errorParams = {
-                    channel_key: channelKey,
-                    channel_type: channelType,
-                    error_name: error_name,
-                    error_index: errorIndex,
-                };
-                const errorResponse = await axios.get(`http://localhost:5000/api/error-data/`, { params: errorParams });
-                errorResponseData = errorResponse.data;
-                dataCache.value.set(errorCacheKey, errorResponseData);
-            }
-
-            const processedErrorSegments = errorResponseData.X_value_error.map(
-                (errorSegment, idx) => {
-                    if (errorSegment.length === 0) return { X: [], Y: [] };
-
-                    const startX = errorSegment[0];
-                    const endX = errorSegment[errorSegment.length - 1];
-
-                    const startIndex = findStartIndex(sampledData.X_value, startX);
-                    const endIndex = findEndIndex(sampledData.X_value, endX);
-
-                    if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
-                        return { X: [], Y: [] };
-                    }
-
-                    const sampledX = sampledData.X_value
-                        .slice(startIndex, endIndex + 1)
-                        .filter((x) => x >= startX && x <= endX);
-                    const sampledY = sampledData.Y_value
-                        .slice(startIndex, endIndex + 1)
-                        .filter((_, i) =>
-                            sampledX.includes(sampledData.X_value[startIndex + i])
-                        );
-
-                    return { X: sampledX, Y: sampledY };
+            // 从缓存加载时快速更新进度
+            const loadingInterval = setInterval(() => {
+                if (loadingStates.total < 100) {
+                    loadingStates.total += 20;
                 }
-            );
+            }, 50);
+            
+            const cached = dataCache.value.get(cacheKey);
+            data = cached;
+            
+            clearInterval(loadingInterval);
+            loadingStates.total = 100;
+            loadingStates.dataLoaded = true;
+        } else {
+            // 模拟进度更新
+            const progressInterval = setInterval(() => {
+                if (loadingStates.total < 90) {
+                    loadingStates.total = Math.min(loadingStates.total + 10, 90);
+                }
+            }, 100);
 
-            const sampledErrorData = {
-                X_value_error: processedErrorSegments.map((seg) => seg.X),
-                Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-                color: error_color,
-                person: error.person,
+            // 定义请求参数
+            const params = {
+                channel_key: channelKey,
+                channel_type: channel.channel_type
             };
 
-            // 归一化 Y_value_error
-            sampledErrorData.Y_value_error = sampledErrorData.Y_value_error.map(seg => normalize(seg));
-
-            errorsData.push(sampledErrorData);
+            // 使用重试机制包装请求
+            const response = await limit(() => retryRequest(async () => {
+                return await axios.get(`http://localhost:5000/api/channel-data/`, { params });
+            }));
+            
+            data = response.data;
+            // 缓存数据时包含采样频率信息
+            dataCache.value.set(cacheKey, {
+                ...data,
+                samplingRate: sampleRate.value
+            });
+            
+            clearInterval(progressInterval);
+            loadingStates.total = 100;
+            loadingStates.dataLoaded = true;
         }
 
-        const channelData = {
-            channelName: channelName,
-            channelshotnumber: channelshotnumber,
-            X_value: sampledData.X_value,
-            Y_value: sampledData.Y_value,
-            Y_original: sampledData.Y_original,
-            color: channel.color,
-            errorsData: errorsData,
-            xUnit: data.X_unit,
-            yUnit: data.Y_unit,
-            channelType: data.channel_type,
-            channelNumber: data.channel_number,
+        // 开始渲染进度
+        loadingStates.renderStarted = true;
+        renderingStates.total = 0;
+
+        // 使用 requestAnimationFrame 来更平滑地更新渲染进度
+        const updateRenderProgress = () => {
+            if (renderingStates.total < 90 && !renderingStates.completed) {
+                renderingStates.total = Math.min(renderingStates.total + 2, 90);
+                requestAnimationFrame(updateRenderProgress);
+            }
         };
+        requestAnimationFrame(updateRenderProgress);
 
-        channelsData.value.push(channelData);
-        exposeData.value.push({
-            channel_type: data.channel_type,
-            channel_name: channelName,
-            X_value: sampledData.X_value,
-            X_unit: data.X_unit,
-            Y_value: sampledData.Y_original,
-            Y_unit: data.Y_unit,
-            errorsData: errorsData,
-            shot_number: channelshotnumber,
-        })
-        overviewData.value.push({
-            channelName: channelName,
-            channelshotnumber: channelshotnumber,
-            X_value: sampledData.X_value,
-            Y_value: sampledData.Y_value,
-            color: channel.color,
-        });
+        // 处理数据并绘制图表
+        await processChannelData(data, channel);
+        
+        // 渲染完成
+        renderingStates.total = 100;
+        renderingStates.completed = true;
 
-        // 缓存通道数据，包含采样率
-        dataCache.value.set(cacheKey, channelData);
-
-        // if (sampledData.X_value.length > 0 && sampledData.Y_value.length > 0) {
-        //     channelsData.value.push(channelData);
-        //     overviewData.value.push({
-        //         channelName: channelName,
-        //         channelshotnumber: channelshotnumber,
-        //         X_value: sampledData.X_value,
-        //         Y_value: sampledData.Y_value,
-        //         color: channel.color,
-        //     });
-        // }
     } catch (error) {
         console.error('Error fetching channel data:', error);
-        ElMessage.error(`Failed to load data for channel ${channel.channel_name}`);
+        loadingStates.total = 100;
+        loadingStates.dataLoaded = true;
+        renderingStates.total = 100;
+        renderingStates.completed = true;
+        ElMessage.error(`Failed to load data for channel ${channel.channel_name}: ${error.message}`);
     }
 };
 
@@ -651,7 +593,7 @@ const createGaussianKernel = (sigma, size) => {
 
 // 应用高斯平滑
 const gaussianSmooth = (data, sigma) => {
-    const kernelSize = Math.ceil(sigma * 6); // 核大小（通常为 6 * sigma）
+    const kernelSize = Math.ceil(sigma * 6); // 核小（通常为 6 * sigma）
     const kernel = createGaussianKernel(sigma, kernelSize);
 
     const halfSize = Math.floor(kernelSize / 2);
@@ -749,7 +691,7 @@ const drawCombinedChart = () => {
         ).style("font-size", "1em") // 增大字体大小
         .attr("font-weight", "bold");
 
-    // 绘制网格线（不在 dataGroup 内，避免被裁剪）
+    // 绘制格线（不在 dataGroup 内，避免被裁剪）
     g.selectAll('.grid').remove(); // 移除旧的网格线
 
     g.append('g')
@@ -779,7 +721,7 @@ const drawCombinedChart = () => {
     const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
         .domain(channelsData.value.map(d => d.channelName));
 
-    // 绘制每个通道的主曲线
+    // 绘制每个通道的主线
     channelsData.value.forEach((data, index) => {
         let smoothedYValue = data.Y_value;
         if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
@@ -791,12 +733,12 @@ const drawCombinedChart = () => {
             .y((v, i) => y(v))
             .curve(d3.curveMonotoneX);
 
-        // 绘制原始曲线
+        // 绘制初始曲线
         dataGroup.append('path')
             .datum(data.Y_value)
             .attr('class', 'channel-line')
             .attr('fill', 'none')
-            .attr('stroke', data.color) // 使用最新的通道颜色
+            .attr('stroke', data.color) // 使用最新的通道色
             .attr('stroke-width', 1.5)
             .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
             .attr('d', lineGenerator);
@@ -829,7 +771,7 @@ const drawCombinedChart = () => {
         });
 
 
-        // 绘制平滑后的曲线
+        // 绘制平滑后的线
         if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
             const smoothedLineGenerator = d3.line()
                 .x((v, i) => x(data.X_value[i]))
@@ -846,7 +788,7 @@ const drawCombinedChart = () => {
         }
     });
 
-    // 添加轴标签
+    // 添加标签
     svg.selectAll('.x-label').remove();
     svg.selectAll('.y-label').remove();
 
@@ -936,6 +878,111 @@ const drawCombinedChart = () => {
                     .curve(d3.curveMonotoneX);
                 return smoothedLineGenerator(smoothedYValue);
             });
+    }
+};
+
+// 处理通道数据并绘制图表
+const processChannelData = async (data, channel) => {
+    try {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        
+        // 采样数据
+        const sampledData = sampleData(data, sampleRate.value);
+        
+        // 存储归一化前的 Y 值
+        sampledData.Y_original = sampledData.Y_value.slice();
+        
+        // 归一化 Y_value
+        sampledData.Y_value = normalize(sampledData.Y_value);
+        
+        let errorsData = [];
+        // 处理错误数据
+        for (const [errorIndex, error] of channel.errors.entries()) {
+            const error_name = error.error_name;
+            const error_color = error.color;
+            
+            // 构建用于缓存的 errorCacheKey
+            const errorCacheKey = `${channelKey}-error-${error_name}-${errorIndex}-sampling-${sampleRate.value}`;
+            let errorResponseData;
+            
+            // 检查错误数据缓存
+            if (dataCache.value.has(errorCacheKey)) {
+                errorResponseData = dataCache.value.get(errorCacheKey);
+            } else {
+                const errorParams = {
+                    channel_key: channelKey,
+                    channel_type: channel.channel_type,
+                    error_name: error_name,
+                    error_index: errorIndex,
+                };
+                
+                try {
+                    // 使用重试机制和并发限制获取错误数据
+                    const errorResponse = await limit(() => retryRequest(async () => {
+                        return await axios.get(`http://localhost:5000/api/error-data/`, { params: errorParams });
+                    }));
+                    errorResponseData = errorResponse.data;
+                    dataCache.value.set(errorCacheKey, errorResponseData);
+                } catch (err) {
+                    console.warn(`Failed to fetch error data for ${errorCacheKey}:`, err);
+                    continue; // 跳过这个错误数据，继续处理其他
+                }
+            }
+            
+            const processedErrorSegments = errorResponseData.X_value_error.map(
+                (errorSegment, idx) => {
+                    return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+                }
+            );
+            
+            const sampledErrorData = {
+                X_value_error: processedErrorSegments.map((seg) => seg.X),
+                Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+                color: error_color,
+                person: error.person,
+            };
+            
+            errorsData.push(sampledErrorData);
+        }
+        
+        // 更新图表数据
+        channelsData.value.push({
+            channelName: channel.channel_name,
+            X_value: sampledData.X_value,
+            Y_value: sampledData.Y_value,
+            Y_original: sampledData.Y_original,
+            color: channel.color,
+            errorsData: errorsData,
+            xUnit: data.X_unit,
+            yUnit: data.Y_unit,
+            channelType: data.channel_type,
+            channelNumber: data.channel_number,
+            shotNumber: channel.shot_number
+        });
+        
+        // 更新导出数据
+        exposeData.value.push({
+            channel_type: data.channel_type,
+            channel_name: channel.channel_name,
+            X_value: sampledData.X_value,
+            X_unit: data.X_unit,
+            Y_value: sampledData.Y_original,
+            Y_unit: data.Y_unit,
+            errorsData: errorsData,
+            shot_number: channel.shot_number
+        });
+        
+        // 更新总览数据
+        overviewData.value.push({
+            channelName: channel.channel_name,
+            X_value: sampledData.X_value,
+            Y_value: sampledData.Y_value,
+            color: channel.color,
+        });
+        
+    } catch (error) {
+        console.error('Error in processChannelData:', error);
+        throw error;
     }
 };
 </script>
@@ -1037,5 +1084,45 @@ svg {
     top: 0;
     width: 100%;
     z-index: 999;
+}
+
+.progress-wrapper {
+    margin: 5px 0;
+    padding: 0 10px;
+}
+
+.progress-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 13px;
+    color: #606266;
+}
+
+.progress-percentage {
+    font-weight: bold;
+    color: #409EFF;
+}
+
+/* 自定义进度条���式 */
+:deep(.el-progress-bar__outer) {
+    background-color: #f0f2f5;
+    border-radius: 4px;
+}
+
+:deep(.el-progress-bar__inner) {
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+:deep(.el-progress--line) {
+    margin-bottom: 0;
+}
+
+:deep(.el-progress-bar__innerText) {
+    font-size: 12px;
+    margin: 0 5px;
+    color: #fff;
 }
 </style>

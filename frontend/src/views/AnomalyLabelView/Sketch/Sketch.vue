@@ -147,9 +147,10 @@ import {
 import { Search } from '@element-plus/icons-vue';
 import { useStore } from 'vuex';
 import paper from 'paper';
-import { DataSmoother } from './data-smoother'; // 导入数据平滑处理类
+import { DataSmoother } from './data-smoother'; // 导入数据平滑��理类
 import { PatternMatcher } from './pattern-matcher'; // 导入模式匹配类
 import curveTemplates from '@/assets/templates/curveTemplates.json'
+import { sampleData } from '@/utils/dataProcessing';
 
 // 使用 Vuex store
 const store = useStore();
@@ -331,7 +332,7 @@ class DrawingApp {
         this.path.strokeJoin = 'round';
         this.path.fullySelected = false;
 
-        // 添加第一个点
+        // 添加第���个点
         this.previousPoint = event.point.clone();
         this.path.add(this.previousPoint);
       } else {
@@ -365,7 +366,7 @@ class DrawingApp {
   onMouseUp(event) {
     if (this.isDrawing) {
       this.isDrawing = false;
-      // 绘制完成后，对曲线进行平滑��理
+      // 绘制完成后，对曲线进行平滑处理
       this.path.simplify();
       this.path.smooth({ type: 'catmull-rom', factor: 0.5 });
       this.path.fullySelected = true; // 显示控制柄
@@ -405,7 +406,7 @@ class DrawingApp {
       this.gridGroup.addChild(path);
     }
 
-    // 绘制水平线
+    // 绘制水��线
     for (let y = 0; y <= this.size.height; y += gridSpacing) {
       const path = new paper.Path.Line({
         from: [0, y],
@@ -566,14 +567,8 @@ const submitData = async () => {
     selectedGunNumbers.value.forEach(channel => {
       const channelData = channelDataCache[channel];
       if (channelData && queryPattern.length > 0) {
-        // 进行采样处理
-        const samplingInterval = Math.floor(1 / sampling.value);
-        const sampledData = {
-          ...channelData,
-          X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
-          Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0),
-        };
-
+        const sampledData = sampleData(channelData, sampling.value);
+        
         // 创建数据点数组
         const dataPoints = sampledData.Y_value.map((y, index) => ({
           x: sampledData.X_value[index],

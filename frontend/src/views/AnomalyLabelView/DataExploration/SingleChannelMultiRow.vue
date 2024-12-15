@@ -6,10 +6,42 @@
         <div v-else>
             <div class="chart-wrapper" v-for="(channel, index) in selectedChannels"
                 :key="channel.channel_name + '_' + channel.shot_number">
+                <div v-if="loadingStates[channel.channel_name + '_' + channel.shot_number] !== 100 || 
+                    renderingStates[channel.channel_name + '_' + channel.shot_number] !== 100"
+                    class="progress-wrapper">
+                    <div class="progress-title">
+                        <span>{{ 
+                            `${channel.channel_name}#${channel.shot_number}`
+                        }} - {{ 
+                            loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 
+                            ? '图表渲染中' : '数据加载中' 
+                        }}</span>
+                        <span class="progress-percentage">{{ 
+                            getProgressPercentage(channel.channel_name + '_' + channel.shot_number)
+                        }}%</span>
+                    </div>
+                    <el-progress 
+                        :percentage="getProgressPercentage(channel.channel_name + '_' + channel.shot_number)"
+                        :stroke-width="10"
+                        :status="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '' : 'warning'"
+                        :color="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '#409EFF' : ''"
+                    />
+                </div>
                 <svg :id="'chart-' + channel.channel_name + '_' + channel.shot_number"
-                    :ref="el => channelSvgElementsRefs[index] = el"></svg>
+                    :ref="el => channelSvgElementsRefs[index] = el"
+                    :style="{ 
+                        opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
+                        transition: 'opacity 0.5s ease'
+                    }"></svg>
                 <!-- Position the color picker near the chart -->
-                <div class="color-picker-container">
+                <div class="color-picker-container"
+                    :style="{ 
+                        opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
+                        visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
+                        transition: 'opacity 0.5s ease'
+                    }"
+                    v-show="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100"
+                >
                     <ChannelColorPicker :color="channel.color" :predefineColors="predefineColors"
                         @change="updateChannelColor(channel)" @update:color="channel.color = $event" />
                 </div>
@@ -54,6 +86,7 @@
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
+import pLimit from 'p-limit';
 
 import {
     ref,
@@ -74,6 +107,8 @@ import {
 } from 'element-plus';
 import { useStore } from 'vuex';
 import axios from 'axios';
+
+import { sampleData, sampleErrorSegment } from '@/utils/dataProcessing';
 
 const currentAnomaly = reactive({});
 const showAnomalyForm = ref(false);
@@ -116,6 +151,23 @@ const updatingBrush = ref(false);
 
 // 🚀 **新增部分：定义缓存对象**
 const channelDataCache = computed(() => store.state.channelDataCache);
+
+// 在 script setup 部分添加新的应式变量
+const loadingStates = reactive({});  // 用于存储每个通道的加载状态
+const renderingStates = reactive({}); // 用于存储每个通道的渲染状态
+
+const limit = pLimit(50); // 限制最大并发请求数为5
+
+// 添加重试函数
+const retryRequest = async (fn, retries = 3, delay = 1000) => {
+    try {
+        return await fn();
+    } catch (err) {
+        if (retries <= 0) throw err;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return retryRequest(fn, retries - 1, delay * 2);
+    }
+};
 
 // 监视匹配结果，绘制高亮矩形
 watch(matchedResults, (newResults) => {
@@ -183,11 +235,7 @@ const processChannelData = async (data, channel) => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     const channelName = channelKey; // 使用包含 shot_number 的标识
 
-    const samplingInterval = Math.floor(1 / sampleRate.value);
-    const sampledData = {
-        X_value: data.X_value.filter((_, i) => i % samplingInterval === 0),
-        Y_value: data.Y_value.filter((_, i) => i % samplingInterval === 0),
-    };
+    const sampledData = sampleData(data, sampleRate.value);
 
     let errorsData = [];
     for (const [errorIndex, error] of channel.errors.entries()) {
@@ -208,37 +256,24 @@ const processChannelData = async (data, channel) => {
                 error_name: error_name,
                 error_index: errorIndex
             };
-            const errorResponse = await axios.get(`http://localhost:5000/api/error-data/`, { params });
-            errorData = errorResponse.data;
 
-            channelDataCache.value[errorKey] = errorData;
+            try {
+                // 使用重试机制和并发限制获取错误数据
+                const errorResponse = await limit(() => retryRequest(async () => {
+                    return await axios.get(`http://localhost:5000/api/error-data/`, { params });
+                }));
+                errorData = errorResponse.data;
+                channelDataCache.value[errorKey] = errorData;
+            } catch (err) {
+                console.warn(`Failed to fetch error data for ${errorKey}:`, err);
+                continue; // 跳过这个错误数据，继续处理其他
+            }
         }
 
         // 处理异常数据
         const processedErrorSegments = errorData.X_value_error.map(
             (errorSegment, idx) => {
-                if (errorSegment.length === 0) return { X: [], Y: [] };
-
-                const startX = errorSegment[0];
-                const endX = errorSegment[errorSegment.length - 1];
-
-                const startIndex = findStartIndex(sampledData.X_value, startX);
-                const endIndex = findEndIndex(sampledData.X_value, endX);
-
-                if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
-                    return { X: [], Y: [] };
-                }
-
-                const sampledX = sampledData.X_value
-                    .slice(startIndex, endIndex + 1)
-                    .filter((x) => x >= startX && x <= endX);
-                const sampledY = sampledData.Y_value
-                    .slice(startIndex, endIndex + 1)
-                    .filter((_, i) =>
-                        sampledX.includes(sampledData.X_value[startIndex + i])
-                    );
-
-                return { X: sampledX, Y: sampledY };
+                return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
             }
         );
 
@@ -285,38 +320,67 @@ const processChannelData = async (data, channel) => {
 // 🚀 **使用缓存**
 const fetchDataAndDrawChart = async (channel) => {
     try {
-        // 开始记录数据加载时间
-        performance.mark('Fetch Data-start');
-        
+        if (!channel || !channel.channel_name || !channel.shot_number) {
+            console.warn('Invalid channel data:', channel);
+            return;
+        }
+
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const channelType = channel.channel_type;
-        const channelName = channelKey;
+        
+        loadingStates[channelKey] = Number(0);
+        renderingStates[channelKey] = Number(0);
 
         let data;
         if (channelDataCache.value[channelKey]) {
+            loadingStates[channelKey] = Number(100);
+            renderingStates[channelKey] = Number(100);
             data = channelDataCache.value[channelKey];
         } else {
             const params = {
                 channel_key: channelKey,
-                channel_type: channelType
+                channel_type: channel.channel_type
             };
-            const response = await axios.get(`http://localhost:5000/api/channel-data/`, { params });
+            
+            const progressInterval = setInterval(() => {
+                if (loadingStates[channelKey] < 90) {
+                    loadingStates[channelKey] = Math.min(Number(loadingStates[channelKey]) + 10, 90);
+                }
+            }, 100);
+
+            // 使用重试机制包装请求
+            const response = await limit(() => retryRequest(async () => {
+                return await axios.get(`http://localhost:5000/api/channel-data/`, { params });
+            }));
+            
             data = response.data;
             channelDataCache.value[channelKey] = data;
+            
+            clearInterval(progressInterval);
+            loadingStates[channelKey] = Number(100);
         }
 
-        // 结束数据加载时间记录
-        performance.mark('Fetch Data-end');
-        performance.measure('Fetch Data', 'Fetch Data-start', 'Fetch Data-end');
+        if (!data || !data.X_value) {
+            throw new Error('Invalid data format: missing X_value');
+        }
 
-        // 开始记录图表绘制时间
-        performance.mark('Draw Chart-start');
+        renderingStates[channelKey] = Number(0);
+        const renderInterval = setInterval(() => {
+            if (renderingStates[channelKey] < 90) {
+                renderingStates[channelKey] = Math.min(Number(renderingStates[channelKey]) + 10, 90);
+            }
+        }, 50);
+
         await processChannelData(data, channel);
-        performance.mark('Draw Chart-end');
-        performance.measure('Draw Chart', 'Draw Chart-start', 'Draw Chart-end');
+        
+        clearInterval(renderInterval);
+        renderingStates[channelKey] = Number(100);
 
     } catch (error) {
         console.error('Error fetching channel data:', error);
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        loadingStates[channelKey] = Number(100);
+        renderingStates[channelKey] = Number(100);
+        ElMessage.error(`加载通道 ${channelKey} 数据失败: ${error.message}`);
     }
 };
 
@@ -402,7 +466,7 @@ const drawHighlightRects = (channelName, results) => {
         smoothedYValue = interpolateData(sampledData.Y_value, smoothnessValue.value);
     }
 
-    // 使用与绘制曲线时相同的 Y 轴范围
+    // 使用与绘制曲线相同的 Y 轴范围
     const yExtent = d3.extent(smoothedYValue);
     const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
     const yMin = yExtent[0] - yRangePadding;
@@ -629,7 +693,7 @@ const drawOverviewChart = () => {
 
     const brushG = g.append('g').attr('class', 'brush').call(brush);
 
-    // 应用现有的 brush_begin 和 brush_end
+    // 应用有的 brush_begin 和 brush_end
     const start = parseFloat(brush_begin.value);
     const end = parseFloat(brush_end.value);
 
@@ -740,7 +804,7 @@ const createGaussianKernel = (sigma, size) => {
     return kernel.map(value => value / sum);
 };
 
-// 应用高斯平滑
+// 应用斯平滑
 const gaussianSmooth = (data, sigma) => {
     const kernelSize = Math.ceil(sigma * 6); // 核大小（通常为 6 * sigma）
     const kernel = createGaussianKernel(sigma, kernelSize);
@@ -880,8 +944,8 @@ const drawChart = async (
             .style('stroke-dasharray', '3,3');
 
         g.append('text')
-            .attr('x', 3)
-            .attr('y', margin.top - 26)
+            .attr('x', 20)
+            .attr('y', margin.top - 25)
             .attr('text-anchor', 'start')
             .style('font-size', '1.1em')
             .style('font-weight', 'bold')
@@ -1435,6 +1499,20 @@ const closeAnomalyForm = () => {
         delete currentAnomaly[key];
     });
 };
+
+// 添加进度百分比计算函数
+const getProgressPercentage = (channelKey) => {
+    let percentage = 0;
+    const loadingTotal = Number(loadingStates[channelKey]) || 0;
+    const renderingTotal = Number(renderingStates[channelKey]) || 0;
+
+    if (loadingTotal === 100) {
+        percentage = 50 + renderingTotal / 2;
+    } else {
+        percentage = loadingTotal / 2;
+    }
+    return Math.min(Math.max(Math.floor(percentage), 0), 100);
+};
 </script>
 
 <style scoped>
@@ -1465,8 +1543,8 @@ svg {
 
 .color-picker-container {
     position: absolute;
-    top: 0px;
-    left: 0px;
+    top: -3px;
+    left: 60px;
     z-index: 10;
 }
 
@@ -1527,5 +1605,45 @@ svg {
 
 :deep(.el-color-predefine__color-selector)::before {
     border-radius: 50%;
+}
+
+.progress-wrapper {
+    margin: 5px 0;
+    padding: 0 10px;
+}
+
+.progress-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    font-size: 13px;
+    color: #606266;
+}
+
+.progress-percentage {
+    font-weight: bold;
+    color: #409EFF;
+}
+
+/* 自定进度条样式 */
+:deep(.el-progress-bar__outer) {
+    background-color: #f0f2f5;
+    border-radius: 4px;
+}
+
+:deep(.el-progress-bar__inner) {
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+:deep(.el-progress--line) {
+    margin-bottom: 0;
+}
+
+:deep(.el-progress-bar__innerText) {
+    font-size: 12px;
+    margin: 0 5px;
+    color: #fff;
 }
 </style>

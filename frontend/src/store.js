@@ -14,7 +14,7 @@ const store = createStore({
       authority: 0,
       StructTree: null,
       selectedChannels: [],
-      sampling: 0.1,
+      sampling: 1,
       smoothness: 0,
       anomalies: {},
       matchedResults: [],

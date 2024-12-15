@@ -85,8 +85,30 @@
             <el-card class="data_exploration" shadow="never">
               <span style="display: flex; align-items: center; justify-content: space-between;">
                 <span class="title">实验数据探索</span>
-                <span>采样率 <el-input-number v-model="sampling" :precision="3" :step="0.1" :max="1" :min="0.0001"
-                    @change="updateSampling" /></span>
+                <span style="display: flex; align-items: center;">
+                  <span style="margin-right: 8px;">采样频率</span>
+                  <div class="sampling-control">
+                    <el-input v-model="sampling" class="sampling-wrapper">
+                      <template #prepend>
+                        <el-button-group>
+                          <el-button type="primary" @click="decreaseSampling(10)">-10</el-button>
+                          <el-button type="primary" @click="decreaseSampling(1)">-1</el-button>
+                          <el-button type="primary" @click="decreaseSampling(0.1)">-0.1</el-button>
+                        </el-button-group>
+                      </template>
+                      <template #suffix>
+                        KHz
+                      </template>
+                      <template #append>
+                        <el-button-group>
+                          <el-button type="primary" @click="increaseSampling(0.1)">+0.1</el-button>
+                          <el-button type="primary" @click="increaseSampling(1)">+1</el-button>
+                          <el-button type="primary" @click="increaseSampling(10)">+10</el-button>
+                        </el-button-group>
+                      </template>
+                    </el-input>
+                  </div>
+                </span>
                 <span>平滑度 <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0"
                     @change="updateSmoothness" /></span>
                 <el-switch v-model="test_channel_number"
@@ -112,7 +134,7 @@
                     <SingleChannelMultiRow />
                   </div>
                   <div v-if="test_channel_number === false">
-                    <MultiChannelSingleRow ref="MultiChannelRef"/>
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0"/>
                   </div>
                 </el-scrollbar>
               </div>
@@ -180,7 +202,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import { FolderChecked, Upload } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas';
@@ -205,7 +227,7 @@ import ChannelStr from '../ChannelAnalysisView/ChannelStr/ChannelStr.vue';
 import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalculation/ChannelCalculationResults.vue';
 
 const store = useStore()
-const sampling = ref(0.1)
+const sampling = ref(1)
 const smoothness = ref(0)
 
 const person = computed(() => store.state.person);
@@ -241,7 +263,7 @@ const updateSmoothness = (value) => {
 
 const color_table_value = ref(true)
 const test_channel_number = ref(true)
-const unit_sampling = ref(500)
+const unit_sampling = ref(10)
 const selectedButton = ref('anay');
 
 const MultiChannelRef = ref(null)
@@ -289,7 +311,7 @@ const exportChannelSVG = () => {
           // 绘制图例图片到 canvas 上（在最上面，缩小一半）
           ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
 
-          // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
+          // 绘制 SVG 图像到 canvas 上（图片的下方）
           ctx.drawImage(svgImg, 0, legendHeight + padding);
 
           // 导出为 PNG
@@ -438,7 +460,7 @@ const exportResultSVG = () => {
       canvas.height = svg.height.baseVal.value;
       const ctx = canvas.getContext('2d');
 
-      // 将 SVG 图像绘制到 canvas 上
+      // 将 SVG 像绘制到 canvas 上
       ctx.drawImage(img, 0, 0);
 
       // 导出为 PNG
@@ -477,6 +499,33 @@ const exportResultData = () => {
   // 释放 Blob URL
   URL.revokeObjectURL(url);
 }
+
+// 修改 updateSelectedChannels mutation 的调用时机
+watch(selectedChannels, async (newChannels, oldChannels) => {
+  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
+    // 确保在更新 selectedChannels 之前重置进度状态
+    await nextTick();
+    if (MultiChannelRef.value && 
+        !test_channel_number.value && 
+        MultiChannelRef.value.resetProgress) {
+      MultiChannelRef.value.resetProgress();
+    }
+  }
+}, { deep: true });
+
+const increaseSampling = (step) => {
+  let newValue = sampling.value + step;
+  if (newValue > 10000) newValue = 10000;
+  sampling.value = Number(newValue.toFixed(3));
+  updateSampling(sampling.value);
+};
+
+const decreaseSampling = (step) => {
+  let newValue = sampling.value - step;
+  if (newValue < 0.001) newValue = 0.001;
+  sampling.value = Number(newValue.toFixed(3));
+  updateSampling(sampling.value);
+};
 </script>
 
 
@@ -671,6 +720,120 @@ const exportResultData = () => {
     flex: 1;
     position: relative;
     height: 100%;
+  }
+}
+
+.sampling-control {
+  display: inline-flex;
+  align-items: center;
+
+  .sampling-wrapper {
+    width: auto;
+    
+    :deep(.el-input__wrapper) {
+      padding: 0 8px 0 0; // 给后缀留出一些空间
+    }
+    
+    :deep(.el-input__inner) {
+      width: 50px;
+      text-align: center;
+    }
+    
+    :deep(.el-input__suffix) {
+      color: var(--el-text-color-regular);
+      margin-right: 4px;
+    }
+    
+    :deep(.el-input-group__prepend),
+    :deep(.el-input-group__append) {
+      padding: 0;
+      background-color: transparent;
+      border: none;
+    }
+    
+    :deep(.el-button-group) {
+      .el-button {
+        margin: 0;
+        border-radius: 0;
+        color: white;
+        
+        &:hover {
+          opacity: 0.9;
+        }
+        
+        &:first-child {
+          border-top-left-radius: 4px;
+          border-bottom-left-radius: 4px;
+        }
+        
+        &:last-child {
+          border-top-right-radius: 4px;
+          border-bottom-right-radius: 4px;
+        }
+      }
+    }
+  }
+}
+
+:deep(.el-button-group) {
+  .el-button {
+    margin: 0;
+    border-radius: 0;
+    color: white;
+    
+    &:hover {
+      opacity: 0.9;
+    }
+    
+    &:first-child {
+      border-top-left-radius: 4px;
+      border-bottom-left-radius: 4px;
+    }
+    
+    &:last-child {
+      border-top-right-radius: 4px;
+      border-bottom-right-radius: 4px;
+    }
+  }
+}
+
+// 左侧按钮组（减号按钮，从深到浅）
+:deep(.el-input-group__prepend) {
+  .el-button-group {
+    .el-button {
+      &:nth-child(1) {
+        background-color: #409EFF;
+        border-color: #409EFF;
+      }
+      &:nth-child(2) {
+        background-color: #66B1FF;
+        border-color: #66B1FF;
+      }
+      &:nth-child(3) {
+        background-color: #8CC5FF;
+        border-color: #8CC5FF;
+      }
+    }
+  }
+}
+
+// 右侧按钮组（加号按钮，从浅到深）
+:deep(.el-input-group__append) {
+  .el-button-group {
+    .el-button {
+      &:nth-child(1) {
+        background-color: #8CC5FF;
+        border-color: #8CC5FF;
+      }
+      &:nth-child(2) {
+        background-color: #66B1FF;
+        border-color: #66B1FF;
+      }
+      &:nth-child(3) {
+        background-color: #409EFF;
+        border-color: #409EFF;
+      }
+    }
   }
 }
 </style>
