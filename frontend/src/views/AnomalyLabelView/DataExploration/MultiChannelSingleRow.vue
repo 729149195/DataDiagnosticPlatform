@@ -75,9 +75,9 @@ const exposeData = ref([])
 const dataCache = computed(() => store.state.dataCache); // 数据缓存
 const channelsSvgRef = ref(null);
 const resetProgress = () => {
-    loadingStates.total = 0;
+    loadingStates.channels.clear();
     loadingStates.dataLoaded = false;
-    renderingStates.total = 0;
+    renderingStates.channels.clear();
     renderingStates.completed = false;
     loadingStates.renderStarted = false;
 };
@@ -282,25 +282,41 @@ watch(
 );
 
 
-// 添加进度状态管理
+// 修改进度状态管理的部分
 const loadingStates = reactive({ 
-    total: 0,
-    dataLoaded: false,    // 数据是否加载完成
-    renderStarted: false  // 渲染是否开始
-});
-const renderingStates = reactive({ 
-    total: 0,
-    completed: false     // 渲染是否完成
+    channels: new Map(), // 存储每个通道的加载进度
+    dataLoaded: false,
+    renderStarted: false
 });
 
-// 添加计算属性来处理度百分比
+const renderingStates = reactive({ 
+    channels: new Map(), // 存储每个通道的渲染进度
+    completed: false
+});
+
+// 修改计算属性来处理总体进度百分比
 const getProgressPercentage = computed(() => {
+    if (selectedChannels.value.length === 0) return 0;
+    
+    let totalProgress = 0;
+    const channelCount = selectedChannels.value.length;
+    
     if (!loadingStates.dataLoaded) {
         // 数据加载阶段 (0-50%)
-        return Math.floor(loadingStates.total / 2);
+        selectedChannels.value.forEach(channel => {
+            const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+            const progress = loadingStates.channels.get(channelKey) || 0;
+            totalProgress += progress;
+        });
+        return Math.min(Math.floor((totalProgress / channelCount) / 2), 50);
     } else if (!renderingStates.completed) {
         // 渲染阶段 (50-100%)
-        return Math.floor(50 + renderingStates.total / 2);
+        selectedChannels.value.forEach(channel => {
+            const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+            const progress = renderingStates.channels.get(channelKey) || 0;
+            totalProgress += progress;
+        });
+        return Math.min(50 + Math.floor((totalProgress / channelCount) / 2), 100);
     }
     return 100;
 });
@@ -324,22 +340,19 @@ const fetchDataAndStore = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         
-        // 重置状态
-        loadingStates.total = 0;
-        loadingStates.dataLoaded = false;
-        renderingStates.total = 0;
-        renderingStates.completed = false;
-        loadingStates.renderStarted = false;
-
-        // 构建缓存键，包含采样频率
+        // 初始化该通道的进度
+        loadingStates.channels.set(channelKey, 0);
+        renderingStates.channels.set(channelKey, 0);
+        
         const cacheKey = `${channelKey}-sampling-${sampleRate.value}`;
 
         let data;
         if (dataCache.value.has(cacheKey)) {
             // 从缓存加载时快速更新进度
             const loadingInterval = setInterval(() => {
-                if (loadingStates.total < 100) {
-                    loadingStates.total += 20;
+                const currentProgress = loadingStates.channels.get(channelKey) || 0;
+                if (currentProgress < 100) {
+                    loadingStates.channels.set(channelKey, Math.min(currentProgress + 25, 100));
                 }
             }, 50);
             
@@ -347,47 +360,47 @@ const fetchDataAndStore = async (channel) => {
             data = cached;
             
             clearInterval(loadingInterval);
-            loadingStates.total = 100;
-            loadingStates.dataLoaded = true;
+            loadingStates.channels.set(channelKey, 100);
         } else {
             // 模拟进度更新
             const progressInterval = setInterval(() => {
-                if (loadingStates.total < 90) {
-                    loadingStates.total = Math.min(loadingStates.total + 10, 90);
+                const currentProgress = loadingStates.channels.get(channelKey) || 0;
+                if (currentProgress < 95) {  // 改为95%，给实际加载留出余地
+                    loadingStates.channels.set(channelKey, Math.min(currentProgress + 10, 95));
                 }
             }, 100);
 
-            // 定义请求参数
-            const params = {
-                channel_key: channelKey,
-                channel_type: channel.channel_type
-            };
-
-            // 使用重试机制包装请求
+            // 获取数据...
             const response = await limit(() => retryRequest(async () => {
-                return await axios.get(`http://localhost:5000/api/channel-data/`, { params });
+                return await axios.get(`http://localhost:5000/api/channel-data/`, { 
+                    params: {
+                        channel_key: channelKey,
+                        channel_type: channel.channel_type
+                    }
+                });
             }));
             
             data = response.data;
-            // 缓存数据时包含采样频率信息
-            dataCache.value.set(cacheKey, {
-                ...data,
-                samplingRate: sampleRate.value
-            });
+            dataCache.value.set(cacheKey, data);
             
             clearInterval(progressInterval);
-            loadingStates.total = 100;
+            loadingStates.channels.set(channelKey, 100);
+        }
+
+        // 检查是否所有通道都加载完成
+        const allChannelsLoaded = Array.from(loadingStates.channels.values())
+            .every(progress => progress === 100);
+        
+        if (allChannelsLoaded) {
             loadingStates.dataLoaded = true;
+            loadingStates.renderStarted = true;
         }
 
         // 开始渲染进度
-        loadingStates.renderStarted = true;
-        renderingStates.total = 0;
-
-        // 使用 requestAnimationFrame 来更平滑地更新渲染进度
         const updateRenderProgress = () => {
-            if (renderingStates.total < 90 && !renderingStates.completed) {
-                renderingStates.total = Math.min(renderingStates.total + 2, 90);
+            const currentProgress = renderingStates.channels.get(channelKey) || 0;
+            if (currentProgress < 95 && !renderingStates.completed) {  // 改为95%
+                renderingStates.channels.set(channelKey, Math.min(currentProgress + 5, 95));
                 requestAnimationFrame(updateRenderProgress);
             }
         };
@@ -396,16 +409,21 @@ const fetchDataAndStore = async (channel) => {
         // 处理数据并绘制图表
         await processChannelData(data, channel);
         
-        // 渲染完成
-        renderingStates.total = 100;
-        renderingStates.completed = true;
+        // 更新渲染完成状态
+        renderingStates.channels.set(channelKey, 100);  // 确保设置为100%
+        
+        // 检查是否所有通道都渲染完成
+        const allChannelsRendered = Array.from(renderingStates.channels.values())
+            .every(progress => progress === 100);
+        
+        if (allChannelsRendered) {
+            renderingStates.completed = true;
+        }
 
     } catch (error) {
         console.error('Error fetching channel data:', error);
-        loadingStates.total = 100;
-        loadingStates.dataLoaded = true;
-        renderingStates.total = 100;
-        renderingStates.completed = true;
+        loadingStates.channels.set(channelKey, 100);
+        renderingStates.channels.set(channelKey, 100);
         ElMessage.error(`Failed to load data for channel ${channel.channel_name}: ${error.message}`);
     }
 };
@@ -1054,12 +1072,12 @@ svg {
     border: none;
 }
 
-/* 将颜色色块变为圆形 */
+/* 将颜色色块变为��形 */
 :deep(.el-color-picker__color) {
     border-radius: 50%;
 }
 
-/* 将下拉面板中的选色区域的选框变为圆形 */
+/* 将下拉面板中的选色区域的选变为圆形 */
 :deep(.el-color-dropdown__main-wrapper .el-color-alpha-slider__thumb,
     .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
     width: 14px;
