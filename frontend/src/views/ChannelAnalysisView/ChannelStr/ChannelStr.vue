@@ -200,7 +200,7 @@ watch(
         const isFunctionOrBracket = functionOrBracketPattern.test(newstr);
 
         if (isFunctionOrBracket) {
-            // 若为括号形��，将光标放在括号中间
+            // 若为括号形，将光标放在括号中间
             currentCursorPosition += newstr.length - 1; // 移动光标到括号内部
         } else {
             // 否则，将光标放在新插入内容的后面

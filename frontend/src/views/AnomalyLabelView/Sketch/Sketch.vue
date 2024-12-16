@@ -147,7 +147,7 @@ import {
 import { Search } from '@element-plus/icons-vue';
 import { useStore } from 'vuex';
 import paper from 'paper';
-import { DataSmoother } from './data-smoother'; // 导入数据平滑��理类
+import { DataSmoother } from './data-smoother'; // 导入数据平滑处理类
 import { PatternMatcher } from './pattern-matcher'; // 导入模式匹配类
 import curveTemplates from '@/assets/templates/curveTemplates.json'
 import { sampleData } from '@/utils/dataProcessing';
@@ -332,7 +332,7 @@ class DrawingApp {
         this.path.strokeJoin = 'round';
         this.path.fullySelected = false;
 
-        // 添加第���个点
+        // 添加第个点
         this.previousPoint = event.point.clone();
         this.path.add(this.previousPoint);
       } else {
@@ -406,7 +406,7 @@ class DrawingApp {
       this.gridGroup.addChild(path);
     }
 
-    // 绘制水��线
+    // 绘制水平线
     for (let y = 0; y <= this.size.height; y += gridSpacing) {
       const path = new paper.Path.Line({
         from: [0, y],

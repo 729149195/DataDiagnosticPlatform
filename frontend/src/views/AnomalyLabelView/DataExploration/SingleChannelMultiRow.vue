@@ -230,7 +230,7 @@ const updateChannelColor = (channel) => {
 };
 
 
-// 处���通道数据并绘制图表
+// 处理通道数据并绘制图表
 const processChannelData = async (data, channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;

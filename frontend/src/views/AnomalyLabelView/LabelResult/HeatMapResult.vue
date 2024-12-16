@@ -401,7 +401,7 @@ async function renderHeatmap(channels) {
         const right = Math.floor((idxList[idxList.length - 1] - Domain[0]) / step);
         for (let i = left; i <= right; i++) {
           if (i >= 0 && i < rectNum) {
-            visData[channelKey][i].push(errorIdx); // ��错误索引加入数组
+            visData[channelKey][i].push(errorIdx); // 将错误索引加入数组
           }
         }
       }
@@ -523,7 +523,7 @@ async function renderHeatmap(channels) {
           .attr('height', rectH)
           .attr('rx', 3) // 设置圆角半径
           .attr('ry', 3) // 设置圆角半径
-          .attr('fill', 'none') // 不填充��色
+          .attr('fill', 'none') // 不填充颜色
           .attr('stroke', (d) => {
             if (d.length > 0) {
               if (channel.errors.length > 1) {
@@ -730,7 +730,7 @@ async function renderHeatmap(channels) {
     // 在所有数据处理完成后
     await Promise.allSettled(errorPromises);
     
-    // 确保进度条显���完成
+    // 确保进度条显示完成
     loadingPercentage.value = 100;
     // 短暂延迟后隐藏加载状态，让用户能看到100%的进度
     setTimeout(() => {
@@ -789,7 +789,7 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
 }
 
 .anomaly-dialog {
-  width: 80% !important; // ��据需要调整对话框宽度
+  width: 80% !important; // 根据需要调整对话框宽度
   max-width: 100%;
 }
 
