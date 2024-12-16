@@ -54,10 +54,10 @@
                   <span>异常类别</span>
                 </div>
                 <el-scrollbar height="55vh" :always="false">
-                  <div v-if="color_table_value === true">
+                  <div v-show="color_table_value === true">
                     <ChannelType />
                   </div>
-                  <div v-if="color_table_value === false">
+                  <div v-show="color_table_value === false">
                     <ExceptionType />
                   </div>
                 </el-scrollbar>
@@ -92,7 +92,7 @@
                     :precision="3" 
                     :step="0.1" 
                     :min="0.001"
-                    :max="10000"
+                    :max="1000"
                     @change="updateSampling"
                   />
                   <span style="margin-left: 4px;">KHz</span>

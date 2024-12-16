@@ -1,87 +1,103 @@
 <template>
-  <div v-for="item in data" :key="item.id" class="card">
-    <table class="channel-table">
-      <tbody>
-        <template v-for="(channel, channelIndex) in item.channels" :key="channel.channel_key">
-          <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
+  <el-scrollbar height="55vh" :always="false" @scroll="handleScroll" ref="scrollbarRef">
+    <div v-for="item in visibleData" :key="item.id" class="card">
+      <table class="channel-table">
+        <tbody>
+          <template v-for="(channel, channelIndex) in item.channels" :key="channel.channel_key">
+            <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
 
-            <!-- 通道类别单元格 -->
-            <td v-if="channelIndex === 0 && errorIndex === 0" :rowspan="computeTotalDisplayedErrors(item)"
-              class="channel-type">
-              <span>{{ item.channel_type }}</span>
-              <div class="type-header">
-                <!-- <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
-                  size="small" show-alpha :predefine="predefineColors" /> -->
-                <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                  class="checkbox-margin"></el-checkbox>
-              </div>
-            </td>
-
-            <!-- 通道名称单元格 -->
-            <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
-              'channel-name': true,
-              'channel-name-last': isLastChannel(item.channels, channel),
-            }">
-              <div class="name-container">
-                <span>{{ channel.channel_name }}</span>
-                <div class="name-right">
-                  <el-checkbox v-model="channel.checked" @change="clearChannelTypeCheckbox(item)"
+              <!-- 通道类别单元格 -->
+              <td v-if="channelIndex === 0 && errorIndex === 0" :rowspan="computeTotalDisplayedErrors(item)"
+                class="channel-type">
+                <span>{{ item.channel_type }}</span>
+                <div class="type-header">
+                  <!-- <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
+                    size="small" show-alpha :predefine="predefineColors" /> -->
+                  <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                     class="checkbox-margin"></el-checkbox>
                 </div>
-              </div>
-              <el-tag type="info" effect="plain" class="shot-number-tag">
-                {{ channel.shot_number }}
-              </el-tag>
-              <div class="show-more-container">
-                <el-button link @click="toggleShowAllErrors(channel)">
-                  {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
-                  <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">
-                    ({{ hiddenErrorsCount(channel) }})
+              </td>
+
+              <!-- 通道名称单元格 -->
+              <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
+                'channel-name': true,
+                'channel-name-last': isLastChannel(item.channels, channel),
+              }">
+                <div class="name-container">
+                  <span>{{ channel.channel_name }}</span>
+                  <div class="name-right">
+                    <el-checkbox v-model="channel.checked" @change="clearChannelTypeCheckbox(item)"
+                      class="checkbox-margin"></el-checkbox>
+                  </div>
+                </div>
+                <el-tag type="info" effect="plain" class="shot-number-tag">
+                  {{ channel.shot_number }}
+                </el-tag>
+                <div class="show-more-container">
+                  <el-button link @click="toggleShowAllErrors(channel)">
+                    {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
+                    <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">
+                      ({{ hiddenErrorsCount(channel) }})
+                    </span>
+                  </el-button>
+                </div>
+              </td>
+
+              <!-- 异常类别单元格 -->
+              <td :class="{
+                'error-column': true,
+                'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
+              }">
+                <div class="error-container">
+                  <span :title="error.error_name">
+                    {{ formatError(error.error_name) }}
                   </span>
-                </el-button>
-              </div>
-            </td>
+                  <ErrorColorPicker
+                    :color="error.color"
+                    :predefine="predefineColors"
+                    :error-name="error.error_name"
+                    :shot-number="channel.shot_number"
+                    :channel-name="channel.channel_name"
+                    @change="setErrorColor(channel, error)"
+                    @update:color="error.color = $event"
+                  />
+                </div>
+              </td>
 
-            <!-- 异常类别单元格 -->
-            <td :class="{
-              'error-column': true,
-              'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
-            }">
-              <div class="error-container">
-                <span :title="error.error_name">
-                  {{ formatError(error.error_name) }}
-                </span>
-                <ErrorColorPicker
-                  :color="error.color"
-                  :predefine="predefineColors"
-                  :error-name="error.error_name"
-                  :shot-number="channel.shot_number"
-                  :channel-name="channel.channel_name"
-                  @change="setErrorColor(channel, error)"
-                  @update:color="error.color = $event"
-                />
-              </div>
-            </td>
-
-          </tr>
-        </template>
-      </tbody>
-    </table>
-  </div>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="loading" class="loading-more">
+      加载更多...
+    </div>
+  </el-scrollbar>
 </template>
 
 
 <script setup>
-import { shallowRef, onMounted, onBeforeUnmount, computed, watch } from 'vue';
+import { shallowRef, onMounted, onBeforeUnmount, computed, watch, ref, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import { ElMessage } from 'element-plus';
 import ErrorColorPicker from './ErrorColorPicker.vue'
 
+// 定义 emit
+const emit = defineEmits(['loaded'])
+
 // Vuex store
 const store = useStore();
 
-// 从 Vuex 获取数据
-const data = computed(() => store.getters.getStructTree);
+const INITIAL_LOAD_COUNT = 50;
+const BATCH_SIZE = 50;
+
+const visibleData = ref([]);
+const currentIndex = ref(0);
+const loading = ref(false);
+const scrollbarRef = ref(null);
+
+// 修改数据获取方式
+const rawData = computed(() => store.getters.getStructTree);
 
 // 预定义颜色
 const predefineColors = shallowRef([
@@ -91,8 +107,6 @@ const predefineColors = shallowRef([
   '#191970', '#FA8072', '#6B8E23', '#6A5ACD', '#FF7F50',
   '#4682B4'
 ]);
-
-const dataLoaded = shallowRef(false);
 
 // 存储原始颜色，以便在卸载组件时恢复
 const originalColors = shallowRef({});
@@ -140,9 +154,9 @@ const hiddenErrorsCount = (channel) => {
 
 // 更新选中的通道并同步到 Vuex Store
 const updateSelectedChannels = () => {
-  if (!data.value || !Array.isArray(data.value)) return;
+  if (!rawData.value || !Array.isArray(rawData.value)) return;
 
-  const selected = data.value.flatMap(item => {
+  const selected = rawData.value.flatMap(item => {
     if (!item || !Array.isArray(item.channels)) return [];
     
     return item.channels
@@ -164,73 +178,88 @@ const updateSelectedChannels = () => {
   store.commit('updateSelectedChannels', selected);
 };
 
-// 初始化数据：设置默认颜色和 displayedErrors
-const initializeData = () => {
-  if (!data.value || !Array.isArray(data.value)) return;
+// 初始化可见数据
+const initializeVisibleData = () => {
+  if (!rawData.value || !Array.isArray(rawData.value)) return;
   
-  // 使用 requestAnimationFrame 分批处理数据
-  const processChannels = (startIndex = 0) => {
-    const BATCH_SIZE = 10;
-    const items = data.value;
-    
-    for (let i = startIndex; i < Math.min(startIndex + BATCH_SIZE, items.length); i++) {
-      const item = items[i];
-      if (!item || !Array.isArray(item.channels)) continue;
-      
-      item.channels.forEach(channel => {
-        if (!channel || !Array.isArray(channel.errors)) return;
-        
-        // 保存原始颜色
-        if (!originalColors.value[channel.channel_key]) {
-          originalColors.value[channel.channel_key] = channel.color;
-        }
-
-        // 设置默认颜色（如果需要）
-        if (!channel.color) {
-          channel.color = '#D3D3D3';
-        }
-
-        // 初始化 displayedErrors
-        if (!channel.displayedErrors) {
-          channel.displayedErrors = channel.errors.slice(0, 1);
-        }
-
-        // 初始化每个异常的 color 属性
-        channel.errors.forEach(error => {
-          if (!error.hasOwnProperty('color')) {
-            error.color = '#000000'; // 设置默认颜色
-          }
-        });
-      });
-    }
-    
-    if (startIndex + BATCH_SIZE < items.length) {
-      requestAnimationFrame(() => processChannels(startIndex + BATCH_SIZE));
-    }
-  };
+  visibleData.value = rawData.value.slice(0, INITIAL_LOAD_COUNT);
+  currentIndex.value = INITIAL_LOAD_COUNT;
   
-  requestAnimationFrame(() => processChannels());
+  // 初始化第一批数据的颜色和显示状态
+  initializeDataBatch(visibleData.value);
 };
 
-// 监听数据变化
+// 处理滚动加载
+const handleScroll = async (e) => {
+  if (loading.value) return;
+  
+  const { scrollTop, clientHeight, scrollHeight } = e.target;
+  
+  if (scrollHeight - scrollTop - clientHeight < 100 && currentIndex.value < rawData.value.length) {
+    loading.value = true;
+    
+    await nextTick();
+    
+    const nextBatch = rawData.value.slice(
+      currentIndex.value,
+      currentIndex.value + BATCH_SIZE
+    );
+    
+    // 初始化新批次数据的颜色和显示状态
+    initializeDataBatch(nextBatch);
+    
+    visibleData.value = [...visibleData.value, ...nextBatch];
+    currentIndex.value += BATCH_SIZE;
+    
+    loading.value = false;
+  }
+};
+
+// 初始化数据批次
+const initializeDataBatch = (batch) => {
+  batch.forEach(item => {
+    if (!item || !Array.isArray(item.channels)) return;
+    
+    item.channels.forEach(channel => {
+      if (!channel || !Array.isArray(channel.errors)) return;
+      
+      // 保存原始颜色
+      if (!originalColors.value[channel.channel_key]) {
+        originalColors.value[channel.channel_key] = channel.color;
+      }
+
+      // 设置默认颜色
+      if (!channel.color) {
+        channel.color = '#D3D3D3';
+      }
+
+      // 初始化 displayedErrors
+      if (!channel.displayedErrors) {
+        channel.displayedErrors = channel.errors.slice(0, 1);
+      }
+
+      // 初始化异常颜色
+      channel.errors.forEach(error => {
+        if (!error.hasOwnProperty('color')) {
+          error.color = '#000000';
+        }
+      });
+    });
+  });
+};
+
+// 监听原始数据变化
 watch(
-  () => data.value,
-  (newData) => {
-    if (newData && Array.isArray(newData)) {
-      dataLoaded.value = true;
-      initializeData();
-      updateSelectedChannels();
-    }
+  () => rawData.value,
+  () => {
+    initializeVisibleData();
   },
   { immediate: true }
 );
 
-onMounted(() => {
-  if (data.value && Array.isArray(data.value)) {
-    dataLoaded.value = true;
-    initializeData();
-    updateSelectedChannels();
-  }
+onMounted(async () => {
+  await initializeVisibleData();
+  emit('loaded');
 });
 
 onBeforeUnmount(() => {
@@ -240,7 +269,7 @@ onBeforeUnmount(() => {
 
 // 恢复通道的原始颜色
 const revertColors = () => {
-  data.value.forEach(item => {
+  rawData.value.forEach(item => {
     item.channels.forEach(channel => {
       const originalColor = originalColors.value[channel.channel_key];
       if (originalColor) {
@@ -439,5 +468,12 @@ const setErrorColor = (channel, error) => {
       font-size: 14px;
     }
   }
+}
+
+.loading-more {
+  text-align: center;
+  padding: 10px 0;
+  color: #909399;
+  font-size: 14px;
 }
 </style>

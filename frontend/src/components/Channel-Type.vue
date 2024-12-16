@@ -1,91 +1,104 @@
 <template>
-  <div v-for="(item, index) in data" :key="index" class="card">
-    <table class="channel-table">
-      <tbody>
-        <template v-for="(channel, cIndex) in item.channels" :key="`channel-${cIndex}`">
-          <tr v-for="(error, eIndex) in channel.displayedErrors" :key="`error-${cIndex}-${eIndex}`">
-            <!-- Channel Type Cell -->
-            <td v-if="eIndex === 0 && cIndex === 0"
-              :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)" class="channel-type">
-              <span>{{ item.channel_type }}</span>
-              <div class="type-header">
-                <!-- Use the reusable ChannelColorPicker component -->
-                <ChannelColorPicker 
-                  :color="item.color" 
-                  :predefineColors="predefineColors" 
-                  @change="setChannelColor(item)" 
-                  @update:color="item.color = $event"
-                  :channelName="item.channel_type"
-                  class="category-color-picker"
-                />
-                <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                  class="checkbox-margin"></el-checkbox>
-              </div>
-            </td>
-            <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
-              'channel-name': true,
-              'channel-name-last': cIndex === item.channels.length - 1
-            }">
-              <div class="name-container">
-                <span>{{ channel.channel_name }}</span>
-                <div class="name-right">
+  <el-scrollbar height="55vh" :always="false" @scroll="handleScroll" ref="scrollbarRef">
+    <div v-for="(item, index) in visibleData" :key="index" class="card">
+      <table class="channel-table">
+        <tbody>
+          <template v-for="(channel, cIndex) in item.channels" :key="`channel-${cIndex}`">
+            <tr v-for="(error, eIndex) in channel.displayedErrors" :key="`error-${cIndex}-${eIndex}`">
+              <!-- Channel Type Cell -->
+              <td v-if="eIndex === 0 && cIndex === 0"
+                :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)" class="channel-type">
+                <span>{{ item.channel_type }}</span>
+                <div class="type-header">
                   <!-- Use the reusable ChannelColorPicker component -->
                   <ChannelColorPicker 
-                    :color="channel.color" 
+                    :color="item.color" 
                     :predefineColors="predefineColors" 
-                    @change="setSingleChannelColor(channel)" 
-                    @update:color="channel.color = $event"
-                    :shotNumber="channel.shot_number"
-                    :channelName="channel.channel_name"
-                    class="channel-color-picker" 
+                    @change="setChannelColor(item)" 
+                    @update:color="item.color = $event"
+                    :channelName="item.channel_type"
+                    class="category-color-picker"
                   />
-                  <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                  <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                     class="checkbox-margin"></el-checkbox>
                 </div>
-              </div>
-              <el-tag type="info" effect="plain" class="shot-number-tag">
-                {{ channel.shot_number }}
-              </el-tag>
-              <div class="show-more-container">
-                <el-button link @click="toggleShowAllErrors(channel)">
-                  {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
-                  <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">({{
-                    hiddenErrorsCount(channel) }})</span>
-                </el-button>
-              </div>
-            </td>
+              </td>
+              <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
+                'channel-name': true,
+                'channel-name-last': cIndex === item.channels.length - 1
+              }">
+                <div class="name-container">
+                  <span>{{ channel.channel_name }}</span>
+                  <div class="name-right">
+                    <!-- Use the reusable ChannelColorPicker component -->
+                    <ChannelColorPicker 
+                      :color="channel.color" 
+                      :predefineColors="predefineColors" 
+                      @change="setSingleChannelColor(channel)" 
+                      @update:color="channel.color = $event"
+                      :shotNumber="channel.shot_number"
+                      :channelName="channel.channel_name"
+                      class="channel-color-picker" 
+                    />
+                    <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                      class="checkbox-margin"></el-checkbox>
+                  </div>
+                </div>
+                <el-tag type="info" effect="plain" class="shot-number-tag">
+                  {{ channel.shot_number }}
+                </el-tag>
+                <div class="show-more-container">
+                  <el-button link @click="toggleShowAllErrors(channel)">
+                    {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
+                    <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">({{
+                      hiddenErrorsCount(channel) }})</span>
+                  </el-button>
+                </div>
+              </td>
 
-            <!-- Error Column -->
-            <td :class="{
-              'error-column': true,
-              'error-last':
-                eIndex === channel.displayedErrors.length - 1 &&
-                cIndex !== item.channels.length - 1
-            }">
-              <span :title="error.error_name">
-                {{ formatError(error.error_name) }}
-              </span>
-              <!-- Optional: Additional Color Picker for Errors -->
-              <!-- 
-                <el-color-picker v-model="error.color" @change="setErrorColor(channel, error)"
-                  class="error-color-picker" show-alpha size="small" :predefine="predefineColors" />
-                -->
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
-  </div>
+              <!-- Error Column -->
+              <td :class="{
+                'error-column': true,
+                'error-last':
+                  eIndex === channel.displayedErrors.length - 1 &&
+                  cIndex !== item.channels.length - 1
+              }">
+                <span :title="error.error_name">
+                  {{ formatError(error.error_name) }}
+                </span>
+                <!-- Optional: Additional Color Picker for Errors -->
+                <!-- 
+                  <el-color-picker v-model="error.color" @change="setErrorColor(channel, error)"
+                    class="error-color-picker" show-alpha size="small" :predefine="predefineColors" />
+                  -->
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="loading" class="loading-more">
+      加载更多...
+    </div>
+  </el-scrollbar>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch, nextTick } from 'vue'
 import { useStore } from 'vuex'
 import ChannelColorPicker from './ChannelColorPicker.vue' // Import the new component
 
 const store = useStore()
 
-const data = computed(() => store.getters.getStructTree)
+const INITIAL_LOAD_COUNT = 50;
+const BATCH_SIZE = 50;
+
+const visibleData = ref([]);
+const currentIndex = ref(0);
+const loading = ref(false);
+const scrollbarRef = ref(null);
+
+const rawData = computed(() => store.getters.getStructTree);
 
 const predefineColors = ref([
   '#000000', // Black
@@ -124,12 +137,50 @@ const hiddenErrorsCount = (channel) => {
   return channel.errors.length - channel.displayedErrors.length
 }
 
-onMounted(async () => {
-  if (!data.value) {
-    dataLoaded.value = true
-    updateSelectedChannels()
+const initializeVisibleData = () => {
+  if (!rawData.value) return;
+  
+  visibleData.value = rawData.value.slice(0, INITIAL_LOAD_COUNT);
+  currentIndex.value = INITIAL_LOAD_COUNT;
+};
+
+const handleScroll = async (e) => {
+  if (loading.value) return;
+  
+  const { scrollTop, clientHeight, scrollHeight } = e.target;
+  
+  if (scrollHeight - scrollTop - clientHeight < 100 && currentIndex.value < rawData.value.length) {
+    loading.value = true;
+    
+    await nextTick();
+    
+    const nextBatch = rawData.value.slice(
+      currentIndex.value,
+      currentIndex.value + BATCH_SIZE
+    );
+    
+    visibleData.value = [...visibleData.value, ...nextBatch];
+    currentIndex.value += BATCH_SIZE;
+    
+    loading.value = false;
   }
-})
+};
+
+watch(
+  () => rawData.value,
+  () => {
+    initializeVisibleData();
+  },
+  { immediate: true }
+);
+
+// 定义 emit
+const emit = defineEmits(['loaded'])
+
+onMounted(async () => {
+  await initializeVisibleData();
+  emit('loaded');
+});
 
 const setChannelColor = (item) => {
   if (item && item.channels) {
@@ -148,10 +199,10 @@ const setSingleChannelColor = (channel) => {
 
 
 const updateSelectedChannels = () => {
-  if (!data.value) {
+  if (!rawData.value) {
     return;
   }
-  const selected = data.value.flatMap(item =>
+  const selected = rawData.value.flatMap(item =>
     item.channels
       .filter(channel => channel.checked)
       .map(channel => ({
@@ -326,5 +377,12 @@ const toggleShowAllErrors = (channel) => {
 
 :deep(.el-color-predefine__color-selector)::before {
   border-radius: 50%;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 10px 0;
+  color: #909399;
+  font-size: 14px;
 }
 </style>
