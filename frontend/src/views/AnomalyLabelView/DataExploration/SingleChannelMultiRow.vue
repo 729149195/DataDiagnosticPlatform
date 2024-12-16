@@ -230,90 +230,104 @@ const updateChannelColor = (channel) => {
 };
 
 
-// 处理通道数据并绘制图表
+// 处���通道数据并绘制图表
 const processChannelData = async (data, channel) => {
-    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    const channelName = channelKey; // 使用包含 shot_number 的标识
+    try {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const channelName = channelKey;
 
-    const sampledData = sampleData(data, sampleRate.value);
-
-    let errorsData = [];
-    for (const [errorIndex, error] of channel.errors.entries()) {
-        const error_name = error.error_name;
-        const error_color = error.color;
-
-        // 构建用于缓存的 errorKey
-        const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
-        let errorData;
-
-        // 检查缓存中是否已有异常数据
-        if (channelDataCache.value[errorKey]) {
-            errorData = channelDataCache.value[errorKey];
-        } else {
-            const params = {
-                channel_key: channelKey,
-                channel_type: channel.channel_type,
-                error_name: error_name,
-                error_index: errorIndex
-            };
-
-            try {
-                // 使用重试机制和并发限制获取错误数据
-                const errorResponse = await limit(() => retryRequest(async () => {
-                    return await axios.get(`http://localhost:5000/api/error-data/`, { params });
-                }));
-                errorData = errorResponse.data;
-                channelDataCache.value[errorKey] = errorData;
-            } catch (err) {
-                console.warn(`Failed to fetch error data for ${errorKey}:`, err);
-                continue; // 跳过这个错误数据，继续处理其他
-            }
+        const sampledData = sampleData(data, sampleRate.value);
+        
+        // 确保采样数据有效
+        if (!sampledData || !sampledData.X_value || !sampledData.Y_value) {
+            console.warn(`Invalid sampled data for channel ${channelName}`);
+            return;
         }
 
-        // 处理异常数据
-        const processedErrorSegments = errorData.X_value_error.map(
-            (errorSegment, idx) => {
-                return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+        let errorsData = [];
+        for (const [errorIndex, error] of channel.errors.entries()) {
+            const error_name = error.error_name;
+            const error_color = error.color;
+
+            // 构建用于缓存的 errorKey
+            const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
+            let errorData;
+
+            // 检查缓存中是否已有异常数据
+            if (channelDataCache.value[errorKey]) {
+                errorData = channelDataCache.value[errorKey];
+            } else {
+                const params = {
+                    channel_key: channelKey,
+                    channel_type: channel.channel_type,
+                    error_name: error_name,
+                    error_index: errorIndex
+                };
+
+                try {
+                    // 使用重试机制和并发限制获取错误数据
+                    const errorResponse = await limit(() => retryRequest(async () => {
+                        return await axios.get(`http://localhost:5000/api/error-data/`, { params });
+                    }));
+                    errorData = errorResponse.data;
+                    channelDataCache.value[errorKey] = errorData;
+                } catch (err) {
+                    console.warn(`Failed to fetch error data for ${errorKey}:`, err);
+                    continue; // 跳过这个错误数据，继续处理其他
+                }
             }
+
+            // 处理异常数据
+            const processedErrorSegments = errorData.X_value_error.map(
+                (errorSegment, idx) => {
+                    return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+                }
+            );
+
+            const sampledErrorData = {
+                X_value_error: processedErrorSegments.map((seg) => seg.X),
+                Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+                color: error_color,
+                person: error.person,
+            };
+
+            errorsData.push(sampledErrorData);
+        }
+
+        // 添加数据到 overviewData 前进行验证
+        if (sampledData.X_value.length > 0 && sampledData.Y_value.length > 0) {
+            overviewData.value.push({
+                channelName: channelName,
+                X_value: sampledData.X_value,
+                Y_value: sampledData.Y_value,
+                color: channel.color,
+            });
+        } else {
+            console.warn(`Empty data for channel ${channelName}`);
+        }
+
+        await nextTick();
+        drawChart(
+            sampledData,
+            errorsData,
+            channelName,
+            channel.color,
+            data.X_unit,
+            data.Y_unit,
+            data.channel_type,
+            data.channel_number,
+            channel.shot_number
         );
 
-        const sampledErrorData = {
-            X_value_error: processedErrorSegments.map((seg) => seg.X),
-            Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-            color: error_color,
-            person: error.person,
-        };
-
-        errorsData.push(sampledErrorData);
+        const channelMatchedResults = matchedResults.value.filter(
+            (r) => r.channel_name === channelName
+        );
+        channelMatchedResults.forEach((result) => {
+            drawHighlightRects(channelName, [result]);
+        });
+    } catch (error) {
+        console.error(`Error processing channel data for ${channel.channel_name}:`, error);
     }
-
-    // 将数据添加到 overviewData
-    overviewData.value.push({
-        channelName: channelName,
-        X_value: sampledData.X_value,
-        Y_value: sampledData.Y_value,
-        color: channel.color,
-    });
-
-    await nextTick();
-    drawChart(
-        sampledData,
-        errorsData,
-        channelName,
-        channel.color,
-        data.X_unit,
-        data.Y_unit,
-        data.channel_type,
-        data.channel_number,
-        channel.shot_number
-    );
-
-    const channelMatchedResults = matchedResults.value.filter(
-        (r) => r.channel_name === channelName
-    );
-    channelMatchedResults.forEach((result) => {
-        drawHighlightRects(channelName, [result]);
-    });
 };
 
 
@@ -388,20 +402,40 @@ const fetchDataAndDrawChart = async (channel) => {
 
 const renderCharts = debounce(async () => {
     try {
-        // 开始记录总渲染时间
         performance.mark('Total Render Time-start');
         
+        // 重置概览数据
         overviewData.value = [];
-        for (const channel of selectedChannels.value) {
-            await fetchDataAndDrawChart(channel);
+
+        // 确保有选中的通道
+        if (!selectedChannels.value || selectedChannels.value.length === 0) {
+            console.warn('No channels selected');
+            return;
         }
+
+        // 使用 Promise.all 并行处理所有通道
+        await Promise.all(selectedChannels.value.map(async (channel) => {
+            try {
+                await fetchDataAndDrawChart(channel);
+            } catch (error) {
+                console.error(`Error processing channel ${channel.channel_name}:`, error);
+            }
+        }));
+
+        // 验证是否有有效数据
+        if (overviewData.value.length === 0) {
+            console.warn('No valid data collected for overview');
+            return;
+        }
+
+        // 只有在有数据时才绘制概览图
         drawOverviewChart();
 
-        // 结束总渲染时间记录
         performance.mark('Total Render Time-end');
-        performance.measure('Total Render Time', 'Total Render Time-start', 'Total Render Time-end');
+        performance.measure('Total Render Time', 
+            'Total Render Time-start', 
+            'Total Render Time-end');
 
-        // 设置标记表示渲染完成
         window.dataLoaded = true;
     } catch (error) {
         console.error('Error in renderCharts:', error);
@@ -409,21 +443,43 @@ const renderCharts = debounce(async () => {
 }, 200);
 
 onMounted(async () => {
-    const container = document.querySelector('.chart-container');
-    chartContainerWidth.value = container.offsetWidth;
+    try {
+        const container = document.querySelector('.chart-container');
+        if (container) {
+            chartContainerWidth.value = container.offsetWidth;
+        }
 
-    if (selectedChannels.value.length > 0) {
-        renderCharts();
-        drawOverviewChart();
+        // 确保 selectedChannels 有值且 overviewData 已初始化后再绘制
+        if (selectedChannels.value && selectedChannels.value.length > 0) {
+            await renderCharts();
+            // 只有在有数据时才绘制概览图
+            if (overviewData.value && overviewData.value.length > 0) {
+                drawOverviewChart();
+            }
+        }
+    } catch (error) {
+        console.error('Error in mounted hook:', error);
     }
 });
 
 watch(selectedChannels, async (newChannels, oldChannels) => {
     if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
-        overviewData.value = [];
-        await nextTick();
-        renderCharts();
-        drawOverviewChart();
+        try {
+            // 重置概览数据
+            overviewData.value = [];
+            await nextTick();
+            
+            // 只有在有选中通道时才进行渲染
+            if (newChannels && newChannels.length > 0) {
+                await renderCharts();
+                // 确保有数据后再绘制概览图
+                if (overviewData.value && overviewData.value.length > 0) {
+                    drawOverviewChart();
+                }
+            }
+        } catch (error) {
+            console.error('Error in selectedChannels watch:', error);
+        }
     }
 }, { deep: true });
 
@@ -621,111 +677,208 @@ const findEndIndex = (array, endX) => {
     return result;
 };
 
-// 绘制总览图表
+// 绘制概览图表
 const drawOverviewChart = () => {
-    d3.select('#overview-chart').selectAll('*').remove();
+    try {
+        // 清除现有图表
+        d3.select('#overview-chart').selectAll('*').remove();
 
-    const container = d3.select('.overview-container');
-    if (!container.node()) {
-        return;
-    }
+        // 验证容器
+        const container = d3.select('.overview-container');
+        if (!container.node()) {
+            console.warn('Overview container not found');
+            return;
+        }
 
-    const containerWidth = container.node().getBoundingClientRect().width;
+        // 验证数据
+        if (!overviewData.value || !Array.isArray(overviewData.value)) {
+            console.warn('Overview data is not an array');
+            return;
+        }
 
-    const margin = { top: 15, right: 50, bottom: 30, left: 50 };
-    const width = containerWidth - margin.left - margin.right;
-    const height = 80 - margin.top - margin.bottom;
+        if (overviewData.value.length === 0) {
+            console.warn('No overview data available');
+            return;
+        }
 
-    const svg = d3
-        .select('#overview-chart')
-        .attr(
-            'viewBox',
-            `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
-        )
-        .attr('preserveAspectRatio', 'xMidYMid meet')
-        .attr('width', '100%');
+        // 验证每个数据项
+        const validData = overviewData.value.filter(d => 
+            d && Array.isArray(d.X_value) && 
+            Array.isArray(d.Y_value) && 
+            d.X_value.length > 0 && 
+            d.Y_value.length > 0
+        );
 
-    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+        if (validData.length === 0) {
+            console.warn('No valid data points in overview data');
+            return;
+        }
 
-    const xExtent = d3.extent(
-        overviewData.value.flatMap((d) => d.X_value)
-    );
-    const x = d3.scaleLinear().domain([-2, 6]).range([0, width]);
-    overviewXScale.value = x;
+        const containerWidth = container.node().getBoundingClientRect().width;
 
-    const yExtent = d3.extent(
-        overviewData.value.flatMap((d) => d.Y_value)
-    );
-    const y = d3.scaleLinear().domain(yExtent).range([height, 0]);
+        const margin = { top: 15, right: 50, bottom: 30, left: 50 };
+        const width = containerWidth - margin.left - margin.right;
+        const height = 80 - margin.top - margin.bottom;
 
-    overviewData.value.forEach((data) => {
-        g.append('path')
-            .datum(data.Y_value)
-            .attr('fill', 'none')
-            .attr('stroke', data.color || 'steelblue')
-            .attr('stroke-width', 1)
+        const svg = d3
+            .select('#overview-chart')
             .attr(
-                'd',
-                d3
-                    .line()
-                    .x((d, i) => x(data.X_value[i]))
-                    .y((d) => y(d))
-                    .curve(d3.curveMonotoneX)
-            );
-    });
+                'viewBox',
+                `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
+            )
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .attr('width', '100%');
 
-    g.append('g')
-        .attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll("text") // 选择所有刻度标签
-        .style("font-size", "1.1em") // 增大字体大小
-        .style("font-weight", "bold"); // 加粗字体;
+        const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-    const brush = d3
-        .brushX()
-        .extent([
-            [0, 0],
-            [width, height],
-        ])
-        .on('brush end', debounce(brushed, 150));
+        // 计算所有数据的 X 范围
+        const allX = overviewData.value.flatMap((d) => d.X_value);
+        const xExtent = d3.extent(allX);
+        
+        // 确保 xExtent 有效
+        if (!xExtent || !xExtent[0] || !xExtent[1]) {
+            console.warn('Invalid X extent:', xExtent);
+            return;
+        }
 
-    overviewBrushInstance.value = brush;
+        const x = d3.scaleLinear().domain(xExtent).range([0, width]);
+        overviewXScale.value = x;
 
-    const brushG = g.append('g').attr('class', 'brush').call(brush);
+        // 更新 brush_begin 和 brush_end，确保它们是有效的数值
+        brush_begin.value = xExtent[0].toFixed(4);
+        brush_end.value = xExtent[1].toFixed(4);
 
-    // 应用有的 brush_begin 和 brush_end
-    const start = parseFloat(brush_begin.value);
-    const end = parseFloat(brush_end.value);
+        // 更新 store 中的范围值
+        store.commit("updatebrush", { 
+            begin: brush_begin.value, 
+            end: brush_end.value 
+        });
 
-    if (!isNaN(start) && !isNaN(end) && start < end) {
-        const selection = [x(start), x(end)];
-        brushG.call(brush.move, selection);
-    } else {
-        // 如果 brush_begin 和 brush_end 无效，则使用默认范围
-        const initialSelection = brushG.node().__brushSelection || x.range();
-        const initialDomain = initialSelection.map(x.invert, x);
-        brush_begin.value = initialDomain[0].toFixed(4);
-        brush_end.value = initialDomain[1].toFixed(4);
+        const yExtent = d3.extent(
+            overviewData.value.flatMap((d) => d.Y_value)
+        );
+        const y = d3.scaleLinear().domain(yExtent).range([height, 0]);
+
+        overviewData.value.forEach((data) => {
+            g.append('path')
+                .datum(data.Y_value)
+                .attr('fill', 'none')
+                .attr('stroke', data.color || 'steelblue')
+                .attr('stroke-width', 1)
+                .attr(
+                    'd',
+                    d3
+                        .line()
+                        .x((d, i) => x(data.X_value[i]))
+                        .y((d) => y(d))
+                        .curve(d3.curveMonotoneX)
+                );
+        });
+
+        g.append('g')
+            .attr('transform', `translate(0,${height})`)
+            .call(d3.axisBottom(x))
+            .selectAll("text") // 选择所有刻度标签
+            .style("font-size", "1.1em") // 增大字体大小
+            .style("font-weight", "bold"); // 加粗字体;
+
+        const brush = d3
+            .brushX()
+            .extent([
+                [0, 0],
+                [width, height],
+            ])
+            .on('brush end', debounce(brushed, 150));
+
+        overviewBrushInstance.value = brush;
+
+        const brushG = g.append('g').attr('class', 'brush').call(brush);
+
+        // 应用有的 brush_begin 和 brush_end
+        const start = parseFloat(brush_begin.value);
+        const end = parseFloat(brush_end.value);
+
+        if (!isNaN(start) && !isNaN(end) && start < end) {
+            const selection = [x(start), x(end)];
+            brushG.call(brush.move, selection);
+        } else {
+            // 如果 brush_begin 和 brush_end 无效，则使用默认范围
+            const initialSelection = brushG.node().__brushSelection || x.range();
+            const initialDomain = initialSelection.map(x.invert, x);
+            brush_begin.value = initialDomain[0].toFixed(4);
+            brush_end.value = initialDomain[1].toFixed(4);
+        }
+
+        brushSelections.value.overview = [x(start), x(end)];
+
+        function brushed(event) {
+            if (updatingBrush.value) return;
+
+            const selection = event.selection || x.range();
+            const newDomain = selection.map(x.invert, x);
+
+            updatingBrush.value = true;
+            brush_begin.value = newDomain[0].toFixed(4);
+            brush_end.value = newDomain[1].toFixed(4);
+            updatingBrush.value = false;
+
+            brushSelections.value.overview = selection;
+
+            selectedChannels.value.forEach((channel) => {
+                const channelName = `${channel.channel_name}_${channel.shot_number}`;
+                xDomains.value[channelName] = newDomain;
+            });
+
+            selectedChannels.value.forEach((channel) => {
+                fetchDataAndDrawChart(channel);
+            });
+
+            selectedChannels.value.forEach((channel) => {
+                const channelName = `${channel.channel_name}_${channel.shot_number}`;
+                const channelMatchedResults = matchedResults.value.filter(
+                    (r) => r.channel_name === channelName
+                );
+                channelMatchedResults.forEach((result) => {
+                    drawHighlightRects(channelName, [result]);
+                });
+            });
+        }
+
+    } catch (error) {
+        console.error('Error in drawOverviewChart:', error);
     }
+};
 
-    brushSelections.value.overview = [x(start), x(end)];
-
-    function brushed(event) {
+watch(
+    () => [store.state.brush_begin, store.state.brush_end],
+    ([newBegin, newEnd]) => {
         if (updatingBrush.value) return;
+        if (!overviewXScale.value || !overviewBrushInstance.value) return;
 
-        const selection = event.selection || x.range();
-        const newDomain = selection.map(x.invert, x);
+        const x = overviewXScale.value;
+        const brush = overviewBrushInstance.value;
+
+        const start = parseFloat(newBegin);
+        const end = parseFloat(newEnd);
+
+        if (isNaN(start) || isNaN(end) || start >= end) {
+            ElMessage.error('请输入有效的起始和结束值');
+            return;
+        }
+
+        // 更新本地的 brush 值
+        brush_begin.value = newBegin;
+        brush_end.value = newEnd;
+
+        const selection = [x(start), x(end)];
 
         updatingBrush.value = true;
-        brush_begin.value = newDomain[0].toFixed(4);
-        brush_end.value = newDomain[1].toFixed(4);
+        d3.select('#overview-chart').select('.brush').call(brush.move, selection);
         updatingBrush.value = false;
-
-        brushSelections.value.overview = selection;
 
         selectedChannels.value.forEach((channel) => {
             const channelName = `${channel.channel_name}_${channel.shot_number}`;
-            xDomains.value[channelName] = newDomain;
+            xDomains.value[channelName] = [start, end];
         });
 
         selectedChannels.value.forEach((channel) => {
@@ -742,51 +895,7 @@ const drawOverviewChart = () => {
             });
         });
     }
-
-};
-
-watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
-    if (updatingBrush.value) return;
-    if (!overviewXScale.value || !overviewBrushInstance.value) return;
-
-
-    store.commit("updatebrush", { begin: newBegin, end: newEnd })
-    const x = overviewXScale.value;
-    const brush = overviewBrushInstance.value;
-
-    const start = parseFloat(newBegin);
-    const end = parseFloat(newEnd);
-
-    if (isNaN(start) || isNaN(end) || start >= end) {
-        ElMessage.error('请输入有效的起始和结束值');
-        return;
-    }
-
-    const selection = [x(start), x(end)];
-
-    updatingBrush.value = true;
-    d3.select('#overview-chart').select('.brush').call(brush.move, selection);
-    updatingBrush.value = false;
-
-    selectedChannels.value.forEach((channel) => {
-        const channelName = `${channel.channel_name}_${channel.shot_number}`;
-        xDomains.value[channelName] = [start, end];
-    });
-
-    selectedChannels.value.forEach((channel) => {
-        fetchDataAndDrawChart(channel);
-    });
-
-    selectedChannels.value.forEach((channel) => {
-        const channelName = `${channel.channel_name}_${channel.shot_number}`;
-        const channelMatchedResults = matchedResults.value.filter(
-            (r) => r.channel_name === channelName
-        );
-        channelMatchedResults.forEach((result) => {
-            drawHighlightRects(channelName, [result]);
-        });
-    });
-});
+);
 
 const createGaussianKernel = (sigma, size) => {
     const kernel = [];
