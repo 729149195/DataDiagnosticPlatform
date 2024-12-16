@@ -14,7 +14,7 @@
                 <span>通道类别：</span>
                 <el-select-v2 
                     v-model="selectedChannelTypes" 
-                    :options="channelTypeOptions" 
+                    :options="channelTypeOptionsWithAll" 
                     placeholder="请选择"
                     multiple 
                     collapse-tags 
@@ -26,7 +26,7 @@
                 <span>通道名：</span>
                 <el-select-v2 
                     v-model="selectedChannelNames" 
-                    :options="channelNameOptions" 
+                    :options="channelNameOptionsWithAll" 
                     placeholder="请选择"
                     multiple 
                     collapse-tags 
@@ -36,23 +36,13 @@
                 <span>异常名：</span>
                 <el-select-v2 
                     v-model="selectederrorsNames" 
-                    :options="errorsNameOptions" 
+                    :options="errorsNameOptionsWithAll" 
                     placeholder="请选择"
                     multiple 
                     collapse-tags 
                     collapse-tags-tooltip 
                     clearable 
                 />
-                <!-- <span>异常来源：</span>
-                <el-select-v2 
-                    v-model="selectederrorsOrigin" 
-                    :options="errorsOriginOptions" 
-                    placeholder="请选择"
-                    multiple 
-                    collapse-tags 
-                    collapse-tags-tooltip 
-                    clearable 
-                /> -->
             </div>
         </div>
         <div class="buttons">
@@ -98,6 +88,11 @@ const errorsNameData = ref({});
 const errorsOriginOptions = ref([]);
 const selectederrorsOrigin = ref([]);
 const errorsOriginData = ref({});
+
+// 添加全选状态管理
+const channelTypesAllSelected = ref(false);
+const channelNamesAllSelected = ref(false);
+const errorsNamesAllSelected = ref(false);
 
 // 通用函数，用于设置选项和默认选中值
 const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
@@ -281,7 +276,7 @@ const selectedGunNumbersWithValues = computed(() => {
     }));
 });
 
-// 计算属性：获取选中通道类别及其对应的值
+// 计算属性：获取选中通道类别及其���应的值
 const selectedChannelTypesWithValues = computed(() => {
     return selectedChannelTypes.value.map(key => ({
         key,
@@ -370,6 +365,129 @@ const filterGunNumbers = () => {
 
     store.dispatch('fetchStructTree', finalResult);
 };
+
+// 在 setup 中添加新的计算属性和监听器
+const filteredChannelNameOptions = computed(() => {
+    if (!selectedChannelTypes.value.length) {
+        return channelNameOptions.value;
+    }
+    
+    // 获取所选通道类别下的所有通道名索引
+    const validIndices = new Set();
+    selectedChannelTypes.value.forEach(type => {
+        const indices = channelTypeData.value[type] || [];
+        indices.forEach(index => validIndices.add(index));
+    });
+
+    // 只返回在选中通道类别下有效的通道名选项
+    return channelNameOptions.value.filter(option => {
+        const channelIndices = channelNameData.value[option.value] || [];
+        return channelIndices.some(index => validIndices.has(index));
+    });
+});
+
+const filteredErrorsNameOptions = computed(() => {
+    if (!selectedChannelTypes.value.length && !selectedChannelNames.value.length) {
+        return errorsNameOptions.value;
+    }
+
+    // 获取所有有效的索引
+    const validIndices = new Set();
+    
+    // 从选中的通道类别获取索引
+    selectedChannelTypes.value.forEach(type => {
+        const indices = channelTypeData.value[type] || [];
+        indices.forEach(index => validIndices.add(index));
+    });
+
+    // 从选中的通道名获取索引
+    selectedChannelNames.value.forEach(name => {
+        const indices = channelNameData.value[name] || [];
+        indices.forEach(index => validIndices.add(index));
+    });
+
+    // 只返回在有效索引范围内的异常名选项
+    return errorsNameOptions.value.filter(option => {
+        const errorIndices = errorsNameData.value[option.value] || [];
+        return errorIndices.some(index => validIndices.has(index));
+    });
+});
+
+// 添加监听器来清理无效选项
+watch(selectedChannelTypes, (newTypes) => {
+    // 清理无效的通道名选择
+    selectedChannelNames.value = selectedChannelNames.value.filter(name => {
+        return filteredChannelNameOptions.value.some(option => option.value === name);
+    });
+    
+    // 清理无效的异常名选择
+    selectederrorsNames.value = selectederrorsNames.value.filter(name => {
+        return filteredErrorsNameOptions.value.some(option => option.value === name);
+    });
+});
+
+watch(selectedChannelNames, (newNames) => {
+    // 清理无效的异常名选择
+    selectederrorsNames.value = selectederrorsNames.value.filter(name => {
+        return filteredErrorsNameOptions.value.some(option => option.value === name);
+    });
+});
+
+// 修改计算属性，添加全选选项
+const channelTypeOptionsWithAll = computed(() => {
+  return [
+    {
+      value: 'select-all',
+      label: '全选所有通道类别',
+      disabled: false
+    },
+    ...channelTypeOptions.value
+  ];
+});
+
+const channelNameOptionsWithAll = computed(() => {
+  return [
+    {
+      value: 'select-all',
+      label: '全选所有通道名',
+      disabled: false
+    },
+    ...filteredChannelNameOptions.value
+  ];
+});
+
+const errorsNameOptionsWithAll = computed(() => {
+  return [
+    {
+      value: 'select-all',
+      label: '全选所有异常名',
+      disabled: false
+    },
+    ...filteredErrorsNameOptions.value
+  ];
+});
+
+// 添加 watch 来处理全选逻辑
+watch(selectedChannelTypes, (newVal) => {
+  if (newVal.includes('select-all')) {
+    // 如果选中了全选，则选中所有选项（除了全选选项本身）
+    selectedChannelTypes.value = channelTypeOptions.value.map(option => option.value);
+  }
+});
+
+watch(selectedChannelNames, (newVal) => {
+  if (newVal.includes('select-all')) {
+    // 如果选中了全选，则选中所有选项（除了全选选项本身）
+    selectedChannelNames.value = filteredChannelNameOptions.value.map(option => option.value);
+  }
+});
+
+watch(selectederrorsNames, (newVal) => {
+  if (newVal.includes('select-all')) {
+    // 如果选中了全选，则选中所有选项（除了全选选项本身）
+    selectederrorsNames.value = filteredErrorsNameOptions.value.map(option => option.value);
+  }
+});
 
 onMounted(async () => {
     await fetData();
