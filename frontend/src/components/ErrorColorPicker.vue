@@ -13,7 +13,7 @@
 </template>
 
 <script setup>
-import { ref, watch, defineProps, defineEmits, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   color: {
