@@ -472,7 +472,7 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
             // 只有在有选中通道时才进行渲染
             if (newChannels && newChannels.length > 0) {
                 await renderCharts();
-                // 确保有数据后再绘制���览图
+                // 确保有数据后再绘制总览图
                 if (overviewData.value && overviewData.value.length > 0) {
                     drawOverviewChart();
                 }

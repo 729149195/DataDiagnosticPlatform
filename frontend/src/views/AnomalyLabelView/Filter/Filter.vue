@@ -276,7 +276,7 @@ const selectedGunNumbersWithValues = computed(() => {
     }));
 });
 
-// 计算属性：获取选中通道类别及其���应的值
+// 计算属性：获取选中通道类别及其对应的值
 const selectedChannelTypesWithValues = computed(() => {
     return selectedChannelTypes.value.map(key => ({
         key,

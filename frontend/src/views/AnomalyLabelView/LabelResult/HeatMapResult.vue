@@ -353,7 +353,7 @@ async function renderHeatmap(channels) {
             }
             const errorData = await response.json();
             
-            // 将数据存��缓存
+            // 将数据存入缓存
             dataCache.value.set(errorCacheKey, errorData);
             
             // 存储带有 errorIdx 的错误数据

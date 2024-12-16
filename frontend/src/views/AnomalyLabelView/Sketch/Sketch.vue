@@ -86,7 +86,13 @@
     <!-- 绘图区域 -->
     <div class="sketch-container">
       <div class="canvas-container">
-        <canvas ref="canvas"></canvas>
+        <canvas 
+          ref="canvas"
+          @touchstart.passive="onCanvasTouch"
+          @touchmove.passive="onCanvasTouch"
+          @touchend.passive="onCanvasTouch"
+          @touchcancel.passive="onCanvasTouch"
+        ></canvas>
         <div class="buttons">
           <el-button type="danger" class="clear-button" @click="clearCanvas">
             清除
@@ -147,7 +153,7 @@ import {
 import { Search } from '@element-plus/icons-vue';
 import { useStore } from 'vuex';
 import paper from 'paper';
-import { DataSmoother } from './data-smoother'; // 导入数据平滑处理类
+import { DataSmoother } from './data-smoother'; // 导入数据平滑器
 import { PatternMatcher } from './pattern-matcher'; // 导入模式匹配类
 import curveTemplates from '@/assets/templates/curveTemplates.json'
 import { sampleData } from '@/utils/dataProcessing';
@@ -229,6 +235,8 @@ const lower_bound = computed({
 
 class DrawingApp {
   constructor(canvasElement) {
+    // Note: 已知问题 - paper.js 会触发 passive event listener 警告
+    // 这是由于 paper.js 内部实现导致的，不影响功能使用
     this.canvas = canvasElement;
     // 确保先清理之前的项目工具
     if (paper.project) {
@@ -238,9 +246,20 @@ class DrawingApp {
       paper.tools.forEach(tool => tool.remove());
     }
 
+    // 设置 paper.js 的全局配置
+    paper.settings.handleSize = 8;
+    paper.settings.hitTolerance = 8;
+
     // 重新初始化 paper
     paper.setup(this.canvas);
     this.project = paper.project;
+
+    // 设置视图配置
+    paper.view.settings = {
+      ...paper.view.settings,
+      handleSize: 8,
+      hitTolerance: 8
+    };
 
     this.size = { width: paper.view.size.width, height: paper.view.size.height };
     this.hitOptions = {
@@ -257,7 +276,7 @@ class DrawingApp {
 
     this.gridGroup = new paper.Group();
 
-    // 绑定方法
+    // 移除触摸事件相关的绑定
     this.onMouseDown = this.onMouseDown.bind(this);
     this.onMouseDrag = this.onMouseDrag.bind(this);
     this.onMouseUp = this.onMouseUp.bind(this);
@@ -274,6 +293,8 @@ class DrawingApp {
     }
     this.tool = new paper.Tool();
     this.tool.activate();
+    
+    // 只处理鼠标事件
     this.tool.onMouseDown = this.onMouseDown;
     this.tool.onMouseDrag = this.onMouseDrag;
     this.tool.onMouseUp = this.onMouseUp;
@@ -286,10 +307,10 @@ class DrawingApp {
     let hitResult = this.project.hitTest(event.point, this.hitOptions);
 
     if (hitResult && hitResult.item) {
-      // 用户点击了一个项目
+      // 用户点击了一个目
       let clickedPath = hitResult.item;
       if (!(clickedPath instanceof paper.Path)) {
-        // 如果点击不是 Path，而是其子项
+        // 果点击不是 Path，而是其子项
         clickedPath = clickedPath.parent;
       }
 
@@ -311,7 +332,7 @@ class DrawingApp {
           this.segment = hitResult.segment;
           this.handle = hitResult.type === 'handle-in' ? 'handleIn' : 'handleOut';
         } else if (hitResult.type === 'stroke' && event.modifiers.shift) {
-          // 添加新点
+          // 添加点
           const location = hitResult.location;
           let newSegment = this.path.insert(location.index + 1, event.point);
           this.segment = newSegment;
@@ -373,7 +394,7 @@ class DrawingApp {
       paper.view.update();
     }
 
-    // 重置选中的段和控制柄
+    // 重选中的段和控制柄
     this.segment = null;
     this.handle = null;
   }
@@ -450,7 +471,7 @@ class DrawingApp {
     }
     if (paper.project) {
       paper.project.clear();
-      // 重新初始化网格
+      // 新初始化网格
       this.gridGroup = new paper.Group();
       this.drawGrid();
       // 重新设置工具
@@ -480,6 +501,52 @@ class DrawingApp {
     } else {
       return [];
     }
+  }
+
+  // 修改触摸事件处理方法
+  onTouchStart(event) {
+    if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const point = new paper.Point(
+        touch.clientX - rect.left,
+        touch.clientY - rect.top
+      );
+      
+      // 调用现有的鼠标事件处理逻辑
+      this.onMouseDown({
+        point: point,
+        modifiers: {
+          alt: false,
+          shift: false
+        }
+      });
+    }
+  }
+
+  onTouchMove(event) {
+    if (event.touches.length === 1) {
+      const touch = event.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const point = new paper.Point(
+        touch.clientX - rect.left,
+        touch.clientY - rect.top
+      );
+      
+      // 调用现有的鼠标事件处理逻辑
+      this.onMouseDrag({
+        point: point,
+        delta: this.previousPoint ? point.subtract(this.previousPoint) : new paper.Point(0, 0)
+      });
+      
+      this.previousPoint = point;
+    }
+  }
+
+  onTouchEnd(event) {
+    // 调用现有的鼠标事件处理逻辑
+    this.onMouseUp();
+    this.previousPoint = null;
   }
 }
 
@@ -569,7 +636,7 @@ const submitData = async () => {
       if (channelData && queryPattern.length > 0) {
         const sampledData = sampleData(channelData, sampling.value);
         
-        // 创建数据点数组
+        // 创建据点数组
         const dataPoints = sampledData.Y_value.map((y, index) => ({
           x: sampledData.X_value[index],
           y: y,
@@ -641,7 +708,7 @@ const submitData = async () => {
 const clearCanvas = () => {
   if (drawingApp) {
     drawingApp.clear();
-    // 清除 store 中的匹配结果
+    // 清 store 中的匹配结果
     store.dispatch('clearMatchedResults');
   }
 };
@@ -659,7 +726,7 @@ const exportCurrentCurve = () => {
 // 加载选中的模板
 const loadTemplate = (template) => {
   if (drawingApp && template && template.points) {
-    // 清除当前的路径
+    // 清除前的路径
     drawingApp.clear();
     
     // 创建新路径
@@ -679,7 +746,7 @@ const loadTemplate = (template) => {
     drawingApp.path.smooth({ type: 'catmull-rom', factor: 0.5 });
     drawingApp.path.fullySelected = true;
     
-    // 更新视图
+    // 更新图
     paper.view.update();
   }
 }
@@ -726,7 +793,7 @@ const previewTemplate = (template, canvas) => {
   }
 }
 
-// 添加全选状态管理
+// 添加全选状态处理
 const groupSelectAll = ref({});
 
 // 处理分组全选
@@ -789,6 +856,42 @@ onMounted(() => {
   });
   allSelected.value = false;
 });
+
+// 修改触摸事件处理函数
+const onCanvasTouch = (event) => {
+  if (!drawingApp) return;
+  
+  // 将触摸事件转换为鼠标事件
+  const touch = event.touches?.[0] || event.changedTouches?.[0];
+  if (!touch) return;
+  
+  const rect = canvas.value.getBoundingClientRect();
+  const point = new paper.Point(
+    touch.clientX - rect.left,
+    touch.clientY - rect.top
+  );
+  
+  // 根据事件类型调用相应的处理函数
+  switch (event.type) {
+    case 'touchstart':
+      drawingApp.onMouseDown({ point });
+      break;
+    case 'touchmove':
+      drawingApp.onMouseDrag({ 
+        point,
+        delta: drawingApp.previousPoint ? 
+          point.subtract(drawingApp.previousPoint) : 
+          new paper.Point(0, 0)
+      });
+      drawingApp.previousPoint = point;
+      break;
+    case 'touchend':
+    case 'touchcancel':
+      drawingApp.onMouseUp();
+      drawingApp.previousPoint = null;
+      break;
+  }
+};
 </script>
 
 <style scoped>
@@ -833,6 +936,8 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .canvas-container {
@@ -840,7 +945,14 @@ onMounted(() => {
   flex: 1;
   min-height: 0;
   height: 0;
-  /* 关键：确保canvas容器不会超出其父容器 */
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  isolation: isolate;
 }
 
 canvas {
@@ -849,6 +961,14 @@ canvas {
   left: 0;
   width: 100%;
   height: 100%;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  isolation: isolate;
 }
 
 .controls-wrapper {
