@@ -54,10 +54,10 @@
                   <span>异常类别</span>
                 </div>
                 <el-scrollbar height="55vh" :always="false">
-                  <div v-show="color_table_value === true">
+                  <div v-if="color_table_value === true">
                     <ChannelType />
                   </div>
-                  <div v-show="color_table_value === false">
+                  <div v-if="color_table_value === false">
                     <ExceptionType />
                   </div>
                 </el-scrollbar>

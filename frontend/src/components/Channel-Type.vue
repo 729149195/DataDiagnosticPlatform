@@ -90,8 +90,8 @@ import ChannelColorPicker from './ChannelColorPicker.vue' // Import the new comp
 
 const store = useStore()
 
-const INITIAL_LOAD_COUNT = 50;
-const BATCH_SIZE = 50;
+const INITIAL_LOAD_COUNT = 1;
+const BATCH_SIZE = 1;
 
 const visibleData = ref([]);
 const currentIndex = ref(0);
@@ -147,7 +147,11 @@ const initializeVisibleData = () => {
 const handleScroll = async (e) => {
   if (loading.value) return;
   
-  const { scrollTop, clientHeight, scrollHeight } = e.target;
+  // 获取 scrollbar 实例的 wrap 元素
+  const wrap = scrollbarRef.value?.wrap;
+  if (!wrap) return;
+  
+  const { scrollTop, clientHeight, scrollHeight } = wrap;
   
   if (scrollHeight - scrollTop - clientHeight < 100 && currentIndex.value < rawData.value.length) {
     loading.value = true;
