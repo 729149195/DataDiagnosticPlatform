@@ -87,30 +87,18 @@
                 <span class="title">实验数据探索</span>
                 <span style="display: flex; align-items: center;">
                   <span style="margin-right: 8px;">采样频率</span>
-                  <div class="sampling-control">
-                    <el-input v-model="sampling" class="sampling-wrapper">
-                      <template #prepend>
-                        <el-button-group>
-                          <el-button type="primary" @click="decreaseSampling(10)">-10</el-button>
-                          <el-button type="primary" @click="decreaseSampling(1)">-1</el-button>
-                          <el-button type="primary" @click="decreaseSampling(0.1)">-0.1</el-button>
-                        </el-button-group>
-                      </template>
-                      <template #suffix>
-                        KHz
-                      </template>
-                      <template #append>
-                        <el-button-group>
-                          <el-button type="primary" @click="increaseSampling(0.1)">+0.1</el-button>
-                          <el-button type="primary" @click="increaseSampling(1)">+1</el-button>
-                          <el-button type="primary" @click="increaseSampling(10)">+10</el-button>
-                        </el-button-group>
-                      </template>
-                    </el-input>
-                  </div>
+                  <el-input-number 
+                    v-model="sampling" 
+                    :precision="3" 
+                    :step="0.1" 
+                    :min="0.001"
+                    :max="10000"
+                    @change="updateSampling"
+                  />
+                  <span style="margin-left: 4px;">KHz</span>
                 </span>
                 <span>平滑度 <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0"
-                    @change="updateSmoothness" /></span>
+                  @change="updateSmoothness" /></span>
                 <el-switch v-model="test_channel_number"
                   style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
                   inactive-text="多通道单行" />
@@ -512,20 +500,6 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     }
   }
 }, { deep: true });
-
-const increaseSampling = (step) => {
-  let newValue = sampling.value + step;
-  if (newValue > 10000) newValue = 10000;
-  sampling.value = Number(newValue.toFixed(3));
-  updateSampling(sampling.value);
-};
-
-const decreaseSampling = (step) => {
-  let newValue = sampling.value - step;
-  if (newValue < 0.001) newValue = 0.001;
-  sampling.value = Number(newValue.toFixed(3));
-  updateSampling(sampling.value);
-};
 </script>
 
 
@@ -720,120 +694,6 @@ const decreaseSampling = (step) => {
     flex: 1;
     position: relative;
     height: 100%;
-  }
-}
-
-.sampling-control {
-  display: inline-flex;
-  align-items: center;
-
-  .sampling-wrapper {
-    width: auto;
-    
-    :deep(.el-input__wrapper) {
-      padding: 0 8px 0 0; // 给后缀留出一些空间
-    }
-    
-    :deep(.el-input__inner) {
-      width: 50px;
-      text-align: center;
-    }
-    
-    :deep(.el-input__suffix) {
-      color: var(--el-text-color-regular);
-      margin-right: 4px;
-    }
-    
-    :deep(.el-input-group__prepend),
-    :deep(.el-input-group__append) {
-      padding: 0;
-      background-color: transparent;
-      border: none;
-    }
-    
-    :deep(.el-button-group) {
-      .el-button {
-        margin: 0;
-        border-radius: 0;
-        color: white;
-        
-        &:hover {
-          opacity: 0.9;
-        }
-        
-        &:first-child {
-          border-top-left-radius: 4px;
-          border-bottom-left-radius: 4px;
-        }
-        
-        &:last-child {
-          border-top-right-radius: 4px;
-          border-bottom-right-radius: 4px;
-        }
-      }
-    }
-  }
-}
-
-:deep(.el-button-group) {
-  .el-button {
-    margin: 0;
-    border-radius: 0;
-    color: white;
-    
-    &:hover {
-      opacity: 0.9;
-    }
-    
-    &:first-child {
-      border-top-left-radius: 4px;
-      border-bottom-left-radius: 4px;
-    }
-    
-    &:last-child {
-      border-top-right-radius: 4px;
-      border-bottom-right-radius: 4px;
-    }
-  }
-}
-
-// 左侧按钮组（减号按钮，从深到浅）
-:deep(.el-input-group__prepend) {
-  .el-button-group {
-    .el-button {
-      &:nth-child(1) {
-        background-color: #409EFF;
-        border-color: #409EFF;
-      }
-      &:nth-child(2) {
-        background-color: #66B1FF;
-        border-color: #66B1FF;
-      }
-      &:nth-child(3) {
-        background-color: #8CC5FF;
-        border-color: #8CC5FF;
-      }
-    }
-  }
-}
-
-// 右侧按钮组（加号按钮，从浅到深）
-:deep(.el-input-group__append) {
-  .el-button-group {
-    .el-button {
-      &:nth-child(1) {
-        background-color: #8CC5FF;
-        border-color: #8CC5FF;
-      }
-      &:nth-child(2) {
-        background-color: #66B1FF;
-        border-color: #66B1FF;
-      }
-      &:nth-child(3) {
-        background-color: #409EFF;
-        border-color: #409EFF;
-      }
-    }
   }
 }
 </style>
