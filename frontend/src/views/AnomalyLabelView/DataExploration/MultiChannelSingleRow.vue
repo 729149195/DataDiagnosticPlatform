@@ -308,7 +308,7 @@ const getProgressPercentage = computed(() => {
             const progress = loadingStates.channels.get(channelKey) || 0;
             totalProgress += progress;
         });
-        return Math.min(Math.floor((totalProgress / channelCount) / 2), 50);
+        return Math.floor((totalProgress / channelCount) / 2);
     } else if (!renderingStates.completed) {
         // 渲染阶段 (50-100%)
         selectedChannels.value.forEach(channel => {
@@ -316,7 +316,7 @@ const getProgressPercentage = computed(() => {
             const progress = renderingStates.channels.get(channelKey) || 0;
             totalProgress += progress;
         });
-        return Math.min(50 + Math.floor((totalProgress / channelCount) / 2), 100);
+        return Math.floor(50 + (totalProgress / channelCount) / 2);
     }
     return 100;
 });
@@ -352,7 +352,7 @@ const fetchDataAndStore = async (channel) => {
             const loadingInterval = setInterval(() => {
                 const currentProgress = loadingStates.channels.get(channelKey) || 0;
                 if (currentProgress < 100) {
-                    loadingStates.channels.set(channelKey, Math.min(currentProgress + 25, 100));
+                    loadingStates.channels.set(channelKey, Math.min(currentProgress + 20, 100));
                 }
             }, 50);
             
@@ -365,8 +365,8 @@ const fetchDataAndStore = async (channel) => {
             // 模拟进度更新
             const progressInterval = setInterval(() => {
                 const currentProgress = loadingStates.channels.get(channelKey) || 0;
-                if (currentProgress < 95) {  // 改为95%，给实际加载留出余地
-                    loadingStates.channels.set(channelKey, Math.min(currentProgress + 10, 95));
+                if (currentProgress < 90) {
+                    loadingStates.channels.set(channelKey, Math.min(currentProgress + 10, 90));
                 }
             }, 100);
 
@@ -399,8 +399,8 @@ const fetchDataAndStore = async (channel) => {
         // 开始渲染进度
         const updateRenderProgress = () => {
             const currentProgress = renderingStates.channels.get(channelKey) || 0;
-            if (currentProgress < 95 && !renderingStates.completed) {  // 改为95%
-                renderingStates.channels.set(channelKey, Math.min(currentProgress + 5, 95));
+            if (currentProgress < 90 && !renderingStates.completed) {
+                renderingStates.channels.set(channelKey, Math.min(currentProgress + 2, 90));
                 requestAnimationFrame(updateRenderProgress);
             }
         };
@@ -410,7 +410,7 @@ const fetchDataAndStore = async (channel) => {
         await processChannelData(data, channel);
         
         // 更新渲染完成状态
-        renderingStates.channels.set(channelKey, 100);  // 确保设置为100%
+        renderingStates.channels.set(channelKey, 100);
         
         // 检查是否所有通道都渲染完成
         const allChannelsRendered = Array.from(renderingStates.channels.values())
@@ -1072,12 +1072,12 @@ svg {
     border: none;
 }
 
-/* 将颜色色块变为��形 */
+/* 将颜色色块变为圆形 */
 :deep(.el-color-picker__color) {
     border-radius: 50%;
 }
 
-/* 将下拉面板中的选色区域的选变为圆形 */
+/* 将下拉面板中的选色区域的选���变为圆形 */
 :deep(.el-color-dropdown__main-wrapper .el-color-alpha-slider__thumb,
     .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
     width: 14px;
