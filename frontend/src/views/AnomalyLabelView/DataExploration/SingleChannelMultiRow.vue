@@ -117,8 +117,8 @@ const overviewData = ref([]);
 const xDomains = ref({});
 const anomalies = ref([]);
 
-const brush_begin = ref(-2);
-const brush_end = ref(6);
+const brush_begin = ref(0);
+const brush_end = ref(0);
 
 const timeAxisRange = computed(() => {
     if (

@@ -67,8 +67,8 @@ const normalize = (yValues) => {
 // Reactive references
 const overviewData = ref([]);
 const xDomains = ref({ global: null });
-const brush_begin = ref(-2);
-const brush_end = ref(6);
+const brush_begin = ref(0);
+const brush_end = ref(0);
 const brushSelections = ref({ overview: null });
 const channelsData = ref([]);
 const exposeData = ref([])
@@ -319,7 +319,7 @@ const retryRequest = async (fn, retries = 3, delay = 1000) => {
     }
 };
 
-// 获取数据并存储到 channelsData，同时利用缓存避免重复请求
+// 获取数据并存储到 channelsData，同时���用缓存避免重复请求
 const fetchDataAndStore = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -393,7 +393,7 @@ const fetchDataAndStore = async (channel) => {
         };
         requestAnimationFrame(updateRenderProgress);
 
-        // 处理数据并绘制图表
+        // 处理数据并��制图表
         await processChannelData(data, channel);
         
         // 渲染完成
@@ -655,7 +655,7 @@ const drawCombinedChart = () => {
     const dataGroup = g.append("g")
         .attr("clip-path", "url(#clip)");
 
-    // 计算所有数据的范围
+    // 计算所有数据��范围
     const allX = channelsData.value.flatMap(d => d.X_value);
     const allY = channelsData.value.flatMap(d => d.Y_value);
     const xExtent = xDomains.value.global || d3.extent(allX);
@@ -948,6 +948,7 @@ const processChannelData = async (data, channel) => {
         // 更新图表数据
         channelsData.value.push({
             channelName: channel.channel_name,
+            channelshotnumber: channel.shot_number,
             X_value: sampledData.X_value,
             Y_value: sampledData.Y_value,
             Y_original: sampledData.Y_original,
@@ -1066,7 +1067,7 @@ svg {
     border-radius: 50%;
 }
 
-/* 将下拉面板中的预设颜色方块变为圆形 */
+/* 将下拉面板中的预设颜色��块变为圆形 */
 :deep(.el-color-predefine__color-selector) {
     border-radius: 50%;
 }
@@ -1105,7 +1106,7 @@ svg {
     color: #409EFF;
 }
 
-/* 自定义进度条���式 */
+/* 自定义进度条式 */
 :deep(.el-progress-bar__outer) {
     background-color: #f0f2f5;
     border-radius: 4px;
