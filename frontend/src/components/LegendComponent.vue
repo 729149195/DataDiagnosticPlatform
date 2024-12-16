@@ -2,8 +2,13 @@
 <template>
     <div class="legend" id="channelLegendContainer">
         <div class="legend-item" v-for="(item, index) in legendItems" :key="index">
-            <ChannelColorPicker v-model:color="item.color" :predefineColors="predefineColors"
-                @change="colorChanged(item)" />
+            <ChannelColorPicker 
+                v-model:color="item.color" 
+                :predefineColors="predefineColors"
+                @change="colorChanged(item)"
+                :channelName="item.channelName"
+                :shotNumber="item.shotNumber"
+            />
             <span :style="{ color: item.color }" class="legend-text">
                 {{ item.text }}
             </span>
@@ -45,6 +50,8 @@ const legendItems = computed(() => {
             text,
             color: data.color,
             channelKey: `${data.channelName}_${data.channelshotnumber}`,
+            channelName: data.channelName,  // 添加通道名称
+            shotNumber: data.channelshotnumber  // 添加炮号
         };
     });
 });
@@ -72,7 +79,6 @@ const colorChanged = (item) => {
     align-items: center;
     justify-content: center;
     margin-right: 15px;
-
 }
 
 .legend-text {

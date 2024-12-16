@@ -98,7 +98,7 @@
                   <span style="margin-left: 4px;">KHz</span>
                 </span>
                 <span>平滑度 <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0"
-                  @change="updateSmoothness" /></span>
+                    @change="updateSmoothness" /></span>
                 <el-switch v-model="test_channel_number"
                   style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
                   inactive-text="多通道单行" />

@@ -5,12 +5,13 @@
             <div class="channel-content">
                 <div style="display: flex; align-items: center;">
                     {{ channel.channel_name }}
+                    
+                </div>
+                <!-- <el-color-picker v-model="channel.color" @change="setSingleChannelColor(channel)"
+                    class="channel-color-picker" show-alpha :predefine="predefineColors" size="small" /> -->
                     <el-tag link effect="plain" type="info" class="shot-number-tag">
                         {{ channel.shot_number }}
                     </el-tag>
-                </div>
-                <el-color-picker v-model="channel.color" @change="setSingleChannelColor(channel)"
-                    class="channel-color-picker" show-alpha :predefine="predefineColors" size="small" />
             </div>
             <el-divider />
             <div :id="'chart-' + sanitizeChannelName(channel.channel_name + '_' + channel.shot_number)"

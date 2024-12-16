@@ -15,13 +15,13 @@
                   :predefineColors="predefineColors" 
                   @change="setChannelColor(item)" 
                   @update:color="item.color = $event"
+                  :channelName="item.channel_type"
                   class="category-color-picker"
                 />
                 <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                   class="checkbox-margin"></el-checkbox>
               </div>
             </td>
-
             <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
               'channel-name': true,
               'channel-name-last': cIndex === item.channels.length - 1
@@ -35,6 +35,8 @@
                     :predefineColors="predefineColors" 
                     @change="setSingleChannelColor(channel)" 
                     @update:color="channel.color = $event"
+                    :shotNumber="channel.shot_number"
+                    :channelName="channel.channel_name"
                     class="channel-color-picker" 
                   />
                   <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"

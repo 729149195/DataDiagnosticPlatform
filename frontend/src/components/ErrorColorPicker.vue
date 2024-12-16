@@ -1,13 +1,13 @@
 <template>
-  <div class="color-picker-wrapper">
+  <div class="error-picker-wrapper">
     <el-color-picker 
       v-model="localColor" 
       @change="handleChange" 
-      class="color-picker" 
+      class="error-picker" 
       size="small" 
       show-alpha
-      :predefine="predefineColors"
-      :popper-class="`custom-color-picker-${uniqueId}`"
+      :predefine="defaultColors"
+      :popper-class="`custom-error-picker-${uniqueId}`"
     />
   </div>
 </template>
@@ -22,7 +22,33 @@ const props = defineProps({
   },
   predefineColors: {
     type: Array,
-    default: () => []
+    default: () => [
+      '#000000', // Black
+      '#4169E1', // Royal Blue
+      '#DC143C', // Crimson
+      '#228B22', // Forest Green
+      '#FF8C00', // Dark Orange
+      '#800080', // Purple
+      '#FF1493', // Deep Pink
+      '#40E0D0', // Turquoise
+      '#FFD700', // Gold
+      '#8B4513', // Saddle Brown
+      '#2F4F4F', // Dark Slate Gray
+      '#1E90FF', // Dodger Blue
+      '#32CD32', // Lime Green
+      '#FF6347', // Tomato
+      '#DA70D6', // Orchid
+      '#191970', // Midnight Blue
+      '#FA8072', // Salmon
+      '#6B8E23', // Olive Drab
+      '#6A5ACD', // Slate Blue
+      '#FF7F50', // Coral
+      '#4682B4'  // Steel Blue
+    ]
+  },
+  errorName: {
+    type: String,
+    default: ''
   },
   shotNumber: {
     type: [String, Number],
@@ -37,30 +63,17 @@ const props = defineProps({
 const emit = defineEmits(['update:color', 'change'])
 const localColor = ref(props.color)
 const uniqueId = ref(Math.random().toString(36).substr(2, 9))
+const defaultColors = ref(props.predefineColors)
 
 // 动态添加样式
 onMounted(() => {
-  const styleId = `color-picker-style-${uniqueId.value}`
+  const styleId = `error-picker-style-${uniqueId.value}`
   const styleEl = document.createElement('style')
   styleEl.id = styleId
   
-  // 根据是否有炮号来决定显示的文本
-  let displayText;
-  if (props.shotNumber) {
-    // 如果 channelName 包含 | 符号，说明是异常类型的颜色选择器
-    if (props.channelName.includes('|')) {
-      const [channelName, errorName] = props.channelName.split('|').map(s => s.trim());
-      displayText = `修改${props.shotNumber} | ${channelName} | ${errorName}的颜色`;
-    } else {
-      displayText = `修改${props.shotNumber} | ${props.channelName}通道的颜色`;
-    }
-  } else {
-    displayText = `修改${props.channelName}类所有通道的颜色`;
-  }
-
   styleEl.textContent = `
-    .custom-color-picker-${uniqueId.value} .el-color-dropdown__main-wrapper::before {
-      content: '${displayText}';
+    .custom-error-picker-${uniqueId.value} .el-color-dropdown__main-wrapper::before {
+      content: '修改${props.shotNumber} | ${props.channelName} | ${props.errorName}的颜色';
       display: block;
       padding: 8px 12px;
       color: #606266;
@@ -74,7 +87,7 @@ onMounted(() => {
 
 // 清理样式
 onBeforeUnmount(() => {
-  const styleEl = document.getElementById(`color-picker-style-${uniqueId.value}`)
+  const styleEl = document.getElementById(`error-picker-style-${uniqueId.value}`)
   if (styleEl) {
     styleEl.remove()
   }
@@ -96,11 +109,7 @@ const handleChange = (newColor) => {
 </script>
 
 <style>
-.color-picker-wrapper {
+.error-picker-wrapper {
   display: inline-block;
 }
-
-.el-color-dropdown__main-wrapper {
-  position: relative;
-}
-</style>
+</style> 

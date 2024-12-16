@@ -43,7 +43,7 @@
                     v-show="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100"
                 >
                     <ChannelColorPicker :color="channel.color" :predefineColors="predefineColors"
-                        @change="updateChannelColor(channel)" @update:color="channel.color = $event" />
+                        @change="updateChannelColor(channel)" @update:color="channel.color = $event" :channelName="channel.channel_name" :shotNumber="channel.shot_number" />
                 </div>
             </div>
             <div class="overview-container">

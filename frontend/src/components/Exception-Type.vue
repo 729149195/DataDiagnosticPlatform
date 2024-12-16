@@ -10,8 +10,8 @@
               class="channel-type">
               <span>{{ item.channel_type }}</span>
               <div class="type-header">
-                <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
-                  size="small" show-alpha :predefine="predefineColors" />
+                <!-- <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
+                  size="small" show-alpha :predefine="predefineColors" /> -->
                 <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                   class="checkbox-margin"></el-checkbox>
               </div>
@@ -51,8 +51,15 @@
                 <span :title="error.error_name">
                   {{ formatError(error.error_name) }}
                 </span>
-                <el-color-picker v-model="error.color" @change="setErrorColor(channel, error)"
-                  class="error-color-picker" show-alpha size="small" :predefine="predefineColors" />
+                <ErrorColorPicker
+                  :color="error.color"
+                  :predefine="predefineColors"
+                  :error-name="error.error_name"
+                  :shot-number="channel.shot_number"
+                  :channel-name="channel.channel_name"
+                  @change="setErrorColor(channel, error)"
+                  @update:color="error.color = $event"
+                />
               </div>
             </td>
 
@@ -65,9 +72,10 @@
 
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
+import { shallowRef, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import { ElMessage } from 'element-plus';
+import ErrorColorPicker from './ErrorColorPicker.vue'
 
 // Vuex store
 const store = useStore();
@@ -76,7 +84,7 @@ const store = useStore();
 const data = computed(() => store.getters.getStructTree);
 
 // 预定义颜色
-const predefineColors = ref([
+const predefineColors = shallowRef([
   '#000000', '#4169E1', '#DC143C', '#228B22', '#FF8C00',
   '#800080', '#FF1493', '#40E0D0', '#FFD700', '#8B4513',
   '#2F4F4F', '#1E90FF', '#32CD32', '#FF6347', '#DA70D6',
@@ -84,10 +92,10 @@ const predefineColors = ref([
   '#4682B4'
 ]);
 
-const dataLoaded = ref(false);
+const dataLoaded = shallowRef(false);
 
 // 存储原始颜色，以便在卸载组件时恢复
-const originalColors = ref({});
+const originalColors = shallowRef({});
 
 // 辅助方法
 
@@ -130,61 +138,104 @@ const hiddenErrorsCount = (channel) => {
   return channel.errors.length - channel.displayedErrors.length;
 };
 
+// 更新选中的通道并同步到 Vuex Store
+const updateSelectedChannels = () => {
+  if (!data.value || !Array.isArray(data.value)) return;
+
+  const selected = data.value.flatMap(item => {
+    if (!item || !Array.isArray(item.channels)) return [];
+    
+    return item.channels
+      .filter(channel => channel.checked)
+      .map(channel => ({
+        channel_key: channel.channel_key,
+        channel_name: channel.channel_name,
+        shot_number: channel.shot_number,
+        color: channel.color,
+        channel_type: item.channel_type,
+        errors: channel.errors.map(error => ({
+          error_key: error.error_key,
+          error_name: error.error_name,
+          color: error.color
+        }))
+      }));
+  });
+
+  store.commit('updateSelectedChannels', selected);
+};
+
 // 初始化数据：设置默认颜色和 displayedErrors
 const initializeData = () => {
-  data.value.forEach(item => {
-    item.channels.forEach(channel => {
-      // 保存原始颜色
-      if (!originalColors.value[channel.channel_key]) {
-        originalColors.value[channel.channel_key] = channel.color;
-      }
-
-      // 设置默认颜色（如果需要）
-      if (!channel.color) {
-        channel.color = '#D3D3D3';
-      }
-
-      // 初始化 displayedErrors
-      if (!channel.displayedErrors) {
-        channel.displayedErrors = channel.errors.slice(0, 1);
-      }
-
-      // 初始化每个异常的 color 属性
-      channel.errors.forEach(error => {
-        if (!error.hasOwnProperty('color')) {
-          error.color = '#000000'; // 设置默认颜色
+  if (!data.value || !Array.isArray(data.value)) return;
+  
+  // 使用 requestAnimationFrame 分批处理数据
+  const processChannels = (startIndex = 0) => {
+    const BATCH_SIZE = 10;
+    const items = data.value;
+    
+    for (let i = startIndex; i < Math.min(startIndex + BATCH_SIZE, items.length); i++) {
+      const item = items[i];
+      if (!item || !Array.isArray(item.channels)) continue;
+      
+      item.channels.forEach(channel => {
+        if (!channel || !Array.isArray(channel.errors)) return;
+        
+        // 保存原始颜色
+        if (!originalColors.value[channel.channel_key]) {
+          originalColors.value[channel.channel_key] = channel.color;
         }
+
+        // 设置默认颜色（如果需要）
+        if (!channel.color) {
+          channel.color = '#D3D3D3';
+        }
+
+        // 初始化 displayedErrors
+        if (!channel.displayedErrors) {
+          channel.displayedErrors = channel.errors.slice(0, 1);
+        }
+
+        // 初始化每个异常的 color 属性
+        channel.errors.forEach(error => {
+          if (!error.hasOwnProperty('color')) {
+            error.color = '#000000'; // 设置默认颜色
+          }
+        });
       });
-    });
-  });
+    }
+    
+    if (startIndex + BATCH_SIZE < items.length) {
+      requestAnimationFrame(() => processChannels(startIndex + BATCH_SIZE));
+    }
+  };
+  
+  requestAnimationFrame(() => processChannels());
 };
 
-const setErrorColor = (channel, error) => {
-  if (channel && error) {
+// 监听数据变化
+watch(
+  () => data.value,
+  (newData) => {
+    if (newData && Array.isArray(newData)) {
+      dataLoaded.value = true;
+      initializeData();
+      updateSelectedChannels();
+    }
+  },
+  { immediate: true }
+);
+
+onMounted(() => {
+  if (data.value && Array.isArray(data.value)) {
+    dataLoaded.value = true;
+    initializeData();
     updateSelectedChannels();
   }
-};
-
-// 在组件挂载时初始化数据并更新选中的通道
-onMounted(() => {
-  dataLoaded.value = true;
-  initializeData();
-  updateSelectedChannels();
 });
 
-// 在组件卸载前恢复原始颜色并更新选中的通道
 onBeforeUnmount(() => {
   revertColors();
   updateSelectedChannels();
-});
-
-// 监听数据变化，确保在过滤后同步选中状态
-watch(data, () => {
-  if (data.value) {
-    initializeData();
-    synchronizeSelectedChannels();
-    updateSelectedChannels();
-  }
 });
 
 // 恢复通道的原始颜色
@@ -236,58 +287,16 @@ const clearChannelTypeCheckbox = (item) => {
   }
 };
 
-// 更新选中的通道并同步到 Vuex Store
-const updateSelectedChannels = () => {
-  if (!data.value) return;
-
-  const selected = data.value.flatMap(item =>
-    item.channels
-      .filter(channel => channel.checked)
-      .map(channel => ({
-        channel_key: channel.channel_key, // 添加 channel_key
-        channel_name: channel.channel_name,
-        shot_number: channel.shot_number,
-        color: channel.color,
-        channel_type: item.channel_type,
-        errors: channel.errors.map(error => ({
-          error_key: error.error_key, // 添加 error_key
-          error_name: error.error_name,
-          color: error.color
-        }))
-      }))
-  );
-
-  store.commit('updateSelectedChannels', selected);
-};
-
-// 同步选中状态，根据 Vuex Store 中的 selectedChannels 设置 channel.checked 和 error.checked
-const synchronizeSelectedChannels = () => {
-  const selectedChannels = store.getters.getSelectedChannels;
-
-  data.value.forEach(item => {
-    item.channels.forEach(channel => {
-      const isSelected = selectedChannels.some(sc => sc.channel_key === channel.channel_key);
-      channel.checked = isSelected;
-
-      // 同步错误选中状态
-      channel.errors.forEach(error => {
-        const isErrorSelected = selectedChannels
-          .find(sc => sc.channel_key === channel.channel_key)
-          ?.errors.some(se => se.error_key === error.error_key);
-        if (isErrorSelected !== undefined) {
-          error.checked = isErrorSelected;
-        } else {
-          error.checked = false;
-        }
-      });
-    });
-  });
-};
-
 // 切换显示所有异常类别
 const toggleShowAllErrors = (channel) => {
   channel.showAllErrors = !channel.showAllErrors;
   channel.displayedErrors = channel.showAllErrors ? [...channel.errors] : channel.errors.slice(0, 1);
+};
+
+const setErrorColor = (channel, error) => {
+  if (channel && error) {
+    updateSelectedChannels();
+  }
 };
 </script>
 
@@ -416,5 +425,19 @@ const toggleShowAllErrors = (channel) => {
 
 :deep(.el-color-predefine__color-selector)::before {
   border-radius: 50%;
+}
+
+/* 添加新的样式 */
+:deep(.error-color-picker-dropdown) {
+  .el-color-dropdown__btns {
+    &::before {
+      content: "正在修改异常颜色";
+      display: block;
+      text-align: center;
+      padding: 8px 0;
+      color: #606266;
+      font-size: 14px;
+    }
+  }
 }
 </style>
