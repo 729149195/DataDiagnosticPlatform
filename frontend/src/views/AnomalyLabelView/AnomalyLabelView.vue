@@ -531,6 +531,10 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
   height: 100vh;
   background-color: #e2e2e2;
   overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .header {
@@ -695,5 +699,45 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     position: relative;
     height: 100%;
   }
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input__inner {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让对话框中的输入框文字可以选中 */
+.el-dialog .el-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让数字输入框内的文字可以选中 */
+.el-input-number {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让下拉菜单中的文字可以选中 */
+.el-dropdown-menu {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }
 </style>

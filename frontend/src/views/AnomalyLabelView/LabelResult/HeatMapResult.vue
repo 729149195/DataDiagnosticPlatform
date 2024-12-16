@@ -353,7 +353,7 @@ async function renderHeatmap(channels) {
             }
             const errorData = await response.json();
             
-            // 将数据存入缓存
+            // 将数据存��缓存
             dataCache.value.set(errorCacheKey, errorData);
             
             // 存储带有 errorIdx 的错误数据
@@ -770,6 +770,10 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
   display: flex;
   flex-direction: column;
   width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .heatmap-scrollbar {
@@ -861,5 +865,29 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
   font-size: 12px;
   margin: 0 5px;
   color: #fff;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input__inner {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让对话框中的输入框文字可以选中 */
+.el-dialog .el-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }
 </style>

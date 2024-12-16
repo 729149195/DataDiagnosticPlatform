@@ -1018,6 +1018,10 @@ const processChannelData = async (data, channel) => {
     display: flex;
     flex-direction: column;
     justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
 }
 
 .chart-wrapper {
@@ -1077,7 +1081,7 @@ svg {
     border-radius: 50%;
 }
 
-/* 将下拉面板中的选色区域的选���变为圆形 */
+/* 将下拉面板中的选色区域的选变为圆形 */
 :deep(.el-color-dropdown__main-wrapper .el-color-alpha-slider__thumb,
     .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
     width: 14px;
@@ -1143,5 +1147,21 @@ svg {
     font-size: 12px;
     margin: 0 5px;
     color: #fff;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input {
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input__inner {
+    user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
 }
 </style>
