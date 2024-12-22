@@ -35,6 +35,7 @@ const store = createStore({
       upper_bound: 0.1,
       scope_bound: 0,
       lower_bound: -2.4,
+      isBoxSelect: true,
     };
   },
   getters: {
@@ -247,6 +248,9 @@ const store = createStore({
     updateLowerBound(state, value) {
       state.lower_bound = value;
     },
+    updateIsBoxSelect(state, value) {
+      state.isBoxSelect = value;
+    },
   },
   actions: {
     async fetchStructTree({ commit }, indices = []) {
@@ -309,6 +313,9 @@ const store = createStore({
     updateLowerBound({ commit }, value) {
       commit('updateLowerBound', value);
     },
+    updateIsBoxSelect({ commit }, value) {
+      commit('updateIsBoxSelect', value);
+    },
   },
 });
 
@@ -317,14 +324,16 @@ function processData(rawData) {
   const groupedData = [];
   const channelTypeMap = {};
 
-  rawData.forEach((item) => {
+  // 只处理前100条数据
+  const limitedData = rawData.slice(0, 1000);
+
+  limitedData.forEach((item) => {
     const channelType = item.channel_type;
     const channelName = item.channel_name;
     const shotNumber = item.shot_number;
-    const errorName = item.error_name;
-    const errorOriginArray = item.error_origin;
+    const errorNames = item.error_name && item.error_name.length > 0 ? item.error_name : ["NO ERROR"];
 
-    const channelKey = `${channelName}_${shotNumber}`; // 确保唯一
+    const channelKey = `${channelName}_${shotNumber}`;
 
     if (!channelTypeMap[channelType]) {
       channelTypeMap[channelType] = {
@@ -343,7 +352,6 @@ function processData(rawData) {
     );
 
     if (!channelEntry) {
-      // 分配颜色
       let colorArray;
       if (channelColorMap.has(channelKey)) {
         colorArray = channelColorMap.get(channelKey);
@@ -353,16 +361,15 @@ function processData(rawData) {
         colorIndex += 1;
       }
 
-      // 确保颜色值不超过255
       const [r, g, b] = colorArray.map((value) => Math.min(value, 255));
       const colorString = `rgb(${r}, ${g}, ${b})`;
 
       channelEntry = {
-        channel_key: channelKey, // 添加 channel_key
+        channel_key: channelKey,
         channel_name: channelName,
         channel_type: channelType,
         shot_number: shotNumber,
-        color: colorString, // 使用分配的颜色
+        color: colorString,
         checked: false,
         errors: [],
         displayedErrors: [],
@@ -371,19 +378,23 @@ function processData(rawData) {
       channelTypeEntry.channels.push(channelEntry);
     }
 
-    errorOriginArray.forEach((origin) => {
+    // 清空之前的错误
+    channelEntry.errors = [];
+    
+    // 处理错误
+    errorNames.forEach((errorName) => {
       const error = {
         error_name: errorName,
-        color: origin ? "rgba(220, 20, 60, 0.3)" : "rgba(220, 20, 60, 0.3)", // 这里保持不变
+        color: errorName === "NO ERROR" ? 'rgba(0, 0, 0, 0)' : 'rgba(220, 20, 60, 0.3)',
       };
       channelEntry.errors.push(error);
     });
 
-    if (channelEntry.displayedErrors.length === 0) {
-      channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
-    }
+    // 更新 displayedErrors
+    channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
   });
 
+  console.log(groupedData)
   return groupedData;
 }
 

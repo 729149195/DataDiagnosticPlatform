@@ -87,14 +87,8 @@
                 <span class="title">实验数据探索</span>
                 <span style="display: flex; align-items: center;">
                   <span style="margin-right: 8px;">采样频率</span>
-                  <el-input-number 
-                    v-model="sampling" 
-                    :precision="3" 
-                    :step="0.1" 
-                    :min="0.001"
-                    :max="1000"
-                    @change="updateSampling"
-                  />
+                  <el-input-number v-model="sampling" :precision="3" :step="0.1" :min="0.001" :max="1000"
+                    @change="updateSampling" />
                   <span style="margin-left: 4px;">KHz</span>
                 </span>
                 <span>平滑度 <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0"
@@ -102,6 +96,11 @@
                 <el-switch v-model="test_channel_number"
                   style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
                   inactive-text="多通道单行" />
+
+                <el-switch v-model="boxSelect"
+                  style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="框选标注/编辑"
+                  inactive-text="局部缩放" />
+                  
                 <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage">
                 <div>
                   <el-button type="primary" @click="exportChannelSVG">
@@ -122,7 +121,7 @@
                     <SingleChannelMultiRow />
                   </div>
                   <div v-if="test_channel_number === false">
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0"/>
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
               </div>
@@ -178,7 +177,7 @@
               </span>
               <div style="display: flex; justify-content: center; align-items: center;">
                 <div style="width: 100%">
-                  <ChannelCalculationResults ref="resultRef"/>
+                  <ChannelCalculationResults ref="resultRef" />
                 </div>
               </div>
             </el-card>
@@ -259,6 +258,10 @@ const resultRef = ref(null)
 const channelDataCache = computed(() => store.state.channelDataCache);
 const selectedChannels = computed(() => store.state.selectedChannels);
 
+const boxSelect = computed({
+  get: () => store.state.isBoxSelect,
+  set: (value) => store.dispatch('updateIsBoxSelect', value)
+});
 
 const selectButton = (button) => {
   selectedButton.value = button;
@@ -285,7 +288,7 @@ const exportChannelSVG = () => {
         svgImg.onload = function () {
           // 获取图例图片
           const legendImg = document.getElementById('channelLegendImage');
-          
+
           const canvas = document.createElement('canvas');
           const legendWidth = legendImg.width;  // 缩小一半
           const legendHeight = legendImg.height; // 缩小一半
@@ -297,7 +300,7 @@ const exportChannelSVG = () => {
           const ctx = canvas.getContext('2d');
 
           // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-          ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
+          ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
 
           // 绘制 SVG 图像到 canvas 上（图片的下方）
           ctx.drawImage(svgImg, 0, legendHeight + padding);
@@ -339,36 +342,36 @@ const exportChannelSVG = () => {
         legendImg.onload = function () {
           // 创建一个 canvas 元素
           // 使用 html2canvas 将 div 内容转换为 canvas
-          html2canvas(document.getElementById('channelLegendContainer'),  { scale: 0.75 }).then(function(divCanvas) {
-              const canvas = document.createElement('canvas');
-              const legendWidth = legendImg.width;  // 缩小一半
-              const legendHeight = legendImg.height; // 缩小一半
-              const padding = 30
-              const canvasWidth = Math.max(svgRef.width.baseVal.value, legendImg.width);
-              const canvasHeight = svgRef.height.baseVal.value + legendImg.height + padding;
-              canvas.width = canvasWidth;
-              canvas.height = canvasHeight;
-              const ctx = canvas.getContext('2d');
+          html2canvas(document.getElementById('channelLegendContainer'), { scale: 0.75 }).then(function (divCanvas) {
+            const canvas = document.createElement('canvas');
+            const legendWidth = legendImg.width;  // 缩小一半
+            const legendHeight = legendImg.height; // 缩小一半
+            const padding = 30
+            const canvasWidth = Math.max(svgRef.width.baseVal.value, legendImg.width);
+            const canvasHeight = svgRef.height.baseVal.value + legendImg.height + padding;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            const ctx = canvas.getContext('2d');
 
 
 
-              // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
-              ctx.drawImage(divCanvas, 200, legendHeight + padding/2);
-              // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-              ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
-              ctx.drawImage(svgImg, 0, legendHeight);
+            // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
+            ctx.drawImage(divCanvas, 200, legendHeight + padding / 2);
+            // 绘制图例图片到 canvas 上（在最上面，缩小一半）
+            ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
+            ctx.drawImage(svgImg, 0, legendHeight);
 
-              // 导出为 PNG
-              const pngData = canvas.toDataURL('image/png');
+            // 导出为 PNG
+            const pngData = canvas.toDataURL('image/png');
 
-              // 创建一个链接并自动下载 PNG
-              const link = document.createElement('a');
-              link.href = pngData;
-              link.download = 'exported_image_with_legend.png';
-              link.click();
+            // 创建一个链接并自动下载 PNG
+            const link = document.createElement('a');
+            link.href = pngData;
+            link.download = 'exported_image_with_legend.png';
+            link.click();
 
-              // 释放 URL 对象
-              URL.revokeObjectURL(svgUrl);
+            // 释放 URL 对象
+            URL.revokeObjectURL(svgUrl);
           })
         };
 
@@ -493,9 +496,9 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
   if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
     // 确保在更新 selectedChannels 之前重置进度状态
     await nextTick();
-    if (MultiChannelRef.value && 
-        !test_channel_number.value && 
-        MultiChannelRef.value.resetProgress) {
+    if (MultiChannelRef.value &&
+      !test_channel_number.value &&
+      MultiChannelRef.value.resetProgress) {
       MultiChannelRef.value.resetProgress();
     }
   }
