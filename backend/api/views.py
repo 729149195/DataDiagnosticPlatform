@@ -17,7 +17,7 @@ from api.utils import filter_range, merge_overlapping_intervals
 
 def get_struct_tree(request):
     try:
-        with open(os.path.join('static', 'Data', 'StructTree.json'), encoding='utf-8') as f:
+        with open(os.path.join('static', 'Data', 'StructTree.json'), encoding='unicode_escape') as f:
             data = json.load(f)
         indices_param = request.GET.get('indices', '')
         if indices_param:
