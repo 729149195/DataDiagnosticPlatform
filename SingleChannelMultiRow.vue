@@ -160,11 +160,6 @@ const sampling = computed(() => store.state.sampling);
 const smoothnessValue = computed(() => store.state.smoothness);
 const sampleRate = ref(store.state.sampling);
 const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
-const isBoxSelect = computed(() => store.state.isBoxSelect);
-const domains = computed(() => ({
-  x: store.state.xDomains,
-  y: store.state.yDomains
-}));
 
 const chartContainerWidth = ref(0);
 const brushSelections = ref({overview: null});
@@ -265,67 +260,67 @@ const processChannelData = async (data, channel) => {
     const sampledData = sampleData(data, sampleRate.value);
 
     // 确保采样数据有效
-    if (!sampledData || !sampledData.X_value || !sampledData.Y_value) {
+    if (!sampledData || !sampledData.data_x || !sampledData.data_y) {
       console.warn(`Invalid sampled data for channel ${channelName}`);
       return;
     }
 
     let errorsData = [];
-    // for (const [errorIndex, error] of channel.errors.entries()) {
-    //   const error_name = error.error_name;
-    //   const error_color = error.color;
+    for (const [errorIndex, error] of channel.errors.entries()) {
+      const error_name = error.error_name;
+      const error_color = error.color;
 
-    //   // 构建用于缓存的 errorKey
-    //   const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
-    //   let errorData;
+      // 构建用于缓存的 errorKey
+      const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
+      let errorData;
 
-    //   // 检查缓存中是否已有异常数据
-    //   if (channelDataCache.value[errorKey]) {
-    //     errorData = channelDataCache.value[errorKey];
-    //   } else {
-    //     const params = {
-    //       channel_key: channelKey,
-    //       channel_type: channel.channel_type,
-    //       error_name: error_name,
-    //       error_index: errorIndex
-    //     };
+      // 检查缓存中是否已有异常数据
+      if (channelDataCache.value[errorKey]) {
+        errorData = channelDataCache.value[errorKey];
+      } else {
+        const params = {
+          channel_key: channelKey,
+          channel_type: channel.channel_type,
+          error_name: error_name,
+          error_index: errorIndex
+        };
 
-    //     try {
-    //       // 使用重试机制和并发限制获取错误数据
-    //       const errorResponse = await limit(() => retryRequest(async () => {
-    //         return await axios.get(`http://localhost:5000/api/error-data/`, {params});
-    //       }));
-    //       errorData = errorResponse.data;
-    //       channelDataCache.value[errorKey] = errorData;
-    //     } catch (err) {
-    //       console.warn(`Failed to fetch error data for ${errorKey}:`, err);
-    //       continue; // 跳过这个错误数据，继续处理其他
-    //     }
-    //   }
+        try {
+          // 使用重试机制和并发限制获取错误数据
+          const errorResponse = await limit(() => retryRequest(async () => {
+            return await axios.get(`http://localhost:5000/api/error-data/`, {params});
+          }));
+          errorData = errorResponse.data;
+          channelDataCache.value[errorKey] = errorData;
+        } catch (err) {
+          console.warn(`Failed to fetch error data for ${errorKey}:`, err);
+          continue; // 跳过这个错误数据，继续处理其他
+        }
+      }
 
-    //   // 处理异常数据
-    //   const processedErrorSegments = errorData.X_value_error.map(
-    //       (errorSegment, idx) => {
-    //         return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-    //       }
-    //   );
+      // 处理异常数据
+      const processedErrorSegments = errorData.data_x_error.map(
+          (errorSegment, idx) => {
+            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+          }
+      );
 
-    //   const sampledErrorData = {
-    //     X_value_error: processedErrorSegments.map((seg) => seg.X),
-    //     Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-    //     color: error_color,
-    //     person: error.person,
-    //   };
+      const sampledErrorData = {
+        data_x_error: processedErrorSegments.map((seg) => seg.X),
+        data_y_error: processedErrorSegments.map((seg) => seg.Y),
+        color: error_color,
+        person: error.person,
+      };
 
-    //   errorsData.push(sampledErrorData);
-    // }
+      errorsData.push(sampledErrorData);
+    }
 
     // 添加数据到 overviewData 前进行验证
-    if (sampledData.X_value.length > 0 && sampledData.Y_value.length > 0) {
+    if (sampledData.data_x.length > 0 && sampledData.data_y.length > 0) {
       overviewData.value.push({
         channelName: channelName,
-        X_value: sampledData.X_value,
-        Y_value: sampledData.Y_value,
+        data_x: sampledData.data_x,
+        data_y: sampledData.data_y,
         color: channel.color,
       });
     } else {
@@ -338,8 +333,8 @@ const processChannelData = async (data, channel) => {
         errorsData,
         channelName,
         channel.color,
-        data.X_unit,
-        data.Y_unit,
+        data.unit_x,
+        data.unit_y,
         data.channel_type,
         data.channel_number,
         channel.shot_number
@@ -387,7 +382,7 @@ const fetchDataAndDrawChart = async (channel) => {
         }
       }, 100);
 
-      // 使用重试机制装求
+      // 使用重试机制包装请求
       const response = await limit(() => retryRequest(async () => {
         return await axios.get(`http://localhost:5000/api/channel-data/`, {params});
       }));
@@ -400,8 +395,8 @@ const fetchDataAndDrawChart = async (channel) => {
       loadingStates[channelKey] = Number(100);
     }
 
-    if (!data || !data.X_value) {
-      throw new Error('Invalid data format: missing X_value');
+    if (!data || !data.data_x) {
+      throw new Error('Invalid data format: missing data_x');
     }
 
     renderingStates[channelKey] = Number(0);
@@ -483,7 +478,7 @@ onMounted(async () => {
       chartContainerWidth.value = container.offsetWidth;
     }
 
-    // 确保 selectedChannels 有且 overviewData 已初始化后再绘制
+    // 确保 selectedChannels 有值且 overviewData 已初始化后再绘制
     if (selectedChannels.value && selectedChannels.value.length > 0) {
       await renderCharts();
       // 只有在有数据时才绘制概览图
@@ -543,7 +538,7 @@ const drawHighlightRects = (channelName, results) => {
 
   // 获取当前图表的x比例尺
   const x = d3.scaleLinear()
-      .domain(domains.value.x[channelName] || [-2, 6])
+      .domain(xDomains.value[channelName] || [-2, 6])
       .range([0, width]);
 
   // 获取当前通道的数据并进行采样和平处理
@@ -553,14 +548,14 @@ const drawHighlightRects = (channelName, results) => {
   // 进行采样
   const samplingInterval = Math.floor(1 / sampling.value);
   const sampledData = {
-    X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
-    Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0)
+    data_x: channelData.data_x.filter((_, i) => i % samplingInterval === 0),
+    data_y: channelData.data_y.filter((_, i) => i % samplingInterval === 0)
   };
 
-  // 应用滑理
-  let smoothedYValue = sampledData.Y_value;
+  // 应用平滑处理
+  let smoothedYValue = sampledData.data_y;
   if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-    smoothedYValue = interpolateData(sampledData.Y_value, smoothnessValue.value);
+    smoothedYValue = interpolateData(sampledData.data_y, smoothnessValue.value);
   }
 
   // 使用与绘制曲线相同的 Y 轴范围
@@ -607,10 +602,10 @@ const drawHighlightRects = (channelName, results) => {
       }
 
       // 使用平滑后的数据获取区间内的值
-      const startIndex = sampledData.X_value.findIndex(x => x >= startX);
-      const endIndex = sampledData.X_value.findIndex(x => x > endX);
+      const startIndex = sampledData.data_x.findIndex(x => x >= startX);
+      const endIndex = sampledData.data_x.findIndex(x => x > endX);
       const rangeData = {
-        X: sampledData.X_value.slice(startIndex, endIndex),
+        X: sampledData.data_x.slice(startIndex, endIndex),
         Y: smoothedYValue.slice(startIndex, endIndex)
       };
 
@@ -752,9 +747,9 @@ const drawOverviewChart = () => {
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-  // 计算所数据的范围
-  const allX = overviewData.value.flatMap((d) => d.X_value);
-  const allY = overviewData.value.flatMap((d) => d.Y_value);
+  // 计算所有数据的范围
+  const allX = overviewData.value.flatMap((d) => d.data_x);
+  const allY = overviewData.value.flatMap((d) => d.data_y);
   const xExtent = d3.extent(allX);
   const yExtent = d3.extent(allY);
 
@@ -763,7 +758,7 @@ const drawOverviewChart = () => {
 
   const y = d3.scaleLinear().domain(yExtent).range([height, 0]);
 
-  // 绘制总览数据条
+  // 绘制总览数据线条
   const lines = g.selectAll('.overview-line')
       .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
 
@@ -775,18 +770,18 @@ const drawOverviewChart = () => {
       .attr('stroke', d => d.color || 'steelblue')
       .attr('stroke-width', 1)
       .attr('d', d => d3.line()
-          .x((v, i) => x(d.X_value[i]))
+          .x((v, i) => x(d.data_x[i]))
           .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX)(d.Y_value)
+          .curve(d3.curveMonotoneX)(d.data_y)
       );
 
   // 更新
   lines
       .attr('stroke', d => d.color || 'steelblue')
       .attr('d', d => d3.line()
-          .x((v, i) => x(d.X_value[i]))
+          .x((v, i) => x(d.data_x[i]))
           .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX)(d.Y_value)
+          .curve(d3.curveMonotoneX)(d.data_y)
       );
 
   // 退出
@@ -811,18 +806,19 @@ const drawOverviewChart = () => {
 
   const brushG = g.append('g').attr('class', 'brush').call(brush);
 
-  // 修改这里:设置初始刷选范围为全部
-  const initialSelection = xExtent.map(x);
+  // 重置 brush_begin 和 brush_end
   brush_begin.value = xExtent[0].toFixed(4);
   brush_end.value = xExtent[1].toFixed(4);
-  brushG.call(brush.move, initialSelection);
-  brushSelections.value.overview = initialSelection;
+
+  const selection = xExtent.map(x);
+  brushG.call(brush.move, selection);
+
+  brushSelections.value.overview = selection;
 
   function brushed(event) {
     if (updatingBrush.value) return;
 
-    // 修改这里:当点击空白处时,恢复到完整范围
-    const selection = event.selection || initialSelection;
+    const selection = event.selection || x.range();
     const newDomain = selection.map(x.invert, x);
 
     updatingBrush.value = true;
@@ -830,27 +826,28 @@ const drawOverviewChart = () => {
     brush_end.value = newDomain[1].toFixed(4);
     updatingBrush.value = false;
 
-    // 如果是点击空白处,手动设置刷选框
-    if (!event.selection) {
-      brushG.call(brush.move, initialSelection);
-      brushSelections.value.overview = initialSelection;
-    } else {
-      brushSelections.value.overview = selection;
-    }
+    brushSelections.value.overview = selection;
 
     // 更新所有图表的 domain
     selectedChannels.value.forEach((channel) => {
       const channelName = `${channel.channel_name}_${channel.shot_number}`;
-      store.dispatch('updateDomains', {
-        channelName,
-        xDomain: newDomain,
-        yDomain: domains.value.y[channelName]
-      });
+      xDomains.value[channelName] = newDomain;
     });
 
     // 重新渲染所有通道图表
     selectedChannels.value.forEach((channel) => {
       fetchDataAndDrawChart(channel);
+    });
+
+    // 重新绘制高亮区域
+    selectedChannels.value.forEach((channel) => {
+      const channelName = `${channel.channel_name}_${channel.shot_number}`;
+      const channelMatchedResults = matchedResults.value.filter(
+          (r) => r.channel_name === channelName
+      );
+      channelMatchedResults.forEach((result) => {
+        drawHighlightRects(channelName, [result]);
+      });
     });
   }
 
@@ -889,14 +886,9 @@ const handleInputBlur = (type) => {
     return;
   }
 
-  // 获取数据的实际范围
-  const allX = overviewData.value.flatMap((d) => d.X_value);
-  const dataExtent = d3.extent(allX);
-  const epsilon = 0.0001; // 添加容差值
-
-  // 确保在有效范围内，使用容差值进行比较
-  if (start < dataExtent[0] - epsilon || end > dataExtent[1] + epsilon) {
-    ElMessage.warning(`输入值必须在 ${dataExtent[0].toFixed(4)} 到 ${dataExtent[1].toFixed(4)} 之间`);
+  // 确保在有效范围内
+  if (start < currentExtent[0] || end > currentExtent[1]) {
+    ElMessage.warning('输入值超出有效范围');
     brush_begin.value = currentExtent[0].toFixed(4);
     brush_end.value = currentExtent[1].toFixed(4);
     return;
@@ -948,7 +940,7 @@ const createGaussianKernel = (sigma, size) => {
   return kernel.map(value => value / sum);
 };
 
-// 应斯滑
+// 应用斯平滑
 const gaussianSmooth = (data, sigma) => {
   const kernelSize = Math.ceil(sigma * 6); // 核大小（通常为 6 * sigma）
   const kernel = createGaussianKernel(sigma, kernelSize);
@@ -973,14 +965,13 @@ const gaussianSmooth = (data, sigma) => {
 // 平滑插值函数
 const interpolateData = (data, t) => {
   if (t === 0) {
-    return data; // 不平直接返回
+    return data; // 不平滑直接返回
   }
 
-  const sigma = t * 20; // 根据 t 调整平滑强度
+  const sigma = t * 20; // 根据 t ���整平滑强度
   return gaussianSmooth(data, sigma);
 };
 
-const originalDomains = ref({}); // 存储原始的显示范围
 
 const drawChart = async (
     data,
@@ -1015,28 +1006,26 @@ const drawChart = async (
         .attr('preserveAspectRatio', 'xMidYMid meet')
         .attr('width', '100%');
 
-    const yExtent = d3.extent(data.Y_value);
+    const yExtent = d3.extent(data.data_y);
     const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
     const yMin = yExtent[0] - yRangePadding;
     const yMax = yExtent[1] + yRangePadding;
 
     const x = d3
         .scaleLinear()
-        .domain(domains.value.x[channelName] || [-2, 6])
+        .domain(xDomains.value[channelName] || [-2, 6])
         .range([0, width]);
 
-    const y = d3.scaleLinear()
-        .domain(domains.value.y[channelName] || [yMin, yMax])
-        .range([height, 0]);
+    const y = d3.scaleLinear().domain([yMin, yMax]).range([height, 0]);
 
-    let smoothedYValue = data.Y_value;
+    let smoothedYValue = data.data_y;
     if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-      smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
+      smoothedYValue = interpolateData(data.data_y, smoothnessValue.value);
     }
 
     const line = d3
         .line()
-        .x((d, i) => x(data.X_value[i]))
+        .x((d, i) => x(data.data_x[i]))
         .y((d, i) => y(d))
         .curve(d3.curveMonotoneX);
 
@@ -1105,7 +1094,7 @@ const drawChart = async (
         .attr('y', height + margin.top + 20)
         .attr('text-anchor', 'end')
         .style('font-size', '1.1em')
-        .style('font-weight', 'bold') // 加粗字体
+        .style('font-weight', 'bold') // ���粗字体
         .attr('fill', '#000')
         .text(xUnit);
 
@@ -1121,7 +1110,7 @@ const drawChart = async (
 
     clipGroup
         .append('path')
-        .datum(data.Y_value)
+        .datum(data.data_y)
         .attr('class', 'original-line')
         .attr('fill', 'none')
         .attr('stroke', color || 'steelblue')
@@ -1130,12 +1119,12 @@ const drawChart = async (
         .attr('d', line);
 
     errorsData.forEach((errorData, errorIndex) => {
-      errorData.X_value_error.forEach((X_value_error, index) => {
-        const Y_value_error = errorData.Y_value_error[index];
+      errorData.data_x_error.forEach((data_x_error, index) => {
+        const data_y_error = errorData.data_y_error[index];
 
         const errorLine = d3
             .line()
-            .x((d, i) => x(X_value_error[i]))
+            .x((d, i) => x(data_x_error[i]))
             .y((d, i) => y(d))
             .curve(d3.curveMonotoneX);
 
@@ -1144,7 +1133,7 @@ const drawChart = async (
 
         clipGroup
             .append('path')
-            .datum(Y_value_error)
+            .datum(data_y_error)
             .attr('class', `error-line-${index}-${channelName}`)
             .attr('fill', 'none')
             .attr('stroke', errorData.color || 'rgba(0,0,0,0)')
@@ -1175,45 +1164,27 @@ const drawChart = async (
         ])
         .on('end', selectionBrushed);
 
-    const zoomBrush = d3
-        .brush()
-        .extent([
-          [0, 0],
-          [width, height],
-        ])
-        .on('end', zoomBrushed);
-
-    // 创建两个不同的brush组
-    const selectionBrushG = g.append('g')
+    g.append('g')
         .attr('class', 'selection-brush')
-        .style('display', isBoxSelect.value ? null : 'none')
         .call(selectionBrush);
 
-    const zoomBrushG = g.append('g')
-        .attr('class', 'zoom-brush')
-        .style('display', isBoxSelect.value ? 'none' : null)
-        .call(zoomBrush);
-
-    // 创建anomaliesGroup
     const anomaliesGroup = g.append('g').attr('class', 'anomalies-group');
 
-    // 加载已有的异常标注
     const channelAnomalies = anomalies.value.filter(
         (a) => a.channelName === channelName
     );
     channelAnomalies.forEach((anomaly) => {
-        drawAnomalyElements(anomaly, anomaliesGroup);
+      drawAnomalyElements(anomaly, anomaliesGroup);
     });
 
     const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
     storedAnomalies.forEach((anomaly) => {
-        drawAnomalyElements(anomaly, anomaliesGroup, true);
+      drawAnomalyElements(anomaly, anomaliesGroup, true);
     });
 
     function selectionBrushed(event) {
       if (!event.sourceEvent) return;
       if (!event.selection) return;
-      if (!isBoxSelect.value) return;
 
       const [x0, x1] = event.selection;
       const [startX, endX] = [x.invert(x0), x.invert(x1)];
@@ -1229,61 +1200,17 @@ const drawChart = async (
       };
 
       d3.select(this).call(selectionBrush.move, null);
-      anomalies.value.push(anomaly);
-      drawAnomalyElements(anomaly, anomaliesGroup);
-    }
 
-    function zoomBrushed(event) {
-      if (!event.sourceEvent) return;
-      if (!event.selection) {
-        // 点击空白处，恢复到 brush 总览条的范围
-        if (brush_begin.value && brush_end.value) {
-          const newXDomain = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
-          store.dispatch('updateDomains', {
-            channelName,
-            xDomain: newXDomain,
-            yDomain: originalDomains.value[channelName]?.y || y.domain()
-          });
-          const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-          if (targetChannel) {
-            fetchDataAndDrawChart(targetChannel);
-          }
-        }
-        return;
-      }
-      
-      if (isBoxSelect.value) return;
-      
-      // 获取选择的范围
-      const [[x0, y0], [x1, y1]] = event.selection;
-      
-      // 保存原始范围（如果还没有保存）
-      if (!originalDomains.value[channelName]) {
-        originalDomains.value[channelName] = {
-          x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-          y: y.domain()
-        };
-      }
-      
-      // 更新显示范围
-      const newXDomain = [x.invert(x0), x.invert(x1)];
-      const newYDomain = [y.invert(y1), y.invert(y0)];
-      
-      // 更新 store 中的范围
-      store.dispatch('updateDomains', {
-        channelName,
-        xDomain: newXDomain,
-        yDomain: newYDomain
-      });
-      
-      // 清除选择
-      d3.select(this).call(zoomBrush.move, null);
-      
-      // 重新绘制图表
-      const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-      if (targetChannel) {
-        fetchDataAndDrawChart(targetChannel);
-      }
+      g.select('.selection-brush .overlay').style(
+          'pointer-events',
+          'none'
+      );
+
+      g.select('.selection-brush .selection').style('display', 'none');
+
+      anomalies.value.push(anomaly);
+
+      drawAnomalyElements(anomaly, anomaliesGroup);
     }
 
     function drawAnomalyElements(anomaly, anomaliesGroup, isStored = false) {
@@ -1301,7 +1228,7 @@ const drawChart = async (
           .attr('x', x(anomaly.startX))
           .attr('y', -5)
           .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
+          .style('font-weight', 'bold') // 加粗字体
           .attr('text-anchor', 'middle')
           .attr('fill', 'black')
           .text(anomaly.startX.toFixed(3));
@@ -1312,7 +1239,7 @@ const drawChart = async (
           .attr('x', x(anomaly.endX))
           .attr('y', -5)
           .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
+          .style('font-weight', 'bold') // 加粗字体
           .attr('text-anchor', 'middle')
           .attr('fill', 'black')
           .text(anomaly.endX.toFixed(3));
@@ -1329,16 +1256,15 @@ const drawChart = async (
             .attr('fill-opacity', 0.1)
             .attr('stroke', 'orange')
             .attr('stroke-width', 1)
-            .attr('cursor', isBoxSelect.value ? 'move' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+            .attr('cursor', 'move')
+            .style('pointer-events', 'all')
             .call(
-                d3.drag()
+                d3
+                    .drag()
                     .on('start', function (event) {
-                      if (!isBoxSelect.value) return;
                       anomaly.initialX = event.x;
                     })
                     .on('drag', function (event) {
-                      if (!isBoxSelect.value) return;
                       const dx = x.invert(event.x) - x.invert(anomaly.initialX);
                       anomaly.initialX = event.x;
 
@@ -1357,10 +1283,9 @@ const drawChart = async (
                       anomaly.startX = newStartX;
                       anomaly.endX = newEndX;
 
-                      updateAnomalyElements(anomaly, isStored);
+                      updateAnomalyElements(anomaly);
                     })
                     .on('end', function () {
-                      if (!isBoxSelect.value) return;
                       const index = anomalies.value.findIndex(
                           (a) => a.id === anomaly.id
                       );
@@ -1370,7 +1295,6 @@ const drawChart = async (
                     })
             );
 
-        // 修改左侧拖动手柄
         anomalyGroup
             .append('rect')
             .attr('class', `left-handle-${anomaly.id}-${channelName}`)
@@ -1379,20 +1303,19 @@ const drawChart = async (
             .attr('width', 10)
             .attr('height', height)
             .attr('fill', 'transparent')
-            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+            .attr('cursor', 'ew-resize')
+            .style('pointer-events', 'all')
             .call(
-                d3.drag()
+                d3
+                    .drag()
                     .on('drag', function (event) {
-                      if (!isBoxSelect.value) return;
                       const newX = x.invert(event.x);
                       if (newX < anomaly.endX && newX >= x.domain()[0]) {
                         anomaly.startX = newX;
-                        updateAnomalyElements(anomaly, isStored);
+                        updateAnomalyElements(anomaly);
                       }
                     })
                     .on('end', function () {
-                      if (!isBoxSelect.value) return;
                       const index = anomalies.value.findIndex(
                           (a) => a.id === anomaly.id
                       );
@@ -1402,7 +1325,6 @@ const drawChart = async (
                     })
             );
 
-        // 修改右侧拖动手柄
         anomalyGroup
             .append('rect')
             .attr('class', `right-handle-${anomaly.id}-${channelName}`)
@@ -1411,20 +1333,19 @@ const drawChart = async (
             .attr('width', 10)
             .attr('height', height)
             .attr('fill', 'transparent')
-            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+            .attr('cursor', 'ew-resize')
+            .style('pointer-events', 'all')
             .call(
-                d3.drag()
+                d3
+                    .drag()
                     .on('drag', function (event) {
-                      if (!isBoxSelect.value) return;
                       const newX = x.invert(event.x);
                       if (newX > anomaly.startX && newX <= x.domain()[1]) {
                         anomaly.endX = newX;
-                        updateAnomalyElements(anomaly, isStored);
+                        updateAnomalyElements(anomaly);
                       }
                     })
                     .on('end', function () {
-                      if (!isBoxSelect.value) return;
                       const index = anomalies.value.findIndex(
                           (a) => a.id === anomaly.id
                       );
@@ -1434,7 +1355,6 @@ const drawChart = async (
                     })
             );
       } else {
-        // 已保存的异常标注显示红色矩形
         anomalyGroup
             .append('rect')
             .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
@@ -1449,25 +1369,42 @@ const drawChart = async (
             .style('pointer-events', 'none');
       }
 
-      // 修改按钮组实现
       const buttonGroup = anomalyGroup
           .append('g')
-          .attr('class', `anomaly-buttons-${anomaly.id}-${channelName}`)
-          .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
+          .attr(
+              'class',
+              `anomaly-buttons-${anomaly.id}-${channelName}`
+          )
+          .attr(
+              'transform',
+              `translate(${x(anomaly.endX) - 40}, ${height - 20})`
+          )
+          .style('pointer-events', 'all');
 
-      // 删除按钮
       const deleteButton = buttonGroup
           .append('g')
           .attr('class', 'delete-button')
-          .style('cursor', 'pointer');
+          .attr('cursor', 'pointer')
+          .on('click', () => {
+            if (isStored) {
+              store.dispatch('deleteAnomaly', {
+                channelName: anomaly.channelName,
+                anomalyId: anomaly.id,
+              });
+            } else {
+              anomalies.value = anomalies.value.filter(
+                  (a) => a.id !== anomaly.id
+              );
+            }
+            removeAnomalyElements(anomaly.id, channelName);
+          });
 
-      const deleteRect = deleteButton
+      deleteButton
           .append('rect')
           .attr('width', 16)
           .attr('height', 16)
           .attr('fill', '#f56c6c')
-          .attr('rx', 3)
-          .style('pointer-events', 'all');
+          .attr('rx', 3);
 
       deleteButton
           .append('text')
@@ -1477,23 +1414,26 @@ const drawChart = async (
           .attr('fill', 'white')
           .attr('font-size', '12px')
           .attr('font-weight', 'bold')
-          .style('pointer-events', 'none')
+          .attr('pointer-events', 'none')
           .text('×');
 
-      // 编辑按钮
       const editButton = buttonGroup
           .append('g')
           .attr('class', 'edit-button')
           .attr('transform', 'translate(20, 0)')
-          .style('cursor', 'pointer');
+          .attr('cursor', 'pointer')
+          .on('click', () => {
+            Object.assign(currentAnomaly, anomaly);
+            currentAnomaly.isStored = isStored;
+            showAnomalyForm.value = true;
+          });
 
-      const editRect = editButton
+      editButton
           .append('rect')
           .attr('width', 16)
           .attr('height', 16)
           .attr('fill', '#409eff')
-          .attr('rx', 3)
-          .style('pointer-events', 'all');
+          .attr('rx', 3);
 
       editButton
           .append('text')
@@ -1503,41 +1443,20 @@ const drawChart = async (
           .attr('fill', 'white')
           .attr('font-size', '12px')
           .attr('font-weight', 'bold')
-          .style('pointer-events', 'none')
+          .attr('pointer-events', 'none')
           .text('✒️');
 
-      // 添加点击事件到矩形上
-      deleteRect.on('click', () => {
-        if (isStored) {
-          store.dispatch('deleteAnomaly', {
-            channelName: anomaly.channelName,
-            anomalyId: anomaly.id,
-          });
-        } else {
-          anomalies.value = anomalies.value.filter(
-              (a) => a.id !== anomaly.id
-          );
-        }
-        removeAnomalyElements(anomaly.id, channelName);
-      });
-
-      editRect.on('click', () => {
-        Object.assign(currentAnomaly, anomaly);
-        currentAnomaly.isStored = isStored;
-        showAnomalyForm.value = true;
-      });
-
-      const startIndex = data.X_value.findIndex(
+      const startIndex = data.data_x.findIndex(
           (xVal) => xVal >= anomaly.startX
       );
-      const endIndex = data.X_value.findIndex(
+      const endIndex = data.data_x.findIndex(
           (xVal) => xVal >= anomaly.endX
       );
-      const anomalyXValues = data.X_value.slice(
+      const anomalyXValues = data.data_x.slice(
           startIndex,
           endIndex + 1
       );
-      const anomalyYValues = data.Y_value.slice(
+      const anomalyYValues = data.data_y.slice(
           startIndex,
           endIndex + 1
       );
@@ -1574,82 +1493,81 @@ const drawChart = async (
           .select('.anomalies-group')
           .select(`.anomaly-group-${anomaly.id}-${channelName}`);
 
-      // 更新矩形位置和大小
       anomalyGroup
           .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
           .attr('x', x(anomaly.startX))
-          .attr('width', x(anomaly.endX) - x(anomaly.startX))
-          .attr('fill', isStored ? 'red' : 'orange')
-          .attr('stroke', isStored ? 'red' : 'orange');
+          .attr('width', x(anomaly.endX) - x(anomaly.startX));
 
-      // 更新左侧手柄位置
       anomalyGroup
           .select(`.left-handle-${anomaly.id}-${channelName}`)
           .attr('x', x(anomaly.startX) - 5);
 
-      // 更新右侧手柄位置
       anomalyGroup
           .select(`.right-handle-${anomaly.id}-${channelName}`)
           .attr('x', x(anomaly.endX) - 5);
 
-      // 更新按钮组位置
-      const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}-${channelName}`);
-      buttonGroup.attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
+      anomalyGroup
+          .select(`.anomaly-buttons-${anomaly.id}-${channelName}`)
+          .attr(
+              'transform',
+              `translate(${x(anomaly.endX) - 40}, ${height - 20})`
+          );
 
-      // 更新标签位置和文本
-      g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .left-label-${anomaly.id}-${channelName}`)
+      g.select(
+          `.anomaly-labels-group-${anomaly.id}-${channelName} .left-label-${anomaly.id}-${channelName}`
+      )
           .attr('x', x(anomaly.startX))
           .text(anomaly.startX.toFixed(3));
 
-      g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .right-label-${anomaly.id}-${channelName}`)
+      g.select(
+          `.anomaly-labels-group-${anomaly.id}-${channelName} .right-label-${anomaly.id}-${channelName}`
+      )
           .attr('x', x(anomaly.endX))
           .text(anomaly.endX.toFixed(3));
 
-      // 更新高亮曲线
-      const startIndex = data.X_value.findIndex(xVal => xVal >= anomaly.startX);
-      const endIndex = data.X_value.findIndex(xVal => xVal >= anomaly.endX);
-      const anomalyXValues = data.X_value.slice(startIndex, endIndex + 1);
-      const anomalyYValues = data.Y_value.slice(startIndex, endIndex + 1);
+      const startIndex = data.data_x.findIndex(
+          (xVal) => xVal >= anomaly.startX
+      );
+      const endIndex = data.data_x.findIndex(
+          (xVal) => xVal >= anomaly.endX
+      );
+      const anomalyXValues = data.data_x.slice(
+          startIndex,
+          endIndex + 1
+      );
+      const anomalyYValues = data.data_y.slice(
+          startIndex,
+          endIndex + 1
+      );
 
       anomalyGroup
           .select(`.anomaly-line-${anomaly.id}-${channelName}`)
           .datum(anomalyYValues)
-          .attr('d', d3.line()
-              .x((d, i) => x(anomalyXValues[i]))
-              .y((d, i) => y(d))
-          )
-          .attr('stroke', isStored ? 'red' : 'orange');
+          .attr(
+              'd',
+              d3
+                  .line()
+                  .x((d, i) => x(anomalyXValues[i]))
+                  .y((d, i) => y(d))
+          );
     }
 
     function removeAnomalyElements(anomalyId, channelName) {
-      // 从store中删除异常数据
-      const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
-      const storedAnomaly = storedAnomalies.find(a => a.id === anomalyId);
-      if (storedAnomaly) {
-        store.dispatch('deleteAnomaly', {
-          channelName: channelName,
-          anomalyId: anomalyId
-        });
-      }
+      const anomaliesGroup = d3.select(`#chart-${channelName}`)
+          .select('.anomalies-group');
 
-      // 移除异常组
-      d3.select(`#chart-${channelName}`)
+      anomaliesGroup
           .select(`.anomaly-group-${anomalyId}-${channelName}`)
           .remove();
+      g.select(
+          `.anomaly-labels-group-${anomalyId}-${channelName}`
+      ).remove();
 
-      // 移除标签组
-      d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-labels-group-${anomalyId}-${channelName}`)
-          .remove();
+      g.select('.selection-brush .overlay').style(
+          'pointer-events',
+          'all'
+      );
 
-      // 移除按钮组
-      d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-buttons-${anomalyId}-${channelName}`)
-          .remove();
-
-      // 恢复刷选功能
-      const g = d3.select(`#chart-${channelName}`).select('g');
-      g.select('.selection-brush .overlay').style('pointer-events', 'all');
       g.select('.selection-brush .selection').style('display', null);
     }
 
@@ -1683,43 +1601,29 @@ const saveAnomaly = () => {
       store.dispatch('updateAnomaly', payload);
     } else {
       store.dispatch('addAnomaly', payload);
-      // 从临时列表中移除
+
       anomalies.value = anomalies.value.filter(
           (a) => a.id !== currentAnomaly.id
       );
     }
 
-    // 关闭编辑框
     showAnomalyForm.value = false;
-
-    // 立即更新视觉效果
-    const svg = d3.select(`#chart-${payload.channelName}`);
-    const anomalyGroup = svg.select(`.anomaly-group-${payload.anomaly.id}-${payload.channelName}`);
-    
-    // 更新矩形颜色
-    anomalyGroup.select(`.anomaly-rect-${payload.anomaly.id}-${payload.channelName}`)
-        .attr('fill', 'red')
-        .attr('fill-opacity', 0.1)
-        .attr('stroke', 'red')
-        .attr('stroke-width', 1)
-        .style('pointer-events', 'none')
-        .attr('cursor', 'default');
-
-    // 更新曲线颜色
-    anomalyGroup.select(`.anomaly-line-${payload.anomaly.id}-${payload.channelName}`)
-        .attr('stroke', 'red');
-
-    // 移除拖动手柄
-    anomalyGroup.selectAll(
-        `.left-handle-${payload.anomaly.id}-${payload.channelName}, .right-handle-${payload.anomaly.id}-${payload.channelName}`
-    ).remove();
-
     ElMessage.success('异常标注信息已保存');
 
-    // 清空当前异常数据
     Object.keys(currentAnomaly).forEach((key) => {
       delete currentAnomaly[key];
     });
+
+
+    const targetChannel = selectedChannels.value.find(
+        (ch) => `${ch.channel_name}_${ch.shot_number}` === payload.channelName
+    );
+
+    if (targetChannel) {
+      fetchDataAndDrawChart(targetChannel);
+    } else {
+      console.error('无法找到对应的通道:', payload.channelName);
+    }
   }
 };
 
@@ -1744,42 +1648,6 @@ const getProgressPercentage = (channelKey) => {
   }
   return Math.min(Math.max(Math.floor(percentage), 0), 100);
 };
-
-// 添加对isBoxSelect的监听
-watch(isBoxSelect, (newValue) => {
-  // 如果开关打开，恢复到 brush 总览条的范围
-  if (newValue) {
-    Object.keys(originalDomains.value).forEach(channelName => {
-      if (originalDomains.value[channelName]) {
-        store.dispatch('updateDomains', {
-          channelName,
-          xDomain: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-          yDomain: originalDomains.value[channelName].y
-        });
-        const channel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-        if (channel) {
-          fetchDataAndDrawChart(channel);
-        }
-      }
-    });
-    // 清空保存的原始范围
-    originalDomains.value = {};
-  }
-  
-  // 更新所有图表中brush的显示状态
-  selectedChannels.value.forEach(channel => {
-    const channelName = `${channel.channel_name}_${channel.shot_number}`;
-    const svg = d3.select(`#chart-${channelName}`);
-    
-    // 更新selection-brush的显示状态
-    svg.select('.selection-brush')
-      .style('display', newValue ? null : 'none');
-    
-    // 更新zoom-brush的显示状态
-    svg.select('.zoom-brush')
-      .style('display', newValue ? 'none' : null);
-  });
-});
 </script>
 
 <style scoped>
@@ -1831,7 +1699,7 @@ svg {
   bottom: 10px;
   top: 83%;
   background-color: white;
-  z-index: 999;
+  z-index: 999999;
 }
 
 .overview-content {
@@ -1871,7 +1739,7 @@ svg {
 }
 
 .edit-button {
-  z-index: 99999;
+  z-index: 999999;
 }
 
 /* 去除颜色选择器里面的箭头 */
@@ -1966,7 +1834,7 @@ svg {
   -ms-user-select: text;
 }
 
-/* 让对话框中的输入框文字可选中 */
+/* 让对话框中的输入框文字可以选中 */
 .el-dialog .el-input {
   user-select: text;
   -webkit-user-select: text;

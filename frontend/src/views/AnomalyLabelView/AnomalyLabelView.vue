@@ -97,9 +97,13 @@
                   style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
                   inactive-text="多通道单行" />
 
-                <el-switch v-model="boxSelect"
-                  style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="框选标注/编辑"
-                  inactive-text="局部缩放" />
+                <el-switch 
+                  v-model="boxSelect"
+                  style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1" 
+                  active-text="框选标注/编辑"
+                  inactive-text="局部缩放" 
+                  :disabled="!test_channel_number"
+                />
                   
                 <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage">
                 <div>
@@ -259,8 +263,17 @@ const channelDataCache = computed(() => store.state.channelDataCache);
 const selectedChannels = computed(() => store.state.selectedChannels);
 
 const boxSelect = computed({
-  get: () => store.state.isBoxSelect,
-  set: (value) => store.dispatch('updateIsBoxSelect', value)
+  get: () => {
+    if (!test_channel_number.value) {
+      return false;
+    }
+    return store.state.isBoxSelect;
+  },
+  set: (value) => {
+    if (test_channel_number.value) {
+      store.dispatch('updateIsBoxSelect', value);
+    }
+  }
 });
 
 const selectButton = (button) => {
@@ -457,7 +470,7 @@ const exportResultSVG = () => {
       // 导出为 PNG
       const pngData = canvas.toDataURL('image/png');
 
-      // 创建一个链接并自动下载 PNG
+      // 创建���个链接并自动下载 PNG
       const link = document.createElement('a');
       link.href = pngData;
       link.download = 'exported_image.png';
@@ -503,6 +516,21 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     }
   }
 }, { deep: true });
+
+// 添加对 test_channel_number ��监听
+watch(test_channel_number, (newValue) => {
+  if (!newValue) {
+    // 切换到多通道单行时，保存当前的 boxSelect 状态并设置为 false
+    const currentBoxSelectState = store.state.isBoxSelect;
+    store.dispatch('updateIsBoxSelect', false);
+    // 将状态保存到 store 中（需要在 store 中添加新的状态）
+    store.dispatch('updatePreviousBoxSelectState', currentBoxSelectState);
+  } else {
+    // 切换回单通道多行时，恢复之前的 boxSelect 状态
+    const previousState = store.state.previousBoxSelectState;
+    store.dispatch('updateIsBoxSelect', previousState);
+  }
+});
 </script>
 
 

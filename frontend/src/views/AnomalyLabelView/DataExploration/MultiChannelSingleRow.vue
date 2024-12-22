@@ -147,7 +147,7 @@ const updateChannelColor = ({ channelKey, color }) => {
     channel.color = color;
     // 更新 Vuex 存储，如果需要
     store.commit('updateChannelColor', { channel_key: channelKey, color });
-    // 重新渲染图表
+    // 重新绘制图表
     renderCharts();
   }
 };
@@ -521,7 +521,55 @@ const drawOverviewChart = () => {
       [0, 0],
       [width, height],
     ])
-    .on('brush end', debounce(brushed, 150));
+    .on('brush end', debounce((event) => {
+      if (updatingBrush.value) return;
+
+      // 如果是点击空白处(selection 为 null)
+      if (!event.selection) {
+        // 获取数据的完整范围
+        const fullRange = x.range();
+        // 重置为完整范围
+        brushG.call(brush.move, fullRange);
+        
+        // 更新 brush_begin 和 brush_end 为完整范围的值
+        const fullDomain = x.domain();
+        brush_begin.value = fullDomain[0].toFixed(4);
+        brush_end.value = fullDomain[1].toFixed(4);
+        
+        // 更新全局 X 域
+        xDomains.value.global = fullDomain;
+        
+        // 重新绘制组合图表
+        drawCombinedChart();
+        return;
+      }
+
+      const selection = event.selection;
+      const newDomain = selection.map(x.invert, x);
+
+      updatingBrush.value = true;
+      brush_begin.value = newDomain[0].toFixed(4);
+      brush_end.value = newDomain[1].toFixed(4);
+      updatingBrush.value = false;
+
+      brushSelections.value.overview = selection;
+
+      // 更新全局 X 域
+      xDomains.value.global = newDomain;
+
+      // 重新绘制组合图表
+      drawCombinedChart();
+
+      // 高亮匹配结果
+      selectedChannels.value.forEach((channel) => {
+        const channelMatchedResults = matchedResults.value.filter(
+          (r) => r.channel_name === channel.channel_name
+        );
+        channelMatchedResults.forEach((result) => {
+          drawHighlightRects(channel.channel_name, [result]);
+        });
+      });
+    }, 150));
 
   overviewBrushInstance.value = brush;
 
@@ -602,9 +650,14 @@ const handleInputBlur = (type) => {
     return;
   }
 
-  // 确保在有效范围内
-  if (start < currentExtent[0] || end > currentExtent[1]) {
-    ElMessage.warning('输入值超出有效范围');
+  // 获取数据的实际范围
+  const allX = overviewData.value.flatMap((d) => d.X_value);
+  const dataExtent = d3.extent(allX);
+  const epsilon = 0.0001; // 添加容差值
+
+  // 确保在有效范围内，使用容差值进行比较
+  if (start < dataExtent[0] - epsilon || end > dataExtent[1] + epsilon) {
+    ElMessage.warning(`输入值必须在 ${dataExtent[0].toFixed(4)} 到 ${dataExtent[1].toFixed(4)} 之间`);
     brush_begin.value = currentExtent[0].toFixed(4);
     brush_end.value = currentExtent[1].toFixed(4);
     return;
@@ -628,6 +681,12 @@ const handleInputBlur = (type) => {
 
   // 重新绘制图表
   drawCombinedChart();
+
+  // 更新原始域
+  originalDomains.value.global = {
+    x: [start, end],
+    y: y.domain()
+  };
 };
 
 // 修改 watch 函数，移除即时格式化
@@ -655,7 +714,7 @@ const createGaussianKernel = (sigma, size) => {
 
 // 应用高斯平滑
 const gaussianSmooth = (data, sigma) => {
-  const kernelSize = Math.ceil(sigma * 6); // 核小（通常为 6 * sigma）
+  const kernelSize = Math.ceil(sigma * 6); // 核（通常为 6 * sigma）
   const kernel = createGaussianKernel(sigma, kernelSize);
 
   const halfSize = Math.floor(kernelSize / 2);
@@ -721,16 +780,29 @@ const drawCombinedChart = () => {
   const allX = channelsData.value.flatMap(d => d.X_value);
   const allY = channelsData.value.flatMap(d => d.Y_value);
   const xExtent = xDomains.value.global || d3.extent(allX);
-  const yExtent = [-1, 1]; // Since Y-values are normalized
+  
+  // 修改这里：使用存储的 Y 轴范围或默认范围
+  let yExtent;
+  if (originalDomains.value.global && originalDomains.value.global.y) {
+    yExtent = originalDomains.value.global.y;
+  } else {
+    yExtent = [-1, 1]; // 默认归一化范围
+    // 保存初始 Y 轴范围
+    if (!originalDomains.value.global) {
+      originalDomains.value.global = {
+        x: xExtent,
+        y: yExtent
+      };
+    }
+  }
+
   const yRangePadding = (yExtent[1] - yExtent[0]) * 0.1;
   const yMin = yExtent[0] - yRangePadding;
   const yMax = yExtent[1] + yRangePadding;
 
-
   const x = d3.scaleLinear()
     .domain(xExtent)
     .range([0, width]);
-
 
   const y = d3.scaleLinear()
     .domain([yMin, yMax])
@@ -941,6 +1013,64 @@ const drawCombinedChart = () => {
         return smoothedLineGenerator(smoothedYValue);
       });
   }
+
+  // 在绘制完主要内容后，添加缩放brush
+  const zoomBrush = d3.brush()
+    .extent([[0, 0], [width, height]])
+    .on('end', zoomBrushed);
+
+  const zoomBrushG = g.append('g')
+    .attr('class', 'zoom-brush')
+    .call(zoomBrush);
+
+  function zoomBrushed(event) {
+    if (!event.sourceEvent) return;
+    if (!event.selection) {
+      // 点击空白处，恢复到总览条的范围
+      if (brush_begin.value && brush_end.value) {
+        // 恢复到总览条的范围
+        xDomains.value.global = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
+        // 重置 Y 轴到默认范围
+        originalDomains.value.global = {
+          x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
+          y: [-1, 1]
+        };
+        drawCombinedChart();
+      }
+      return;
+    }
+
+    // 获取选择的范围
+    const [[x0, y0], [x1, y1]] = event.selection;
+
+    // 计算新的显示范围
+    const newXDomain = [x.invert(x0), x.invert(x1)];
+    const newYDomain = [y.invert(y1), y.invert(y0)];
+
+    // 更新全局域
+    xDomains.value.global = newXDomain;
+    // 更新存储的 Y 轴范围
+    originalDomains.value.global = {
+      x: newXDomain,
+      y: newYDomain
+    };
+
+    // 清除选择
+    d3.select(this).call(zoomBrush.move, null);
+
+    // 重新绘制图表
+    drawCombinedChart();
+
+    // 重新绘制高亮区域
+    selectedChannels.value.forEach((channel) => {
+      const channelMatchedResults = matchedResults.value.filter(
+        (r) => r.channel_name === channel.channel_name
+      );
+      channelMatchedResults.forEach((result) => {
+        drawHighlightRects(channel.channel_name, [result]);
+      });
+    });
+  }
 };
 
 // 处理通道数据并绘制图表
@@ -1055,6 +1185,9 @@ const handleResize = debounce(() => {
     drawOverviewChart();
   }
 }, 200);
+
+// 在 script setup 部分添加原始域存储
+const originalDomains = ref({}); // 存储原始的显示范围
 </script>
 
 
@@ -1141,7 +1274,7 @@ svg {
 }
 
 
-/* 去除颜色选择器里面的箭头 */
+/* 去除颜色选择里面的箭头 */
 :deep(.is-icon-arrow-down) {
   display: none !important;
 }

@@ -27,6 +27,8 @@ const store = createStore({
       channelSvgElementsRefs: [],
       channelDataCache: reactive({}),
       dataCache: ref(new Map()),
+      xDomains: {},
+      yDomains: {},
 
       CalculateResult: {},
       time_begin: -0.25,
@@ -36,6 +38,7 @@ const store = createStore({
       scope_bound: 0,
       lower_bound: -2.4,
       isBoxSelect: true,
+      previousBoxSelectState: true,
     };
   },
   getters: {
@@ -251,6 +254,17 @@ const store = createStore({
     updateIsBoxSelect(state, value) {
       state.isBoxSelect = value;
     },
+    updateDomains(state, { channelName, xDomain, yDomain }) {
+      if (xDomain) {
+        state.xDomains[channelName] = xDomain;
+      }
+      if (yDomain) {
+        state.yDomains[channelName] = yDomain;
+      }
+    },
+    UPDATE_PREVIOUS_BOX_SELECT_STATE(state, value) {
+      state.previousBoxSelectState = value;
+    },
   },
   actions: {
     async fetchStructTree({ commit }, indices = []) {
@@ -315,6 +329,12 @@ const store = createStore({
     },
     updateIsBoxSelect({ commit }, value) {
       commit('updateIsBoxSelect', value);
+    },
+    updateDomains({ commit }, payload) {
+      commit('updateDomains', payload);
+    },
+    updatePreviousBoxSelectState({ commit }, value) {
+      commit('UPDATE_PREVIOUS_BOX_SELECT_STATE', value);
     },
   },
 });
