@@ -345,7 +345,7 @@ function processData(rawData) {
   const channelTypeMap = {};
 
   // 只处理前100条数据
-  const limitedData = rawData.slice(0, 1000);
+  const limitedData = rawData.slice(0, 100);
 
   limitedData.forEach((item) => {
     const channelType = item.channel_type;

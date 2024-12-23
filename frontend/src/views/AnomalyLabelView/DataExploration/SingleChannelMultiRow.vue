@@ -262,6 +262,15 @@ const processChannelData = async (data, channel) => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     const channelName = channelKey;
 
+    // 检查并处理 X 值
+    if (data.X_value && data.X_value.length > 0) {
+      const maxX = Math.max(...data.X_value);
+      if (maxX > 1000) {
+        // 如果X值大于1000，所有值除以1000
+        data.X_value = data.X_value.map(x => x / 1000);
+      }
+    }
+
     const sampledData = sampleData(data, sampleRate.value);
 
     // 确保采样数据有效
@@ -271,54 +280,64 @@ const processChannelData = async (data, channel) => {
     }
 
     let errorsData = [];
-    // for (const [errorIndex, error] of channel.errors.entries()) {
-    //   const error_name = error.error_name;
-    //   const error_color = error.color;
+    for (const [errorIndex, error] of channel.errors.entries()) {
+      const error_name = error.error_name;
+      const error_color = error.color;
 
-    //   // 构建用于缓存的 errorKey
-    //   const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
-    //   let errorData;
+      // 构建用于缓存的 errorKey
+      const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
+      let errorData;
 
-    //   // 检查缓存中是否已有异常数据
-    //   if (channelDataCache.value[errorKey]) {
-    //     errorData = channelDataCache.value[errorKey];
-    //   } else {
-    //     const params = {
-    //       channel_key: channelKey,
-    //       channel_type: channel.channel_type,
-    //       error_name: error_name,
-    //       error_index: errorIndex
-    //     };
+      // 检查缓存中是否已有异常数据
+      if (channelDataCache.value[errorKey]) {
+        errorData = channelDataCache.value[errorKey];
+        
+        // 对缓存的错误数据也进行X值处理
+        if (errorData.X_value_error) {
+          errorData.X_value_error = errorData.X_value_error.map(segment => {
+            if (Math.max(...segment) > 1000) {
+              return segment.map(x => x / 1000);
+            }
+            return segment;
+          });
+        }
+      } else {
+        const params = {
+          channel_key: channelKey,
+          channel_type: channel.channel_type,
+          error_name: error_name,
+          error_index: errorIndex
+        };
 
-    //     try {
-    //       // 使用重试机制和并发限制获取错误数据
-    //       const errorResponse = await limit(() => retryRequest(async () => {
-    //         return await axios.get(`http://localhost:5000/api/error-data/`, {params});
-    //       }));
-    //       errorData = errorResponse.data;
-    //       channelDataCache.value[errorKey] = errorData;
-    //     } catch (err) {
-    //       console.warn(`Failed to fetch error data for ${errorKey}:`, err);
-    //       continue; // 跳过这个错误数据，继续处理其他
-    //     }
-    //   }
+        try {
+          // 使用重试机制和并发限制获取错误数据
+          const errorResponse = await limit(() => retryRequest(async () => {
+            return await axios.get(`http://localhost:5000/api/error-data/`, {params});
+          }));
+          errorData = errorResponse.data;
+          channelDataCache.value[errorKey] = errorData;
+        } catch (err) {
+          console.warn(`Failed to fetch error data for ${errorKey}:`, err);
+          continue; // 跳过这个错误数据，继续处理其他
+        }
+      }
 
-    //   // 处理异常数据
-    //   const processedErrorSegments = errorData.X_value_error.map(
-    //       (errorSegment, idx) => {
-    //         return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-    //       }
-    //   );
+      // 处理异常数据
+      const processedErrorSegments = errorData.X_value_error.map(
+          (errorSegment, idx) => {
+            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+          }
+      );
 
-    //   const sampledErrorData = {
-    //     X_value_error: processedErrorSegments.map((seg) => seg.X),
-    //     Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-    //     color: error_color,
-    //     person: error.person,
-    //   };
+      const sampledErrorData = {
+        X_value_error: processedErrorSegments.map((seg) => seg.X),
+        Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+        color: error_color,
+        person: error.person,
+      };
 
-    //   errorsData.push(sampledErrorData);
-    // }
+      errorsData.push(sampledErrorData);
+    }
 
     // 添加数据到 overviewData 前进行验证
     if (sampledData.X_value.length > 0 && sampledData.Y_value.length > 0) {
