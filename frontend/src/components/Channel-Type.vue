@@ -1,91 +1,149 @@
 <template>
-  <div v-for="(item, index) in data" :key="index" class="card">
-    <table class="channel-table">
-      <tbody>
-        <template v-for="(channel, cIndex) in item.channels" :key="`channel-${cIndex}`">
-          <tr v-for="(error, eIndex) in channel.displayedErrors" :key="`error-${cIndex}-${eIndex}`">
-            <!-- Channel Type Cell -->
-            <td v-if="eIndex === 0 && cIndex === 0"
-              :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)" class="channel-type">
-              <span>{{ item.channel_type }}</span>
-              <div class="type-header">
-                <!-- Use the reusable ChannelColorPicker component -->
-                <ChannelColorPicker 
-                  :color="item.color" 
-                  :predefineColors="predefineColors" 
-                  @change="setChannelColor(item)" 
-                  @update:color="item.color = $event"
-                  :channelName="item.channel_type"
-                  class="category-color-picker"
-                />
-                <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                  class="checkbox-margin"></el-checkbox>
-              </div>
-            </td>
-            <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
-              'channel-name': true,
-              'channel-name-last': cIndex === item.channels.length - 1
-            }">
-              <div class="name-container">
-                <span>{{ channel.channel_name }}</span>
-                <div class="name-right">
+  <div class="channel-list">
+    <div v-for="(item, index) in displayedData" :key="index" class="card">
+      <table class="channel-table">
+        <tbody>
+          <template v-for="(channel, cIndex) in item.channels" :key="`channel-${cIndex}`">
+            <tr v-for="(error, eIndex) in channel.displayedErrors" :key="`error-${cIndex}-${eIndex}`">
+              <!-- Channel Type Cell -->
+              <td v-if="eIndex === 0 && cIndex === 0"
+                :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)" class="channel-type">
+                <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
+                <div class="type-header">
                   <!-- Use the reusable ChannelColorPicker component -->
                   <ChannelColorPicker 
-                    :color="channel.color" 
+                    :color="item.color" 
                     :predefineColors="predefineColors" 
-                    @change="setSingleChannelColor(channel)" 
-                    @update:color="channel.color = $event"
-                    :shotNumber="channel.shot_number"
-                    :channelName="channel.channel_name"
-                    class="channel-color-picker" 
+                    @change="setChannelColor(item)" 
+                    @update:color="item.color = $event"
+                    :channelName="item.channel_type"
+                    class="category-color-picker"
                   />
-                  <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                  <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                     class="checkbox-margin"></el-checkbox>
                 </div>
-              </div>
-              <el-tag type="info" effect="plain" class="shot-number-tag">
-                {{ channel.shot_number }}
-              </el-tag>
-              <div class="show-more-container">
-                <el-button link @click="toggleShowAllErrors(channel)">
-                  {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
-                  <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">({{
-                    hiddenErrorsCount(channel) }})</span>
-                </el-button>
-              </div>
-            </td>
+              </td>
+              <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
+                'channel-name': true,
+                'channel-name-last': cIndex === item.channels.length - 1
+              }">
+                <div class="name-container">
+                  <span>{{ channel.channel_name }}</span>
+                  <div class="name-right">
+                    <!-- Use the reusable ChannelColorPicker component -->
+                    <ChannelColorPicker 
+                      :color="channel.color" 
+                      :predefineColors="predefineColors" 
+                      @change="setSingleChannelColor(channel)" 
+                      @update:color="channel.color = $event"
+                      :shotNumber="channel.shot_number"
+                      :channelName="channel.channel_name"
+                      class="channel-color-picker" 
+                    />
+                    <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                      class="checkbox-margin"></el-checkbox>
+                  </div>
+                </div>
+                <el-tag type="info" effect="plain" class="shot-number-tag">
+                  {{ channel.shot_number }}
+                </el-tag>
+                <div class="show-more-container">
+                  <el-button link @click="toggleShowAllErrors(channel)">
+                    {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
+                    <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">({{
+                      hiddenErrorsCount(channel) }})</span>
+                  </el-button>
+                </div>
+              </td>
 
-            <!-- Error Column -->
-            <td :class="{
-              'error-column': true,
-              'error-last':
-                eIndex === channel.displayedErrors.length - 1 &&
-                cIndex !== item.channels.length - 1
-            }">
-              <span :title="error.error_name">
-                {{ formatError(error.error_name) }}
-              </span>
-              <!-- Optional: Additional Color Picker for Errors -->
-              <!-- 
-                <el-color-picker v-model="error.color" @change="setErrorColor(channel, error)"
-                  class="error-color-picker" show-alpha size="small" :predefine="predefineColors" />
-                -->
-            </td>
-          </tr>
-        </template>
-      </tbody>
-    </table>
+              <!-- Error Column -->
+              <td :class="{
+                'error-column': true,
+                'error-last':
+                  eIndex === channel.displayedErrors.length - 1 &&
+                  cIndex !== item.channels.length - 1
+              }">
+                <span :title="error.error_name">
+                  {{ formatError(error.error_name) }}
+                </span>
+                <!-- Optional: Additional Color Picker for Errors -->
+                <!-- 
+                  <el-color-picker v-model="error.color" @change="setErrorColor(channel, error)"
+                    class="error-color-picker" show-alpha size="small" :predefine="predefineColors" />
+                  -->
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="loading" class="loading-indicator">
+      <el-icon class="is-loading"><Loading /></el-icon>
+      加载中...
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
-import ChannelColorPicker from './ChannelColorPicker.vue' // Import the new component
+import ChannelColorPicker from './ChannelColorPicker.vue'
+import { Loading } from '@element-plus/icons-vue'
 
 const store = useStore()
+const loading = ref(false)
+const displayedData = computed(() => store.getters.getDisplayedData)
 
-const data = computed(() => store.getters.getStructTree)
+// 监听父组件的滚动事件
+const handleParentScroll = async (event) => {
+  if (loading.value) return;
+  
+  const scrollElement = event.target;
+  const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+  
+  // 当滚动到距离底部50px时加载更多
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    loading.value = true;
+    await store.dispatch('loadMoreData');
+    loading.value = false;
+  }
+};
+
+// 监听数据变化
+watch(
+  () => displayedData.value,
+  (newData) => {
+    if (newData && Array.isArray(newData)) {
+      // 初始化新加载数据的复选框状态
+      newData.forEach(item => {
+        if (item.channels) {
+          // 检查是否有选中的通道
+          const hasCheckedChannels = item.channels.some(channel => channel.checked);
+          // 更新通道类型的复选框状态
+          item.checked = hasCheckedChannels;
+        }
+      });
+      updateSelectedChannels();
+    }
+  },
+  { deep: true }
+);
+
+onMounted(() => {
+  // 获取父级的 el-scrollbar__wrap 元素并添加滚动监听
+  const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+  if (parentScrollbar) {
+    parentScrollbar.addEventListener('scroll', handleParentScroll);
+  }
+});
+
+onUnmounted(() => {
+  // 组件卸载时移除滚动监听
+  const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+  if (parentScrollbar) {
+    parentScrollbar.removeEventListener('scroll', handleParentScroll);
+  }
+});
 
 const predefineColors = ref([
   '#000000', // Black
@@ -125,11 +183,17 @@ const hiddenErrorsCount = (channel) => {
 }
 
 onMounted(async () => {
-  if (!data.value) {
-    dataLoaded.value = true
-    updateSelectedChannels()
+  // 获取父级的 el-scrollbar__wrap 元素并添加滚动监听
+  const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+  if (parentScrollbar) {
+    parentScrollbar.addEventListener('scroll', handleParentScroll);
   }
-})
+  
+  // 如果还没有数据，初始化加载
+  if (!displayedData.value || displayedData.value.length === 0) {
+    await store.dispatch('loadMoreData', true);
+  }
+});
 
 const setChannelColor = (item) => {
   if (item && item.channels) {
@@ -148,20 +212,20 @@ const setSingleChannelColor = (channel) => {
 
 
 const updateSelectedChannels = () => {
-  if (!data.value) {
+  if (!displayedData.value) {
     return;
   }
-  const selected = data.value.flatMap(item =>
+  const selected = displayedData.value.flatMap(item =>
     item.channels
       .filter(channel => channel.checked)
       .map(channel => ({
-        channel_key: channel.channel_key, // 添加 channel_key
+        channel_key: channel.channel_key,
         channel_name: channel.channel_name,
         shot_number: channel.shot_number,
         color: channel.color,
         channel_type: item.channel_type,
         errors: channel.errors.map(error => ({
-          error_key: error.error_key, // 添加 error_key
+          error_key: error.error_key,
           error_name: error.error_name,
           color: error.color
         }))
@@ -173,30 +237,39 @@ const updateSelectedChannels = () => {
 
 
 const toggleChannelCheckboxes = (item) => {
-  item.channels.forEach((channel) => {
-    channel.checked = item.checked
-  })
-  updateSelectedChannels()
-}
+  if (item && item.channels) {
+    item.channels.forEach((channel) => {
+      channel.checked = item.checked;
+    });
+    updateSelectedChannels();
+  }
+};
 
 const updateChannelTypeCheckbox = (item) => {
   if (!item || !item.channels) {
-    console.error('Invalid item or channels:', item)
-    return
+    console.error('Invalid item or channels:', item);
+    return;
   }
 
-  item.checked = item.channels.every(channel => channel.checked)
-  updateSelectedChannels()
-}
+  item.checked = item.channels.every(channel => channel.checked);
+  updateSelectedChannels();
+};
 
 const toggleShowAllErrors = (channel) => {
-  channel.showAllErrors = !channel.showAllErrors
+  channel.showAllErrors = !channel.showAllErrors;
   if (channel.showAllErrors) {
-    channel.displayedErrors = channel.errors
+    channel.displayedErrors = channel.errors;
   } else {
-    channel.displayedErrors = channel.errors.slice(0, 1)
+    channel.displayedErrors = channel.errors.slice(0, 1);
   }
-}
+};
+
+const formatChannelType = (name) => {
+  if (name.length > 8) {
+    return name.slice(0, 8) + '...';
+  }
+  return name;
+};
 </script>
 
 <style scoped>
@@ -326,5 +399,17 @@ const toggleShowAllErrors = (channel) => {
 
 :deep(.el-color-predefine__color-selector)::before {
   border-radius: 50%;
+}
+
+.channel-list {
+  padding: 10px;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  color: #909399;
 }
 </style>

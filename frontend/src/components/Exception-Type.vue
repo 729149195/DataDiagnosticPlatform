@@ -1,87 +1,95 @@
 <template>
-  <div v-for="item in data" :key="item.id" class="card">
-    <table class="channel-table">
-      <tbody>
-        <template v-for="(channel, channelIndex) in item.channels" :key="channel.channel_key">
-          <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
+  <div class="exception-list">
+    <div v-for="item in displayedData" :key="item.id" class="card">
+      <table class="channel-table">
+        <tbody>
+          <template v-for="(channel, channelIndex) in item.channels" :key="channel.channel_key">
+            <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
 
-            <!-- 通道类别单元格 -->
-            <td v-if="channelIndex === 0 && errorIndex === 0" :rowspan="computeTotalDisplayedErrors(item)"
-              class="channel-type">
-              <span>{{ item.channel_type }}</span>
-              <div class="type-header">
-                <!-- <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
-                  size="small" show-alpha :predefine="predefineColors" /> -->
-                <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                  class="checkbox-margin"></el-checkbox>
-              </div>
-            </td>
-
-            <!-- 通道名称单元格 -->
-            <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
-              'channel-name': true,
-              'channel-name-last': isLastChannel(item.channels, channel),
-            }">
-              <div class="name-container">
-                <span>{{ channel.channel_name }}</span>
-                <div class="name-right">
-                  <el-checkbox v-model="channel.checked" @change="clearChannelTypeCheckbox(item)"
+              <!-- 通道类别单元格 -->
+              <td v-if="channelIndex === 0 && errorIndex === 0" :rowspan="computeTotalDisplayedErrors(item)"
+                class="channel-type">
+                <span>{{ item.channel_type }}</span>
+                <div class="type-header">
+                  <!-- <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
+                    size="small" show-alpha :predefine="predefineColors" /> -->
+                  <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                     class="checkbox-margin"></el-checkbox>
                 </div>
-              </div>
-              <el-tag type="info" effect="plain" class="shot-number-tag">
-                {{ channel.shot_number }}
-              </el-tag>
-              <div class="show-more-container">
-                <el-button link @click="toggleShowAllErrors(channel)">
-                  {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
-                  <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">
-                    ({{ hiddenErrorsCount(channel) }})
+              </td>
+
+              <!-- 通道名称单元格 -->
+              <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
+                'channel-name': true,
+                'channel-name-last': isLastChannel(item.channels, channel),
+              }">
+                <div class="name-container">
+                  <span>{{ channel.channel_name }}</span>
+                  <div class="name-right">
+                    <el-checkbox v-model="channel.checked" @change="clearChannelTypeCheckbox(item)"
+                      class="checkbox-margin"></el-checkbox>
+                  </div>
+                </div>
+                <el-tag type="info" effect="plain" class="shot-number-tag">
+                  {{ channel.shot_number }}
+                </el-tag>
+                <div class="show-more-container">
+                  <el-button link @click="toggleShowAllErrors(channel)">
+                    {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
+                    <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">
+                      ({{ hiddenErrorsCount(channel) }})
+                    </span>
+                  </el-button>
+                </div>
+              </td>
+
+              <!-- 异常类别单元格 -->
+              <td :class="{
+                'error-column': true,
+                'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
+              }">
+                <div class="error-container">
+                  <span :title="error.error_name">
+                    {{ formatError(error.error_name) }}
                   </span>
-                </el-button>
-              </div>
-            </td>
+                  <ErrorColorPicker
+                    :color="error.color"
+                    :predefine="predefineColors"
+                    :error-name="error.error_name"
+                    :shot-number="channel.shot_number"
+                    :channel-name="channel.channel_name"
+                    @change="setErrorColor(channel, error)"
+                    @update:color="error.color = $event"
+                  />
+                </div>
+              </td>
 
-            <!-- 异常类别单元格 -->
-            <td :class="{
-              'error-column': true,
-              'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
-            }">
-              <div class="error-container">
-                <span :title="error.error_name">
-                  {{ formatError(error.error_name) }}
-                </span>
-                <ErrorColorPicker
-                  :color="error.color"
-                  :predefine="predefineColors"
-                  :error-name="error.error_name"
-                  :shot-number="channel.shot_number"
-                  :channel-name="channel.channel_name"
-                  @change="setErrorColor(channel, error)"
-                  @update:color="error.color = $event"
-                />
-              </div>
-            </td>
-
-          </tr>
-        </template>
-      </tbody>
-    </table>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </div>
+    <div v-if="loading" class="loading-indicator">
+      <el-icon class="is-loading"><Loading /></el-icon>
+      加载中...
+    </div>
   </div>
 </template>
 
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { useStore } from 'vuex';
 import { ElMessage } from 'element-plus';
 import ErrorColorPicker from './ErrorColorPicker.vue'
+import { Loading } from '@element-plus/icons-vue'
 
 // Vuex store
 const store = useStore();
+const loading = ref(false);
 
 // 从 Vuex 获取数据
-const data = computed(() => store.getters.getStructTree);
+const displayedData = computed(() => store.getters.getDisplayedData);
 
 // 预定义颜色
 const predefineColors = ref([
@@ -91,8 +99,6 @@ const predefineColors = ref([
   '#191970', '#FA8072', '#6B8E23', '#6A5ACD', '#FF7F50',
   '#4682B4'
 ]);
-
-const dataLoaded = ref(false);
 
 // 存储原始颜色，以便在卸载组件时恢复
 const originalColors = ref({});
@@ -140,9 +146,9 @@ const hiddenErrorsCount = (channel) => {
 
 // 更新选中的通道并同步到 Vuex Store
 const updateSelectedChannels = () => {
-  if (!data.value || !Array.isArray(data.value)) return;
+  if (!displayedData.value || !Array.isArray(displayedData.value)) return;
 
-  const selected = data.value.flatMap(item => {
+  const selected = displayedData.value.flatMap(item => {
     if (!item || !Array.isArray(item.channels)) return [];
     
     return item.channels
@@ -166,9 +172,9 @@ const updateSelectedChannels = () => {
 
 // 初始化数据：设置默认颜色和 displayedErrors
 const initializeData = () => {
-  if (!data.value || !Array.isArray(data.value)) return;
+  if (!displayedData.value || !Array.isArray(displayedData.value)) return;
   
-  data.value.forEach(item => {
+  displayedData.value.forEach(item => {
     if (!item || !Array.isArray(item.channels)) return;
     
     item.channels.forEach(channel => {
@@ -201,10 +207,9 @@ const initializeData = () => {
 
 // 监听数据变化
 watch(
-  () => data.value,
+  () => displayedData.value,
   (newData) => {
     if (newData && Array.isArray(newData)) {
-      dataLoaded.value = true;
       initializeData();
       updateSelectedChannels();
     }
@@ -212,22 +217,40 @@ watch(
   { immediate: true }
 );
 
+// 监听父组件的滚动事件
+const handleParentScroll = async (event) => {
+  if (loading.value) return;
+  
+  const scrollElement = event.target;
+  const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+  
+  // 当滚动到距离底部50px时加载更多
+  if (scrollHeight - scrollTop - clientHeight < 50) {
+    loading.value = true;
+    await store.dispatch('loadMoreData');
+    loading.value = false;
+  }
+};
+
 onMounted(() => {
-  if (data.value && Array.isArray(data.value)) {
-    dataLoaded.value = true;
-    initializeData();
-    updateSelectedChannels();
+  // 获取父级的 el-scrollbar__wrap 元素并添加滚动监听
+  const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+  if (parentScrollbar) {
+    parentScrollbar.addEventListener('scroll', handleParentScroll);
   }
 });
 
-onBeforeUnmount(() => {
-  revertColors();
-  updateSelectedChannels();
+onUnmounted(() => {
+  // 组件卸载时移除滚动监听
+  const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+  if (parentScrollbar) {
+    parentScrollbar.removeEventListener('scroll', handleParentScroll);
+  }
 });
 
 // 恢复通道的原始颜色
 const revertColors = () => {
-  data.value.forEach(item => {
+  displayedData.value.forEach(item => {
     item.channels.forEach(channel => {
       const originalColor = originalColors.value[channel.channel_key];
       if (originalColor) {
@@ -426,5 +449,17 @@ const setErrorColor = (channel, error) => {
       font-size: 14px;
     }
   }
+}
+
+.exception-list {
+  padding: 10px;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  color: #909399;
 }
 </style>

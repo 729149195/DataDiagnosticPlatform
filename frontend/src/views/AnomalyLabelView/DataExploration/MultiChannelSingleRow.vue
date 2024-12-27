@@ -147,7 +147,7 @@ const updateChannelColor = ({ channelKey, color }) => {
     channel.color = color;
     // 更新 Vuex 存储，如果需要
     store.commit('updateChannelColor', { channel_key: channelKey, color });
-    // 重新绘制图表
+    // 重新���制图表
     renderCharts();
   }
 };
@@ -437,7 +437,6 @@ const fetchDataAndStore = async (channel) => {
 };
 
 // 绘制总览图表
-// 在 drawOverviewChart 函数中
 const drawOverviewChart = () => {
   if (overviewData.value.length === 0) {
     return;
@@ -454,14 +453,6 @@ const drawOverviewChart = () => {
   const width = svgWidth - margin.left - margin.right;
   const height = 80 - margin.top - margin.bottom;
 
-  // 保存当前的 brush 范围
-  const currentBrush = brushSelections.value.overview;
-  const currentX = overviewXScale.value;
-  let currentDomain;
-  if (currentBrush && currentX) {
-    currentDomain = currentBrush.map(currentX.invert);
-  }
-
   svg
     .attr(
       'viewBox',
@@ -472,10 +463,22 @@ const drawOverviewChart = () => {
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
+  // 计算所有数据的范围
   const allX = overviewData.value.flatMap((d) => d.X_value);
   const allY = overviewData.value.flatMap((d) => d.Y_value);
   const xExtent = d3.extent(allX);
   const yExtent = d3.extent(allY);
+
+  // 更新全局 X 域
+  xDomains.value.global = xExtent;
+
+  // 更新 brush_begin 和 brush_end 到当前数据范围
+  updatingBrush.value = true;
+  brush_begin.value = xExtent[0].toFixed(4);
+  brush_end.value = xExtent[1].toFixed(4);
+  store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+  updatingBrush.value = false;
+
   const x = d3.scaleLinear().domain(xExtent).range([0, width]);
   overviewXScale.value = x;
 
@@ -484,6 +487,7 @@ const drawOverviewChart = () => {
   // 绘制总览数据线条
   const lines = g.selectAll('.overview-line')
     .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
+
   // 进入
   lines.enter()
     .append('path')
@@ -512,10 +516,10 @@ const drawOverviewChart = () => {
   // 绘制坐标轴
   g.append('g')
     .attr('transform', `translate(0,${height})`)
-    .call(d3.axisBottom(x)).style("font-size", "1em") // 增大字体大小
-    .style("font-weight", "bold"); // 加粗字体;
+    .call(d3.axisBottom(x)).style("font-size", "1em")
+    .style("font-weight", "bold");
 
-  // 添加刷子（brush）功能
+  // 添加刷子功能
   const brush = d3.brushX()
     .extent([
       [0, 0],
@@ -524,35 +528,23 @@ const drawOverviewChart = () => {
     .on('brush end', debounce((event) => {
       if (updatingBrush.value) return;
 
-      // 如果是点击空白处(selection 为 null)
-      if (!event.selection) {
-        // 获取数据的完整范围
-        const fullRange = x.range();
-        // 重置为完整范围
-        brushG.call(brush.move, fullRange);
-        
-        // 更新 brush_begin 和 brush_end 为完整范围的值
-        const fullDomain = x.domain();
-        brush_begin.value = fullDomain[0].toFixed(4);
-        brush_end.value = fullDomain[1].toFixed(4);
-        
-        // 更新全局 X 域
-        xDomains.value.global = fullDomain;
-        
-        // 重新绘制组合图表
-        drawCombinedChart();
-        return;
-      }
-
-      const selection = event.selection;
+      // 当点击空白处时，恢复到完整范围
+      const selection = event.selection || initialSelection;
       const newDomain = selection.map(x.invert, x);
 
       updatingBrush.value = true;
       brush_begin.value = newDomain[0].toFixed(4);
       brush_end.value = newDomain[1].toFixed(4);
+      store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
       updatingBrush.value = false;
 
-      brushSelections.value.overview = selection;
+      // 如果是点击空白处，手动设置刷选框
+      if (!event.selection) {
+        brushG.call(brush.move, initialSelection);
+        brushSelections.value.overview = initialSelection;
+      } else {
+        brushSelections.value.overview = selection;
+      }
 
       // 更新全局 X 域
       xDomains.value.global = newDomain;
@@ -575,50 +567,10 @@ const drawOverviewChart = () => {
 
   const brushG = g.append('g').attr('class', 'brush').call(brush);
 
-  // 重置 brush_begin 和 brush_end
-  brush_begin.value = xExtent[0].toFixed(4);
-  brush_end.value = xExtent[1].toFixed(4);
-
-  const selection = xExtent.map(x);
-  brushG.call(brush.move, selection);
-
-  brushSelections.value.overview = selection;
-
-  function brushed(event) {
-    if (updatingBrush.value) return;
-
-    const selection = event.selection || x.range();
-    const newDomain = selection.map(x.invert, x);
-
-    updatingBrush.value = true;
-    brush_begin.value = newDomain[0].toFixed(4);
-    brush_end.value = newDomain[1].toFixed(4);
-    updatingBrush.value = false;
-
-    brushSelections.value.overview = selection;
-
-    // 更新全局 X 域
-    xDomains.value.global = newDomain;
-
-    // 重新绘制组合图表
-    drawCombinedChart();
-
-    // 高亮匹配结果
-    selectedChannels.value.forEach((channel) => {
-      const channelMatchedResults = matchedResults.value.filter(
-        (r) => r.channel_name === channel.channel_name
-      );
-      channelMatchedResults.forEach((result) => {
-        drawHighlightRects(channel.channel_name, [result]);
-      });
-    });
-  }
-
-  // 如果有之前的 brush 范围，则恢复它
-  if (currentDomain) {
-    const newSelection = [x(currentDomain[0]), x(currentDomain[1])];
-    brushG.call(brush.move, newSelection);
-  }
+  // 设置初始刷选范围为当前数据范围
+  const initialSelection = xExtent.map(x);
+  brushG.call(brush.move, initialSelection);
+  brushSelections.value.overview = initialSelection;
 };
 
 
@@ -851,7 +803,7 @@ const drawCombinedChart = () => {
     .style('stroke', '#ccc')
     .style('stroke-dasharray', '3,3');
 
-  // 定义颜色比例尺（可，确保每个通道颜色唯一）
+  // 定义颜色��例尺（可，确保每个通道颜色唯一）
   const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
     .domain(channelsData.value.map(d => d.channelName));
 
@@ -1078,14 +1030,7 @@ const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-    // 检查并处理 X 值
-    if (data.X_value && data.X_value.length > 0) {
-      const maxX = Math.max(...data.X_value);
-      if (maxX > 1000) {
-        // 如果X值大于1000，所有值除以1000
-        data.X_value = data.X_value.map(x => x / 1000);
-      }
-    }
+   
 
     // 采样数据
     const sampledData = sampleData(data, sampleRate.value);

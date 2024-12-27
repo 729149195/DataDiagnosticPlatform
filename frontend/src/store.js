@@ -39,6 +39,11 @@ const store = createStore({
       lower_bound: -2.4,
       isBoxSelect: true,
       previousBoxSelectState: true,
+      rawData: [], // 存储原始数据
+      displayedData: [], // 存储当前显示的数据
+      pageSize: 15, // 减小每次加载的数量
+      currentPage: 1, // 当前页码
+      hasMoreData: true, // 是否还有更多数据
     };
   },
   getters: {
@@ -62,6 +67,12 @@ const store = createStore({
     },
     getClickedChannelNames(state) {
       return state.clickedChannelNames;
+    },
+    getDisplayedData(state) {
+      return state.displayedData;
+    },
+    hasMoreData(state) {
+      return state.hasMoreData;
     },
   },
   mutations: {
@@ -265,9 +276,24 @@ const store = createStore({
     UPDATE_PREVIOUS_BOX_SELECT_STATE(state, value) {
       state.previousBoxSelectState = value;
     },
+    setRawData(state, data) {
+      state.rawData = data;
+    },
+    setDisplayedData(state, data) {
+      state.displayedData = data;
+    },
+    incrementPage(state) {
+      state.currentPage += 1;
+    },
+    setHasMoreData(state, value) {
+      state.hasMoreData = value;
+    },
+    setCurrentPage(state, value) {
+      state.currentPage = value;
+    },
   },
   actions: {
-    async fetchStructTree({ commit }, indices = []) {
+    async fetchStructTree({ commit, dispatch }, indices = []) {
       try {
         let url = "http://localhost:5000/api/struct-tree";
         if (indices.length > 0) {
@@ -276,14 +302,53 @@ const store = createStore({
         }
         const response = await fetch(url);
         const rawData = await response.json();
-        const processedData = processData(rawData);
-
-        commit("setStructTree", processedData);
-
-        commit("updateSelectedChannelsAfterProcessing");
+        
+        commit("setRawData", rawData);
+        commit("setHasMoreData", true);
+        commit("setDisplayedData", []);
+        commit("setCurrentPage", 1);
+        
+        // 初始化显示第一页数据
+        await dispatch("loadMoreData", true);
       } catch (error) {
         console.error("Failed to fetch data:", error);
       }
+    },
+    
+    async loadMoreData({ state, commit }, isInitial = false) {
+      if (!state.hasMoreData && !isInitial) return;
+      
+      if (isInitial) {
+        commit("setDisplayedData", []);
+        commit("setCurrentPage", 1);
+        commit("setHasMoreData", true);
+      }
+      
+      const startIndex = (state.currentPage - 1) * state.pageSize;
+      const endIndex = startIndex + state.pageSize;
+      const newData = state.rawData.slice(startIndex, endIndex);
+      
+      if (newData.length === 0) {
+        commit("setHasMoreData", false);
+        return;
+      }
+      
+      // 处理新数据
+      const processedNewData = processData(newData);
+      
+      // 合并数据
+      let updatedData;
+      if (isInitial) {
+        updatedData = processedNewData;
+      } else {
+        updatedData = mergeChannelTypeData(state.displayedData, processedNewData);
+      }
+        
+      commit("setDisplayedData", updatedData);
+      commit("incrementPage");
+      
+      // 检查是否还有更多数据
+      commit("setHasMoreData", endIndex < state.rawData.length);
     },
     updateSampling({ commit }, value) {
       commit("setSampling", value);
@@ -339,15 +404,44 @@ const store = createStore({
   },
 });
 
-// store.js
+// 添加新的合并函数
+function mergeChannelTypeData(existingData, newData) {
+  const mergedMap = new Map();
+  
+  // 首先处理现有数据
+  existingData.forEach(item => {
+    mergedMap.set(item.channel_type, item);
+  });
+  
+  // 合并新数据
+  newData.forEach(newItem => {
+    if (mergedMap.has(newItem.channel_type)) {
+      // 如果已存在该通道类型，合并channels
+      const existingItem = mergedMap.get(newItem.channel_type);
+      newItem.channels.forEach(newChannel => {
+        // 检查是否已存在相同的channel
+        const existingChannel = existingItem.channels.find(
+          ch => ch.channel_key === newChannel.channel_key
+        );
+        if (!existingChannel) {
+          existingItem.channels.push(newChannel);
+        }
+      });
+    } else {
+      // 如果是新的通道类型，直接添加
+      mergedMap.set(newItem.channel_type, newItem);
+    }
+  });
+  
+  // 转换回数组并返回
+  return Array.from(mergedMap.values());
+}
+
 function processData(rawData) {
   const groupedData = [];
   const channelTypeMap = {};
 
-  // 只处理前100条数据
-  const limitedData = rawData.slice(0, 100);
-
-  limitedData.forEach((item) => {
+  rawData.forEach((item) => {
     const channelType = item.channel_type;
     const channelName = item.channel_name;
     const shotNumber = item.shot_number;
@@ -367,6 +461,7 @@ function processData(rawData) {
 
     const channelTypeEntry = channelTypeMap[channelType];
 
+    // 检查是否已存在相同的channel
     let channelEntry = channelTypeEntry.channels.find(
       (c) => c.channel_key === channelKey
     );
@@ -414,7 +509,6 @@ function processData(rawData) {
     channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
   });
 
-  console.log(groupedData)
   return groupedData;
 }
 

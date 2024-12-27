@@ -262,14 +262,14 @@ const processChannelData = async (data, channel) => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     const channelName = channelKey;
 
-    // 检查并处理 X 值
-    if (data.X_value && data.X_value.length > 0) {
-      const maxX = Math.max(...data.X_value);
-      if (maxX > 1000) {
-        // 如果X值大于1000，所有值除以1000
-        data.X_value = data.X_value.map(x => x / 1000);
-      }
-    }
+    // // 检查并处理 X 值
+    // if (data.X_value && data.X_value.length > 0) {
+    //   const maxX = Math.max(...data.X_value);
+    //   if (maxX > 1000) {
+    //     // 如果X值大于1000，所有值除以1000
+    //     data.X_value = data.X_value.map(x => x / 1000);
+    //   }
+    // }
 
     const sampledData = sampleData(data, sampleRate.value);
 
@@ -292,15 +292,15 @@ const processChannelData = async (data, channel) => {
       if (channelDataCache.value[errorKey]) {
         errorData = channelDataCache.value[errorKey];
         
-        // 对缓存的错误数据也进行X值处理
-        if (errorData.X_value_error) {
-          errorData.X_value_error = errorData.X_value_error.map(segment => {
-            if (Math.max(...segment) > 1000) {
-              return segment.map(x => x / 1000);
-            }
-            return segment;
-          });
-        }
+        // // 对缓存的错误数据也进行X值处理
+        // if (errorData.X_value_error) {
+        //   errorData.X_value_error = errorData.X_value_error.map(segment => {
+        //     if (Math.max(...segment) > 1000) {
+        //       return segment.map(x => x / 1000);
+        //     }
+        //     return segment;
+        //   });
+        // }
       } else {
         const params = {
           channel_key: channelKey,
@@ -754,14 +754,6 @@ const drawOverviewChart = () => {
   const width = svgWidth - margin.left - margin.right;
   const height = 80 - margin.top - margin.bottom;
 
-  // 保存当前的 brush 范围
-  const currentBrush = brushSelections.value.overview;
-  const currentX = overviewXScale.value;
-  let currentDomain;
-  if (currentBrush && currentX) {
-    currentDomain = currentBrush.map(currentX.invert);
-  }
-
   svg
       .attr(
           'viewBox',
@@ -771,18 +763,35 @@ const drawOverviewChart = () => {
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
-  // 计算所数据的范围
+  // 计算所有数据的范围
   const allX = overviewData.value.flatMap((d) => d.X_value);
   const allY = overviewData.value.flatMap((d) => d.Y_value);
   const xExtent = d3.extent(allX);
   const yExtent = d3.extent(allY);
+
+  // 更新所有通道的 domain
+  selectedChannels.value.forEach((channel) => {
+    const channelName = `${channel.channel_name}_${channel.shot_number}`;
+    store.dispatch('updateDomains', {
+      channelName,
+      xDomain: xExtent,
+      yDomain: domains.value.y[channelName]
+    });
+  });
+
+  // 更新 brush_begin 和 brush_end 到当前数据范围
+  updatingBrush.value = true;
+  brush_begin.value = xExtent[0].toFixed(4);
+  brush_end.value = xExtent[1].toFixed(4);
+  store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+  updatingBrush.value = false;
 
   const x = d3.scaleLinear().domain(xExtent).range([0, width]);
   overviewXScale.value = x;
 
   const y = d3.scaleLinear().domain(yExtent).range([height, 0]);
 
-  // 绘制总览数据条
+  // 绘制总览数据线条
   const lines = g.selectAll('.overview-line')
       .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
 
@@ -830,26 +839,25 @@ const drawOverviewChart = () => {
 
   const brushG = g.append('g').attr('class', 'brush').call(brush);
 
-  // 修改这里:设置初始刷选范围为全部
+  // 设置初始刷选范围为当前数据范围
   const initialSelection = xExtent.map(x);
-  brush_begin.value = xExtent[0].toFixed(4);
-  brush_end.value = xExtent[1].toFixed(4);
   brushG.call(brush.move, initialSelection);
   brushSelections.value.overview = initialSelection;
 
   function brushed(event) {
     if (updatingBrush.value) return;
 
-    // 修改这里:当点击空白处时,恢复到完整范围
+    // 当点击空白处时，恢复到完整范围
     const selection = event.selection || initialSelection;
     const newDomain = selection.map(x.invert, x);
 
     updatingBrush.value = true;
     brush_begin.value = newDomain[0].toFixed(4);
     brush_end.value = newDomain[1].toFixed(4);
+    store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
     updatingBrush.value = false;
 
-    // 如果是点击空白处,手动设置刷选框
+    // 如果是点击空白处，手动设置刷选框
     if (!event.selection) {
       brushG.call(brush.move, initialSelection);
       brushSelections.value.overview = initialSelection;
@@ -871,12 +879,6 @@ const drawOverviewChart = () => {
     selectedChannels.value.forEach((channel) => {
       fetchDataAndDrawChart(channel);
     });
-  }
-
-  // 如果有之前的 brush 范围，则恢复它
-  if (currentDomain) {
-    const newSelection = [x(currentDomain[0]), x(currentDomain[1])];
-    brushG.call(brush.move, newSelection);
   }
 };
 

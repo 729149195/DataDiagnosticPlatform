@@ -58,7 +58,7 @@
 
 <script setup>
 import * as d3 from 'd3';
-import { onMounted, watch, computed, ref, nextTick } from 'vue';
+import { onMounted, watch, computed, ref, nextTick, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { ElDialog, ElDescriptions, ElDescriptionsItem } from 'element-plus';
 import pLimit from 'p-limit';
@@ -86,6 +86,9 @@ let errorResults = [];
 
 // 获取 Vuex store 中的数据缓存
 const dataCache = computed(() => store.state.dataCache);
+
+// 在 script setup 部分的开头添加 channelDataCache 的计算属性
+const channelDataCache = computed(() => store.state.channelDataCache);
 
 //导出功能函数
 const HeatMapRef = ref(null)
@@ -166,7 +169,7 @@ const exportHeatMapData = () => {
 }
 
 
-// 辅助函数：判断给定的 errorIdx 是否为异常
+// 辅助函数：判断给定的 errorIdx 是否为��常
 function isAnomaly(idx, channelKey) {
   const result = errorResults.find(
     (r) => r.errorIdx === idx && r.channelKey === channelKey
@@ -236,46 +239,132 @@ const retryRequest = async (fn, retries = 3, delay = 1000) => {
 };
 
 onMounted(() => {
-  watch(
-    [selectedChannels, anomaliesByChannel],
-    async ([newChannels, newAnomalies]) => {
-      await nextTick();
-      renderHeatmap(newChannels);
-    },
-    { immediate: true, deep: true }
-  );
+  // 初始渲染
+  if (selectedChannels.value.length > 0) {
+    renderHeatmap(selectedChannels.value);
+  }
 });
 
+// 合并所有的监听逻辑到一个 watch 中
+const debounceRender = ref(null);
 
+watch(
+  [() => channelDataCache.value, selectedChannels, anomaliesByChannel],
+  async ([newCache, newChannels, newAnomalies], [oldCache, oldChannels, oldAnomalies]) => {
+    // 如果没有选中的通道，不进行渲染
+    if (!newChannels || newChannels.length === 0) {
+      return;
+    }
+
+    // 使用防抖来避免频繁渲染
+    if (debounceRender.value) {
+      clearTimeout(debounceRender.value);
+    }
+
+    // 创建一个新的 Promise 来处理渲染
+    const renderPromise = new Promise((resolve) => {
+      debounceRender.value = setTimeout(async () => {
+        try {
+          await nextTick();
+          await renderHeatmap(newChannels);
+          resolve();
+        } catch (error) {
+          console.error('Error in debounced renderHeatmap:', error);
+          loading.value = false;
+          loadingPercentage.value = 0;
+          resolve();
+        }
+      }, 300);
+    });
+
+    await renderPromise;
+  },
+  { 
+    deep: true,
+    immediate: true 
+  }
+);
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (debounceRender.value) {
+    clearTimeout(debounceRender.value);
+  }
+});
+
+// 添加数据处理函数
+const processDataTo1KHz = (data) => {
+  if (!data || !data.X_value || !data.Y_value) {
+    return data;
+  }
+
+  const targetFrequency = 1000; // 1KHz
+  const timeStep = 1 / targetFrequency;
+  
+  // 计算当前采样率
+  const currentTimeStep = (data.X_value[data.X_value.length - 1] - data.X_value[0]) / (data.X_value.length - 1);
+  const currentFrequency = 1 / currentTimeStep;
+  
+  // 如果当前频率接近1KHz，直接返回原始数据
+  if (Math.abs(currentFrequency - targetFrequency) < 1) {
+    return data;
+  }
+
+  // 创建新的时间点数组
+  const startTime = data.X_value[0];
+  const endTime = data.X_value[data.X_value.length - 1];
+  const newXValues = [];
+  const newYValues = [];
+  
+  let currentTime = startTime;
+  let currentIndex = 0;
+  
+  while (currentTime <= endTime && currentIndex < data.X_value.length) {
+    // 找到当前时间点对应的索引
+    while (currentIndex < data.X_value.length - 1 && data.X_value[currentIndex + 1] < currentTime) {
+      currentIndex++;
+    }
+    
+    // 线性插值
+    if (currentIndex < data.X_value.length - 1) {
+      const x0 = data.X_value[currentIndex];
+      const x1 = data.X_value[currentIndex + 1];
+      const y0 = data.Y_value[currentIndex];
+      const y1 = data.Y_value[currentIndex + 1];
+      
+      const ratio = (currentTime - x0) / (x1 - x0);
+      const interpolatedY = y0 + ratio * (y1 - y0);
+      
+      newXValues.push(currentTime);
+      newYValues.push(interpolatedY);
+    }
+    
+    currentTime += timeStep;
+  }
+
+  return {
+    X_value: newXValues,
+    Y_value: newYValues,
+    X_unit: data.X_unit,
+    Y_unit: data.Y_unit
+  };
+};
 
 async function renderHeatmap(channels) {
   try {
-    // 检查是否所有数据都在缓存中
-    let allDataInCache = true;
-    for (const channel of channels) {
-      for (const [errorIndex, error] of channel.errors.entries()) {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const errorCacheKey = `${channelKey}-error-${error.error_name}-${errorIndex}-heatmap`;
-        if (!dataCache.value.has(errorCacheKey)) {
-          allDataInCache = false;
-          break;
-        }
-      }
-      if (!allDataInCache) break;
+    // 如果没有通道数据，直接返回
+    if (!channels || channels.length === 0) {
+      loading.value = false;
+      return;
     }
 
     // 重置进度状态
-    loading.value = !allDataInCache; // 只在需要加载新数据时显示进度条
+    loading.value = true;
     loadingPercentage.value = 0;
     completedRequests.value = 0;
     
     const heatmap = d3.select('#heatmap');
     heatmap.selectAll('*').remove();
-
-    if (channels.length === 0) {
-      loading.value = false;
-      return;
-    }
 
     // 计算总请求数
     totalRequests.value = channels.reduce((total, channel) => total + channel.errors.length, 0);
@@ -285,53 +374,97 @@ async function renderHeatmap(channels) {
       return;
     }
 
-    // 设置常量
-    const Domain = [-2, 6];
-    const step = 0.5;
+    // 计算所有通道数据的 X 值范围
+    let globalXMin = Infinity;
+    let globalXMax = -Infinity;
+    
+    // 使用 Map 缓存已处理的通道数据
+    const processedChannels = new Map();
+    
+    // 遍历 channelDataCache 中的所有数据来计算全局 X 范围
+    for (const channel of channels) {
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      // 从 channelDataCache.value 中获取数据
+      const channelData = channelDataCache.value[channelKey];
+      
+      if (channelData && channelData.X_value) {
+        // 处理数据到1KHz
+        const processedData = processDataTo1KHz(channelData);
+        let xValues = processedData.X_value;
+        
+        const localMin = Math.min(...xValues);
+        const localMax = Math.max(...xValues);
+        
+        globalXMin = Math.min(globalXMin, localMin);
+        globalXMax = Math.max(globalXMax, localMax);
+        
+        // 缓存处理后的数据
+        processedChannels.set(channelKey, {
+          ...processedData,
+          localMin,
+          localMax
+        });
+      }
+    }
+
+    // 如果没有找到有效数据,使用默认
+    if (globalXMin === Infinity || globalXMax === -Infinity) {
+      globalXMin = -2;
+      globalXMax = 6;
+    }
+
+    // 方案1：完全移除边距
+    const Domain = [globalXMin, globalXMax];
+
+    const step = (Domain[1] - Domain[0]) / 16; // 或者其他合适的步长计算方式
     const rectNum = Math.round((Domain[1] - Domain[0]) / step);
 
     const visData = {}; // { [channelKey]: data array }
     const errorColors = {}; // { [errorIdx]: color }
     let errorIdxCounter = 1;
 
-    const errorPromises = [];
-
     // 重置 errorResults
     errorResults = [];
+
+    // 使用 Map 存储错误数据
+    const errorDataMap = new Map();
+    const errorPromises = [];
 
     // 对于每个通道
     for (const channel of channels) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       const channelType = channel.channel_type;
-      visData[channelKey] = [];
-      for (let i = 0; i < rectNum; i++) {
-        visData[channelKey][i] = []; // 初始化为数组
+      
+      // 初始化该通道的可视化数据
+      if (!visData[channelKey]) {
+        visData[channelKey] = Array(rectNum).fill().map(() => []);
       }
 
       // 对于每个错误
       for (const [errorIndex, error] of channel.errors.entries()) {
         const errorIdxCurrent = errorIdxCounter++;
         errorColors[errorIdxCurrent] = error.color;
-
         const errorName = error.error_name;
 
         // 构建缓存键
         const errorCacheKey = `${channelKey}-error-${errorName}-${errorIndex}-heatmap`;
-        let errorData;
 
         // 检查缓存中是否已有数据
         if (dataCache.value.has(errorCacheKey)) {
-          errorData = dataCache.value.get(errorCacheKey);
-          // 存储带有 errorIdx 的错误数据
-          errorResults.push({
+          const errorData = dataCache.value.get(errorCacheKey);
+          errorDataMap.set(errorIdxCurrent, {
             channelKey,
             errorIdx: errorIdxCurrent,
             errorData: errorData,
-            isAnomaly: false,
+            isAnomaly: false
           });
           
           // 处理缓存的数据
           processErrorData(errorData, channelKey, errorIdxCurrent, visData, rectNum, Domain, step);
+          
+          // 更新进度
+          completedRequests.value++;
+          loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
           continue;
         }
 
@@ -356,13 +489,18 @@ async function renderHeatmap(channels) {
             // 将数据存入缓存
             dataCache.value.set(errorCacheKey, errorData);
             
-            // 存储带有 errorIdx 的错误数据
-            errorResults.push({
+            // 存储错误数据
+            errorDataMap.set(errorIdxCurrent, {
               channelKey,
               errorIdx: errorIdxCurrent,
               errorData: errorData,
-              isAnomaly: false,
+              isAnomaly: false
             });
+
+            // 更新进度
+            completedRequests.value++;
+            loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
+            
             return { channelKey, errorIdx: errorIdxCurrent, errorData };
           } catch (err) {
             console.warn(
@@ -377,39 +515,14 @@ async function renderHeatmap(channels) {
       }
     }
 
-    // 等待所有错误数据加载完成，使用 Promise.allSettled 而不是 Promise.all
-    const results = await Promise.allSettled(errorPromises);
+    // 等待所有错误数据加载完成
+    await Promise.allSettled(errorPromises);
     
-    // 过滤出成功的结果
-    const successfulResults = results
-        .filter(result => result.status === 'fulfilled' && result.value)
-        .map(result => result.value);
-
-    // 处理错误数据
-    for (const result of successfulResults) {
-      if (!result) continue;
-      const { channelKey, errorIdx, errorData } = result;
-      const X_value_error = errorData['X_value_error'];
-
-      // 对于每个错误区间
-      for (const idxList of X_value_error) {
-        if (!Array.isArray(idxList) || idxList.length === 0) {
-          continue; // 跳过无效的错误区间数据
-        }
-
-        const left = Math.floor((idxList[0] - Domain[0]) / step);
-        const right = Math.floor((idxList[idxList.length - 1] - Domain[0]) / step);
-        for (let i = left; i <= right; i++) {
-          if (i >= 0 && i < rectNum) {
-            visData[channelKey][i].push(errorIdx); // 将错误索引加入数组
-          }
-        }
-      }
-    }
+    // 将所有错误数据添加到 errorResults
+    errorResults = Array.from(errorDataMap.values());
 
     // 处理异常数据（用户标注的异常）
     for (const channel of channels) {
-      const channel_name = channel.channel_name;
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       const channelAnomalies = anomaliesByChannel.value[channelKey] || [];
 
@@ -425,10 +538,21 @@ async function renderHeatmap(channels) {
           isAnomaly: true,
         });
 
-        const left = Math.floor((anomaly.startX - Domain[0]) / step);
-        const right = Math.floor((anomaly.endX - Domain[0]) / step);
-        for (let i = left; i <= right; i++) {
-          if (i >= 0 && i < rectNum) {
+        // 计算异常区间的位置，使用1KHz的时间步长
+        const timeStep = 0.001; // 1KHz
+        const startX = Math.floor(parseFloat(anomaly.startX) / timeStep) * timeStep;
+        const endX = Math.ceil(parseFloat(anomaly.endX) / timeStep) * timeStep;
+        
+        // 计算对应的矩形索引
+        const left = Math.floor((startX - Domain[0]) / step);
+        const right = Math.floor((endX - Domain[0]) / step);
+        
+        // 将异常添加到对应的矩形中
+        for (let i = left; i <= right && i < rectNum; i++) {
+          if (i >= 0) {
+            if (!visData[channelKey]) {
+              visData[channelKey] = Array(rectNum).fill().map(() => []);
+            }
             visData[channelKey][i].push(anomalyErrorIdxCurrent);
           }
         }
@@ -442,6 +566,14 @@ async function renderHeatmap(channels) {
     const channelNames = channels.map(
       (channel) => `${channel.channel_name} / ${channel.shot_number}`
     );
+
+    // 确保所有通道都有数据
+    channelKeys.forEach(key => {
+      if (!visData[key]) {
+        visData[key] = Array(rectNum).fill().map(() => []);
+      }
+    });
+
     const visDataArrays = channelKeys.map((key) => visData[key]);
 
     // 准备X轴刻度
@@ -526,70 +658,52 @@ async function renderHeatmap(channels) {
           .attr('fill', 'none') // 不填充颜色
           .attr('stroke', (d) => {
             if (d.length > 0) {
+              // 检查是否包含异常
+              const hasAnomaly = d.some(idx => isAnomaly(idx, channelKey));
+              if (hasAnomaly) {
+                return 'orange'; // 异常使用橙色边框
+              }
+              
               if (channel.errors.length > 1) {
                 return '#ccc'; // 多个错误，灰色边框
               } else {
-                const nonAnomalyIdx = d.find(
-                  (idx) => !isAnomaly(idx, channelKey)
-                );
+                const nonAnomalyIdx = d.find(idx => !isAnomaly(idx, channelKey));
                 const errorData = errorResults.find(
-                  (result) =>
-                    result &&
-                    result.errorIdx === nonAnomalyIdx &&
-                    result.channelKey === channelKey
+                  result => result && 
+                  result.errorIdx === nonAnomalyIdx && 
+                  result.channelKey === channelKey
                 );
-                if (
-                  errorData &&
-                  errorData.errorData.person !== storePerson.value
-                ) {
+                if (errorData && errorData.errorData.person !== storePerson.value) {
                   return errorColors[nonAnomalyIdx];
-                } else if (d.some((idx) => isAnomaly(idx, channelKey))) {
-                  // 如果包含异常，使用橙色边框
-                  return 'orange';
-                } else {
-                  return 'none';
                 }
               }
-            } else {
-              return 'none'; // 正常数据无边框
             }
+            return 'none'; // 正常数据无边框
           })
-          .attr('stroke-width', (d) => {
-            if (d.length > 0) {
-              return 3;
-            } else {
-              return 0;
-            }
-          })
+          .attr('stroke-width', (d) => d.length > 0 ? 3 : 0)
           .attr('stroke-dasharray', (d) => {
             if (d.length > 0) {
+              // 检查是否包含异常
+              const hasAnomaly = d.some(idx => isAnomaly(idx, channelKey));
+              if (hasAnomaly) {
+                return '0'; // 异常使用实线边框
+              }
+              
               if (channel.errors.length > 1) {
                 return '4 2'; // 多个错误，虚线边框
               } else {
-                const nonAnomalyIdx = d.find(
-                  (idx) => !isAnomaly(idx, channelKey)
-                );
+                const nonAnomalyIdx = d.find(idx => !isAnomaly(idx, channelKey));
                 const errorData = errorResults.find(
-                  (result) =>
-                    result &&
-                    result.errorIdx === nonAnomalyIdx &&
-                    result.channelKey === channelKey
+                  result => result && 
+                  result.errorIdx === nonAnomalyIdx && 
+                  result.channelKey === channelKey
                 );
-                if (
-                  errorData &&
-                  errorData.errorData.person !== storePerson.value
-                ) {
+                if (errorData && errorData.errorData.person !== storePerson.value) {
                   return '4 2'; // person 不同，虚线边框
-                } else if (d.some((idx) => isAnomaly(idx, channelKey))) {
-                  // 如果包含异常，使用实线边框
-                  return '0';
-                } else {
-                  return '0'; // person 相同，实线边框
                 }
               }
-            } else {
-              return '0'; // 正常数据，实线边框（不可见）
             }
+            return '0'; // 正常数据，实线边框（不可见）
           })
           .attr('cursor', 'pointer')
           .on('click', function (event, dRect) {
@@ -709,7 +823,7 @@ async function renderHeatmap(channels) {
               return filteredData;
             });
 
-            // 去除重复的异常息
+            // 去除重复的异常信息
             const uniqueFilteredErrorsInRect = filteredErrorsInRect.filter(
               (item, index, self) =>
                 index ===
@@ -744,7 +858,7 @@ async function renderHeatmap(channels) {
   }
 }
 
-// 添加处理错误数据的辅助函数
+// 修改处理错误数据的辅助函数
 function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Domain, step) {
   const X_value_error = errorData['X_value_error'];
   
@@ -754,8 +868,15 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
       continue;
     }
     
-    const left = Math.floor((idxList[0] - Domain[0]) / step);
-    const right = Math.floor((idxList[idxList.length - 1] - Domain[0]) / step);
+    // 处理错误数据到1KHz
+    const processedErrorData = processDataTo1KHz({
+      X_value: idxList,
+      Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
+    });
+    
+    const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
+    const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
+    
     for (let i = left; i <= right; i++) {
       if (i >= 0 && i < rectNum) {
         visData[channelKey][i].push(errorIdx);

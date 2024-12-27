@@ -1,83 +1,91 @@
 <template>
-    <div v-for="(item, index) in filteredData" :key="item.channel_type + '-' + index" class="card">
-        <table class="channel-table">
-            <tbody>
-                <template v-for="(channel, cIndex) in item.channels" :key="channel.channel_key">
-                    <tr v-for="(error, eIndex) in channel.displayedErrors"
-                        :key="`error-${channel.channel_key}-${eIndex}`">
-                        <td v-if="eIndex === 0 && cIndex === 0"
-                            :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)"
-                            class="channel-type">
-                            <span>{{ item.channel_type }}</span>
-                            <div class="type-header">
-                                <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                                    class="checkbox-margin"></el-checkbox>
-                            </div>
-                        </td>
-
-                        <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
-                            'channel-name': true,
-                            'channel-name-last': cIndex === item.channels.length - 1
-                        }">
-                            <div class="name-container">
-                                <span class="channel-name-text">{{ channel.channel_name }}</span>
-                                <div class="name-right">
-                                    <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+    <div class="channel-list-p">
+        <div v-for="(item, index) in filteredDisplayedData" :key="item.channel_type + '-' + index" class="card">
+            <table class="channel-table">
+                <tbody>
+                    <template v-for="(channel, cIndex) in item.channels" :key="channel.channel_key">
+                        <tr v-for="(error, eIndex) in channel.displayedErrors"
+                            :key="`error-${channel.channel_key}-${eIndex}`">
+                            <td v-if="eIndex === 0 && cIndex === 0"
+                                :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)"
+                                class="channel-type">
+                                <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
+                                <div class="type-header">
+                                    <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                                         class="checkbox-margin"></el-checkbox>
                                 </div>
-                            </div>
-                            <el-tag link effect="plain" type="info" class="shot-number-tag">
-                                {{ channel.shot_number }}
-                            </el-tag>
-                            <div class="show-more-container">
-                                <el-button link @click="toggleShowAllErrors(channel)">
-                                    {{ channel.showAllErrors ? '收起' : '展开全部异常类别' }}
-                                    <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0"
-                                        class="hidden-errors">
-                                        ({{ hiddenErrorsCount(channel) }})
-                                    </span>
-                                </el-button>
-                            </div>
-                        </td>
+                            </td>
 
-                        <td :class="{
-                            'error-column': true,
-                            'error-last':
-                                eIndex === channel.displayedErrors.length - 1 &&
-                                cIndex !== item.channels.length - 1
-                        }">
-                            <div class="error-container">
-                                <span :title="error.error_name" :style="{ color: error.color }">
-                                    {{ formatError(error.error_name) }}
-                                </span>
-                            </div>
-                        </td>
-                    </tr>
-                </template>
-            </tbody>
-        </table>
+                            <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
+                                'channel-name': true,
+                                'channel-name-last': cIndex === item.channels.length - 1
+                            }">
+                                <div class="name-container">
+                                    <span class="channel-name-text">{{ channel.channel_name }}</span>
+                                    <div class="name-right">
+                                        <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                                            class="checkbox-margin"></el-checkbox>
+                                    </div>
+                                </div>
+                                <el-tag link effect="plain" type="info" class="shot-number-tag">
+                                    {{ channel.shot_number }}
+                                </el-tag>
+                                <div class="show-more-container">
+                                    <el-button link @click="toggleShowAllErrors(channel)">
+                                        {{ channel.showAllErrors ? '收起' : '展开全部异常类别' }}
+                                        <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0"
+                                            class="hidden-errors">
+                                            ({{ hiddenErrorsCount(channel) }})
+                                        </span>
+                                    </el-button>
+                                </div>
+                            </td>
+
+                            <td :class="{
+                                'error-column': true,
+                                'error-last':
+                                    eIndex === channel.displayedErrors.length - 1 &&
+                                    cIndex !== item.channels.length - 1
+                            }">
+                                <div class="error-container">
+                                    <span :title="error.error_name" :style="{ color: error.color }">
+                                        {{ formatError(error.error_name) }}
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+        <div v-if="loading" class="loading-indicator">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            加载中...
+        </div>
     </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useStore } from 'vuex';
+import { Loading } from '@element-plus/icons-vue'
 
 const store = useStore();
+const loading = ref(false);
 
-// 获取 StructTree 数据
-const data = computed(() => store.getters.getStructTree);
+// 获取 displayedData 数据
+const displayedData = computed(() => store.getters.getDisplayedData);
 
 // 搜索输入
 const search = ref('');
 
 // 计算过滤后的数据
-const filteredData = computed(() => {
+const filteredDisplayedData = computed(() => {
     if (!search.value) {
-        return data.value;
+        return displayedData.value;
     }
     const query = search.value.toLowerCase();
-    return data.value.map(item => {
+    return displayedData.value.map(item => {
         const filteredChannels = item.channels.filter(channel =>
             channel.channel_name.toLowerCase().includes(query) ||
             channel.shot_number.toLowerCase().includes(query) ||
@@ -88,6 +96,37 @@ const filteredData = computed(() => {
             channels: filteredChannels
         };
     }).filter(item => item.channels.length > 0);
+});
+
+// 监听父组件的滚动事件
+const handleParentScroll = async (event) => {
+    if (loading.value) return;
+    
+    const scrollElement = event.target;
+    const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+    
+    // 当滚动到距离底部50px时加载更多
+    if (scrollHeight - scrollTop - clientHeight < 50) {
+        loading.value = true;
+        await store.dispatch('loadMoreData');
+        loading.value = false;
+    }
+};
+
+onMounted(() => {
+    // 获取父级的 el-scrollbar__wrap 元素并添加滚动监听
+    const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+    if (parentScrollbar) {
+        parentScrollbar.addEventListener('scroll', handleParentScroll);
+    }
+});
+
+onUnmounted(() => {
+    // 组件卸载时移除滚动监听
+    const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
+    if (parentScrollbar) {
+        parentScrollbar.removeEventListener('scroll', handleParentScroll);
+    }
 });
 
 // 格式化错误名称
@@ -105,10 +144,10 @@ const hiddenErrorsCount = (channel) => {
 
 // 更新选中的通道并同步到 Vuex Store
 const updateSelectedChannels = () => {
-    if (!data.value) {
+    if (!displayedData.value) {
         return;
     }
-    const selected = data.value.flatMap(item =>
+    const selected = displayedData.value.flatMap(item =>
         item.channels
             .filter(channel => channel.checked)
             .map(channel => ({
@@ -150,7 +189,7 @@ const updateChannelTypeCheckbox = (item) => {
     updateSelectedChannels();
 };
 
-// 切换显示所有异常类别
+// 切换���示所有异常类别
 const toggleShowAllErrors = (channel) => {
     channel.showAllErrors = !channel.showAllErrors;
     if (channel.showAllErrors) {
@@ -161,7 +200,7 @@ const toggleShowAllErrors = (channel) => {
 };
 
 // 监视 StructTree 数据变化，确保复选框状态同步
-watch(data, (newData) => {
+watch(displayedData, (newData) => {
     updateSelectedChannels();
 }, { deep: true });
 
@@ -169,6 +208,14 @@ watch(data, (newData) => {
 onMounted(() => {
     updateSelectedChannels();
 });
+
+// 格式化通道类别名称
+const formatChannelType = (name) => {
+    if (name.length > 8) {
+        return name.slice(0, 8) + '...';
+    }
+    return name;
+};
 </script>
 
 <style scoped>
@@ -273,5 +320,17 @@ onMounted(() => {
 
 .channel-name-last {
     border-bottom: none;
+}
+
+.channel-list-p {
+    padding: 10px;
+}
+
+.loading-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    color: #909399;
 }
 </style>
