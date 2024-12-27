@@ -262,16 +262,10 @@ const processChannelData = async (data, channel) => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     const channelName = channelKey;
 
-    // // 检查并处理 X 值
-    // if (data.X_value && data.X_value.length > 0) {
-    //   const maxX = Math.max(...data.X_value);
-    //   if (maxX > 1000) {
-    //     // 如果X值大于1000，所有值除以1000
-    //     data.X_value = data.X_value.map(x => x / 1000);
-    //   }
-    // }
-
     const sampledData = sampleData(data, sampleRate.value);
+    // 保持原始频率信息和原始数据点数
+    sampledData.originalFrequency = data.originalFrequency;
+    sampledData.originalDataPoints = data.X_value.length;
 
     // 确保采样数据有效
     if (!sampledData || !sampledData.X_value || !sampledData.Y_value) {
@@ -292,15 +286,6 @@ const processChannelData = async (data, channel) => {
       if (channelDataCache.value[errorKey]) {
         errorData = channelDataCache.value[errorKey];
         
-        // // 对缓存的错误数据也进行X值处理
-        // if (errorData.X_value_error) {
-        //   errorData.X_value_error = errorData.X_value_error.map(segment => {
-        //     if (Math.max(...segment) > 1000) {
-        //       return segment.map(x => x / 1000);
-        //     }
-        //     return segment;
-        //   });
-        // }
       } else {
         const params = {
           channel_key: channelKey,
@@ -394,6 +379,11 @@ const fetchDataAndDrawChart = async (channel) => {
       loadingStates[channelKey] = Number(100);
       renderingStates[channelKey] = Number(100);
       data = channelDataCache.value[channelKey];
+      // 确保缓存数据也计算原始频率
+      if (!data.originalFrequency) {
+        const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
+        data.originalFrequency = data.X_value.length / timeRange / 1000;
+      }
     } else {
       const params = {
         channel_key: channelKey,
@@ -412,6 +402,10 @@ const fetchDataAndDrawChart = async (channel) => {
       }));
 
       data = response.data;
+      // 计算原始采样频率
+      const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]); // 时间范围（秒）
+      data.originalFrequency = data.X_value.length / timeRange / 1000; // 转换为KHz
+
       console.log(data)
       channelDataCache.value[channelKey] = data;
 
@@ -452,7 +446,7 @@ const renderCharts = debounce(async () => {
     // 重置览数据
     overviewData.value = [];
 
-    // 确保有选中的通道
+    // ���保有选中的通道
     if (!selectedChannels.value || selectedChannels.value.length === 0) {
       console.warn('No channels selected');
       return;
@@ -525,16 +519,30 @@ onUnmounted(() => {
 watch(selectedChannels, async (newChannels, oldChannels) => {
   if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
     try {
-      // 重置概览数据
-      overviewData.value = [];
-      await nextTick();
+      // 检查是否只是颜色发生了变化
+      const isOnlyColorChange = newChannels.length === oldChannels.length &&
+        newChannels.every((newCh, index) => {
+          const oldCh = oldChannels[index];
+          return newCh.channel_key === oldCh.channel_key &&
+            (newCh.color !== oldCh.color ||
+              JSON.stringify(newCh.errors) !== JSON.stringify(oldCh.errors));
+        });
 
-      // 只有在有选中通道时才进行渲染
-      if (newChannels && newChannels.length > 0) {
-        await renderCharts();
-        // 确保有数据后再绘制总览图
-        if (overviewData.value && overviewData.value.length > 0) {
-          drawOverviewChart();
+      if (isOnlyColorChange) {
+        // 如果只是颜色变化，直接重新渲染当前图表
+        newChannels.forEach(channel => {
+          fetchDataAndDrawChart(channel);
+        });
+      } else {
+        // 如果是其他变化，执行完整的重新渲染流程
+        overviewData.value = [];
+        await nextTick();
+
+        if (newChannels && newChannels.length > 0) {
+          await renderCharts();
+          if (overviewData.value && overviewData.value.length > 0) {
+            drawOverviewChart();
+          }
         }
       }
     } catch (error) {
@@ -556,9 +564,9 @@ const drawHighlightRects = (channelName, results) => {
   const svg = d3.select(`#chart-${channelName}`);
   if (!svg.node()) return;
 
-  const margin = {top: 20, right: 30, bottom: 30, left: 65};
+  const margin = {top: 20, right: 30, bottom: 50, left: 65};
   const width = svg.node().getBoundingClientRect().width - margin.left - margin.right;
-  const height = 200 - margin.top - margin.bottom;
+  const height = 230 - margin.top - margin.bottom;
 
   // 获取当前图表的x比例尺
   const x = d3.scaleLinear()
@@ -910,14 +918,14 @@ const handleInputBlur = (type) => {
     return;
   }
 
-  // 获取数据的实际范围
+  // 获取数据的实际��围
   const allX = overviewData.value.flatMap((d) => d.X_value);
   const dataExtent = d3.extent(allX);
   const epsilon = 0.0001; // 添加容差值
 
-  // 确保在有效范围内，使用容差值进行比较
+  // 确保在有效范围内��使用容差值进行比较
   if (start < dataExtent[0] - epsilon || end > dataExtent[1] + epsilon) {
-    ElMessage.warning(`输入值必须在 ${dataExtent[0].toFixed(4)} 到 ${dataExtent[1].toFixed(4)} 之间`);
+    ElMessage.warning(`输入值必须在 ${dataExtent[0].toFixed(4)} 到 ${dataExtent[1].toFixed(4)} ��间`);
     brush_begin.value = currentExtent[0].toFixed(4);
     brush_end.value = currentExtent[1].toFixed(4);
     return;
@@ -1021,10 +1029,10 @@ const drawChart = async (
     const containerWidth = container.node().getBoundingClientRect().width;
 
     const svg = d3.select(`#chart-${channelName}`);
-    const margin = {top: 20, right: 30, bottom: 30, left: 65};
+    const margin = {top: 20, right: 30, bottom: 50, left: 65};
 
     const width = containerWidth - margin.left - margin.right;
-    const height = 200 - margin.top - margin.bottom;
+    const height = 230 - margin.top - margin.bottom;
 
     svg.selectAll('*').remove();
 
@@ -1117,8 +1125,9 @@ const drawChart = async (
         .attr('text-anchor', 'start')
         .style('font-size', '1.1em')
         .style('font-weight', 'bold')
-        .style('fill', color)
-        .text(`${channelNumber} | ${shotNumber}:`);
+        // .style('fill', color)
+        .style('fill', '#000')
+        .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点):`);
 
     svg
         .append('text')
@@ -1162,6 +1171,9 @@ const drawChart = async (
 
         const yOffset = errorData.person === 'machine' ? 6 : -6;
         const isMachine = errorData.person === 'machine';
+
+        // 先移除旧的错误线
+        clipGroup.selectAll(`.error-line-${index}-${channelName}`).remove();
 
         clipGroup
             .append('path')
@@ -1801,6 +1813,17 @@ watch(isBoxSelect, (newValue) => {
       .style('display', newValue ? 'none' : null);
   });
 });
+
+// 添加一个新的 watch
+watch(() => selectedChannels.value.map(channel => channel.errors.map(error => error.color)), 
+  () => {
+    // 当异常颜色发生变化时，重新渲染所有图表
+    selectedChannels.value.forEach(channel => {
+      fetchDataAndDrawChart(channel);
+    });
+  }, 
+  { deep: true }
+);
 </script>
 
 <style scoped>

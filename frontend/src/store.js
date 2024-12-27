@@ -427,6 +427,8 @@ function mergeChannelTypeData(existingData, newData) {
           existingItem.channels.push(newChannel);
         }
       });
+      // 更新通道类型的选中状态
+      existingItem.checked = existingItem.channels.every(channel => channel.checked);
     } else {
       // 如果是新的通道类型，直接添加
       mergedMap.set(newItem.channel_type, newItem);
@@ -440,6 +442,11 @@ function mergeChannelTypeData(existingData, newData) {
 function processData(rawData) {
   const groupedData = [];
   const channelTypeMap = {};
+
+  // 获取当前选中的通道
+  const selectedChannelKeys = new Set(
+    store.state.selectedChannels.map(channel => channel.channel_key)
+  );
 
   rawData.forEach((item) => {
     const channelType = item.channel_type;
@@ -485,7 +492,8 @@ function processData(rawData) {
         channel_type: channelType,
         shot_number: shotNumber,
         color: colorString,
-        checked: false,
+        // 如果通道之前被选中，保持选中状态
+        checked: selectedChannelKeys.has(channelKey),
         errors: [],
         displayedErrors: [],
         showAllErrors: false,
@@ -507,6 +515,13 @@ function processData(rawData) {
 
     // 更新 displayedErrors
     channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
+  });
+
+  // 更新通道类型的选中状态
+  groupedData.forEach(item => {
+    if (item.channels.length > 0) {
+      item.checked = item.channels.every(channel => channel.checked);
+    }
   });
 
   return groupedData;
