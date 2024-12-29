@@ -136,7 +136,12 @@ const isFirstError = (channel, item) => {
 
 // 格式化异常名称，过长则截断
 const formatError = (name) => {
-  return name.length > 9 ? `${name.slice(0, 9)}...` : name;
+  if (!name) return '';
+  const decodedName = decodeURIComponent(escape(name));
+  if (decodedName.length > 9) {
+    return decodedName.slice(0, 9) + '...';
+  }
+  return decodedName;
 };
 
 // 计算隐藏的异常数量
@@ -321,19 +326,21 @@ const setErrorColor = (channel, error) => {
 .channel-table {
   width: 100%;
   border-collapse: collapse;
+  font-family: inherit;
 }
 
 .channel-table td {
   padding: 8px;
   vertical-align: top;
-  /* Align top */
   text-align: center;
+  font-family: inherit;
 }
 
 .channel-type {
   width: 20%;
   vertical-align: top;
   text-align: center;
+  font-family: inherit;
 }
 
 .channel-name {
@@ -341,12 +348,14 @@ const setErrorColor = (channel, error) => {
   vertical-align: middle;
   text-align: center;
   border-bottom: 0.5px solid #ddd;
+  font-family: inherit;
 }
 
 .name-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-family: inherit;
 }
 
 .name-right {
@@ -453,6 +462,7 @@ const setErrorColor = (channel, error) => {
 
 .exception-list {
   padding: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .loading-indicator {
@@ -461,5 +471,12 @@ const setErrorColor = (channel, error) => {
   justify-content: center;
   padding: 10px;
   color: #909399;
+}
+
+.error-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: inherit;
 }
 </style>

@@ -131,10 +131,12 @@ onUnmounted(() => {
 
 // 格式化错误名称
 const formatError = (name) => {
-    if (name.length > 9) {
-        return name.slice(0, 9) + '...';
+    if (!name) return '';
+    const decodedName = decodeURIComponent(escape(name));
+    if (decodedName.length > 9) {
+        return decodedName.slice(0, 9) + '...';
     }
-    return name;
+    return decodedName;
 };
 
 // 计算隐藏的错误数量
@@ -189,7 +191,7 @@ const updateChannelTypeCheckbox = (item) => {
     updateSelectedChannels();
 };
 
-// 切换���示所有异常类别
+// 切换显示所有异常类别
 const toggleShowAllErrors = (channel) => {
     channel.showAllErrors = !channel.showAllErrors;
     if (channel.showAllErrors) {
@@ -211,10 +213,12 @@ onMounted(() => {
 
 // 格式化通道类别名称
 const formatChannelType = (name) => {
-    if (name.length > 8) {
-        return name.slice(0, 8) + '...';
+    if (!name) return '';
+    const decodedName = decodeURIComponent(escape(name));
+    if (decodedName.length > 8) {
+        return decodedName.slice(0, 8) + '...';
     }
-    return name;
+    return decodedName;
 };
 </script>
 
@@ -229,12 +233,14 @@ const formatChannelType = (name) => {
 .channel-table {
     width: 100%;
     border-collapse: collapse;
+    font-family: inherit;
 }
 
 .channel-table td {
     padding: 8px;
     vertical-align: top;
     text-align: center;
+    font-family: inherit;
 }
 
 .channel-type {
@@ -242,6 +248,7 @@ const formatChannelType = (name) => {
     vertical-align: top;
     text-align: center;
     padding: 12px;
+    font-family: inherit;
 }
 
 .channel-name {
@@ -250,6 +257,7 @@ const formatChannelType = (name) => {
     text-align: center;
     border-bottom: 0.5px solid #ddd;
     padding: 12px;
+    font-family: inherit;
 }
 
 .name-container {
@@ -269,6 +277,7 @@ const formatChannelType = (name) => {
     text-overflow: ellipsis;
     white-space: nowrap;
     margin-right: 10px;
+    font-family: inherit;
 }
 
 .shot-number-tag {
@@ -324,6 +333,7 @@ const formatChannelType = (name) => {
 
 .channel-list-p {
     padding: 10px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .loading-indicator {

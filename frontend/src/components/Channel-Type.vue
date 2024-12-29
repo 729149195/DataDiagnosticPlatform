@@ -172,10 +172,12 @@ const predefineColors = ref([
 const dataLoaded = ref(false)
 
 const formatError = (name) => {
-  if (name.length > 8) {
-    return name.slice(0, 8) + '...'
+  if (!name) return '';
+  const decodedName = decodeURIComponent(escape(name));
+  if (decodedName.length > 8) {
+    return decodedName.slice(0, 8) + '...';
   }
-  return name
+  return decodedName;
 }
 
 const hiddenErrorsCount = (channel) => {
@@ -265,10 +267,12 @@ const toggleShowAllErrors = (channel) => {
 };
 
 const formatChannelType = (name) => {
-  if (name.length > 8) {
-    return name.slice(0, 8) + '...';
+  if (!name) return '';
+  const decodedName = decodeURIComponent(escape(name));
+  if (decodedName.length > 8) {
+    return decodedName.slice(0, 8) + '...';
   }
-  return name;
+  return decodedName;
 };
 </script>
 
@@ -285,19 +289,21 @@ const formatChannelType = (name) => {
 .channel-table {
   width: 100%;
   border-collapse: collapse;
+  font-family: inherit;
 }
 
 .channel-table td {
   padding: 8px;
   vertical-align: top;
-  /* Align top */
   text-align: center;
+  font-family: inherit;
 }
 
 .channel-type {
   width: 20%;
   vertical-align: top;
   text-align: center;
+  font-family: inherit;
 }
 
 .channel-name {
@@ -305,12 +311,14 @@ const formatChannelType = (name) => {
   vertical-align: middle;
   text-align: center;
   border-bottom: 0.5px solid #ddd;
+  font-family: inherit;
 }
 
 .name-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-family: inherit;
 }
 
 .name-right {
@@ -403,6 +411,7 @@ const formatChannelType = (name) => {
 
 .channel-list {
   padding: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
 .loading-indicator {
