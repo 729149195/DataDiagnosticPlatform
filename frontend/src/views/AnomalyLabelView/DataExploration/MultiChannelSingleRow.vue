@@ -1064,6 +1064,9 @@ const processChannelData = async (data, channel) => {
 
         try {
           // 使用重试机制和并发限制获取错误数据
+          // 使用重试机制和并发限制获取错误数据
+          if(error_name === "NO ERROR")
+            continue;
           const errorResponse = await limit(() => retryRequest(async () => {
             return await axios.get(`http://localhost:5000/api/error-data/`, { params: errorParams });
           }));
