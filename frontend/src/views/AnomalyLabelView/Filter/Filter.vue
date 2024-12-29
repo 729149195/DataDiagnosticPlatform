@@ -9,6 +9,7 @@
                     placeholder="请输入炮号，例如 1-5,7,9-12"
                     @select="handleGunNumberSelect"
                     @input="handleInput"
+                    @clear="handleGunNumberClear"
                     clearable
                 ></el-autocomplete>
                 <span>通道类别：</span>
@@ -19,7 +20,8 @@
                     multiple 
                     collapse-tags 
                     collapse-tags-tooltip 
-                    clearable 
+                    clearable
+                    @clear="handleChannelTypeClear"
                 />
             </div>
             <div>
@@ -31,7 +33,8 @@
                     multiple 
                     collapse-tags 
                     collapse-tags-tooltip 
-                    clearable 
+                    clearable
+                    @clear="handleChannelNameClear"
                 />
                 <span>异常名：</span>
                 <el-select-v2 
@@ -41,7 +44,8 @@
                     multiple 
                     collapse-tags 
                     collapse-tags-tooltip 
-                    clearable 
+                    clearable
+                    @clear="handleErrorsNameClear"
                 />
             </div>
         </div>
@@ -85,9 +89,9 @@ const selectederrorsNames = ref([]);
 const errorsNameData = ref({});
 
 // 异常来源相关数据
-const errorsOriginOptions = ref([]);
-const selectederrorsOrigin = ref([]);
-const errorsOriginData = ref({});
+// const errorsOriginOptions = ref([]);
+// const selectederrorsOrigin = ref([]);
+// const errorsOriginData = ref({});
 
 // 添加全选状态管理
 const channelTypesAllSelected = ref(false);
@@ -112,7 +116,7 @@ const fetData = async () => {
             channelTypeResponse,
             channelNameResponse,
             errorsNameResponse,
-            errorsOriginResponse
+            // errorsOriginResponse
         ] = await Promise.all([
             axios.get('http://localhost:5000/api/get-shot-number-index'),
             axios.get('http://localhost:5000/api/get-channel-type-index'),
@@ -134,7 +138,7 @@ const fetData = async () => {
         setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorsNameResponse.data);
 
         // 设置异常来源选项和保存原始数据
-        setOptionsAndSelectAll(errorsOriginOptions, selectederrorsOrigin, errorsOriginData, errorsOriginResponse.data);
+        // setOptionsAndSelectAll(errorsOriginOptions, selectederrorsOrigin, errorsOriginData, errorsOriginResponse.data);
     } catch (error) {
         console.error('Failed to fetch data:', error);
         ElMessage.error('数据获取失败，请稍后再试。');
@@ -300,13 +304,13 @@ const selectederrorsNamesWithValues = computed(() => {
     }));
 });
 
-// 计算属性：获取选中异常来源及其对应的值
-const selectederrorsOriginWithValues = computed(() => {
-    return selectederrorsOrigin.value.map(key => ({
-        key,
-        values: errorsOriginData.value[key] || [],
-    }));
-});
+// // 计算属性：获取选中异常来源及其对应的值
+// const selectederrorsOriginWithValues = computed(() => {
+//     return selectederrorsOrigin.value.map(key => ({
+//         key,
+//         values: errorsOriginData.value[key] || [],
+//     }));
+// });
 
 // 计算属性：判断是否有任何选中的数据
 const hasSelectedData = computed(() => {
@@ -314,8 +318,8 @@ const hasSelectedData = computed(() => {
         selectedGunNumbersWithValues.value.length ||
         selectedChannelTypesWithValues.value.length ||
         selectedChannelNamesWithValues.value.length ||
-        selectederrorsNamesWithValues.value.length ||
-        selectederrorsOriginWithValues.value.length
+        selectederrorsNamesWithValues.value.length 
+        // selectederrorsOriginWithValues.value.length
     );
 });
 
@@ -488,6 +492,29 @@ watch(selectederrorsNames, (newVal) => {
     selectederrorsNames.value = filteredErrorsNameOptions.value.map(option => option.value);
   }
 });
+
+// 添加清空处理函数
+const handleGunNumberClear = () => {
+  gunNumberInput.value = '';
+  selectedGunNumbers.value = [];
+};
+
+const handleChannelTypeClear = () => {
+  selectedChannelTypes.value = [];
+  // 清空通道类别时，也需要清空依赖于通道类别的其他选择
+  selectedChannelNames.value = [];
+  selectederrorsNames.value = [];
+};
+
+const handleChannelNameClear = () => {
+  selectedChannelNames.value = [];
+  // 清空通道名时，也需要清空依赖于通道名的异常名选择
+  selectederrorsNames.value = [];
+};
+
+const handleErrorsNameClear = () => {
+  selectederrorsNames.value = [];
+};
 
 onMounted(async () => {
     await fetData();

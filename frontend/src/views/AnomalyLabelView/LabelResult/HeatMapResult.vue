@@ -256,20 +256,29 @@ watch(
       return;
     }
 
+    // 检查是否有新通道被添加
+    const hasNewChannels = !oldChannels || 
+      newChannels.length !== oldChannels.length || 
+      newChannels.some(newChannel => 
+        !oldChannels.find(oldChannel => 
+          oldChannel.channel_key === newChannel.channel_key
+        )
+      );
+
     // 检查是否只是因为懒加载导致的更新
-    const isLazyLoadUpdate = oldChannels && 
+    const isLazyLoadUpdate = !hasNewChannels && oldChannels && 
       newChannels.length === oldChannels.length && 
       newChannels.every((channel, index) => 
         channel.channel_key === oldChannels[index].channel_key
       );
 
-    // 如果是懒加载更新，不重新渲染热力图
+    // 如果是懒加载更新且没有新的异常数据，不重新渲染热力图
     if (isLazyLoadUpdate && !newAnomalies) {
       return;
     }
 
     // 检查是否只是异常数据发生变化
-    const isOnlyAnomalyChange = oldChannels && 
+    const isOnlyAnomalyChange = !hasNewChannels && oldChannels && 
       JSON.stringify(newChannels) === JSON.stringify(oldChannels) && 
       JSON.stringify(newAnomalies) !== JSON.stringify(oldAnomalies);
 
@@ -283,8 +292,8 @@ watch(
       debounceRender.value = setTimeout(async () => {
         try {
           await nextTick();
-          // 如果只是异常数据变化，使用现有的错误数据重新渲染
-          await renderHeatmap(newChannels, isOnlyAnomalyChange);
+          // 如果是新通道添加，强制重新渲染所有数据
+          await renderHeatmap(newChannels, isOnlyAnomalyChange && !hasNewChannels);
           resolve();
         } catch (error) {
           console.error('Error in debounced renderHeatmap:', error);
@@ -292,7 +301,7 @@ watch(
           loadingPercentage.value = 0;
           resolve();
         }
-      }, isOnlyAnomalyChange ? 0 : 300); // 如果只是异常数据变化，立即渲染
+      }, isOnlyAnomalyChange && !hasNewChannels ? 0 : 300); // 如果只是异常数据变化且没有新通道，立即渲染
     });
 
     await renderPromise;
@@ -436,7 +445,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
       globalXMax = 6;
     }
 
-    // 方案1：完全移除边距
+    // 方案1：���全移除边距
     const Domain = [globalXMin, globalXMax];
 
     const step = (Domain[1] - Domain[0]) / 16; // 或者其他合适的步长计算方式
@@ -462,6 +471,14 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
       // 对于每个错误
       for (const [errorIndex, error] of channel.errors.entries()) {
+        // 添加判断，如果是 NO ERROR 则跳过
+        if (error.error_name === 'NO ERROR') {
+          // 更新进度
+          completedRequests.value++;
+          loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
+          continue;
+        }
+
         const errorIdxCurrent = errorIdxCounter++;
         errorColors[errorIdxCurrent] = error.color;
         const errorName = error.error_name;
@@ -479,7 +496,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             isAnomaly: false
           });
           
-          // 处理缓存的数据
+          // 处理缓存数据
           processErrorData(errorData, channelKey, errorIdxCurrent, visData, rectNum, Domain, step);
           
           // 更新进度
@@ -695,20 +712,22 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 return 'orange';
               }
               
-              if (channel.errors.length > 1) {
-                return '#ccc';
-              } else {
-                const nonAnomalyIdx = d.find(idx => {
-                  const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                  return result && !result.isAnomaly;
-                });
+              const nonAnomalyIdx = d.find(idx => {
+                const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
+                return result && !result.isAnomaly;
+              });
+
+              if (nonAnomalyIdx) {
                 const errorData = errorResults.find(
                   result => result && 
                   result.errorIdx === nonAnomalyIdx && 
                   result.channelKey === channelKey
                 );
-                if (errorData && errorData.errorData.person !== storePerson.value) {
-                  return errorColors[nonAnomalyIdx];
+                if (errorData) {
+                  if (errorData.errorData.person !== storePerson.value) {
+                    return errorColors[nonAnomalyIdx];
+                  }
+                  return channel.errors.length > 1 ? '#ccc' : errorColors[nonAnomalyIdx];
                 }
               }
             }
@@ -727,20 +746,22 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 return '0';
               }
               
-              if (channel.errors.length > 1) {
-                return '4 2';
-              } else {
-                const nonAnomalyIdx = d.find(idx => {
-                  const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                  return result && !result.isAnomaly;
-                });
+              const nonAnomalyIdx = d.find(idx => {
+                const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
+                return result && !result.isAnomaly;
+              });
+
+              if (nonAnomalyIdx) {
                 const errorData = errorResults.find(
                   result => result && 
                   result.errorIdx === nonAnomalyIdx && 
                   result.channelKey === channelKey
                 );
-                if (errorData && errorData.errorData.person !== storePerson.value) {
-                  return '4 2';
+                if (errorData) {
+                  if (errorData.errorData.person !== storePerson.value) {
+                    return '4 2';
+                  }
+                  return channel.errors.length > 1 ? '4 2' : '0';
                 }
               }
             }
@@ -903,7 +924,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Domain, step) {
   const X_value_error = errorData['X_value_error'];
   
-  // 对于每个错误区间
+  // ���于每个错误区间
   for (const idxList of X_value_error) {
     if (!Array.isArray(idxList) || idxList.length === 0) {
       continue;

@@ -406,7 +406,7 @@ const fetchDataAndDrawChart = async (channel) => {
       const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]); // 时间范围（秒）
       data.originalFrequency = data.X_value.length / timeRange / 1000; // 转换为KHz
 
-      console.log(data)
+      // console.log(data)
       channelDataCache.value[channelKey] = data;
 
       clearInterval(progressInterval);

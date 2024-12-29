@@ -55,7 +55,7 @@ def get_channel_name_index(request):
     
 def get_errors_name_index(request):
     try:
-        with open(os.path.join('static', 'IndexFile', 'errors_name_index.json'), 'r', encoding='utf-8') as f:
+        with open(os.path.join('static', 'IndexFile', 'error_name_index.json'), 'r', encoding='utf-8') as f:
             data = json.load(f)
         return JsonResponse(data, safe=False)
     except Exception as e:
