@@ -147,7 +147,7 @@ const updateChannelColor = ({ channelKey, color }) => {
     channel.color = color;
     // 更新 Vuex 存储，如果需要
     store.commit('updateChannelColor', { channel_key: channelKey, color });
-    // 重新���制图表
+    // 重新制图表
     renderCharts();
   }
 };
@@ -803,7 +803,7 @@ const drawCombinedChart = () => {
     .style('stroke', '#ccc')
     .style('stroke-dasharray', '3,3');
 
-  // 定义颜色��例尺（可，确保每个通道颜色唯一）
+  // 定义颜色例尺（可，确保每个通道颜色唯一）
   const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
     .domain(channelsData.value.map(d => d.channelName));
 
@@ -1030,8 +1030,6 @@ const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-   
-
     // 采样数据
     const sampledData = sampleData(data, sampleRate.value);
 
@@ -1064,7 +1062,6 @@ const processChannelData = async (data, channel) => {
 
         try {
           // 使用重试机制和并发限制获取错误数据
-          // 使用重试机制和并发限制获取错误数据
           if(error_name === "NO ERROR")
             continue;
           const errorResponse = await limit(() => retryRequest(async () => {
@@ -1078,20 +1075,52 @@ const processChannelData = async (data, channel) => {
         }
       }
 
-      const processedErrorSegments = errorResponseData.X_value_error.map(
-        (errorSegment, idx) => {
-          return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+      // 处理人工标注和机器识别的异常数据
+      const [manualErrors, machineErrors] = errorResponseData;
+
+      // 处理机器识别的异常
+      for(const machineError of machineErrors) {
+        if(!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
+          continue; // 跳过空的错误数据
         }
-      );
 
-      const sampledErrorData = {
-        X_value_error: processedErrorSegments.map((seg) => seg.X),
-        Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-        color: error_color,
-        person: error.person,
-      };
+        const processedErrorSegments = machineError.X_error.map(
+          (errorSegment) => {
+            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+          }
+        );
 
-      errorsData.push(sampledErrorData);
+        const sampledErrorData = {
+          X_value_error: processedErrorSegments.map((seg) => seg.X),
+          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+          color: error_color,
+          person: machineError.person,
+        };
+
+        errorsData.push(sampledErrorData);
+      }
+
+      // 处理人工标注的异常
+      for(const manualError of manualErrors) {
+        if(!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
+          continue; // 跳过空的错误数据
+        }
+
+        const processedErrorSegments = manualError.X_error.map(
+          (errorSegment) => {
+            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+          }
+        );
+
+        const sampledErrorData = {
+          X_value_error: processedErrorSegments.map((seg) => seg.X),
+          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+          color: error_color,
+          person: manualError.person,
+        };
+
+        errorsData.push(sampledErrorData);
+      }
     }
 
     // 更新图表数据

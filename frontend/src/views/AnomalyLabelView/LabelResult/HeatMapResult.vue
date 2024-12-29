@@ -169,7 +169,7 @@ const exportHeatMapData = () => {
 }
 
 
-// 辅助函数：判断给定的 errorIdx 是否为��常
+// 辅助函数：判断给定的 errorIdx 是否为异常
 function isAnomaly(idx, channelKey) {
   const result = errorResults.find(
     (r) => r.errorIdx === idx && r.channelKey === channelKey
@@ -445,7 +445,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
       globalXMax = 6;
     }
 
-    // 方案1：���全移除边距
+    // 方案1：全移除边距
     const Domain = [globalXMin, globalXMax];
 
     const step = (Domain[1] - Domain[0]) / 16; // 或者其他合适的步长计算方式
@@ -922,26 +922,63 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
 // 修改处理错误数据的辅助函数
 function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Domain, step) {
-  const X_value_error = errorData['X_value_error'];
-  
-  // ���于每个错误区间
-  for (const idxList of X_value_error) {
-    if (!Array.isArray(idxList) || idxList.length === 0) {
-      continue;
+  // 处理人工标注和机器识别的异常数据
+  const [manualErrors, machineErrors] = errorData;
+
+  // 处理机器识别的异常
+  for(const machineError of machineErrors) {
+    if(!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
+      continue; // 跳过空的错误数据
     }
-    
-    // 处理错误数据到1KHz
-    const processedErrorData = processDataTo1KHz({
-      X_value: idxList,
-      Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
-    });
-    
-    const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
-    const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
-    
-    for (let i = left; i <= right; i++) {
-      if (i >= 0 && i < rectNum) {
-        visData[channelKey][i].push(errorIdx);
+
+    // 处理每个错误区间
+    for (const idxList of machineError.X_error) {
+      if (!Array.isArray(idxList) || idxList.length === 0) {
+        continue;
+      }
+      
+      // 处理错误数据到1KHz
+      const processedErrorData = processDataTo1KHz({
+        X_value: idxList,
+        Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
+      });
+      
+      const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
+      const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
+      
+      for (let i = left; i <= right; i++) {
+        if (i >= 0 && i < rectNum) {
+          visData[channelKey][i].push(errorIdx);
+        }
+      }
+    }
+  }
+
+  // 处理人工标注的异常
+  for(const manualError of manualErrors) {
+    if(!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
+      continue; // 跳过空的错误数据
+    }
+
+    // 处理每个错误区间
+    for (const idxList of manualError.X_error) {
+      if (!Array.isArray(idxList) || idxList.length === 0) {
+        continue;
+      }
+      
+      // 处理错误数据到1KHz
+      const processedErrorData = processDataTo1KHz({
+        X_value: idxList,
+        Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
+      });
+      
+      const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
+      const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
+      
+      for (let i = left; i <= right; i++) {
+        if (i >= 0 && i < rectNum) {
+          visData[channelKey][i].push(errorIdx);
+        }
       }
     }
   }

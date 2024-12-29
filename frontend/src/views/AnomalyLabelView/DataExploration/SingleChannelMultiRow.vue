@@ -260,7 +260,6 @@ const updateChannelColor = (channel) => {
 const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    const channelName = channelKey;
 
     const sampledData = sampleData(data, sampleRate.value);
     // 保持原始频率信息和原始数据点数
@@ -269,7 +268,7 @@ const processChannelData = async (data, channel) => {
 
     // 确保采样数据有效
     if (!sampledData || !sampledData.X_value || !sampledData.Y_value) {
-      console.warn(`Invalid sampled data for channel ${channelName}`);
+      console.warn(`Invalid sampled data for channel ${channelKey}`);
       return;
     }
 
@@ -309,40 +308,71 @@ const processChannelData = async (data, channel) => {
         }
       }
 
-      // 处理异常数据
-      const processedErrorSegments = errorData.X_value_error.map(
-          (errorSegment, idx) => {
+      // 处理人工标注和机器识别的异常数据
+      const [manualErrors, machineErrors] = errorData;
+
+      // 处理机器识别的异常
+      for(const machineError of machineErrors) {
+        if(!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
+          continue; // 跳过空的错误数据
+        }
+
+        const processedErrorSegments = machineError.X_error.map(
+          (errorSegment) => {
             return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
           }
-      );
+        );
 
-      const sampledErrorData = {
-        X_value_error: processedErrorSegments.map((seg) => seg.X),
-        Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-        color: error_color,
-        person: error.person,
-      };
+        const sampledErrorData = {
+          X_value_error: processedErrorSegments.map((seg) => seg.X),
+          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+          color: error_color,
+          person: machineError.person,
+        };
 
-      errorsData.push(sampledErrorData);
+        errorsData.push(sampledErrorData);
+      }
+
+      // 处理人工标注的异常
+      for(const manualError of manualErrors) {
+        if(!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
+          continue; // 跳过空的错误数据
+        }
+
+        const processedErrorSegments = manualError.X_error.map(
+          (errorSegment) => {
+            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+          }
+        );
+
+        const sampledErrorData = {
+          X_value_error: processedErrorSegments.map((seg) => seg.X),
+          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+          color: error_color,
+          person: manualError.person,
+        };
+
+        errorsData.push(sampledErrorData);
+      }
     }
 
     // 添加数据到 overviewData 前进行验证
     if (sampledData.X_value.length > 0 && sampledData.Y_value.length > 0) {
       overviewData.value.push({
-        channelName: channelName,
+        channelName: channelKey,
         X_value: sampledData.X_value,
         Y_value: sampledData.Y_value,
         color: channel.color,
       });
     } else {
-      console.warn(`Empty data for channel ${channelName}`);
+      console.warn(`Empty data for channel ${channelKey}`);
     }
 
     await nextTick();
     drawChart(
         sampledData,
         errorsData,
-        channelName,
+        channelKey,
         channel.color,
         data.X_unit,
         data.Y_unit,
@@ -352,10 +382,10 @@ const processChannelData = async (data, channel) => {
     );
 
     const channelMatchedResults = matchedResults.value.filter(
-        (r) => r.channel_name === channelName
+        (r) => r.channel_name === channelKey
     );
     channelMatchedResults.forEach((result) => {
-      drawHighlightRects(channelName, [result]);
+      drawHighlightRects(channelKey, [result]);
     });
   } catch (error) {
     console.error(`Error processing channel data for ${channel.channel_name}:`, error);
