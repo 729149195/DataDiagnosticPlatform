@@ -274,7 +274,7 @@ const processChannelData = async (data, channel) => {
 
     let errorsData = [];
     for (const [errorIndex, error] of channel.errors.entries()) {
-      const error_name = error.error_name;
+      const error_name = decodeChineseText(error.error_name);  // 解码 error_name
       const error_color = error.color;
 
       // 构建用于缓存的 errorKey
@@ -284,17 +284,15 @@ const processChannelData = async (data, channel) => {
       // 检查缓存中是否已有异常数据
       if (channelDataCache.value[errorKey]) {
         errorData = channelDataCache.value[errorKey];
-        
       } else {
         const params = {
           channel_key: channelKey,
-          channel_type: channel.channel_type,
+          channel_type: decodeChineseText(channel.channel_type),  // 解码 channel_type
           error_name: error_name,
           error_index: errorIndex
         };
 
         try {
-          // 使用重试机制和并发限制获取错误数据
           if(error_name === "NO ERROR")
             continue;
           const errorResponse = await limit(() => retryRequest(async () => {
@@ -318,9 +316,9 @@ const processChannelData = async (data, channel) => {
         }
 
         const processedErrorSegments = machineError.X_error.map(
-          (errorSegment) => {
-            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-          }
+            (errorSegment) => {
+              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+            }
         );
 
         const sampledErrorData = {
@@ -340,9 +338,9 @@ const processChannelData = async (data, channel) => {
         }
 
         const processedErrorSegments = manualError.X_error.map(
-          (errorSegment) => {
-            return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-          }
+            (errorSegment) => {
+              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
+            }
         );
 
         const sampledErrorData = {
@@ -393,62 +391,79 @@ const processChannelData = async (data, channel) => {
 };
 
 
-// 🚀 **使用缓存**
-const fetchDataAndDrawChart = async (channel) => {
+// 专门负责数据获取的函数
+const fetchChannelData = async (channel) => {
   try {
     if (!channel || !channel.channel_name || !channel.shot_number) {
       console.warn('Invalid channel data:', channel);
-      return;
+      return null;
     }
 
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-
+    
+    // 初始化加载状态
     loadingStates[channelKey] = Number(0);
-    renderingStates[channelKey] = Number(0);
 
-    let data;
+    // 如果缓存中有数据，直接返回，但也要更新加载状态
     if (channelDataCache.value[channelKey]) {
       loadingStates[channelKey] = Number(100);
-      renderingStates[channelKey] = Number(100);
-      data = channelDataCache.value[channelKey];
-      // 确保缓存数据也计算原始频率
-      if (!data.originalFrequency) {
-        const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
-        data.originalFrequency = data.X_value.length / timeRange / 1000;
+      return channelDataCache.value[channelKey];
+    }
+
+    const params = {
+      channel_key: channelKey,
+      channel_type: decodeChineseText(channel.channel_type)  // 解码 channel_type
+    };
+
+    const progressInterval = setInterval(() => {
+      if (loadingStates[channelKey] < 90) {
+        loadingStates[channelKey] = Math.min(Number(loadingStates[channelKey]) + 10, 90);
       }
-    } else {
-      const params = {
-        channel_key: channelKey,
-        channel_type: channel.channel_type
-      };
+    }, 100);
 
-      const progressInterval = setInterval(() => {
-        if (loadingStates[channelKey] < 90) {
-          loadingStates[channelKey] = Math.min(Number(loadingStates[channelKey]) + 10, 90);
-        }
-      }, 100);
-
-      // 使用重试机制装求
+    try {
       const response = await limit(() => retryRequest(async () => {
         return await axios.get(`http://localhost:5000/api/channel-data/`, {params});
       }));
 
-      data = response.data;
+      const data = response.data;
       // 计算原始采样频率
-      const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]); // 时间范围（秒）
-      data.originalFrequency = data.X_value.length / timeRange / 1000; // 转换为KHz
+      const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
+      data.originalFrequency = data.X_value.length / timeRange / 1000;
 
-      // console.log(data)
+      // 对数据中的中文字段进行解码
+      data.channel_type = decodeChineseText(data.channel_type);
+      data.X_unit = decodeChineseText(data.X_unit);
+      data.Y_unit = decodeChineseText(data.Y_unit);
+
+      // 存入缓存
       channelDataCache.value[channelKey] = data;
 
       clearInterval(progressInterval);
       loadingStates[channelKey] = Number(100);
-    }
 
-    if (!data || !data.X_value) {
-      throw new Error('Invalid data format: missing X_value');
+      return data;
+    } catch (error) {
+      clearInterval(progressInterval);
+      console.error('Error fetching channel data:', error);
+      loadingStates[channelKey] = Number(100);
+      ElMessage.error(`加载通道 ${channelKey} 数据失败: ${error.message}`);
+      return null;
     }
+  } catch (error) {
+    console.error('Error in fetchChannelData:', error);
+    return null;
+  }
+};
 
+// 专门负责绘制图表的函数
+const drawChannelChart = async (channel, data) => {
+  try {
+    if (!data) return;
+
+    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+
+    // 开始渲染进度，即使是从缓存读取的数据也要显示渲染进度
     renderingStates[channelKey] = Number(0);
     const renderInterval = setInterval(() => {
       if (renderingStates[channelKey] < 90) {
@@ -456,42 +471,44 @@ const fetchDataAndDrawChart = async (channel) => {
       }
     }, 50);
 
+    // 处理数据并绘制图表
     await processChannelData(data, channel);
 
     clearInterval(renderInterval);
     renderingStates[channelKey] = Number(100);
-
   } catch (error) {
-    console.error('Error fetching channel data:', error);
+    console.error('Error in drawChannelChart:', error);
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    loadingStates[channelKey] = Number(100);
     renderingStates[channelKey] = Number(100);
-    ElMessage.error(`加载通道 ${channelKey} 据失败: ${error.message}`);
+    ElMessage.error(`绘制通道 ${channelKey} 图表失败: ${error.message}`);
   }
 };
-
 
 const renderCharts = debounce(async () => {
   try {
     performance.mark('Total Render Time-start');
 
-    // 重置览数据
+    // 重置概览数据
     overviewData.value = [];
 
-    // ���保有选中的通道
+    // 确保有选中的通道
     if (!selectedChannels.value || selectedChannels.value.length === 0) {
       console.warn('No channels selected');
       return;
     }
 
-    // 使用 Promise.all 并行处理所有通道
-    await Promise.all(selectedChannels.value.map(async (channel) => {
-      try {
-        await fetchDataAndDrawChart(channel);
-      } catch (error) {
-        console.error(`Error processing channel ${channel.channel_name}:`, error);
+    // 先获取所有需要的数据
+    const fetchPromises = selectedChannels.value.map(channel => fetchChannelData(channel));
+    const channelsData = await Promise.all(fetchPromises);
+
+    // 然后绘制所有图表
+    for (let i = 0; i < selectedChannels.value.length; i++) {
+      const channel = selectedChannels.value[i];
+      const data = channelsData[i];
+      if (data) {
+        await drawChannelChart(channel, data);
       }
-    }));
+    }
 
     // 验证是否有有效数据
     if (overviewData.value.length === 0) {
@@ -512,6 +529,45 @@ const renderCharts = debounce(async () => {
     console.error('Error in renderCharts:', error);
   }
 }, 200);
+
+// 修改 watch 函数中的处理逻辑
+watch(selectedChannels, async (newChannels, oldChannels) => {
+  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
+    try {
+      // 检查是否只是颜色发生了变化
+      const isOnlyColorChange = newChannels.length === oldChannels.length &&
+          newChannels.every((newCh, index) => {
+            const oldCh = oldChannels[index];
+            return newCh.channel_key === oldCh.channel_key &&
+                (newCh.color !== oldCh.color ||
+                    JSON.stringify(newCh.errors) !== JSON.stringify(oldCh.errors));
+          });
+
+      if (isOnlyColorChange) {
+        // 如果只是颜色变化，直接重新渲染当前图表
+        for (const channel of newChannels) {
+          const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+          if (data) {
+            await drawChannelChart(channel, data);
+          }
+        }
+      } else {
+        // 如果是其他变化，执行完整的重新渲染流程
+        overviewData.value = [];
+        await nextTick();
+
+        if (newChannels && newChannels.length > 0) {
+          await renderCharts();
+          if (overviewData.value && overviewData.value.length > 0) {
+            drawOverviewChart();
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error in selectedChannels watch:', error);
+    }
+  }
+}, {deep: true});
 
 // 添加窗口大小变化的处理函数
 const handleResize = debounce(() => {
@@ -547,41 +603,6 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
 });
-
-watch(selectedChannels, async (newChannels, oldChannels) => {
-  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
-    try {
-      // 检查是否只是颜色发生了变化
-      const isOnlyColorChange = newChannels.length === oldChannels.length &&
-        newChannels.every((newCh, index) => {
-          const oldCh = oldChannels[index];
-          return newCh.channel_key === oldCh.channel_key &&
-            (newCh.color !== oldCh.color ||
-              JSON.stringify(newCh.errors) !== JSON.stringify(oldCh.errors));
-        });
-
-      if (isOnlyColorChange) {
-        // 如果只是颜色变化，直接重新渲染当前图表
-        newChannels.forEach(channel => {
-          fetchDataAndDrawChart(channel);
-        });
-      } else {
-        // 如果是其他变化，执行完整的重新渲染流程
-        overviewData.value = [];
-        await nextTick();
-
-        if (newChannels && newChannels.length > 0) {
-          await renderCharts();
-          if (overviewData.value && overviewData.value.length > 0) {
-            drawOverviewChart();
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error in selectedChannels watch:', error);
-    }
-  }
-}, {deep: true});
 
 watch(sampling, () => {
   sampleRate.value = sampling.value;
@@ -917,7 +938,10 @@ const drawOverviewChart = () => {
 
     // 重新渲染所有通道图表
     selectedChannels.value.forEach((channel) => {
-      fetchDataAndDrawChart(channel);
+      const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+      if (data) {
+        drawChannelChart(channel, data);
+      }
     });
   }
 };
@@ -950,14 +974,14 @@ const handleInputBlur = (type) => {
     return;
   }
 
-  // 获取数据的实际��围
+  // 获取数据的实际范围
   const allX = overviewData.value.flatMap((d) => d.X_value);
   const dataExtent = d3.extent(allX);
   const epsilon = 0.0001; // 添加容差值
 
-  // 确保在有效范围内��使用容差值进行比较
+  // 确保在有效范围内，使用容差值进行比较
   if (start < dataExtent[0] - epsilon || end > dataExtent[1] + epsilon) {
-    ElMessage.warning(`输入值必须在 ${dataExtent[0].toFixed(4)} 到 ${dataExtent[1].toFixed(4)} ��间`);
+    ElMessage.warning(`输入值必须在 ${dataExtent[0].toFixed(4)} 到 ${dataExtent[1].toFixed(4)} 之间`);
     brush_begin.value = currentExtent[0].toFixed(4);
     brush_end.value = currentExtent[1].toFixed(4);
     return;
@@ -984,7 +1008,10 @@ const handleInputBlur = (type) => {
 
   // 重新渲染图表
   selectedChannels.value.forEach((channel) => {
-    fetchDataAndDrawChart(channel);
+    const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+    if (data) {
+      drawChannelChart(channel, data);
+    }
   });
 };
 
@@ -1267,12 +1294,12 @@ const drawChart = async (
         (a) => a.channelName === channelName
     );
     channelAnomalies.forEach((anomaly) => {
-        drawAnomalyElements(anomaly, anomaliesGroup);
+      drawAnomalyElements(anomaly, anomaliesGroup);
     });
 
     const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
     storedAnomalies.forEach((anomaly) => {
-        drawAnomalyElements(anomaly, anomaliesGroup, true);
+      drawAnomalyElements(anomaly, anomaliesGroup, true);
     });
 
     function selectionBrushed(event) {
@@ -1283,14 +1310,25 @@ const drawChart = async (
       const [x0, x1] = event.selection;
       const [startX, endX] = [x.invert(x0), x.invert(x1)];
 
+      // 格式化当前时间为 YYYY-MM-DD HH:mm:ss
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
       const anomaly = {
-        id: Date.now(),
+        id: store.state.person,
         channelName: channelName,
         startX: startX,
         endX: endX,
         anomalyCategory: '',
         anomalyDiagnosisName: '',
         anomalyDescription: '',
+        annotationTime: formattedTime,
       };
 
       d3.select(this).call(selectionBrush.move, null);
@@ -1311,17 +1349,20 @@ const drawChart = async (
           });
           const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
           if (targetChannel) {
-            fetchDataAndDrawChart(targetChannel);
+            const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
+            if (data) {
+              drawChannelChart(targetChannel, data);
+            }
           }
         }
         return;
       }
-      
+
       if (isBoxSelect.value) return;
-      
+
       // 获取选择的范围
       const [[x0, y0], [x1, y1]] = event.selection;
-      
+
       // 保存原始范围（如果还没有保存）
       if (!originalDomains.value[channelName]) {
         originalDomains.value[channelName] = {
@@ -1329,25 +1370,28 @@ const drawChart = async (
           y: y.domain()
         };
       }
-      
+
       // 更新显示范围
       const newXDomain = [x.invert(x0), x.invert(x1)];
       const newYDomain = [y.invert(y1), y.invert(y0)];
-      
+
       // 更新 store 中的范围
       store.dispatch('updateDomains', {
         channelName,
         xDomain: newXDomain,
         yDomain: newYDomain
       });
-      
+
       // 清除选择
       d3.select(this).call(zoomBrush.move, null);
-      
+
       // 重新绘制图表
       const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
       if (targetChannel) {
-        fetchDataAndDrawChart(targetChannel);
+        const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
+        if (data) {
+          drawChannelChart(targetChannel, data);
+        }
       }
     }
 
@@ -1737,16 +1781,50 @@ const drawChart = async (
   }
 };
 
+// 添加解码函数
+const decodeChineseText = (text) => {
+  if (!text) return '';
+  try {
+    // 如果文本已经是正常的中文，直接返回
+    if (typeof text === 'string' && /^[\u4e00-\u9fa5]+$/.test(text)) {
+      return text;
+    }
+    
+    // 如果文本包含需要解码的字符，才进行解码
+    if (typeof text === 'string' && /[\u0080-\uffff]/.test(text)) {
+      try {
+        const decodedText = decodeURIComponent(escape(text));
+        return decodedText;
+      } catch (e) {
+        console.warn('Failed to decode text:', text, e);
+        return text;
+      }
+    }
+    return text;
+  } catch (err) {
+    console.warn('Error decoding text:', err);
+    return text;
+  }
+};
+
 const saveAnomaly = () => {
   if (currentAnomaly) {
+    // 在保存前对中文内容进行编码处理
     const payload = {
       channelName: currentAnomaly.channelName,
-      anomaly: {...currentAnomaly},
+      anomaly: {
+        ...currentAnomaly,
+        anomalyCategory: decodeChineseText(currentAnomaly.anomalyCategory),
+        anomalyDiagnosisName: decodeChineseText(currentAnomaly.anomalyDiagnosisName),
+        anomalyDescription: decodeChineseText(currentAnomaly.anomalyDescription)
+      },
     };
 
+    // 如果是已保存的标注，则更新它
     if (currentAnomaly.isStored) {
       store.dispatch('updateAnomaly', payload);
     } else {
+      // 如果是新标注，则添加到store中
       store.dispatch('addAnomaly', payload);
       // 从临时列表中移除
       anomalies.value = anomalies.value.filter(
@@ -1760,7 +1838,7 @@ const saveAnomaly = () => {
     // 立即更新视觉效果
     const svg = d3.select(`#chart-${payload.channelName}`);
     const anomalyGroup = svg.select(`.anomaly-group-${payload.anomaly.id}-${payload.channelName}`);
-    
+
     // 更新矩形颜色
     anomalyGroup.select(`.anomaly-rect-${payload.anomaly.id}-${payload.channelName}`)
         .attr('fill', 'red')
@@ -1778,6 +1856,15 @@ const saveAnomaly = () => {
     anomalyGroup.selectAll(
         `.left-handle-${payload.anomaly.id}-${payload.channelName}, .right-handle-${payload.anomaly.id}-${payload.channelName}`
     ).remove();
+
+    // 重新绘制图表以更新所有标注
+    const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === payload.channelName);
+    if (targetChannel) {
+      const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
+      if (data) {
+        drawChannelChart(targetChannel, data);
+      }
+    }
 
     ElMessage.success('异常标注信息已保存');
 
@@ -1798,16 +1885,20 @@ const closeAnomalyForm = () => {
 
 // 添加进度百分比计算函数
 const getProgressPercentage = (channelKey) => {
-  let percentage = 0;
   const loadingTotal = Number(loadingStates[channelKey]) || 0;
   const renderingTotal = Number(renderingStates[channelKey]) || 0;
 
+  // 如果数据已经加载完成（包括从缓存读取的情况）
   if (loadingTotal === 100) {
-    percentage = 50 + renderingTotal / 2;
-  } else {
-    percentage = loadingTotal / 2;
+    // 如果渲染还没开始，返回50%，表示数据已加载完成但还未开始渲染
+    if (renderingTotal === 0) {
+      return 50;
+    }
+    // 如果正在渲染或渲染完成，返回50%加上渲染进度的一半
+    return 50 + renderingTotal / 2;
   }
-  return Math.min(Math.max(Math.floor(percentage), 0), 100);
+  // 如果还在加载数据，返回加载进度的一半
+  return loadingTotal / 2;
 };
 
 // 添加对isBoxSelect的监听
@@ -1823,14 +1914,17 @@ watch(isBoxSelect, (newValue) => {
         });
         const channel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
         if (channel) {
-          fetchDataAndDrawChart(channel);
+          const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+          if (data) {
+            drawChannelChart(channel, data);
+          }
         }
       }
     });
     // 清空保存的原始范围
     originalDomains.value = {};
   }
-  
+
   // 更新所有图表中brush的显示状态
   selectedChannels.value.forEach(channel => {
     const channelName = `${channel.channel_name}_${channel.shot_number}`;
@@ -1847,14 +1941,17 @@ watch(isBoxSelect, (newValue) => {
 });
 
 // 添加一个新的 watch
-watch(() => selectedChannels.value.map(channel => channel.errors.map(error => error.color)), 
-  () => {
-    // 当异常颜色发生变化时，重新渲染所有图表
-    selectedChannels.value.forEach(channel => {
-      fetchDataAndDrawChart(channel);
-    });
-  }, 
-  { deep: true }
+watch(() => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
+    () => {
+      // 当异常颜色发生变化时，重新渲染所有图表
+      selectedChannels.value.forEach(channel => {
+        const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+        if (data) {
+          drawChannelChart(channel, data);
+        }
+      });
+    },
+    {deep: true}
 );
 </script>
 

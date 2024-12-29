@@ -94,6 +94,36 @@ const store = useStore()
 const loading = ref(false)
 const displayedData = computed(() => store.getters.getDisplayedData)
 
+// 监听每个通道类别的选中状态
+watch(displayedData, (newData) => {
+  if (newData) {
+    newData.forEach(item => {
+      if (item && item.channels) {
+        // 监听通道类别的选中状态变化
+        watch(() => item.checked, (newChecked) => {
+          if (item.channels) {
+            item.channels.forEach(channel => {
+              channel.checked = newChecked;
+            });
+            updateSelectedChannels();
+          }
+        });
+
+        // 监听每个通道的选中状态变化
+        item.channels.forEach(channel => {
+          watch(() => channel.checked, () => {
+            if (item.channels) {
+              const allChecked = item.channels.every(ch => ch.checked);
+              item.checked = allChecked;
+              updateSelectedChannels();
+            }
+          });
+        });
+      }
+    });
+  }
+}, { immediate: true, deep: true });
+
 // 监听父组件的滚动事件
 const handleParentScroll = async (event) => {
   if (loading.value) return;
@@ -117,10 +147,28 @@ watch(
       // 初始化新加载数据的复选框状态
       newData.forEach(item => {
         if (item.channels) {
-          // 检查是否有选中的通道
-          const hasCheckedChannels = item.channels.some(channel => channel.checked);
+          // 确保每个 item 有 checked 属性
+          if (!('checked' in item)) {
+            item.checked = false;
+          }
+          // 确保每个 channel 有 checked 属性
+          item.channels.forEach(channel => {
+            if (!('checked' in channel)) {
+              channel.checked = false;
+            }
+            // 确保每个 channel 有 displayedErrors 属性
+            if (!channel.displayedErrors) {
+              channel.displayedErrors = channel.errors.slice(0, 1);
+            }
+            // 确保每个 channel 有 showAllErrors 属性
+            if (!('showAllErrors' in channel)) {
+              channel.showAllErrors = false;
+            }
+          });
+          // 检查是否所有通道都被选中
+          const allChecked = item.channels.every(channel => channel.checked);
           // 更新通道类型的复选框状态
-          item.checked = hasCheckedChannels;
+          item.checked = allChecked;
         }
       });
       updateSelectedChannels();
@@ -129,11 +177,46 @@ watch(
   { deep: true }
 );
 
-onMounted(() => {
+// 初始化组件
+onMounted(async () => {
   // 获取父级的 el-scrollbar__wrap 元素并添加滚动监听
   const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
   if (parentScrollbar) {
     parentScrollbar.addEventListener('scroll', handleParentScroll);
+  }
+  
+  // 如果还没有数据，初始化加载
+  if (!displayedData.value || displayedData.value.length === 0) {
+    await store.dispatch('loadMoreData', true);
+  }
+  
+  // 初始化复选框状态
+  if (displayedData.value) {
+    displayedData.value.forEach(item => {
+      if (item.channels) {
+        // 确保每个 item 有 checked 属性
+        if (!('checked' in item)) {
+          item.checked = false;
+        }
+        // 确保每个 channel 有 checked 属性
+        item.channels.forEach(channel => {
+          if (!('checked' in channel)) {
+            channel.checked = false;
+          }
+          // 确保每个 channel 有 displayedErrors 属性
+          if (!channel.displayedErrors) {
+            channel.displayedErrors = channel.errors.slice(0, 1);
+          }
+          // 确保每个 channel 有 showAllErrors 属性
+          if (!('showAllErrors' in channel)) {
+            channel.showAllErrors = false;
+          }
+        });
+        const allChecked = item.channels.every(channel => channel.checked);
+        item.checked = allChecked;
+      }
+    });
+    updateSelectedChannels();
   }
 });
 
@@ -173,29 +256,29 @@ const dataLoaded = ref(false)
 
 const formatError = (name) => {
   if (!name) return '';
-  const decodedName = decodeURIComponent(escape(name));
-  if (decodedName.length > 8) {
-    return decodedName.slice(0, 8) + '...';
+  try {
+    // 尝试多种解码方式
+    let decodedName = name;
+    if (typeof name === 'string' && /[\u0080-\uffff]/.test(name)) {
+      try {
+        decodedName = decodeURIComponent(escape(name));
+      } catch (e) {
+        console.warn('Failed to decode error name:', name, e);
+      }
+    }
+    if (decodedName.length > 8) {
+      return decodedName.slice(0, 8) + '...';
+    }
+    return decodedName;
+  } catch (err) {
+    console.warn('Error formatting name:', err);
+    return name;
   }
-  return decodedName;
 }
 
 const hiddenErrorsCount = (channel) => {
   return channel.errors.length - channel.displayedErrors.length
 }
-
-onMounted(async () => {
-  // 获取父级的 el-scrollbar__wrap 元素并添加滚动监听
-  const parentScrollbar = document.querySelector('.el-scrollbar__wrap');
-  if (parentScrollbar) {
-    parentScrollbar.addEventListener('scroll', handleParentScroll);
-  }
-  
-  // 如果还没有数据，初始化加载
-  if (!displayedData.value || displayedData.value.length === 0) {
-    await store.dispatch('loadMoreData', true);
-  }
-});
 
 const setChannelColor = (item) => {
   if (item && item.channels) {
@@ -214,47 +297,59 @@ const setSingleChannelColor = (channel) => {
 
 
 const updateSelectedChannels = () => {
-  if (!displayedData.value) {
-    return;
-  }
-  const selected = displayedData.value.flatMap(item =>
-    item.channels
-      .filter(channel => channel.checked)
-      .map(channel => ({
-        channel_key: channel.channel_key,
-        channel_name: channel.channel_name,
-        shot_number: channel.shot_number,
-        color: channel.color,
-        channel_type: item.channel_type,
-        errors: channel.errors.map(error => ({
-          error_key: error.error_key,
-          error_name: error.error_name,
-          color: error.color
-        }))
-      }))
-  );
+    if (!displayedData.value) {
+        return;
+    }
+    const selected = displayedData.value.flatMap(item =>
+        item.channels
+            .filter(channel => channel.checked)
+            .map(channel => ({
+                channel_key: channel.channel_key,
+                channel_name: channel.channel_name,
+                shot_number: channel.shot_number,
+                color: channel.color,
+                channel_type: item.channel_type,
+                errors: channel.errors.map(error => ({
+                    error_key: error.error_key,
+                    error_name: error.error_name,
+                    color: error.color
+                }))
+            }))
+    );
 
-  store.commit('updateSelectedChannels', selected);
+    store.commit('updateSelectedChannels', selected);
 };
 
 
 const toggleChannelCheckboxes = (item) => {
-  if (item && item.channels) {
-    item.channels.forEach((channel) => {
-      channel.checked = item.checked;
-    });
-    updateSelectedChannels();
-  }
+    if (item && Array.isArray(item.channels)) {
+        // 获取通道类别复选框的状态
+        const newState = item.checked;
+        
+        // 更新所有通道的选中状态
+        item.channels.forEach((channel) => {
+            channel.checked = newState;
+        });
+        
+        // 立即更新 Vuex store
+        updateSelectedChannels();
+    }
 };
 
 const updateChannelTypeCheckbox = (item) => {
-  if (!item || !item.channels) {
-    console.error('Invalid item or channels:', item);
-    return;
-  }
+    if (!item || !item.channels) {
+        console.error('Invalid item or channels:', item);
+        return;
+    }
 
-  item.checked = item.channels.every(channel => channel.checked);
-  updateSelectedChannels();
+    // 检查是否所有通道都被选中
+    const allChecked = item.channels.every((channel) => channel.checked);
+    
+    // 更新通道类别复选框状态
+    item.checked = allChecked;
+    
+    // 立即更新 Vuex store
+    updateSelectedChannels();
 };
 
 const toggleShowAllErrors = (channel) => {
@@ -268,11 +363,24 @@ const toggleShowAllErrors = (channel) => {
 
 const formatChannelType = (name) => {
   if (!name) return '';
-  const decodedName = decodeURIComponent(escape(name));
-  if (decodedName.length > 8) {
-    return decodedName.slice(0, 8) + '...';
+  try {
+    // 尝试多种解码方式
+    let decodedName = name;
+    if (typeof name === 'string' && /[\u0080-\uffff]/.test(name)) {
+      try {
+        decodedName = decodeURIComponent(escape(name));
+      } catch (e) {
+        console.warn('Failed to decode channel type:', name, e);
+      }
+    }
+    if (decodedName.length > 8) {
+      return decodedName.slice(0, 8) + '...';
+    }
+    return decodedName;
+  } catch (err) {
+    console.warn('Error formatting channel type:', err);
+    return name;
   }
-  return decodedName;
 };
 </script>
 

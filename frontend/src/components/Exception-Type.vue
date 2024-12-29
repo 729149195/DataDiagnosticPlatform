@@ -7,14 +7,18 @@
             <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
 
               <!-- 通道类别单元格 -->
-              <td v-if="channelIndex === 0 && errorIndex === 0" :rowspan="computeTotalDisplayedErrors(item)"
-                class="channel-type">
-                <span>{{ item.channel_type }}</span>
+              <td
+                class="channel-type"
+                :rowspan="computeTotalDisplayedErrors(item)"
+                v-if="channelIndex === 0 && errorIndex === 0"
+              >
                 <div class="type-header">
-                  <!-- <el-color-picker v-model="item.color" @change="setChannelColor(item)" class="category-color-picker"
-                    size="small" show-alpha :predefine="predefineColors" /> -->
-                  <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                    class="checkbox-margin"></el-checkbox>
+                  <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
+                  <el-checkbox
+                    v-model="item.checked"
+                    @change="toggleChannelCheckboxes(item)"
+                    class="checkbox-margin"
+                  />
                 </div>
               </td>
 
@@ -26,7 +30,7 @@
                 <div class="name-container">
                   <span>{{ channel.channel_name }}</span>
                   <div class="name-right">
-                    <el-checkbox v-model="channel.checked" @change="clearChannelTypeCheckbox(item)"
+                    <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
                       class="checkbox-margin"></el-checkbox>
                   </div>
                 </div>
@@ -123,10 +127,7 @@ const isLastError = (channel, error) => {
 
 // 判断是否是第一个异常且第一个通道
 const isFirstErrorAndFirstChannel = (channel, item) => {
-  return (
-    channel.displayedErrors[0] === channel.errors[0] &&
-    item.channels[0] === channel
-  );
+  return item.channels[0] === channel && channel.displayedErrors[0] === channel.displayedErrors[0];
 };
 
 // 判断是否是第一个异常
@@ -134,14 +135,50 @@ const isFirstError = (channel, item) => {
   return channel.displayedErrors[0] === channel.errors[0];
 };
 
+// 格式化通道类别名称
+const formatChannelType = (name) => {
+  if (!name) return '';
+  try {
+    // 尝试多种解码方式
+    let decodedName = name;
+    if (typeof name === 'string' && /[\u0080-\uffff]/.test(name)) {
+      try {
+        decodedName = decodeURIComponent(escape(name));
+      } catch (e) {
+        console.warn('Failed to decode channel type:', name, e);
+      }
+    }
+    if (decodedName.length > 8) {
+      return decodedName.slice(0, 8) + '...';
+    }
+    return decodedName;
+  } catch (err) {
+    console.warn('Error formatting channel type:', err);
+    return name;
+  }
+};
+
 // 格式化异常名称，过长则截断
 const formatError = (name) => {
   if (!name) return '';
-  const decodedName = decodeURIComponent(escape(name));
-  if (decodedName.length > 9) {
-    return decodedName.slice(0, 9) + '...';
+  try {
+    // 尝试多种解码方式
+    let decodedName = name;
+    if (typeof name === 'string' && /[\u0080-\uffff]/.test(name)) {
+      try {
+        decodedName = decodeURIComponent(escape(name));
+      } catch (e) {
+        console.warn('Failed to decode error name:', name, e);
+      }
+    }
+    if (decodedName.length > 8) {
+      return decodedName.slice(0, 8) + '...';
+    }
+    return decodedName;
+  } catch (err) {
+    console.warn('Error formatting name:', err);
+    return name;
   }
-  return decodedName;
 };
 
 // 计算隐藏的异常数量
@@ -285,27 +322,49 @@ const setSingleChannelColor = (channel) => {
 
 // 切换所有通道的复选框
 const toggleChannelCheckboxes = (item) => {
-  if (item && item.channels) {
-    item.channels.forEach(channel => {
-      channel.checked = item.checked;
-    });
-    updateSelectedChannels();
-  }
+    if (item && item.channels) {
+        item.channels.forEach((channel) => {
+            channel.checked = item.checked;
+        });
+        updateSelectedChannels();
+    }
 };
 
 // 更新通道类别的复选框状态
-const clearChannelTypeCheckbox = (item) => {
-  if (item && item.channels) {
-    const allChecked = item.channels.every(channel => channel.checked);
+const updateChannelTypeCheckbox = (item) => {
+    if (!item || !item.channels) {
+        console.error('Invalid item or channels:', item);
+        return;
+    }
+
+    const allChecked = item.channels.every((channel) => channel.checked);
+    const someChecked = item.channels.some((channel) => channel.checked);
+    
+    // 如果所有通道都选中,则通道类别也选中
+    // 如果部分通道选中,则通道类别不选中
+    // 如果没有通道选中,则通道类别不选中
     item.checked = allChecked;
+    
     updateSelectedChannels();
-  }
 };
 
 // 切换显示所有异常类别
 const toggleShowAllErrors = (channel) => {
+  if (!channel || !Array.isArray(channel.errors)) return;
+  
+  // 切换显示状态
   channel.showAllErrors = !channel.showAllErrors;
-  channel.displayedErrors = channel.showAllErrors ? [...channel.errors] : channel.errors.slice(0, 1);
+  
+  // 根据显示状态设置要显示的异常
+  if (channel.showAllErrors) {
+    // 展开时，保持第一个异常不变，添加其余异常
+    const firstError = channel.displayedErrors[0];
+    const remainingErrors = channel.errors.filter(error => error !== firstError);
+    channel.displayedErrors = [firstError, ...remainingErrors];
+  } else {
+    // 收起时，只保留第一个异常
+    channel.displayedErrors = [channel.displayedErrors[0]];
+  }
 };
 
 const setErrorColor = (channel, error) => {
@@ -378,14 +437,21 @@ const setErrorColor = (channel, error) => {
 }
 
 .checkbox-margin {
-  margin-left: 5px;
+  margin: 0;
 }
 
 .type-header {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  margin-top: 5px;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.type-header span {
+  font-size: 14px;
+  word-break: break-all;
+  text-align: center;
 }
 
 .channel-name-last {

@@ -12,12 +12,23 @@ from django.http import JsonResponse
 
 from api.self_algorithm_utils import period_condition_anomaly, channel_read
 from api.utils import filter_range, merge_overlapping_intervals
-
+from api.Mds import MdsTree
 # import matplotlib.pyplot as plt
+
+class JsonEncoder(json.JSONEncoder):
+    """Convert numpy classes to JSON serializable objects."""
+
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating, np.bool_)):
+            return obj.item()
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super(JsonEncoder, self).default(obj)
 
 def get_struct_tree(request):
     try:
-        with open(os.path.join('static', 'Data', 'StructTree.json'), encoding='unicode_escape') as f:
+        with open(os.path.join('static', 'StructTree.json'), encoding='unicode_escape') as f:
             data = json.load(f)
         indices_param = request.GET.get('indices', '')
         if indices_param:
@@ -76,19 +87,66 @@ def get_channel_data(request):
         if channel_key and channel_type:
             if '_' in channel_key:
                 channel_name, shot_number = channel_key.rsplit('_', 1)
+                shot_number = int(shot_number)
             else:
                 return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
             
-            file_path = os.path.join(
-                'static', 'Data', shot_number, channel_type, channel_name, f"{channel_name}.json"
-            )
-            
-            if os.path.exists(file_path):
-                with open(file_path, encoding='utf-8') as f:
-                    data = json.load(f)
-                return JsonResponse(data)
-            else:
-                return JsonResponse({'error': 'File not found'}, status=404)
+            # file_path = os.path.join(
+            #     'static', 'Data', shot_number, channel_type, channel_name, f"{channel_name}.json"
+            # )
+            DB_list = ["exl50u", "eng50u"]
+            DBS = {
+                'exl50': {
+                    'name': 'exl50',
+                    'addr': '192.168.20.11',
+                    'path': '192.168.20.11::/media/ennfusion/trees/exl50',
+                    'subtrees': ['FBC', 'PAI', 'PMNT']
+                },
+                'exl50u': {
+                    'name': 'exl50u',
+                    'addr': '192.168.20.11',
+                    'path': '192.168.20.11::/media/ennfusion/trees/exl50u',
+                    'subtrees': ['FBC', 'PAI', 'PMNT']
+                },
+                'eng50u': {
+                    'name': 'eng50u',
+                    'addr': '192.168.20.41',
+                    'path': '192.168.20.41::/media/ennfusion/ENNMNT/trees/eng50u',
+                    'subtrees': ['PMNT']
+                },
+                'ecrhlab': {
+                    'name': 'ecrhlab',
+                    'addr': '192.168.20.32',
+                    'path': '192.168.20.32::/media/ecrhdb/trees/ecrhlab',
+                    'subtrees': ['PAI']
+                },
+                'ts': {
+                    'name': 'ts',
+                    'addr': '192.168.20.28',
+                    'path': '192.168.20.28::/media/ennts/trees/ts',
+                    'subtrees': ['AI']
+                },
+            }
+            data = {}
+            # 暂不确定通道位于哪个数据库中，（这个也需要记录在 struct-tree 里)
+            print(channel_type)
+            print(channel_name)
+            for DB in DB_list:
+                tree = MdsTree(shot_number, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
+                data_x, data_y, unit = tree.getData(channel_name)
+                if len(data_x) != 0:
+                    data = {
+                        'channel_type':channel_type,
+                        'channel_number':channel_name,
+                        'X_value': list(data_x),
+                        'Y_value': list(data_y),
+                        'X_unit': 's', #一维数据的 X 轴默认是秒
+                        'Y_unit': 'Y',
+                    }
+                    # print(data)
+                    return JsonResponse(data, encoder=JsonEncoder)
+            # else:
+            #     return JsonResponse({'error': 'File not found'}, status=404)
         else:
             return JsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
     except Exception as e:
@@ -115,15 +173,17 @@ def get_error_data(request):
             anomaly_file_name = f"{error_name}{error_index}.json"
 
             file_path = os.path.join(
-                'static', 'Data', shot_number, channel_type, channel_name, error_name, anomaly_file_name
+                'static', 'ErrorData', f'{shot_number}_{channel_name}_{error_name}.json'
             )
 
             if os.path.exists(file_path):
-                with open(file_path, encoding='utf-8') as f:
+                with open(file_path, encoding='unicode_escape') as f:
                     data = json.load(f)
-                return JsonResponse(data)
+                return JsonResponse(data, encoder=JsonEncoder, safe=False)
             else:
                 return JsonResponse({'error': 'File not found'}, status=404)
+
+
         else:
             return JsonResponse({'error': 'Required parameters are missing'}, status=400)
     except Exception as e:

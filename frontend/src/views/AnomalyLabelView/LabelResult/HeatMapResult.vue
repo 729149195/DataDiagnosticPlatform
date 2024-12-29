@@ -43,15 +43,22 @@
     </div>
     <el-dialog v-model="showAnomalyDialog" title="异常信息" :modal="true" :close-on-click-modal="false"
       @close="handleDialogClose" class="anomaly-dialog">
-      <el-scrollbar class="anomaly-scrollbar" height="60vh" :always="false">
-        <div v-for="(anomaly, index) in anomalyDialogData" :key="index" class="anomaly-item">
-          <el-descriptions :title="`异常 ${index + 1}`" :column="1" border class="anomaly-descriptions">
-            <el-descriptions-item v-for="(value, key) in anomaly" :key="key" :label="formatKey(key)">
-              {{ formatValue(value, key) }}
-            </el-descriptions-item>
-          </el-descriptions>
+      <div class="anomaly-container">
+        <div v-for="(group, groupIndex) in anomalyDialogData" :key="groupIndex" class="anomaly-group">
+          <h3 class="group-title">{{ group.type }}</h3>
+          <el-scrollbar height="60vh" :always="false">
+            <div class="anomaly-content">
+              <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item">
+                <el-descriptions :title="`异常 ${index + 1}`" :column="1" border class="anomaly-descriptions">
+                  <el-descriptions-item v-for="(value, key) in anomaly" :key="key" :label="formatKey(key)">
+                    {{ formatValue(value, key) }}
+                  </el-descriptions-item>
+                </el-descriptions>
+              </div>
+            </div>
+          </el-scrollbar>
         </div>
-      </el-scrollbar>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -149,10 +156,104 @@ const exportHeatMapSvg = () => {
   }
 }
 
-const exportHeatMapData = () => {
-  let HeatMapData = errorResults;
+// 添加解码函数
+const decodeChineseText = (text) => {
+  if (!text) return '';
+  try {
+    // 尝试多种解码方式
+    let decodedText = text;
+    if (typeof text === 'string' && /[\u0080-\uffff]/.test(text)) {
+      try {
+        decodedText = decodeURIComponent(escape(text));
+      } catch (e) {
+        console.warn('Failed to decode text:', text, e);
+      }
+    }
+    return decodedText;
+  } catch (err) {
+    console.warn('Error decoding text:', err);
+    return text;
+  }
+};
 
-  const jsonData = JSON.stringify(HeatMapData, null, 2);
+const exportHeatMapData = () => {
+  // 深拷贝数据以避免修改原始数据
+  let processedData = JSON.parse(JSON.stringify(errorResults));
+
+  // 递归处理对象中的所有字符串字段
+  const processObject = (obj) => {
+    if (!obj) return obj;
+    
+    if (Array.isArray(obj)) {
+      return obj.map(item => processObject(item));
+    }
+    
+    if (typeof obj === 'object') {
+      const newObj = {};
+      for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+          // 跳过 X_error 和 Y_error 字段
+          if (key !== 'X_error' && key !== 'Y_error') {
+            newObj[key] = processObject(obj[key]);
+          } else {
+            newObj[key] = obj[key];
+          }
+        }
+      }
+      return newObj;
+    }
+    
+    if (typeof obj === 'string') {
+      return decodeChineseText(obj);
+    }
+    
+    return obj;
+  };
+
+  // 按通道分组数据
+  const groupedByChannel = processedData.reduce((acc, result) => {
+    const { channelKey } = result;
+    if (!acc[channelKey]) {
+      acc[channelKey] = {
+        channelKey,
+        errorIdx: result.errorIdx,
+        errorData: [[], []] // [人工标注数据, 机器识别数据]
+      };
+    }
+    return acc;
+  }, {});
+
+  // 处理每条数据
+  processedData.forEach(result => {
+    const { channelKey, errorData, isAnomaly } = result;
+    const channelGroup = groupedByChannel[channelKey];
+
+    if (isAnomaly) {
+      // 前端标注的异常数据
+      channelGroup.errorData[0].push(processObject(errorData));
+    } else if (Array.isArray(errorData)) {
+      // 后端返回的数据
+      const [manualErrors, machineErrors] = errorData;
+      if (manualErrors && manualErrors.length > 0) {
+        channelGroup.errorData[0].push(...processObject(manualErrors));
+      }
+      if (machineErrors && machineErrors.length > 0) {
+        channelGroup.errorData[1].push(...processObject(machineErrors));
+      }
+    } else {
+      // 其他格式的数据
+      if (errorData.person === 'machine') {
+        channelGroup.errorData[1].push(processObject(errorData));
+      } else {
+        channelGroup.errorData[0].push(processObject(errorData));
+      }
+    }
+  });
+
+  // 转换为数组
+  const reorganizedData = Object.values(groupedByChannel);
+
+  const jsonData = JSON.stringify(reorganizedData, null, 2);
   const blob = new Blob([jsonData], { type: "application/json" });
   const url = URL.createObjectURL(blob);
 
@@ -166,8 +267,7 @@ const exportHeatMapData = () => {
 
   // 释放 Blob URL
   URL.revokeObjectURL(url);
-}
-
+};
 
 // 辅助函数：判断给定的 errorIdx 是否为异常
 function isAnomaly(idx, channelKey) {
@@ -197,6 +297,10 @@ function formatKey(key) {
     anomalyDiagnosisName: '异常诊断名称',
     anomalyDescription: '异常描述',
     isStored: '是否已保存',
+    shot_number: '炮号',
+    startTime: '开始时间',
+    endTime: '结束时间',
+    annotationTime: '标注时间',
     // ... 可以添加更多的映射
   };
 
@@ -205,12 +309,51 @@ function formatKey(key) {
 
 // 辅助函数：格式化值的显示
 function formatValue(value, key) {
+  // 过滤掉X_error和Y_error数据
+  if (key === 'X_error' || key === 'Y_error') {
+    return undefined;
+  }
+  
   if (key === 'startX' || key === 'endX') {
     return parseFloat(value).toFixed(4);
   }
-  if (key === 'diagnostic_time') {
-    return new Date(value).toLocaleString();
+
+  // 统一时间格式：YYYY-MM-DD HH:mm:ss
+  if (key === 'diagnostic_time' || key === 'annotationTime') {
+    if (!value) return '无';
+    try {
+      const date = new Date(value);
+      if (isNaN(date.getTime())) {
+        // 如果是ISO字符串，尝试直接格式化
+        if (typeof value === 'string' && value.includes('T')) {
+          const [datePart, timePart] = value.split('T');
+          const time = timePart.split('.')[0];
+          return `${datePart} ${time}`;
+        }
+        return value; // 如果无法解析，返回原值
+      }
+      
+      // 格式化为 YYYY-MM-DD HH:mm:ss
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+    } catch (err) {
+      console.warn('Error formatting date:', err);
+      // 尝试直接格式化ISO字符串
+      if (typeof value === 'string' && value.includes('T')) {
+        const [datePart, timePart] = value.split('T');
+        const time = timePart.split('.')[0];
+        return `${datePart} ${time}`;
+      }
+      return value;
+    }
   }
+
   if (value === null || value === undefined || value === '') {
     return '无';
   }
@@ -784,32 +927,148 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
               .filter((e) => e);
 
             // 提取并过滤所有错误信息
-            const filteredErrorsInRect = errorsInRect.map((e) => {
-              const errorData = e.errorData;
-              const { X_value_error, Y_value_error, ...filteredData } = errorData;
-              // 将不存在的字段设置为 'unknown'
+            const processErrorData = (errorData) => {
+              // 过滤掉X_error和Y_error字段
+              const { X_error, Y_error, ...filteredData } = errorData;
+              
+              // 格式化每个字段
               Object.keys(filteredData).forEach((key) => {
-                if (
-                  filteredData[key] === undefined ||
-                  filteredData[key] === null
-                ) {
-                  filteredData[key] = 'unknown';
+                let value = filteredData[key];
+                // 处理特殊的中文字符编码
+                if (typeof value === 'string' && /[\u0080-\uffff]/.test(value)) {
+                  try {
+                    // 尝试解码可能的 URI 编码
+                    const decodedValue = decodeURIComponent(value);
+                    if (decodedValue !== value) {
+                      value = decodedValue;
+                    }
+                  } catch (e) {
+                    // 如果解码失败，保持原值
+                    console.warn('Failed to decode string:', value, e);
+                  }
+                }
+                
+                const formattedValue = formatValue(value, key);
+                if (formattedValue === undefined) {
+                  delete filteredData[key];
+                } else if (formattedValue === null || formattedValue === '') {
+                  filteredData[key] = '无';
+                } else {
+                  filteredData[key] = formattedValue;
                 }
               });
+
+              // 如果是机器识别的异常，使用diagnostic_time
+              if (filteredData.person === 'machine') {
+                filteredData.diagnostic_time = formatValue(filteredData.diagnostic_time, 'diagnostic_time');
+              }
+
+              // 如果是人工标注的异常，使用标注时的时间
+              if (filteredData.person !== 'machine' && filteredData.annotationTime) {
+                filteredData.annotationTime = formatValue(filteredData.annotationTime, 'annotationTime');
+              }
+
               return filteredData;
+            };
+
+            // 分离人工标注和机器识别的异常
+            const manualAnomalies = [];
+            const machineAnomalies = [];
+
+            errorsInRect.forEach((error) => {
+              // 检查是否是前端标注的异常数据
+              if (error.isAnomaly) {
+                const processedData = processErrorData(error.errorData);
+                if (Object.keys(processedData).length > 0) {
+                  manualAnomalies.push(processedData);
+                }
+              } else {
+                // 处理来自后端的异常数据
+                try {
+                  const [manualErrors, machineErrors] = error.errorData;
+                  
+                  // 处理人工标注的异常
+                  if (manualErrors && manualErrors.length > 0) {
+                    manualErrors.forEach(manualError => {
+                      if (manualError && Object.keys(manualError).length > 0) {
+                        const processedData = processErrorData(manualError);
+                        if (Object.keys(processedData).length > 0) {
+                          manualAnomalies.push(processedData);
+                        }
+                      }
+                    });
+                  }
+                  
+                  // 处理机器识别的异常
+                  if (machineErrors && machineErrors.length > 0) {
+                    machineErrors.forEach(machineError => {
+                      if (machineError && Object.keys(machineError).length > 0) {
+                        // 对机器识别的结果进行特殊处理
+                        const decodedMachineError = {};
+                        Object.keys(machineError).forEach(key => {
+                          let value = machineError[key];
+                          if (typeof value === 'string' && /[\u0080-\uffff]/.test(value)) {
+                            try {
+                              // 尝试多种解码方式
+                              const decodedValue = decodeURIComponent(escape(value));
+                              value = decodedValue;
+                            } catch (e) {
+                              console.warn('Failed to decode machine error string:', value, e);
+                            }
+                          }
+                          decodedMachineError[key] = value;
+                        });
+                        
+                        const processedData = processErrorData(decodedMachineError);
+                        if (Object.keys(processedData).length > 0) {
+                          machineAnomalies.push(processedData);
+                        }
+                      }
+                    });
+                  }
+                } catch (err) {
+                  console.warn('Error processing error data:', err);
+                  // 如果解构失败，尝试直接处理errorData
+                  const processedData = processErrorData(error.errorData);
+                  if (Object.keys(processedData).length > 0) {
+                    if (error.errorData.person === 'machine') {
+                      machineAnomalies.push(processedData);
+                    } else {
+                      manualAnomalies.push(processedData);
+                    }
+                  }
+                }
+              }
             });
 
             // 去除重复的异常信息
-            const uniqueFilteredErrorsInRect = filteredErrorsInRect.filter(
+            const uniqueManualAnomalies = manualAnomalies.filter(
               (item, index, self) =>
-                index ===
-                self.findIndex(
-                  (t) => JSON.stringify(t) === JSON.stringify(item)
-                )
+                index === self.findIndex((t) => JSON.stringify(t) === JSON.stringify(item))
             );
 
-            if (uniqueFilteredErrorsInRect.length > 0) {
-              anomalyDialogData.value = uniqueFilteredErrorsInRect;
+            const uniqueMachineAnomalies = machineAnomalies.filter(
+              (item, index, self) =>
+                index === self.findIndex((t) => JSON.stringify(t) === JSON.stringify(item))
+            );
+
+            // 组合最终显示的数据
+            const combinedAnomalies = [];
+            if (uniqueManualAnomalies.length > 0) {
+              combinedAnomalies.push({
+                type: '人工标注异常',
+                anomalies: uniqueManualAnomalies
+              });
+            }
+            if (uniqueMachineAnomalies.length > 0) {
+              combinedAnomalies.push({
+                type: '机器识别异常',
+                anomalies: uniqueMachineAnomalies
+              });
+            }
+
+            if (combinedAnomalies.length > 0) {
+              anomalyDialogData.value = combinedAnomalies;
               showAnomalyDialog.value = true;
             } else {
               showAnomalyDialog.value = false;
@@ -870,32 +1129,148 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
               .filter((e) => e);
 
             // 提取并过滤所有错误信息
-            const filteredErrorsInRect = errorsInRect.map((e) => {
-              const errorData = e.errorData;
-              const { X_value_error, Y_value_error, ...filteredData } = errorData;
-              // 将不存在的字段设置为 'unknown'
+            const processErrorData = (errorData) => {
+              // 过滤掉X_error和Y_error字段
+              const { X_error, Y_error, ...filteredData } = errorData;
+              
+              // 格式化每个字段
               Object.keys(filteredData).forEach((key) => {
-                if (
-                  filteredData[key] === undefined ||
-                  filteredData[key] === null
-                ) {
-                  filteredData[key] = 'unknown';
+                let value = filteredData[key];
+                // 处理特殊的中文字符编码
+                if (typeof value === 'string' && /[\u0080-\uffff]/.test(value)) {
+                  try {
+                    // 尝试解码可能的 URI 编码
+                    const decodedValue = decodeURIComponent(value);
+                    if (decodedValue !== value) {
+                      value = decodedValue;
+                    }
+                  } catch (e) {
+                    // 如果解码失败，保持原值
+                    console.warn('Failed to decode string:', value, e);
+                  }
+                }
+                
+                const formattedValue = formatValue(value, key);
+                if (formattedValue === undefined) {
+                  delete filteredData[key];
+                } else if (formattedValue === null || formattedValue === '') {
+                  filteredData[key] = '无';
+                } else {
+                  filteredData[key] = formattedValue;
                 }
               });
+
+              // 如果是机器识别的异常，使用diagnostic_time
+              if (filteredData.person === 'machine') {
+                filteredData.diagnostic_time = formatValue(filteredData.diagnostic_time, 'diagnostic_time');
+              }
+
+              // 如果是人工标注的异常，使用标注时的时间
+              if (filteredData.person !== 'machine' && filteredData.annotationTime) {
+                filteredData.annotationTime = formatValue(filteredData.annotationTime, 'annotationTime');
+              }
+
               return filteredData;
+            };
+
+            // 分离人工标注和机器识别的异常
+            const manualAnomalies = [];
+            const machineAnomalies = [];
+
+            errorsInRect.forEach((error) => {
+              // 检查是否是前端标注的异常数据
+              if (error.isAnomaly) {
+                const processedData = processErrorData(error.errorData);
+                if (Object.keys(processedData).length > 0) {
+                  manualAnomalies.push(processedData);
+                }
+              } else {
+                // 处理来自后端的异常数据
+                try {
+                  const [manualErrors, machineErrors] = error.errorData;
+                  
+                  // 处理人工标注的异常
+                  if (manualErrors && manualErrors.length > 0) {
+                    manualErrors.forEach(manualError => {
+                      if (manualError && Object.keys(manualError).length > 0) {
+                        const processedData = processErrorData(manualError);
+                        if (Object.keys(processedData).length > 0) {
+                          manualAnomalies.push(processedData);
+                        }
+                      }
+                    });
+                  }
+                  
+                  // 处理机器识别的异常
+                  if (machineErrors && machineErrors.length > 0) {
+                    machineErrors.forEach(machineError => {
+                      if (machineError && Object.keys(machineError).length > 0) {
+                        // 对机器识别的结果进行特殊处理
+                        const decodedMachineError = {};
+                        Object.keys(machineError).forEach(key => {
+                          let value = machineError[key];
+                          if (typeof value === 'string' && /[\u0080-\uffff]/.test(value)) {
+                            try {
+                              // 尝试多种解码方式
+                              const decodedValue = decodeURIComponent(escape(value));
+                              value = decodedValue;
+                            } catch (e) {
+                              console.warn('Failed to decode machine error string:', value, e);
+                            }
+                          }
+                          decodedMachineError[key] = value;
+                        });
+                        
+                        const processedData = processErrorData(decodedMachineError);
+                        if (Object.keys(processedData).length > 0) {
+                          machineAnomalies.push(processedData);
+                        }
+                      }
+                    });
+                  }
+                } catch (err) {
+                  console.warn('Error processing error data:', err);
+                  // 如果解构失败，尝试直接处理errorData
+                  const processedData = processErrorData(error.errorData);
+                  if (Object.keys(processedData).length > 0) {
+                    if (error.errorData.person === 'machine') {
+                      machineAnomalies.push(processedData);
+                    } else {
+                      manualAnomalies.push(processedData);
+                    }
+                  }
+                }
+              }
             });
 
             // 去除重复的异常信息
-            const uniqueFilteredErrorsInRect = filteredErrorsInRect.filter(
+            const uniqueManualAnomalies = manualAnomalies.filter(
               (item, index, self) =>
-                index ===
-                self.findIndex(
-                  (t) => JSON.stringify(t) === JSON.stringify(item)
-                )
+                index === self.findIndex((t) => JSON.stringify(t) === JSON.stringify(item))
             );
 
-            if (uniqueFilteredErrorsInRect.length > 0) {
-              anomalyDialogData.value = uniqueFilteredErrorsInRect;
+            const uniqueMachineAnomalies = machineAnomalies.filter(
+              (item, index, self) =>
+                index === self.findIndex((t) => JSON.stringify(t) === JSON.stringify(item))
+            );
+
+            // 组合最终显示的数据
+            const combinedAnomalies = [];
+            if (uniqueManualAnomalies.length > 0) {
+              combinedAnomalies.push({
+                type: '人工标注异常',
+                anomalies: uniqueManualAnomalies
+              });
+            }
+            if (uniqueMachineAnomalies.length > 0) {
+              combinedAnomalies.push({
+                type: '机器识别异常',
+                anomalies: uniqueMachineAnomalies
+              });
+            }
+
+            if (combinedAnomalies.length > 0) {
+              anomalyDialogData.value = combinedAnomalies;
               showAnomalyDialog.value = true;
             } else {
               showAnomalyDialog.value = false;
@@ -1013,20 +1388,50 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
 }
 
 .anomaly-dialog {
-  width: 80% !important; // 根据需要调整对话框宽度
-  max-width: 100%;
+  width: 90% !important; // 增加宽度以适应横向布局
+  max-width: 1400px; // 设置最大宽度
 }
 
-.anomaly-scrollbar {
-  width: 100%;
+.anomaly-container {
+  display: flex;
+  gap: 20px;
+  min-height: 60vh;
+}
+
+.anomaly-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0; // 防止flex子项溢出
+}
+
+.group-title {
+  margin: 0 0 10px 0;
+  padding: 8px 15px;
+  background-color: #f5f7fa;
+  border-left: 4px solid #409EFF;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.anomaly-content {
+  padding: 0 10px;
 }
 
 .anomaly-item {
-  width: 100%;
+  margin-bottom: 15px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 
 .anomaly-descriptions {
   width: 100%;
+  
+  :deep(.el-descriptions__body) {
+    background-color: #fff;
+  }
 }
 
 .title {
@@ -1109,5 +1514,26 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
+}
+
+.anomaly-group {
+  margin-bottom: 20px;
+}
+
+.group-title {
+  margin: 10px 0;
+  padding: 5px 10px;
+  background-color: #f5f7fa;
+  border-left: 4px solid #409EFF;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.anomaly-item {
+  margin-bottom: 15px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
 }
 </style>

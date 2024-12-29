@@ -4,8 +4,10 @@ from . import views
 
 urlpatterns = [
     path('struct-tree/', views.get_struct_tree),
+
     path('channel-data/', views.get_channel_data),
     path('error-data/', views.get_error_data),
+
     path('submit-data/', views.submit_data),
     path('operator-strs/', views.process_channel_names),
     path('get-shot-number-index/', views.get_shot_number_index, name='get_shot_number_index'),

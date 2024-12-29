@@ -1,0 +1,6 @@
+[[],
+  [{"person": "mechine",
+    "diagnostic_name": "辐射功率",
+    "channel_number": "AXUV002",
+    "error_type": "error_axuv_Detector_channel_damage",
+    "shot_number": "1", "X_error": [[]], "Y_error": [[]], "diagonistic_time": "2024-12-29 11:56:12", "error_description": ""}]]

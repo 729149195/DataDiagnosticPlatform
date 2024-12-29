@@ -132,11 +132,24 @@ onUnmounted(() => {
 // 格式化错误名称
 const formatError = (name) => {
     if (!name) return '';
-    const decodedName = decodeURIComponent(escape(name));
-    if (decodedName.length > 9) {
-        return decodedName.slice(0, 9) + '...';
+    try {
+        // 尝试多种解码方式
+        let decodedName = name;
+        if (typeof name === 'string' && /[\u0080-\uffff]/.test(name)) {
+            try {
+                decodedName = decodeURIComponent(escape(name));
+            } catch (e) {
+                console.warn('Failed to decode error name:', name, e);
+            }
+        }
+        if (decodedName.length > 9) {
+            return decodedName.slice(0, 9) + '...';
+        }
+        return decodedName;
+    } catch (err) {
+        console.warn('Error formatting name:', err);
+        return name;
     }
-    return decodedName;
 };
 
 // 计算隐藏的错误数量
@@ -187,7 +200,13 @@ const updateChannelTypeCheckbox = (item) => {
     }
 
     const allChecked = item.channels.every((channel) => channel.checked);
+    const someChecked = item.channels.some((channel) => channel.checked);
+    
+    // 如果所有通道都选中,则通道类别也选中
+    // 如果部分通道选中,则通道类别不选中
+    // 如果没有通道选中,则通道类别不选中
     item.checked = allChecked;
+    
     updateSelectedChannels();
 };
 
@@ -214,11 +233,24 @@ onMounted(() => {
 // 格式化通道类别名称
 const formatChannelType = (name) => {
     if (!name) return '';
-    const decodedName = decodeURIComponent(escape(name));
-    if (decodedName.length > 8) {
-        return decodedName.slice(0, 8) + '...';
+    try {
+        // 尝试多种解码方式
+        let decodedName = name;
+        if (typeof name === 'string' && /[\u0080-\uffff]/.test(name)) {
+            try {
+                decodedName = decodeURIComponent(escape(name));
+            } catch (e) {
+                console.warn('Failed to decode channel type:', name, e);
+            }
+        }
+        if (decodedName.length > 8) {
+            return decodedName.slice(0, 8) + '...';
+        }
+        return decodedName;
+    } catch (err) {
+        console.warn('Error formatting channel type:', err);
+        return name;
     }
-    return decodedName;
 };
 </script>
 
