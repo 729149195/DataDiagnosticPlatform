@@ -44,6 +44,7 @@ const store = createStore({
       pageSize: 15, // 减小每次加载的数量
       currentPage: 1, // 当前页码
       hasMoreData: true, // 是否还有更多数据
+      userMessage: "", // 添加用户验证消息
     };
   },
   getters: {
@@ -290,6 +291,9 @@ const store = createStore({
     },
     setCurrentPage(state, value) {
       state.currentPage = value;
+    },
+    setUserMessage(state, message) {
+      state.userMessage = message;
     },
   },
   actions: {

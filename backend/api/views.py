@@ -13,6 +13,7 @@ from django.http import JsonResponse
 from api.self_algorithm_utils import period_condition_anomaly, channel_read
 from api.utils import filter_range, merge_overlapping_intervals
 from api.Mds import MdsTree
+from api.verify_user import send_post_request
 # import matplotlib.pyplot as plt
 
 class JsonEncoder(json.JSONEncoder):
@@ -441,5 +442,27 @@ def execute_function(data):
             return {"error": str(e)}
     else:
         return {"error": "MATLAB engine is not available"}
+
+def verify_user(request):
+    try:
+        data = json.loads(request.body)
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return JsonResponse({'success': False, 'message': '用户名或密码不能为空'}, status=400)
+            
+        result = send_post_request(username, password)
+        
+        if '错误' in result:
+            return JsonResponse({'success': False, 'message': result['错误']}, status=500)
+            
+        # 检查返回的消息是否包含错误信息
+        if 'username or password error' in result.get('message', '').lower():
+            return JsonResponse({'success': False, 'message': result['message']})
+            
+        return JsonResponse({'success': True, 'message': result.get('message', '')})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
 
