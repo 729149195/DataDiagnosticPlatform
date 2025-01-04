@@ -84,10 +84,15 @@ def get_error_origin_index(request):
 def get_channel_data(request):
     try:
         channel_key = request.GET.get('channel_key')
-        channel_type = request.GET.get('channel_type')
-        if channel_key and channel_type:
+        # channel_type = request.GET.get('channel_type')
+        if channel_key: # and channel_type:
             if '_' in channel_key:
                 channel_name, shot_number = channel_key.rsplit('_', 1)
+                try:
+                    num = int(channel_name)
+                    channel_name, shot_number = shot_number, channel_name
+                except ValueError:
+                    pass
                 shot_number = int(shot_number)
             else:
                 return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
@@ -130,14 +135,14 @@ def get_channel_data(request):
             }
             data = {}
             # 暂不确定通道位于哪个数据库中，（这个也需要记录在 struct-tree 里)
-            print(channel_type)
+            # print(channel_type)
             print(channel_name)
             for DB in DB_list:
                 tree = MdsTree(shot_number, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
                 data_x, data_y, unit = tree.getData(channel_name)
                 if len(data_x) != 0:
                     data = {
-                        'channel_type':channel_type,
+                        # 'channel_type':channel_type,
                         'channel_number':channel_name,
                         'X_value': list(data_x),
                         'Y_value': list(data_y),

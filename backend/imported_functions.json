@@ -1,1 +1,30 @@
-[]
+[
+    {
+        "name": "LargerThanThreshold",
+        "description": "\u7edd\u5bf9\u503c\u5927\u4e8e\u9608\u503c\u7684\u65f6\u95f4\u6bb5\u90fd\u4f1a\u88ab\u6807\u8bb0",
+        "type": "\u8bca\u65ad\u5206\u6790",
+        "input": [
+            {
+                "paraName": "channel_key",
+                "paraType": "\u901a\u9053\u5bf9\u8c61",
+                "paraDefinition": "\u70ae\u53f7",
+                "domain": "None",
+                "default": "None"
+            },
+            {
+                "paraName": "threshold",
+                "paraType": "\u6d6e\u70b9\u6570",
+                "paraDefinition": "\u9608\u503c",
+                "domain": "None",
+                "default": "None"
+            }
+        ],
+        "output": [
+            {
+                "outputName": "X_range",
+                "type": "\u6807\u6ce8\u8303\u56f4",
+                "definition": "\u5f02\u5e38\u6570\u636e\u7684\u6a2a\u8f74\u6807\u6ce8\u8303\u56f4"
+            }
+        ]
+    }
+]

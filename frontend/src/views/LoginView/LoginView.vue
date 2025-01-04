@@ -59,7 +59,7 @@
       </form>
     </div>
     <footer class="login-footer">
-      <p>© 2024 DataDiagnostic Platform. All rights reserved.</p>
+      <p>© 2025 DataDiagnostic Platform. All rights reserved.</p>
     </footer>
   </div>
 </template>

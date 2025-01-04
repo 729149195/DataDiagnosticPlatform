@@ -3,4 +3,3 @@ numpy~=2.0.0
 asgiref~=3.7.2
 channels~=3.0.1
 django-cors-headers~=3.11.0
-MDSplus==7.0.121

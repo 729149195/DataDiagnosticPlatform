@@ -1,9 +1,9 @@
 function result = LargerThanThreshold(channel_key, threshold)
     % Read JSON data from file based on channel_key
     % Assuming channel_key is the filename
-    url = sprintf('http://localhost:5000/api/channel-data?channel_key=%s', channel_key);
-    options = weboptions('ContentType', 'json');
-    json_data = webread(url, options);
+    raw_data = fileread(strcat(channel_key, '.json'));
+    json_data = jsondecode(raw_data);
+
     % Extract X_value and Y_value from the JSON data
     X_value = json_data.X_value;
     Y_value = json_data.Y_value;

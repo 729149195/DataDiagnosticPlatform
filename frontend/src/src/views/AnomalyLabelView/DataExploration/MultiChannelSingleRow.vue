@@ -13,7 +13,7 @@
           <span class="progress-percentage">{{ getProgressPercentage }}%</span>
         </div>
         <el-progress :percentage="getProgressPercentage" :stroke-width="10"
-                     :status="!loadingStates.dataLoaded ? 'warning' : ''" :color="loadingStates.dataLoaded ? '#409EFF' : ''" />
+          :status="!loadingStates.dataLoaded ? 'warning' : ''" :color="loadingStates.dataLoaded ? '#409EFF' : ''" />
       </div>
       <div class="chart-wrapper">
         <svg id="combined-chart" ref="channelsSvgRef" :style="{
@@ -27,7 +27,7 @@
           <span class="brush-controls-left">
             <el-tag type="info">总览条起点</el-tag>
             <el-input size="small" style="width: 80px;" v-model="brush_begin" @blur="handleInputBlur('begin')"
-                      @keyup.enter="handleInputBlur('begin')"></el-input>
+              @keyup.enter="handleInputBlur('begin')"></el-input>
           </span>
           <div class="overview-svg-container">
             <svg id="overview-chart" class="overview-svg"></svg>
@@ -35,7 +35,7 @@
           <span class="brush-controls-right">
             <el-tag type="info">总览条终点</el-tag>
             <el-input size="small" style="width: 80px" v-model="brush_end" @blur="handleInputBlur('end')"
-                      @keyup.enter="handleInputBlur('end')"></el-input>
+              @keyup.enter="handleInputBlur('end')"></el-input>
           </span>
         </div>
       </div>
@@ -46,9 +46,9 @@
 <script setup>
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
-import {ref, watch, computed, onMounted, nextTick, reactive, onUnmounted} from 'vue';
-import {ElInput, ElMessage, ElEmpty, ElDivider, ElTag, ElProgress} from 'element-plus';
-import {useStore} from 'vuex';
+import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted } from 'vue';
+import { ElInput, ElMessage, ElEmpty, ElDivider, ElTag, ElProgress } from 'element-plus';
+import { useStore } from 'vuex';
 import axios from 'axios';
 import LegendComponent from '@/components/LegendComponent.vue';
 import {
@@ -68,10 +68,10 @@ const normalize = (yValues) => {
 
 // Reactive references
 const overviewData = ref([]);
-const xDomains = ref({global: null});
+const xDomains = ref({ global: null });
 const brush_begin = ref(0);
 const brush_end = ref(0);
-const brushSelections = ref({overview: null});
+const brushSelections = ref({ overview: null });
 const channelsData = ref([]);
 const exposeData = ref([])
 const dataCache = computed(() => store.state.dataCache); // 数据缓存
@@ -114,13 +114,13 @@ const predefineColors = ref([
 ]);
 
 const mainChartDimensions = ref({
-  margin: {top: 110, right: 20, bottom: 150, left: 80},
+  margin: { top: 110, right: 20, bottom: 150, left: 80 },
   width: 0,
   height: 550 - 80 - 50, // main chart height
 });
 
 const overviewChartDimensions = ref({
-  margin: {top: 10, right: 45, bottom: 35, left: 45},
+  margin: { top: 10, right: 45, bottom: 35, left: 45 },
   width: 0,
   height: 80 - 10 - 35, // overview chart height
 });
@@ -138,16 +138,16 @@ const overviewBrushInstance = ref(null);
 const overviewXScale = ref(null);
 const updatingBrush = ref(false);
 
-const updateChannelColor = ({channelKey, color}) => {
+const updateChannelColor = ({ channelKey, color }) => {
   // 更新 selectedChannels 中的颜色
   const channel = selectedChannels.value.find(
-      (ch) => `${ch.channel_name}_${ch.shot_number}` === channelKey
+    (ch) => `${ch.channel_name}_${ch.shot_number}` === channelKey
   );
   if (channel) {
     channel.color = color;
     // 更新 Vuex 存储，如果需要
-    store.commit('updateChannelColor', {channel_key: channelKey, color});
-    // 重新制图表
+    store.commit('updateChannelColor', { channel_key: channelKey, color });
+    // 重新���制图表
     renderCharts();
   }
 };
@@ -156,7 +156,7 @@ const updateChannelColor = ({channelKey, color}) => {
 watch(matchedResults, (newResults) => {
   if (newResults.length > 0) {
     const resultsByChannel = newResults.reduce((acc, result) => {
-      const {channel_name} = result;
+      const { channel_name } = result;
       if (!acc[channel_name]) acc[channel_name] = [];
       acc[channel_name].push(result);
       return acc;
@@ -172,7 +172,7 @@ const drawHighlightRects = (channel_name, results) => {
   const svg = d3.select(`#combined-chart`);
   if (!svg.node()) return;
 
-  const {margin, width, height} = mainChartDimensions.value;
+  const { margin, width, height } = mainChartDimensions.value;
 
   // 确保 xDomains.value.global 已经设置
   if (!xDomains.value.global) {
@@ -181,17 +181,17 @@ const drawHighlightRects = (channel_name, results) => {
   }
 
   const x = d3.scaleLinear()
-      .domain(xDomains.value.global)
-      .range([0, width]);
+    .domain(xDomains.value.global)
+    .range([0, width]);
 
   // 移除之前的亮组
   svg.select(`.highlight-group-${channel_name}`).remove();
 
   const highlightGroup = svg.select('g')
-      .append('g')
-      .attr('class', `highlight-group-${channel_name}`);
+    .append('g')
+    .attr('class', `highlight-group-${channel_name}`);
 
-  results.forEach(({start_X, end_X}) => {
+  results.forEach(({ start_X, end_X }) => {
     // 检查 start_X 和 end_X 否为有效数字
     if (isNaN(start_X) || isNaN(end_X)) {
       console.warn(`Invalid start_X or end_X for channel ${channel_name}:`, start_X, end_X);
@@ -209,13 +209,13 @@ const drawHighlightRects = (channel_name, results) => {
     }
 
     highlightGroup.append('rect')
-        .attr('x', x(validStart_X))
-        .attr('y', margin.top)
-        .attr('width', x(validEnd_X) - x(validStart_X))
-        .attr('height', height)
-        .attr('fill', 'gray')
-        .attr('opacity', 0.3)
-        .datum({start_X: validStart_X, end_X: validEnd_X});
+      .attr('x', x(validStart_X))
+      .attr('y', margin.top)
+      .attr('width', x(validEnd_X) - x(validStart_X))
+      .attr('height', height)
+      .attr('fill', 'gray')
+      .attr('opacity', 0.3)
+      .datum({ start_X: validStart_X, end_X: validEnd_X });
   });
 };
 
@@ -268,7 +268,7 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     renderCharts();
     drawOverviewChart();
   }
-}, {deep: true});
+}, { deep: true });
 
 watch(sampling, () => {
   sampleRate.value = sampling.value;
@@ -280,13 +280,13 @@ watch(smoothnessValue, () => {
 });
 
 watch(
-    () => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
-    (newErrorColors, oldErrorColors) => {
-      if (JSON.stringify(newErrorColors) !== JSON.stringify(oldErrorColors)) {
-        renderCharts();
-      }
-    },
-    {deep: true}
+  () => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
+  (newErrorColors, oldErrorColors) => {
+    if (JSON.stringify(newErrorColors) !== JSON.stringify(oldErrorColors)) {
+      renderCharts();
+    }
+  },
+  { deep: true }
 );
 
 
@@ -389,7 +389,6 @@ const fetchDataAndStore = async (channel) => {
       }));
 
       data = response.data;
-
       dataCache.value.set(cacheKey, data);
 
       clearInterval(progressInterval);
@@ -398,7 +397,7 @@ const fetchDataAndStore = async (channel) => {
 
     // 检查是否所有通道都加载完成
     const allChannelsLoaded = Array.from(loadingStates.channels.values())
-        .every(progress => progress === 100);
+      .every(progress => progress === 100);
 
     if (allChannelsLoaded) {
       loadingStates.dataLoaded = true;
@@ -423,7 +422,7 @@ const fetchDataAndStore = async (channel) => {
 
     // 检查是否所有通道都渲染完成
     const allChannelsRendered = Array.from(renderingStates.channels.values())
-        .every(progress => progress === 100);
+      .every(progress => progress === 100);
 
     if (allChannelsRendered) {
       renderingStates.completed = true;
@@ -450,17 +449,17 @@ const drawOverviewChart = () => {
   const svgNode = svg.node();
   const svgWidth = svgNode.getBoundingClientRect().width;
 
-  const margin = {top: 10, right: 45, bottom: 35, left: 45};
+  const margin = { top: 10, right: 45, bottom: 35, left: 45 };
   const width = svgWidth - margin.left - margin.right;
   const height = 80 - margin.top - margin.bottom;
 
   svg
-      .attr(
-          'viewBox',
-          `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
-      )
-      .attr('preserveAspectRatio', 'xMidYMid meet')
-      .attr('width', '100%');
+    .attr(
+      'viewBox',
+      `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
+    )
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .attr('width', '100%');
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -487,82 +486,82 @@ const drawOverviewChart = () => {
 
   // 绘制总览数据线条
   const lines = g.selectAll('.overview-line')
-      .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
+    .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
 
   // 进入
   lines.enter()
-      .append('path')
-      .attr('class', 'overview-line')
-      .attr('fill', 'none')
-      .attr('stroke', d => d.color || 'steelblue')
-      .attr('stroke-width', 1)
-      .attr('d', d => d3.line()
-          .x((v, i) => x(d.X_value[i]))
-          .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX)(d.Y_value)
-      );
+    .append('path')
+    .attr('class', 'overview-line')
+    .attr('fill', 'none')
+    .attr('stroke', d => d.color || 'steelblue')
+    .attr('stroke-width', 1)
+    .attr('d', d => d3.line()
+      .x((v, i) => x(d.X_value[i]))
+      .y((v, i) => y(v))
+      .curve(d3.curveMonotoneX)(d.Y_value)
+    );
 
   // 更新
   lines
-      .attr('stroke', d => d.color || 'steelblue')
-      .attr('d', d => d3.line()
-          .x((v, i) => x(d.X_value[i]))
-          .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX)(d.Y_value)
-      );
+    .attr('stroke', d => d.color || 'steelblue')
+    .attr('d', d => d3.line()
+      .x((v, i) => x(d.X_value[i]))
+      .y((v, i) => y(v))
+      .curve(d3.curveMonotoneX)(d.Y_value)
+    );
 
   // 退出
   lines.exit().remove();
 
   // 绘制坐标轴
   g.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x)).style("font-size", "1em")
-      .style("font-weight", "bold");
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x)).style("font-size", "1em")
+    .style("font-weight", "bold");
 
   // 添加刷子功能
   const brush = d3.brushX()
-      .extent([
-        [0, 0],
-        [width, height],
-      ])
-      .on('brush end', debounce((event) => {
-        if (updatingBrush.value) return;
+    .extent([
+      [0, 0],
+      [width, height],
+    ])
+    .on('brush end', debounce((event) => {
+      if (updatingBrush.value) return;
 
-        // 当点击空白处时，恢复到完整范围
-        const selection = event.selection || initialSelection;
-        const newDomain = selection.map(x.invert, x);
+      // 当点击空白处时，恢复到完整范围
+      const selection = event.selection || initialSelection;
+      const newDomain = selection.map(x.invert, x);
 
-        updatingBrush.value = true;
-        brush_begin.value = newDomain[0].toFixed(4);
-        brush_end.value = newDomain[1].toFixed(4);
-        store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
-        updatingBrush.value = false;
+      updatingBrush.value = true;
+      brush_begin.value = newDomain[0].toFixed(4);
+      brush_end.value = newDomain[1].toFixed(4);
+      store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+      updatingBrush.value = false;
 
-        // 如果是点击空白处，手动设置刷选框
-        if (!event.selection) {
-          brushG.call(brush.move, initialSelection);
-          brushSelections.value.overview = initialSelection;
-        } else {
-          brushSelections.value.overview = selection;
-        }
+      // 如果是点击空白处，手动设置刷选框
+      if (!event.selection) {
+        brushG.call(brush.move, initialSelection);
+        brushSelections.value.overview = initialSelection;
+      } else {
+        brushSelections.value.overview = selection;
+      }
 
-        // 更新全局 X 域
-        xDomains.value.global = newDomain;
+      // 更新全局 X 域
+      xDomains.value.global = newDomain;
 
-        // 重新绘制组合图表
-        drawCombinedChart();
+      // 重新绘制组合图表
+      drawCombinedChart();
 
-        // 高亮匹配结果
-        selectedChannels.value.forEach((channel) => {
-          const channelMatchedResults = matchedResults.value.filter(
-              (r) => r.channel_name === channel.channel_name
-          );
-          channelMatchedResults.forEach((result) => {
-            drawHighlightRects(channel.channel_name, [result]);
-          });
+      // 高亮匹配结果
+      selectedChannels.value.forEach((channel) => {
+        const channelMatchedResults = matchedResults.value.filter(
+          (r) => r.channel_name === channel.channel_name
+        );
+        channelMatchedResults.forEach((result) => {
+          drawHighlightRects(channel.channel_name, [result]);
         });
-      }, 150));
+      });
+    }, 150));
 
   overviewBrushInstance.value = brush;
 
@@ -621,7 +620,7 @@ const handleInputBlur = (type) => {
   brush_end.value = end.toFixed(4);
 
   // 更新 store 中的值
-  store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+  store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
 
   // 更新刷选区域和图表
   const selection = [x(start), x(end)];
@@ -645,7 +644,7 @@ const handleInputBlur = (type) => {
 // 修改 watch 函数，移除即时格式化
 watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
   // 仅在输入框失焦或按下回车时处理
-}, {immediate: false});
+}, { immediate: false });
 
 
 // 数据插值平滑
@@ -705,35 +704,35 @@ const drawCombinedChart = () => {
   const svg = d3.select('#combined-chart');
   svg.selectAll('*').remove(); // 清空之前的内容
 
-  const {margin, width, height} = mainChartDimensions.value;
+  const { margin, width, height } = mainChartDimensions.value;
 
   // 设置 SVG
   svg
-      .attr(
-          'viewBox',
-          `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
-      )
-      .attr('preserveAspectRatio', 'xMidYMid meet')
-      .attr('width', '100%');
+    .attr(
+      'viewBox',
+      `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
+    )
+    .attr('preserveAspectRatio', 'xMidYMid meet')
+    .attr('width', '100%');
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
   // 定义 clipPath
   g.append("defs").append("clipPath")
-      .attr("id", "clip")
-      .append("rect")
-      .attr("width", width)
-      .attr("height", height);
+    .attr("id", "clip")
+    .append("rect")
+    .attr("width", width)
+    .attr("height", height);
 
   // 创建数据绘图并应用 clipPath
   const dataGroup = g.append("g")
-      .attr("clip-path", "url(#clip)");
+    .attr("clip-path", "url(#clip)");
 
   // 计算所有数据的范围
   const allX = channelsData.value.flatMap(d => d.X_value);
   const allY = channelsData.value.flatMap(d => d.Y_value);
   const xExtent = xDomains.value.global || d3.extent(allX);
-
+  
   // 修改这里：使用存储的 Y 轴范围或默认范围
   let yExtent;
   if (originalDomains.value.global && originalDomains.value.global.y) {
@@ -754,59 +753,59 @@ const drawCombinedChart = () => {
   const yMax = yExtent[1] + yRangePadding;
 
   const x = d3.scaleLinear()
-      .domain(xExtent)
-      .range([0, width]);
+    .domain(xExtent)
+    .range([0, width]);
 
   const y = d3.scaleLinear()
-      .domain([yMin, yMax])
-      .range([height, 0]);
+    .domain([yMin, yMax])
+    .range([height, 0]);
 
   // 添加坐标轴（不在 dataGroup 内，避免被裁剪）
   g.selectAll('.x-axis').remove(); // 移除旧的坐标轴
   g.selectAll('.y-axis').remove(); // 移除旧的坐标轴
 
   g.append('g')
-      .attr('class', 'x-axis')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x)).style("font-size", "1.2em") // 增大字体大小
-      .attr("font-weight", "bold"); // 加粗字体;
+    .attr('class', 'x-axis')
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x)).style("font-size", "1.2em") // 增大字体大小
+    .attr("font-weight", "bold"); // 加粗字体;
 
   g.append('g')
-      .attr('class', 'y-axis')
-      .call(d3.axisLeft(y)
-          .tickFormat(d => (d >= -1 && d <= 1) ? d : '') // 仅在 -1 到 1 之间显示标签
-      ).style("font-size", "1em") // 增大字体大小
-      .attr("font-weight", "bold");
+    .attr('class', 'y-axis')
+    .call(d3.axisLeft(y)
+      .tickFormat(d => (d >= -1 && d <= 1) ? d : '') // 仅在 -1 到 1 之间显示标签
+    ).style("font-size", "1em") // 增大字体大小
+    .attr("font-weight", "bold");
 
   // 绘制格线（不在 dataGroup 内，避免被裁剪）
   g.selectAll('.grid').remove(); // 移除旧的网格线
 
   g.append('g')
-      .attr('class', 'grid')
-      .call(
-          d3.axisLeft(y)
-              .tickSize(-width)
-              .tickFormat('')
-      )
-      .selectAll('line')
-      .style('stroke', '#ccc')
-      .style('stroke-dasharray', '3,3');
+    .attr('class', 'grid')
+    .call(
+      d3.axisLeft(y)
+        .tickSize(-width)
+        .tickFormat('')
+    )
+    .selectAll('line')
+    .style('stroke', '#ccc')
+    .style('stroke-dasharray', '3,3');
 
   g.append('g')
-      .attr('class', 'grid')
-      .attr('transform', `translate(0,${height})`)
-      .call(
-          d3.axisBottom(x)
-              .tickSize(-height)
-              .tickFormat('')
-      )
-      .selectAll('line')
-      .style('stroke', '#ccc')
-      .style('stroke-dasharray', '3,3');
+    .attr('class', 'grid')
+    .attr('transform', `translate(0,${height})`)
+    .call(
+      d3.axisBottom(x)
+        .tickSize(-height)
+        .tickFormat('')
+    )
+    .selectAll('line')
+    .style('stroke', '#ccc')
+    .style('stroke-dasharray', '3,3');
 
-  // 定义颜色例尺（可，确保每个通道颜色唯一）
+  // 定义颜色��例尺（可，确保每个通道颜色唯一）
   const colorScale = d3.scaleOrdinal(d3.schemeCategory10)
-      .domain(channelsData.value.map(d => d.channelName));
+    .domain(channelsData.value.map(d => d.channelName));
 
   // 绘制每个通道的主线
   channelsData.value.forEach((data, index) => {
@@ -816,19 +815,19 @@ const drawCombinedChart = () => {
     }
 
     const lineGenerator = d3.line()
-        .x((v, i) => x(data.X_value[i]))
-        .y((v, i) => y(v))
-        .curve(d3.curveMonotoneX);
+      .x((v, i) => x(data.X_value[i]))
+      .y((v, i) => y(v))
+      .curve(d3.curveMonotoneX);
 
     // 绘制初始曲线
     dataGroup.append('path')
-        .datum(data.Y_value)
-        .attr('class', 'channel-line')
-        .attr('fill', 'none')
-        .attr('stroke', data.color) // 使用最新的通道色
-        .attr('stroke-width', 1.5)
-        .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
-        .attr('d', lineGenerator);
+      .datum(data.Y_value)
+      .attr('class', 'channel-line')
+      .attr('fill', 'none')
+      .attr('stroke', data.color) // 使用最新的通道色
+      .attr('stroke-width', 1.5)
+      .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
+      .attr('d', lineGenerator);
 
 
     // 绘制错误数据
@@ -837,23 +836,23 @@ const drawCombinedChart = () => {
         const Y_value_error = errorData.Y_value_error[idx];
 
         const errorLine = d3.line()
-            .x((v, i) => x(X_value_error[i]))
-            .y((v, i) => y(v))
-            .curve(d3.curveMonotoneX);
+          .x((v, i) => x(X_value_error[i]))
+          .y((v, i) => y(v))
+          .curve(d3.curveMonotoneX);
 
         const yOffset = errorData.person === 'machine' ? 6 : -6;
         const isMachine = errorData.person === 'machine';
 
         dataGroup.append('path')
-            .datum(Y_value_error)
-            .attr('class', `error-line-${errorIndex}-${data.channelName}`)
-            .attr('fill', 'none')
-            .attr('stroke', errorData.color) // 使用最新的异常颜色
-            .attr('stroke-width', 2)
-            .attr('opacity', 0.8)
-            .attr('transform', `translate(0,${yOffset})`)
-            .attr('d', errorLine)
-            .attr('stroke-dasharray', isMachine ? '5,5' : null); // Dashed or solid
+          .datum(Y_value_error)
+          .attr('class', `error-line-${errorIndex}-${data.channelName}`)
+          .attr('fill', 'none')
+          .attr('stroke', errorData.color) // 使用最新的异常颜色
+          .attr('stroke-width', 2)
+          .attr('opacity', 0.8)
+          .attr('transform', `translate(0,${yOffset})`)
+          .attr('d', errorLine)
+          .attr('stroke-dasharray', isMachine ? '5,5' : null); // Dashed or solid
       });
     });
 
@@ -861,17 +860,17 @@ const drawCombinedChart = () => {
     // 绘制平滑后的线
     if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
       const smoothedLineGenerator = d3.line()
-          .x((v, i) => x(data.X_value[i]))
-          .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX);
+        .x((v, i) => x(data.X_value[i]))
+        .y((v, i) => y(v))
+        .curve(d3.curveMonotoneX);
 
       dataGroup.append('path')
-          .datum(smoothedYValue)
-          .attr('class', `smoothed-line-${data.channelName}`)
-          .attr('fill', 'none')
-          .attr('stroke', data.color || colorScale(data.channelName))
-          .attr('stroke-width', 1.5)
-          .attr('d', smoothedLineGenerator);
+        .datum(smoothedYValue)
+        .attr('class', `smoothed-line-${data.channelName}`)
+        .attr('fill', 'none')
+        .attr('stroke', data.color || colorScale(data.channelName))
+        .attr('stroke-width', 1.5)
+        .attr('d', smoothedLineGenerator);
     }
   });
 
@@ -880,32 +879,32 @@ const drawCombinedChart = () => {
   svg.selectAll('.y-label').remove();
 
   svg.append('text')
-      .attr('class', 'x-label')
-      .attr('x', mainChartDimensions.value.margin.left + width + 15)
-      .attr('y', mainChartDimensions.value.margin.top + height + 8)
-      .attr('text-anchor', 'middle')
-      .attr('font-size', '1.4em').style('font-weight', 'bold')
-      .attr('fill', '#000')
-      .text('s')
+    .attr('class', 'x-label')
+    .attr('x', mainChartDimensions.value.margin.left + width + 15)
+    .attr('y', mainChartDimensions.value.margin.top + height + 8)
+    .attr('text-anchor', 'middle')
+    .attr('font-size', '1.4em').style('font-weight', 'bold')
+    .attr('fill', '#000')
+    .text('s')
 
   svg.append('text')
-      .attr('class', 'y-label')
-      .attr('transform', `translate(${mainChartDimensions.value.margin.left - 60}, ${mainChartDimensions.value.margin.top + height / 2}) rotate(-90)`)
-      .attr('text-anchor', 'middle')
-      .attr('alignment-baseline', 'middle')
-      .attr('font-size', '1.4em').style('font-weight', 'bold')
-      .attr('fill', '#000')
-      .text('normalization');
+    .attr('class', 'y-label')
+    .attr('transform', `translate(${mainChartDimensions.value.margin.left - 60}, ${mainChartDimensions.value.margin.top + height / 2}) rotate(-90)`)
+    .attr('text-anchor', 'middle')
+    .attr('alignment-baseline', 'middle')
+    .attr('font-size', '1.4em').style('font-weight', 'bold')
+    .attr('fill', '#000')
+    .text('normalization');
 
   // 实现缩放功能，禁用鼠标滚轮缩放
   const zoom = d3.zoom()
-      .scaleExtent([1, 10])
-      .translateExtent([[0, 0], [width, height]])
-      .extent([[0, 0], [width, height]])
-      .filter(function (event) {
-        return event.type !== 'wheel' && event.type !== 'dblclick';
-      })
-      .on('zoom', zoomed);
+    .scaleExtent([1, 10])
+    .translateExtent([[0, 0], [width, height]])
+    .extent([[0, 0], [width, height]])
+    .filter(function (event) {
+      return event.type !== 'wheel' && event.type !== 'dblclick';
+    })
+    .on('zoom', zoomed);
 
   svg.call(zoom);
 
@@ -920,61 +919,61 @@ const drawCombinedChart = () => {
 
     // 更新所有主曲线
     dataGroup.selectAll('.channel-line')
-        .attr('d', function (d, i) {
-          const channel = channelsData.value[i];
-          const lineGenerator = d3.line()
-              .x((v, idx) => newX(channel.X_value[idx]))
-              .y((v, idx) => newY(v))
-              .curve(d3.curveMonotoneX);
-          return lineGenerator(d);
-        });
+      .attr('d', function (d, i) {
+        const channel = channelsData.value[i];
+        const lineGenerator = d3.line()
+          .x((v, idx) => newX(channel.X_value[idx]))
+          .y((v, idx) => newY(v))
+          .curve(d3.curveMonotoneX);
+        return lineGenerator(d);
+      });
 
     // 更新所有错误数据线条
     dataGroup.selectAll('[class^="error-line-"]')
-        .attr('d', function (d, i, nodes) {
-          const parentClass = d3.select(this).attr('class');
-          const match = parentClass.match(/error-line-\d+-(.+)/);
-          const channelName = match ? match[1] : null;
-          const channel = channelsData.value.find(c => c.channelName === channelName);
-          if (!channel) return null;
-          const parts = parentClass.split('-');
-          const errorIndex = parseInt(parts[2]);
-          const errorData = channel.errorsData[errorIndex];
-          if (!errorData) return null;
-          const X_value_error = errorData.X_value_error[i];
-          const Y_value_error = errorData.Y_value_error[i];
-          const errorLine = d3.line()
-              .x((v, idx) => newX(X_value_error[idx]))
-              .y((v, idx) => newY(v))
-              .curve(d3.curveMonotoneX);
-          return errorLine(Y_value_error);
-        });
+      .attr('d', function (d, i, nodes) {
+        const parentClass = d3.select(this).attr('class');
+        const match = parentClass.match(/error-line-\d+-(.+)/);
+        const channelName = match ? match[1] : null;
+        const channel = channelsData.value.find(c => c.channelName === channelName);
+        if (!channel) return null;
+        const parts = parentClass.split('-');
+        const errorIndex = parseInt(parts[2]);
+        const errorData = channel.errorsData[errorIndex];
+        if (!errorData) return null;
+        const X_value_error = errorData.X_value_error[i];
+        const Y_value_error = errorData.Y_value_error[i];
+        const errorLine = d3.line()
+          .x((v, idx) => newX(X_value_error[idx]))
+          .y((v, idx) => newY(v))
+          .curve(d3.curveMonotoneX);
+        return errorLine(Y_value_error);
+      });
 
     // 更新所有平滑后的曲线
     dataGroup.selectAll('[class^="smoothed-line-"]')
-        .attr('d', function (d, i, nodes) {
-          const parentClass = d3.select(this).attr('class');
-          const match = parentClass.match(/smoothed-line-(.+)/);
-          const channelName = match ? match[1] : null;
-          const channel = channelsData.value.find(c => c.channelName === channelName);
-          if (!channel) return null;
-          const smoothedYValue = interpolateData(channel.Y_value, smoothnessValue.value);
-          const smoothedLineGenerator = d3.line()
-              .x((v, idx) => newX(channel.X_value[idx]))
-              .y((v, idx) => newY(v))
-              .curve(d3.curveMonotoneX);
-          return smoothedLineGenerator(smoothedYValue);
-        });
+      .attr('d', function (d, i, nodes) {
+        const parentClass = d3.select(this).attr('class');
+        const match = parentClass.match(/smoothed-line-(.+)/);
+        const channelName = match ? match[1] : null;
+        const channel = channelsData.value.find(c => c.channelName === channelName);
+        if (!channel) return null;
+        const smoothedYValue = interpolateData(channel.Y_value, smoothnessValue.value);
+        const smoothedLineGenerator = d3.line()
+          .x((v, idx) => newX(channel.X_value[idx]))
+          .y((v, idx) => newY(v))
+          .curve(d3.curveMonotoneX);
+        return smoothedLineGenerator(smoothedYValue);
+      });
   }
 
   // 在绘制完主要内容后，添加缩放brush
   const zoomBrush = d3.brush()
-      .extent([[0, 0], [width, height]])
-      .on('end', zoomBrushed);
+    .extent([[0, 0], [width, height]])
+    .on('end', zoomBrushed);
 
   const zoomBrushG = g.append('g')
-      .attr('class', 'zoom-brush')
-      .call(zoomBrush);
+    .attr('class', 'zoom-brush')
+    .call(zoomBrush);
 
   function zoomBrushed(event) {
     if (!event.sourceEvent) return;
@@ -1017,7 +1016,7 @@ const drawCombinedChart = () => {
     // 重新绘制高亮区域
     selectedChannels.value.forEach((channel) => {
       const channelMatchedResults = matchedResults.value.filter(
-          (r) => r.channel_name === channel.channel_name
+        (r) => r.channel_name === channel.channel_name
       );
       channelMatchedResults.forEach((result) => {
         drawHighlightRects(channel.channel_name, [result]);
@@ -1030,6 +1029,8 @@ const drawCombinedChart = () => {
 const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+
+   
 
     // 采样数据
     const sampledData = sampleData(data, sampleRate.value);
@@ -1063,13 +1064,10 @@ const processChannelData = async (data, channel) => {
 
         try {
           // 使用重试机制和并发限制获取错误数据
-          if (error_name === "NO ERROR")
-            continue;
           const errorResponse = await limit(() => retryRequest(async () => {
-            return await axios.get(`http://localhost:5000/api/error-data/`, {params: errorParams});
+            return await axios.get(`http://localhost:5000/api/error-data/`, { params: errorParams });
           }));
           errorResponseData = errorResponse.data;
-
           dataCache.value.set(errorCacheKey, errorResponseData);
         } catch (err) {
           console.warn(`Failed to fetch error data for ${errorCacheKey}:`, err);
@@ -1077,52 +1075,20 @@ const processChannelData = async (data, channel) => {
         }
       }
 
-      // 处理人工标注和机器识别的异常数据
-      const [manualErrors, machineErrors] = errorResponseData;
-
-      // 处理机器识别的异常
-      for (const machineError of machineErrors) {
-        if (!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
-          continue; // 跳过空的错误数据
+      const processedErrorSegments = errorResponseData.X_value_error.map(
+        (errorSegment, idx) => {
+          return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
         }
+      );
 
-        const processedErrorSegments = machineError.X_error.map(
-            (errorSegment) => {
-              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-            }
-        );
+      const sampledErrorData = {
+        X_value_error: processedErrorSegments.map((seg) => seg.X),
+        Y_value_error: processedErrorSegments.map((seg) => seg.Y),
+        color: error_color,
+        person: error.person,
+      };
 
-        const sampledErrorData = {
-          X_value_error: processedErrorSegments.map((seg) => seg.X),
-          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-          color: error_color,
-          person: machineError.person,
-        };
-
-        errorsData.push(sampledErrorData);
-      }
-
-      // 处理人工标注的异常
-      for (const manualError of manualErrors) {
-        if (!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
-          continue; // 跳过空的错误数据
-        }
-
-        const processedErrorSegments = manualError.X_error.map(
-            (errorSegment) => {
-              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-            }
-        );
-
-        const sampledErrorData = {
-          X_value_error: processedErrorSegments.map((seg) => seg.X),
-          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-          color: error_color,
-          person: manualError.person,
-        };
-
-        errorsData.push(sampledErrorData);
-      }
+      errorsData.push(sampledErrorData);
     }
 
     // 更新图表数据
