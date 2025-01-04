@@ -10,7 +10,7 @@ let colorIndex = 0;
 const store = createStore({
   state() {
     return {
-      person: "玛卡巴卡",
+      person: "",
       authority: 0,
       StructTree: null,
       selectedChannels: [],

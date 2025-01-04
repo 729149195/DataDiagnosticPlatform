@@ -4,6 +4,7 @@ import os
 import re
 import threading
 from urllib.parse import urlparse, parse_qs
+from datetime import datetime
 
 import numpy as np
 from asgiref.sync import async_to_sync
@@ -469,5 +470,132 @@ def verify_user(request):
         return JsonResponse({'success': True, 'message': result.get('message', '')})
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+def sync_error_data(request):
+    try:
+        # 获取请求数据
+        data = json.loads(request.body)
+        
+        # 读取现有的 StructTree.json
+        struct_tree_path = os.path.join('static', 'StructTree.json')
+        with open(struct_tree_path, 'r', encoding='utf-8') as f:
+            struct_tree = json.load(f)
+
+        # 处理每个通道的数据
+        for channel_data in data:
+            channel_key = channel_data['channelKey']
+            manual_errors, machine_errors = channel_data['errorData']
+
+            # 从 channel_key 解析通道信息
+            channel_name, shot_number = channel_key.rsplit('_', 1)
+
+            # 转换人工标注数据格式
+            converted_manual_errors = []
+            for error in manual_errors:
+                # 检查必要字段是否存在且不为空
+                if not error.get('anomalyCategory') or not error.get('anomalyDiagnosisName'):
+                    continue
+
+                converted_error = {
+                    "person": error.get('id', 'unknown'),
+                    "diagnostic_name": error.get('anomalyDiagnosisName', ''),
+                    "channel_number": channel_name,
+                    "error_type": error.get('anomalyCategory', ''),
+                    "shot_number": shot_number,
+                    "X_error": [[float(error.get('startX', 0)), float(error.get('endX', 0))]],
+                    "Y_error": [],
+                    "diagnostic_time": error.get('annotationTime', ''),
+                    "error_description": error.get('anomalyDescription', '')
+                }
+                # 只有当 error_type 不为空时才添加
+                if converted_error['error_type'].strip():
+                    converted_manual_errors.append(converted_error)
+
+            # 对每个异常类型创建或更新文件
+            error_types = set()
+            # 只添加非空的 error_type
+            for error in converted_manual_errors:
+                if error['error_type'].strip():
+                    error_types.add(error['error_type'])
+            for error in machine_errors:
+                if error.get('error_type', '').strip():
+                    error_types.add(error['error_type'])
+
+            for error_type in error_types:
+                # 跳过空的 error_type
+                if not error_type.strip():
+                    continue
+
+                # 构建文件名
+                error_file_name = f"{shot_number}_{channel_name}_{error_type}.json"
+                error_file_path = os.path.join('static', 'ErrorData', error_file_name)
+
+                # 准备新的错误数据
+                current_manual_errors = [error for error in converted_manual_errors if error['error_type'] == error_type]
+                current_machine_errors = [error for error in machine_errors if error['error_type'] == error_type]
+
+                # 如果文件已存在，读取现有数据并合并
+                if os.path.exists(error_file_path):
+                    with open(error_file_path, 'r', encoding='utf-8') as f:
+                        existing_data = json.load(f)
+                        
+                    # 合并人工标注数据
+                    existing_manual_errors = existing_data[0]
+                    # 使用字典来去重，基于 person, startX, endX 的组合
+                    manual_error_dict = {
+                        f"{error.get('person')}_{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}": error 
+                        for error in existing_manual_errors
+                    }
+                    # 添加新的人工标注数据
+                    for error in current_manual_errors:
+                        key = f"{error.get('person')}_{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}"
+                        manual_error_dict[key] = error
+                    
+                    # 合并机器识别数据
+                    existing_machine_errors = existing_data[1]
+                    # 使用字典来去重，基于 X_error 的组合
+                    machine_error_dict = {
+                        f"{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}": error 
+                        for error in existing_machine_errors
+                    }
+                    # 添加新的机器识别数据
+                    for error in current_machine_errors:
+                        key = f"{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}"
+                        machine_error_dict[key] = error
+
+                    # 准备最终的合并数据
+                    merged_data = [
+                        list(manual_error_dict.values()),
+                        list(machine_error_dict.values())
+                    ]
+
+                    # 保存合并后的数据
+                    with open(error_file_path, 'w', encoding='utf-8') as f:
+                        json.dump(merged_data, f, indent=2, ensure_ascii=False)
+                else:
+                    # 创建新文件
+                    new_error_data = [current_manual_errors, current_machine_errors]
+                    with open(error_file_path, 'w', encoding='utf-8') as f:
+                        json.dump(new_error_data, f, indent=2, ensure_ascii=False)
+                    
+                    # 更新 StructTree.json
+                    for item in struct_tree:
+                        if (item['shot_number'] == shot_number and 
+                            item['channel_name'] == channel_name):
+                            # 确保 error_name 是列表
+                            if 'error_name' not in item:
+                                item['error_name'] = []
+                            # 只有当 error_type 不为空且不在列表中时才添加
+                            if error_type.strip() and error_type not in item['error_name']:
+                                item['error_name'].append(error_type)
+                            break
+
+        # 保存更新后的 StructTree.json
+        with open(struct_tree_path, 'w', encoding='utf-8') as f:
+            json.dump(struct_tree, f, indent=2, ensure_ascii=False)
+
+        return JsonResponse({'message': '同步成功'})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 

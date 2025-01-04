@@ -54,7 +54,7 @@
         <!--      </template>-->
     </el-upload>
     
-    
+
     <el-dialog v-model="dialogVisible" title="文件信息">
     <el-form :model="fileInfo">
       <el-form-item label="文件名称" :label-width="formLabelWidth">
