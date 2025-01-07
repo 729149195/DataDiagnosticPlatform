@@ -116,7 +116,7 @@ const predefineColors = ref([
 const mainChartDimensions = ref({
   margin: {top: 110, right: 20, bottom: 150, left: 80},
   width: 0,
-  height: 550 - 80 - 50, // main chart height
+  height: 500 - 80 - 80, // main chart height
 });
 
 const overviewChartDimensions = ref({
@@ -352,49 +352,19 @@ const fetchDataAndStore = async (channel) => {
     loadingStates.channels.set(channelKey, 0);
     renderingStates.channels.set(channelKey, 0);
 
-    const cacheKey = `${channelKey}-sampling-${sampleRate.value}`;
+    // 模拟进度更新
+    const progressInterval = setInterval(() => {
+      const currentProgress = loadingStates.channels.get(channelKey) || 0;
+      if (currentProgress < 90) {
+        loadingStates.channels.set(channelKey, Math.min(currentProgress + 10, 90));
+      }
+    }, 100);
 
-    let data;
-    if (dataCache.value.has(cacheKey)) {
-      // 从缓存加载时快速更新进度
-      const loadingInterval = setInterval(() => {
-        const currentProgress = loadingStates.channels.get(channelKey) || 0;
-        if (currentProgress < 100) {
-          loadingStates.channels.set(channelKey, Math.min(currentProgress + 20, 100));
-        }
-      }, 50);
+    // 使用 store action 获取数据
+    const data = await store.dispatch('fetchChannelData', { channel });
 
-      const cached = dataCache.value.get(cacheKey);
-      data = cached;
-
-      clearInterval(loadingInterval);
-      loadingStates.channels.set(channelKey, 100);
-    } else {
-      // 模拟进度更新
-      const progressInterval = setInterval(() => {
-        const currentProgress = loadingStates.channels.get(channelKey) || 0;
-        if (currentProgress < 90) {
-          loadingStates.channels.set(channelKey, Math.min(currentProgress + 10, 90));
-        }
-      }, 100);
-
-      // 获取数据...
-      const response = await limit(() => retryRequest(async () => {
-        return await axios.get(`http://10.1.108.19:5000/api/channel-data/`, {
-          params: {
-            channel_key: channelKey,
-            channel_type: channel.channel_type
-          }
-        });
-      }));
-
-      data = response.data;
-
-      dataCache.value.set(cacheKey, data);
-
-      clearInterval(progressInterval);
-      loadingStates.channels.set(channelKey, 100);
-    }
+    clearInterval(progressInterval);
+    loadingStates.channels.set(channelKey, 100);
 
     // 检查是否所有通道都加载完成
     const allChannelsLoaded = Array.from(loadingStates.channels.values())

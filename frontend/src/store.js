@@ -2,6 +2,7 @@
 import { createStore } from "vuex";
 import { reactive, ref } from "vue";
 import colors from "./color.json"; // 导入 color.json 文件
+import axios from "axios";
 
 // 定义一个映射，用于存储每个 channel_key 分配的颜色
 const channelColorMap = new Map();
@@ -338,6 +339,12 @@ const store = createStore({
         });
       }
     },
+    updateChannelDataCache(state, { channelKey, data }) {
+      state.channelDataCache[channelKey] = data;
+    },
+    clearChannelDataCache(state) {
+      state.channelDataCache = reactive({});
+    }
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, indices = []) {
@@ -458,6 +465,36 @@ const store = createStore({
         console.error("Failed to refresh data:", error);
       }
     },
+    async fetchChannelData({ state, commit }, { channel, forceRefresh = false }) {
+      try {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        
+        // 如果缓存中有数据且不强制刷新，直接返回缓存的数据
+        if (!forceRefresh && state.channelDataCache[channelKey]) {
+          return state.channelDataCache[channelKey];
+        }
+
+        const params = {
+          channel_key: channelKey,
+          channel_type: channel.channel_type
+        };
+
+        const response = await axios.get(`http://10.1.108.19:5000/api/channel-data/`, { params });
+        const data = response.data;
+
+        // 计算原始采样频率
+        const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
+        data.originalFrequency = data.X_value.length / timeRange / 1000;
+        data.originalDataPoints = data.X_value.length;
+
+        // 存入缓存
+        commit('updateChannelDataCache', { channelKey, data });
+        return data;
+      } catch (error) {
+        console.error('Error fetching channel data:', error);
+        throw error;
+      }
+    }
   },
 });
 

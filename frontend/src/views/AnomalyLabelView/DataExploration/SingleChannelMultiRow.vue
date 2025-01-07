@@ -129,8 +129,6 @@ import {
 import {useStore} from 'vuex';
 import axios from 'axios';
 
-import {sampleData, sampleErrorSegment} from '@/utils/dataProcessing';
-
 const currentAnomaly = reactive({});
 const showAnomalyForm = ref(false);
 const overviewData = ref([]);
@@ -426,17 +424,6 @@ const fetchChannelData = async (channel) => {
     // 初始化加载状态
     loadingStates[channelKey] = Number(0);
 
-    // 如果缓存中有数据，直接返回，但也要更新加载状态
-    if (channelDataCache.value[channelKey]) {
-      loadingStates[channelKey] = Number(100);
-      return channelDataCache.value[channelKey];
-    }
-
-    const params = {
-      channel_key: channelKey,
-      channel_type: decodeChineseText(channel.channel_type)  // 解码 channel_type
-    };
-
     const progressInterval = setInterval(() => {
       if (loadingStates[channelKey] < 90) {
         loadingStates[channelKey] = Math.min(Number(loadingStates[channelKey]) + 10, 90);
@@ -444,22 +431,8 @@ const fetchChannelData = async (channel) => {
     }, 100);
 
     try {
-      const response = await limit(() => retryRequest(async () => {
-        return await axios.get(`http://10.1.108.19:5000/api/channel-data/`, {params});
-      }));
-
-      const data = response.data;
-      // 计算原始采样频率
-      const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
-      data.originalFrequency = data.X_value.length / timeRange / 1000;
-
-      // 对数据中的中文字段进行解码
-      data.channel_type = decodeChineseText(data.channel_type);
-      data.X_unit = decodeChineseText(data.X_unit);
-      data.Y_unit = decodeChineseText(data.Y_unit);
-
-      // 存入缓存
-      channelDataCache.value[channelKey] = data;
+      // 使用 store action 获取数据
+      const data = await store.dispatch('fetchChannelData', { channel });
 
       clearInterval(progressInterval);
       loadingStates[channelKey] = Number(100);
