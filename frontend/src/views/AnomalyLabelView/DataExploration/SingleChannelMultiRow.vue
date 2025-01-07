@@ -1903,29 +1903,7 @@ const getProgressPercentage = (channelKey) => {
 
 // 添加对isBoxSelect的监听
 watch(isBoxSelect, (newValue) => {
-  // 如果开关打开，恢复到 brush 总览条的范围
-  if (newValue) {
-    Object.keys(originalDomains.value).forEach(channelName => {
-      if (originalDomains.value[channelName]) {
-        store.dispatch('updateDomains', {
-          channelName,
-          xDomain: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-          yDomain: originalDomains.value[channelName].y
-        });
-        const channel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-        if (channel) {
-          const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
-          if (data) {
-            drawChannelChart(channel, data);
-          }
-        }
-      }
-    });
-    // 清空保存的原始范围
-    originalDomains.value = {};
-  }
-
-  // 更新所有图表中brush的显示状态
+  // 只更新所有图表中brush的显示状态
   selectedChannels.value.forEach(channel => {
     const channelName = `${channel.channel_name}_${channel.shot_number}`;
     const svg = d3.select(`#chart-${channelName}`);
@@ -2039,115 +2017,6 @@ svg {
   gap: 5px;
   position: relative;
   z-index: 999;
-  background-color: white;
-  padding: 5px 2px;
-}
-
-.edit-button {
-  z-index: 99999;
-}
-
-/* 去除颜色选择器里面的箭头 */
-:deep(.is-icon-arrow-down) {
-  display: none !important;
-}
-
-/* 去除颜色选择器最外层的边框 */
-:deep(.el-color-picker__trigger) {
-  border: none;
-}
-
-/* 将颜色色块变为圆形 */
-:deep(.el-color-picker__color) {
-  border-radius: 50%;
-}
-
-/* 将下拉面板中的选色区域的选框变为圆形 */
-:deep(.el-color-dropdown__main-wrapper .el-color-alpha-slider__thumb,
-    .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-}
-
-/* 将下拉面板中的预设颜色方块变为圆形 */
-:deep(.el-color-predefine__color-selector) {
-  border-radius: 50%;
-}
-
-:deep(.el-color-picker__color-inner) {
-  border-radius: 50%;
-}
-
-:deep(.el-color-predefine__color-selector)::before {
-  border-radius: 50%;
-}
-
-.progress-wrapper {
-  margin: 5px 0;
-  padding: 0 10px;
-}
-
-.progress-title {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-  font-size: 13px;
-  color: #606266;
-}
-
-.progress-percentage {
-  font-weight: bold;
-  color: #409EFF;
-}
-
-/* 自定进度条样式 */
-:deep(.el-progress-bar__outer) {
-  background-color: #f0f2f5;
-  border-radius: 4px;
-}
-
-:deep(.el-progress-bar__inner) {
-  transition: width 0.3s ease;
-  border-radius: 4px;
-}
-
-:deep(.el-progress--line) {
-  margin-bottom: 0;
-}
-
-:deep(.el-progress-bar__innerText) {
-  font-size: 12px;
-  margin: 0 5px;
-  color: #fff;
-}
-
-/* 输入框内的文字可以选中 */
-.el-input {
-  user-select: text;
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-}
-
-/* 让输入框内的文字可以选中 */
-.el-input__inner {
-  user-select: text;
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-}
-
-/* 让对话框中的输入框文字可选中 */
-.el-dialog .el-input {
-  user-select: text;
-  -webkit-user-select: text;
-  -moz-user-select: text;
-  -ms-user-select: text;
-}
-</style>
-99;
   background-color: white;
   padding: 5px 2px;
 }
