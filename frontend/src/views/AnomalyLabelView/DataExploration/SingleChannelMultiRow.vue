@@ -255,141 +255,163 @@ const updateChannelColor = (channel) => {
   renderCharts();
 };
 
+// 初始化Web Worker
+const chartWorker = new Worker(new URL('@/workers/chartWorker.js', import.meta.url), { type: 'module' });
 
-// 处理通道数据并绘制图表
-const processChannelData = async (data, channel) => {
-  try {
-    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+// 添加Worker消息处理
+chartWorker.onmessage = function(e) {
+  const { type, data, error } = e.data;
+  
+  if (error) {
+    console.error('Worker error:', error);
+    ElMessage.error(`数据处理错误: ${error}`);
+    return;
+  }
+  
+  switch (type) {
+    case 'processedData': {
+      try {
+        const { processedData, channelKey, color, xUnit, yUnit, channelType, channelNumber, shotNumber } = data;
+        
+        // 验证处理后的数据
+        if (!processedData || !processedData.X_value || !processedData.Y_value) {
+          console.warn(`Invalid processed data for channel ${channelKey}`);
+          return;
+        }
+        
+        // 更新处理后的数据到overviewData
+        if (processedData.X_value.length > 0 && processedData.Y_value.length > 0) {
+          const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
+          if (existingIndex !== -1) {
+            overviewData.value[existingIndex] = {
+              channelName: channelKey,
+              X_value: processedData.X_value,
+              Y_value: processedData.Y_value,
+              color: color,
+            };
+          } else {
+            overviewData.value.push({
+              channelName: channelKey,
+              X_value: processedData.X_value,
+              Y_value: processedData.Y_value,
+              color: color,
+            });
+          }
+        }
 
-    const sampledData = sampleData(data, sampleRate.value);
-    // 保持原始频率信息和原始数据点数
-    sampledData.originalFrequency = data.originalFrequency;
-    sampledData.originalDataPoints = data.X_value.length;
-
-    // 确保采样数据有效
-    if (!sampledData || !sampledData.X_value || !sampledData.Y_value) {
-      console.warn(`Invalid sampled data for channel ${channelKey}`);
-      return;
+        renderingStates[channelKey] = 75; // 更新渲染状态
+        nextTick(() => {
+          drawChart(processedData, [], channelKey, color, xUnit, yUnit, channelType, channelNumber, shotNumber)
+            .then(() => {
+              renderingStates[channelKey] = 100;
+            })
+            .catch(error => {
+              console.error(`Error drawing chart for ${channelKey}:`, error);
+              renderingStates[channelKey] = 100;
+            });
+        });
+      } catch (error) {
+        console.error('Error processing worker message:', error);
+        renderingStates[channelKey] = 100;
+      }
+      break;
     }
+    case 'processedErrorData': {
+      const { channelKey, processedErrors } = data;
+      if (!processedErrors || processedErrors.length === 0) return;
 
-    let errorsData = [];
-    for (const [errorIndex, error] of channel.errors.entries()) {
-      const error_name = decodeChineseText(error.error_name);  // 解码 error_name
-      const error_color = error.color;
+      // 获取当前图表的实例
+      const svg = d3.select(`#chart-${channelKey}`);
+      if (!svg.node()) return;
 
-      // 构建用于缓存的 errorKey
-      const errorKey = `${channelKey}-${error_name}-${errorIndex}`;
-      let errorData;
+      // 更新错误数据显示
+      processedErrors.forEach(error => {
+        error.segments.forEach(segment => {
+          // 绘制错误数据
+          const errorLine = d3.line()
+            .x(d => x(d))
+            .y((d, i) => y(segment.Y[i]))
+            .curve(d3.curveMonotoneX);
 
-      // 检查缓存中是否已有异常数据
-      if (channelDataCache.value[errorKey]) {
-        errorData = channelDataCache.value[errorKey];
-      } else {
-        const params = {
-          channel_key: channelKey,
-          channel_type: decodeChineseText(channel.channel_type),  // 解码 channel_type
-          error_name: error_name,
-          error_index: errorIndex
-        };
-
-        try {
-          if(error_name === "NO ERROR")
-            continue;
-          const errorResponse = await limit(() => retryRequest(async () => {
-            return await axios.get(`http://10.1.108.19:5000/api/error-data/`, {params});
-          }));
-          errorData = errorResponse.data;
-          channelDataCache.value[errorKey] = errorData;
-        } catch (err) {
-          console.warn(`Failed to fetch error data for ${errorKey}:`, err);
-          continue; // 跳过这个错误数据，继续处理其他
-        }
-      }
-
-      // 处理人工标注和机器识别的异常数据
-      const [manualErrors, machineErrors] = errorData;
-
-      // 处理机器识别的异常
-      for(const machineError of machineErrors) {
-        if(!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
-          continue; // 跳过空的错误数据
-        }
-
-        const processedErrorSegments = machineError.X_error.map(
-            (errorSegment) => {
-              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-            }
-        );
-
-        const sampledErrorData = {
-          X_value_error: processedErrorSegments.map((seg) => seg.X),
-          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-          color: error_color,
-          person: machineError.person,
-        };
-
-        errorsData.push(sampledErrorData);
-      }
-
-      // 处理人工标注的异常
-      for(const manualError of manualErrors) {
-        if(!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
-          continue; // 跳过空的错误数据
-        }
-
-        const processedErrorSegments = manualError.X_error.map(
-            (errorSegment) => {
-              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-            }
-        );
-
-        const sampledErrorData = {
-          X_value_error: processedErrorSegments.map((seg) => seg.X),
-          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-          color: error_color,
-          person: manualError.person,
-        };
-
-        errorsData.push(sampledErrorData);
-      }
-    }
-
-    // 添加数据到 overviewData 前进行验证
-    if (sampledData.X_value.length > 0 && sampledData.Y_value.length > 0) {
-      overviewData.value.push({
-        channelName: channelKey,
-        X_value: sampledData.X_value,
-        Y_value: sampledData.Y_value,
-        color: channel.color,
+          svg.select('g')
+            .append('path')
+            .datum(segment.X)
+            .attr('class', 'error-line')
+            .attr('fill', 'none')
+            .attr('stroke', error.color)
+            .attr('stroke-width', 2)
+            .attr('opacity', 0.8)
+            .attr('transform', `translate(0,${error.person === 'machine' ? 6 : -6})`)
+            .attr('d', errorLine)
+            .attr('stroke-dasharray', error.person === 'machine' ? '5, 5' : null);
+        });
       });
-    } else {
-      console.warn(`Empty data for channel ${channelKey}`);
+      break;
     }
-
-    await nextTick();
-    drawChart(
-        sampledData,
-        errorsData,
-        channelKey,
-        channel.color,
-        data.X_unit,
-        data.Y_unit,
-        data.channel_type,
-        data.channel_number,
-        channel.shot_number
-    );
-
-    const channelMatchedResults = matchedResults.value.filter(
-        (r) => r.channel_name === channelKey
-    );
-    channelMatchedResults.forEach((result) => {
-      drawHighlightRects(channelKey, [result]);
-    });
-  } catch (error) {
-    console.error(`Error processing channel data for ${channel.channel_name}:`, error);
   }
 };
 
+// 在组件卸载时终止Worker
+onUnmounted(() => {
+  chartWorker.terminate();
+});
+
+// 修改processChannelData函数
+const processChannelData = async (data, channel) => {
+  try {
+    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+    renderingStates[channelKey] = 25; // 开始处理数据
+    
+    // 发送数据到Worker进行处理
+    const channelData = {
+      X_value: [...data.X_value],
+      Y_value: [...data.Y_value],
+      originalFrequency: data.originalFrequency,
+      originalDataPoints: data.X_value.length
+    };
+
+    renderingStates[channelKey] = 50; // 数据准备完成
+
+    chartWorker.postMessage({
+      type: 'processData',
+      data: {
+        channelData,
+        sampleRate: sampleRate.value,
+        smoothnessValue: smoothnessValue.value,
+        channelKey,
+        color: channel.color,
+        xUnit: data.X_unit,
+        yUnit: data.Y_unit,
+        channelType: data.channel_type,
+        channelNumber: data.channel_number,
+        shotNumber: channel.shot_number
+      }
+    });
+
+    // 处理错误数据
+    if (channel.errors && channel.errors.length > 0) {
+      const errorData = channel.errors.map(error => ({
+        color: error.color,
+        person: error.person,
+        X_error: error.X_error ? [...error.X_error] : []
+      }));
+
+      chartWorker.postMessage({
+        type: 'processErrorData',
+        data: {
+          errorData,
+          sampledData: channelData,
+          channelKey
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error(`Error processing channel data for ${channel.channel_name}:`, error);
+    ElMessage.error(`处理通道数据错误: ${error.message}`);
+    renderingStates[channelKey] = 100; // 确保错误时也更新状态
+  }
+};
 
 // 专门负责数据获取的函数
 const fetchChannelData = async (channel) => {
@@ -462,24 +484,13 @@ const drawChannelChart = async (channel, data) => {
     if (!data) return;
 
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+    renderingStates[channelKey] = 0; // 重置渲染状态
 
-    // 开始渲染进度，即使是从缓存读取的数据也要显示渲染进度
-    renderingStates[channelKey] = Number(0);
-    const renderInterval = setInterval(() => {
-      if (renderingStates[channelKey] < 90) {
-        renderingStates[channelKey] = Math.min(Number(renderingStates[channelKey]) + 10, 90);
-      }
-    }, 50);
-
-    // 处理数据并绘制图表
     await processChannelData(data, channel);
-
-    clearInterval(renderInterval);
-    renderingStates[channelKey] = Number(100);
   } catch (error) {
     console.error('Error in drawChannelChart:', error);
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    renderingStates[channelKey] = Number(100);
+    renderingStates[channelKey] = 100;
     ElMessage.error(`绘制通道 ${channelKey} 图表失败: ${error.message}`);
   }
 };
@@ -501,14 +512,30 @@ const renderCharts = debounce(async () => {
     const fetchPromises = selectedChannels.value.map(channel => fetchChannelData(channel));
     const channelsData = await Promise.all(fetchPromises);
 
+    // 过滤掉无效的数据
+    const validChannelsData = channelsData.filter(data => data !== null);
+    
+    if (validChannelsData.length === 0) {
+      console.warn('No valid channel data fetched');
+      return;
+    }
+
     // 然后绘制所有图表
     for (let i = 0; i < selectedChannels.value.length; i++) {
       const channel = selectedChannels.value[i];
       const data = channelsData[i];
       if (data) {
-        await drawChannelChart(channel, data);
+        try {
+          await processChannelData(data, channel);
+        } catch (error) {
+          console.error(`Error processing channel ${channel.channel_name}:`, error);
+          continue;
+        }
       }
     }
+
+    // 等待所有数据处理完成
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // 验证是否有有效数据
     if (overviewData.value.length === 0) {
@@ -527,6 +554,7 @@ const renderCharts = debounce(async () => {
     window.dataLoaded = true;
   } catch (error) {
     console.error('Error in renderCharts:', error);
+    ElMessage.error(`渲染图表错误: ${error.message}`);
   }
 }, 200);
 
@@ -1081,704 +1109,709 @@ const drawChart = async (
     channelNumber,
     shotNumber
 ) => {
-  try {
-    performance.mark(`Draw Chart ${channelName}-start`);
+  return new Promise((resolve, reject) => {
+    try {
+      performance.mark(`Draw Chart ${channelName}-start`);
 
-    const container = d3.select('.chart-container');
-    const containerWidth = container.node().getBoundingClientRect().width;
+      const container = d3.select('.chart-container');
+      const containerWidth = container.node().getBoundingClientRect().width;
 
-    const svg = d3.select(`#chart-${channelName}`);
-    const margin = {top: 20, right: 30, bottom: 50, left: 65};
+      const svg = d3.select(`#chart-${channelName}`);
+      const margin = {top: 20, right: 30, bottom: 50, left: 65};
 
-    const width = containerWidth - margin.left - margin.right;
-    const height = 230 - margin.top - margin.bottom;
+      const width = containerWidth - margin.left - margin.right;
+      const height = 230 - margin.top - margin.bottom;
 
-    svg.selectAll('*').remove();
+      svg.selectAll('*').remove();
 
-    svg
-        .attr(
-            'viewBox',
-            `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
-        )
-        .attr('preserveAspectRatio', 'xMidYMid meet')
-        .attr('width', '100%');
+      svg
+          .attr(
+              'viewBox',
+              `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
+          )
+          .attr('preserveAspectRatio', 'xMidYMid meet')
+          .attr('width', '100%');
 
-    const yExtent = d3.extent(data.Y_value);
-    const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
-    const yMin = yExtent[0] - yRangePadding;
-    const yMax = yExtent[1] + yRangePadding;
+      const yExtent = d3.extent(data.Y_value);
+      const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
+      const yMin = yExtent[0] - yRangePadding;
+      const yMax = yExtent[1] + yRangePadding;
 
-    const x = d3
-        .scaleLinear()
-        .domain(domains.value.x[channelName] || [-2, 6])
-        .range([0, width]);
+      const x = d3
+          .scaleLinear()
+          .domain(domains.value.x[channelName] || [-2, 6])
+          .range([0, width]);
 
-    const y = d3.scaleLinear()
-        .domain(domains.value.y[channelName] || [yMin, yMax])
-        .range([height, 0]);
+      const y = d3.scaleLinear()
+          .domain(domains.value.y[channelName] || [yMin, yMax])
+          .range([height, 0]);
 
-    let smoothedYValue = data.Y_value;
-    if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-      smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
-    }
+      let smoothedYValue = data.Y_value;
+      if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
+        smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
+      }
 
-    const line = d3
-        .line()
-        .x((d, i) => x(data.X_value[i]))
-        .y((d, i) => y(d))
-        .curve(d3.curveMonotoneX);
+      const line = d3
+          .line()
+          .x((d, i) => x(data.X_value[i]))
+          .y((d, i) => y(d))
+          .curve(d3.curveMonotoneX);
 
-    const g = svg
-        .append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
+      const g = svg
+          .append('g')
+          .attr('transform', `translate(${margin.left},${margin.top})`);
 
-    g.append('defs')
-        .append('clipPath')
-        .attr('id', `clip-${channelName}`)
-        .append('rect')
-        .attr('width', width)
-        .attr('height', height);
+      g.append('defs')
+          .append('clipPath')
+          .attr('id', `clip-${channelName}`)
+          .append('rect')
+          .attr('width', width)
+          .attr('height', height);
 
-    const clipGroup = g
-        .append('g')
-        .attr('clip-path', `url(#clip-${channelName})`);
+      const clipGroup = g
+          .append('g')
+          .attr('clip-path', `url(#clip-${channelName})`);
 
-    g.append('g')
-        .attr('class', 'x-axis')
-        .attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll("text") // 选择所有刻度标签
-        .style("font-size", "1.3em") // 增大字体大小
-        .style("font-weight", "bold");
+      g.append('g')
+          .attr('class', 'x-axis')
+          .attr('transform', `translate(0,${height})`)
+          .call(d3.axisBottom(x))
+          .selectAll("text") // 选择所有刻度标签
+          .style("font-size", "1.3em") // 增大字体大小
+          .style("font-weight", "bold");
 
-    g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
+      g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
 
-    g.append('g')
-        .attr('class', 'grid')
-        .call(
-            d3
-                .axisLeft(y)
-                .tickSize(-width)
-                .tickFormat('')
-        )
-        .selectAll('line')
-        .style('stroke', '#ccc')
-        .style('stroke-dasharray', '3,3');
+      g.append('g')
+          .attr('class', 'grid')
+          .call(
+              d3
+                  .axisLeft(y)
+                  .tickSize(-width)
+                  .tickFormat('')
+          )
+          .selectAll('line')
+          .style('stroke', '#ccc')
+          .style('stroke-dasharray', '3,3');
 
-    g.append('g')
-        .attr('class', 'grid')
-        .attr('transform', `translate(0,${height})`)
-        .call(
-            d3
-                .axisBottom(x)
-                .tickSize(-height)
-                .tickFormat('')
-        )
-        .selectAll('line')
-        .style('stroke', '#ccc')
-        .style('stroke-dasharray', '3,3');
+      g.append('g')
+          .attr('class', 'grid')
+          .attr('transform', `translate(0,${height})`)
+          .call(
+              d3
+                  .axisBottom(x)
+                  .tickSize(-height)
+                  .tickFormat('')
+          )
+          .selectAll('line')
+          .style('stroke', '#ccc')
+          .style('stroke-dasharray', '3,3');
 
-    g.append('text')
-        .attr('x', 20)
-        .attr('y', margin.top - 25)
-        .attr('text-anchor', 'start')
-        .style('font-size', '1.1em')
-        .style('font-weight', 'bold')
-        // .style('fill', color)
-        .style('fill', '#000')
-        .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点):`);
+      g.append('text')
+          .attr('x', 20)
+          .attr('y', margin.top - 25)
+          .attr('text-anchor', 'start')
+          .style('font-size', '1.1em')
+          .style('font-weight', 'bold')
+          // .style('fill', color)
+          .style('fill', '#000')
+          .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点):`);
 
-    svg
-        .append('text')
-        .attr('x', width + margin.left + 15)
-        .attr('y', height + margin.top + 20)
-        .attr('text-anchor', 'end')
-        .style('font-size', '1.1em')
-        .style('font-weight', 'bold') // 加粗字体
-        .attr('fill', '#000')
-        .text(xUnit);
+      svg
+          .append('text')
+          .attr('x', width + margin.left + 15)
+          .attr('y', height + margin.top + 20)
+          .attr('text-anchor', 'end')
+          .style('font-size', '1.1em')
+          .style('font-weight', 'bold') // 加粗字体
+          .attr('fill', '#000')
+          .text(xUnit);
 
-    svg
-        .append('text')
-        .attr('transform', `translate(${margin.left - 50}, ${margin.top + height / 2}) rotate(-90)`)
-        .attr('text-anchor', 'middle')
-        .style('font-size', '1.1em')
-        .style('font-weight', 'bold') // 加粗字体
-        .attr('alignment-baseline', 'middle')
-        .attr('fill', '#000')
-        .text(yUnit);
+      svg
+          .append('text')
+          .attr('transform', `translate(${margin.left - 50}, ${margin.top + height / 2}) rotate(-90)`)
+          .attr('text-anchor', 'middle')
+          .style('font-size', '1.1em')
+          .style('font-weight', 'bold') // 加粗字体
+          .attr('alignment-baseline', 'middle')
+          .attr('fill', '#000')
+          .text(yUnit);
 
-    clipGroup
-        .append('path')
-        .datum(data.Y_value)
-        .attr('class', 'original-line')
-        .attr('fill', 'none')
-        .attr('stroke', color || 'steelblue')
-        .attr('stroke-width', 1.5)
-        .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
-        .attr('d', line);
-
-    errorsData.forEach((errorData, errorIndex) => {
-      errorData.X_value_error.forEach((X_value_error, index) => {
-        const Y_value_error = errorData.Y_value_error[index];
-
-        const errorLine = d3
-            .line()
-            .x((d, i) => x(X_value_error[i]))
-            .y((d, i) => y(d))
-            .curve(d3.curveMonotoneX);
-
-        const yOffset = errorData.person === 'machine' ? 6 : -6;
-        const isMachine = errorData.person === 'machine';
-
-        // 先移除旧的错误线
-        clipGroup.selectAll(`.error-line-${index}-${channelName}`).remove();
-
-        clipGroup
-            .append('path')
-            .datum(Y_value_error)
-            .attr('class', `error-line-${index}-${channelName}`)
-            .attr('fill', 'none')
-            .attr('stroke', errorData.color || 'rgba(0,0,0,0)')
-            .attr('stroke-width', 2)
-            .attr('opacity', 0.8)
-            .attr('transform', `translate(0,${yOffset})`)
-            .attr('d', errorLine)
-            .attr('stroke-dasharray', isMachine ? '5, 5' : null);
-      });
-    });
-
-    if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
       clipGroup
           .append('path')
-          .datum(smoothedYValue)
-          .attr('class', 'smoothed-line')
+          .datum(data.Y_value)
+          .attr('class', 'original-line')
           .attr('fill', 'none')
           .attr('stroke', color || 'steelblue')
           .attr('stroke-width', 1.5)
+          .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
           .attr('d', line);
-    }
 
-    const selectionBrush = d3
-        .brushX()
-        .extent([
-          [0, 0],
-          [width, height],
-        ])
-        .on('end', selectionBrushed);
+      errorsData.forEach((errorData, errorIndex) => {
+        errorData.X_value_error.forEach((X_value_error, index) => {
+          const Y_value_error = errorData.Y_value_error[index];
 
-    const zoomBrush = d3
-        .brush()
-        .extent([
-          [0, 0],
-          [width, height],
-        ])
-        .on('end', zoomBrushed);
+          const errorLine = d3
+              .line()
+              .x((d, i) => x(X_value_error[i]))
+              .y((d, i) => y(d))
+              .curve(d3.curveMonotoneX);
 
-    // 创建两个不同的brush组
-    const selectionBrushG = g.append('g')
-        .attr('class', 'selection-brush')
-        .style('display', isBoxSelect.value ? null : 'none')
-        .call(selectionBrush);
+          const yOffset = errorData.person === 'machine' ? 6 : -6;
+          const isMachine = errorData.person === 'machine';
 
-    const zoomBrushG = g.append('g')
-        .attr('class', 'zoom-brush')
-        .style('display', isBoxSelect.value ? 'none' : null)
-        .call(zoomBrush);
+          // 先移除旧的错误线
+          clipGroup.selectAll(`.error-line-${index}-${channelName}`).remove();
 
-    // 创建anomaliesGroup
-    const anomaliesGroup = g.append('g').attr('class', 'anomalies-group');
+          clipGroup
+              .append('path')
+              .datum(Y_value_error)
+              .attr('class', `error-line-${index}-${channelName}`)
+              .attr('fill', 'none')
+              .attr('stroke', errorData.color || 'rgba(0,0,0,0)')
+              .attr('stroke-width', 2)
+              .attr('opacity', 0.8)
+              .attr('transform', `translate(0,${yOffset})`)
+              .attr('d', errorLine)
+              .attr('stroke-dasharray', isMachine ? '5, 5' : null);
+        });
+      });
 
-    // 加载已有的异常标注
-    const channelAnomalies = anomalies.value.filter(
-        (a) => a.channelName === channelName
-    );
-    channelAnomalies.forEach((anomaly) => {
-      drawAnomalyElements(anomaly, anomaliesGroup);
-    });
+      if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
+        clipGroup
+            .append('path')
+            .datum(smoothedYValue)
+            .attr('class', 'smoothed-line')
+            .attr('fill', 'none')
+            .attr('stroke', color || 'steelblue')
+            .attr('stroke-width', 1.5)
+            .attr('d', line);
+      }
 
-    const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
-    storedAnomalies.forEach((anomaly) => {
-      drawAnomalyElements(anomaly, anomaliesGroup, true);
-    });
+      const selectionBrush = d3
+          .brushX()
+          .extent([
+            [0, 0],
+            [width, height],
+          ])
+          .on('end', selectionBrushed);
 
-    function selectionBrushed(event) {
-      if (!event.sourceEvent) return;
-      if (!event.selection) return;
-      if (!isBoxSelect.value) return;
+      const zoomBrush = d3
+          .brush()
+          .extent([
+            [0, 0],
+            [width, height],
+          ])
+          .on('end', zoomBrushed);
 
-      const [x0, x1] = event.selection;
-      const [startX, endX] = [x.invert(x0), x.invert(x1)];
+      // 创建两个不同的brush组
+      const selectionBrushG = g.append('g')
+          .attr('class', 'selection-brush')
+          .style('display', isBoxSelect.value ? null : 'none')
+          .call(selectionBrush);
 
-      // 格式化当前时间为 YYYY-MM-DD HH:mm:ss
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-      const hours = String(now.getHours()).padStart(2, '0');
-      const minutes = String(now.getMinutes()).padStart(2, '0');
-      const seconds = String(now.getSeconds()).padStart(2, '0');
-      const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      const zoomBrushG = g.append('g')
+          .attr('class', 'zoom-brush')
+          .style('display', isBoxSelect.value ? 'none' : null)
+          .call(zoomBrush);
 
-      const anomaly = {
-        id: store.state.person,
-        channelName: channelName,
-        startX: startX,
-        endX: endX,
-        anomalyCategory: '',
-        anomalyDiagnosisName: '',
-        anomalyDescription: '',
-        annotationTime: formattedTime,
-      };
+      // 创建anomaliesGroup
+      const anomaliesGroup = g.append('g').attr('class', 'anomalies-group');
 
-      d3.select(this).call(selectionBrush.move, null);
-      anomalies.value.push(anomaly);
-      drawAnomalyElements(anomaly, anomaliesGroup);
-    }
+      // 加载已有的异常标注
+      const channelAnomalies = anomalies.value.filter(
+          (a) => a.channelName === channelName
+      );
+      channelAnomalies.forEach((anomaly) => {
+        drawAnomalyElements(anomaly, anomaliesGroup);
+      });
 
-    function zoomBrushed(event) {
-      if (!event.sourceEvent) return;
-      if (!event.selection) {
-        // 点击空白处，恢复到 brush 总览条的范围
-        if (brush_begin.value && brush_end.value) {
-          const newXDomain = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
-          store.dispatch('updateDomains', {
-            channelName,
-            xDomain: newXDomain,
-            yDomain: originalDomains.value[channelName]?.y || y.domain()
-          });
-          const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-          if (targetChannel) {
-            const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
-            if (data) {
-              drawChannelChart(targetChannel, data);
+      const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+      storedAnomalies.forEach((anomaly) => {
+        drawAnomalyElements(anomaly, anomaliesGroup, true);
+      });
+
+      function selectionBrushed(event) {
+        if (!event.sourceEvent) return;
+        if (!event.selection) return;
+        if (!isBoxSelect.value) return;
+
+        const [x0, x1] = event.selection;
+        const [startX, endX] = [x.invert(x0), x.invert(x1)];
+
+        // 格式化当前时间为 YYYY-MM-DD HH:mm:ss
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
+        const anomaly = {
+          id: store.state.person,
+          channelName: channelName,
+          startX: startX,
+          endX: endX,
+          anomalyCategory: '',
+          anomalyDiagnosisName: '',
+          anomalyDescription: '',
+          annotationTime: formattedTime,
+        };
+
+        d3.select(this).call(selectionBrush.move, null);
+        anomalies.value.push(anomaly);
+        drawAnomalyElements(anomaly, anomaliesGroup);
+      }
+
+      function zoomBrushed(event) {
+        if (!event.sourceEvent) return;
+        if (!event.selection) {
+          // 点击空白处，恢复到 brush 总览条的范围
+          if (brush_begin.value && brush_end.value) {
+            const newXDomain = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
+            store.dispatch('updateDomains', {
+              channelName,
+              xDomain: newXDomain,
+              yDomain: originalDomains.value[channelName]?.y || y.domain()
+            });
+            const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
+            if (targetChannel) {
+              const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
+              if (data) {
+                drawChannelChart(targetChannel, data);
+              }
             }
           }
+          return;
         }
-        return;
-      }
 
-      if (isBoxSelect.value) return;
+        if (isBoxSelect.value) return;
 
-      // 获取选择的范围
-      const [[x0, y0], [x1, y1]] = event.selection;
+        // 获取选择的范围
+        const [[x0, y0], [x1, y1]] = event.selection;
 
-      // 保存原始范围（如果还没有保存）
-      if (!originalDomains.value[channelName]) {
-        originalDomains.value[channelName] = {
-          x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-          y: y.domain()
-        };
-      }
+        // 保存原始范围（如果还没有保存）
+        if (!originalDomains.value[channelName]) {
+          originalDomains.value[channelName] = {
+            x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
+            y: y.domain()
+          };
+        }
 
-      // 更新显示范围
-      const newXDomain = [x.invert(x0), x.invert(x1)];
-      const newYDomain = [y.invert(y1), y.invert(y0)];
+        // 更新显示范围
+        const newXDomain = [x.invert(x0), x.invert(x1)];
+        const newYDomain = [y.invert(y1), y.invert(y0)];
 
-      // 更新 store 中的范围
-      store.dispatch('updateDomains', {
-        channelName,
-        xDomain: newXDomain,
-        yDomain: newYDomain
-      });
+        // 更新 store 中的范围
+        store.dispatch('updateDomains', {
+          channelName,
+          xDomain: newXDomain,
+          yDomain: newYDomain
+        });
 
-      // 清除选择
-      d3.select(this).call(zoomBrush.move, null);
+        // 清除选择
+        d3.select(this).call(zoomBrush.move, null);
 
-      // 重新绘制图表
-      const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-      if (targetChannel) {
-        const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
-        if (data) {
-          drawChannelChart(targetChannel, data);
+        // 重新绘制图表
+        const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
+        if (targetChannel) {
+          const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
+          if (data) {
+            drawChannelChart(targetChannel, data);
+          }
         }
       }
-    }
 
-    function drawAnomalyElements(anomaly, anomaliesGroup, isStored = false) {
-      const anomalyGroup = anomaliesGroup
-          .append('g')
-          .attr('class', `anomaly-group-${anomaly.id}-${channelName}`);
+      function drawAnomalyElements(anomaly, anomaliesGroup, isStored = false) {
+        const anomalyGroup = anomaliesGroup
+            .append('g')
+            .attr('class', `anomaly-group-${anomaly.id}-${channelName}`);
 
-      const anomalyLabelsGroup = g
-          .append('g')
-          .attr('class', `anomaly-labels-group-${anomaly.id}-${channelName}`);
+        const anomalyLabelsGroup = g
+            .append('g')
+            .attr('class', `anomaly-labels-group-${anomaly.id}-${channelName}`);
 
-      anomalyLabelsGroup
-          .append('text')
-          .attr('class', `left-label-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.startX))
-          .attr('y', -5)
-          .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'black')
-          .text(anomaly.startX.toFixed(3));
-
-      anomalyLabelsGroup
-          .append('text')
-          .attr('class', `right-label-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.endX))
-          .attr('y', -5)
-          .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'black')
-          .text(anomaly.endX.toFixed(3));
-
-      if (!isStored) {
-        const anomalyRect = anomalyGroup
-            .append('rect')
-            .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+        anomalyLabelsGroup
+            .append('text')
+            .attr('class', `left-label-${anomaly.id}-${channelName}`)
             .attr('x', x(anomaly.startX))
-            .attr('y', 0)
-            .attr('width', x(anomaly.endX) - x(anomaly.startX))
-            .attr('height', height)
-            .attr('fill', 'orange')
-            .attr('fill-opacity', 0.1)
-            .attr('stroke', 'orange')
-            .attr('stroke-width', 1)
-            .attr('cursor', isBoxSelect.value ? 'move' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-            .call(
-                d3.drag()
-                    .on('start', function (event) {
-                      if (!isBoxSelect.value) return;
-                      anomaly.initialX = event.x;
-                    })
-                    .on('drag', function (event) {
-                      if (!isBoxSelect.value) return;
-                      const dx = x.invert(event.x) - x.invert(anomaly.initialX);
-                      anomaly.initialX = event.x;
+            .attr('y', -5)
+            .style('font-size', '1.1em')
+            .style('font-weight', 'bold')
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'black')
+            .text(anomaly.startX.toFixed(3));
 
-                      let newStartX = anomaly.startX + dx;
-                      let newEndX = anomaly.endX + dx;
+        anomalyLabelsGroup
+            .append('text')
+            .attr('class', `right-label-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.endX))
+            .attr('y', -5)
+            .style('font-size', '1.1em')
+            .style('font-weight', 'bold')
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'black')
+            .text(anomaly.endX.toFixed(3));
 
-                      const domain = x.domain();
-                      if (newStartX < domain[0]) {
-                        newStartX = domain[0];
-                        newEndX = newStartX + (anomaly.endX - anomaly.startX);
-                      } else if (newEndX > domain[1]) {
-                        newEndX = domain[1];
-                        newStartX = newEndX - (anomaly.endX - anomaly.startX);
-                      }
+        if (!isStored) {
+          const anomalyRect = anomalyGroup
+              .append('rect')
+              .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+              .attr('x', x(anomaly.startX))
+              .attr('y', 0)
+              .attr('width', x(anomaly.endX) - x(anomaly.startX))
+              .attr('height', height)
+              .attr('fill', 'orange')
+              .attr('fill-opacity', 0.1)
+              .attr('stroke', 'orange')
+              .attr('stroke-width', 1)
+              .attr('cursor', isBoxSelect.value ? 'move' : 'not-allowed')
+              .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+              .call(
+                  d3.drag()
+                      .on('start', function (event) {
+                        if (!isBoxSelect.value) return;
+                        anomaly.initialX = event.x;
+                      })
+                      .on('drag', function (event) {
+                        if (!isBoxSelect.value) return;
+                        const dx = x.invert(event.x) - x.invert(anomaly.initialX);
+                        anomaly.initialX = event.x;
 
-                      anomaly.startX = newStartX;
-                      anomaly.endX = newEndX;
+                        let newStartX = anomaly.startX + dx;
+                        let newEndX = anomaly.endX + dx;
 
-                      updateAnomalyElements(anomaly, isStored);
-                    })
-                    .on('end', function () {
-                      if (!isBoxSelect.value) return;
-                      const index = anomalies.value.findIndex(
-                          (a) => a.id === anomaly.id
-                      );
-                      if (index !== -1) {
-                        anomalies.value[index] = anomaly;
-                      }
-                    })
-            );
+                        const domain = x.domain();
+                        if (newStartX < domain[0]) {
+                          newStartX = domain[0];
+                          newEndX = newStartX + (anomaly.endX - anomaly.startX);
+                        } else if (newEndX > domain[1]) {
+                          newEndX = domain[1];
+                          newStartX = newEndX - (anomaly.endX - anomaly.startX);
+                        }
 
-        // 修改左侧拖动手柄
-        anomalyGroup
-            .append('rect')
-            .attr('class', `left-handle-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.startX) - 5)
-            .attr('y', 0)
-            .attr('width', 10)
-            .attr('height', height)
-            .attr('fill', 'transparent')
-            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-            .call(
-                d3.drag()
-                    .on('drag', function (event) {
-                      if (!isBoxSelect.value) return;
-                      const newX = x.invert(event.x);
-                      if (newX < anomaly.endX && newX >= x.domain()[0]) {
-                        anomaly.startX = newX;
+                        anomaly.startX = newStartX;
+                        anomaly.endX = newEndX;
+
                         updateAnomalyElements(anomaly, isStored);
-                      }
-                    })
-                    .on('end', function () {
-                      if (!isBoxSelect.value) return;
-                      const index = anomalies.value.findIndex(
-                          (a) => a.id === anomaly.id
-                      );
-                      if (index !== -1) {
-                        anomalies.value[index] = anomaly;
-                      }
-                    })
-            );
+                      })
+                      .on('end', function () {
+                        if (!isBoxSelect.value) return;
+                        const index = anomalies.value.findIndex(
+                            (a) => a.id === anomaly.id
+                        );
+                        if (index !== -1) {
+                          anomalies.value[index] = anomaly;
+                        }
+                      })
+              );
 
-        // 修改右侧拖动手柄
-        anomalyGroup
-            .append('rect')
-            .attr('class', `right-handle-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.endX) - 5)
-            .attr('y', 0)
-            .attr('width', 10)
-            .attr('height', height)
-            .attr('fill', 'transparent')
-            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-            .call(
-                d3.drag()
-                    .on('drag', function (event) {
-                      if (!isBoxSelect.value) return;
-                      const newX = x.invert(event.x);
-                      if (newX > anomaly.startX && newX <= x.domain()[1]) {
-                        anomaly.endX = newX;
-                        updateAnomalyElements(anomaly, isStored);
-                      }
-                    })
-                    .on('end', function () {
-                      if (!isBoxSelect.value) return;
-                      const index = anomalies.value.findIndex(
-                          (a) => a.id === anomaly.id
-                      );
-                      if (index !== -1) {
-                        anomalies.value[index] = anomaly;
-                      }
-                    })
-            );
-      } else {
-        // 已保存的异常标注显示红色矩形
-        anomalyGroup
-            .append('rect')
-            .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.startX))
-            .attr('y', 0)
-            .attr('width', x(anomaly.endX) - x(anomaly.startX))
-            .attr('height', height)
-            .attr('fill', 'red')
-            .attr('fill-opacity', 0.1)
-            .attr('stroke', 'red')
-            .attr('stroke-width', 1)
-            .style('pointer-events', 'none');
-      }
+          // 修改左侧拖动手柄
+          anomalyGroup
+              .append('rect')
+              .attr('class', `left-handle-${anomaly.id}-${channelName}`)
+              .attr('x', x(anomaly.startX) - 5)
+              .attr('y', 0)
+              .attr('width', 10)
+              .attr('height', height)
+              .attr('fill', 'transparent')
+              .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
+              .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+              .call(
+                  d3.drag()
+                      .on('drag', function (event) {
+                        if (!isBoxSelect.value) return;
+                        const newX = x.invert(event.x);
+                        if (newX < anomaly.endX && newX >= x.domain()[0]) {
+                          anomaly.startX = newX;
+                          updateAnomalyElements(anomaly, isStored);
+                        }
+                      })
+                      .on('end', function () {
+                        if (!isBoxSelect.value) return;
+                        const index = anomalies.value.findIndex(
+                            (a) => a.id === anomaly.id
+                        );
+                        if (index !== -1) {
+                          anomalies.value[index] = anomaly;
+                        }
+                      })
+              );
 
-      // 修改按钮组实现
-      const buttonGroup = anomalyGroup
-          .append('g')
-          .attr('class', `anomaly-buttons-${anomaly.id}-${channelName}`)
-          .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
-
-      // 删除按钮
-      const deleteButton = buttonGroup
-          .append('g')
-          .attr('class', 'delete-button')
-          .style('cursor', 'pointer');
-
-      const deleteRect = deleteButton
-          .append('rect')
-          .attr('width', 16)
-          .attr('height', 16)
-          .attr('fill', '#f56c6c')
-          .attr('rx', 3)
-          .style('pointer-events', 'all');
-
-      deleteButton
-          .append('text')
-          .attr('x', 8)
-          .attr('y', 12)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '12px')
-          .attr('font-weight', 'bold')
-          .style('pointer-events', 'none')
-          .text('×');
-
-      // 编辑按钮
-      const editButton = buttonGroup
-          .append('g')
-          .attr('class', 'edit-button')
-          .attr('transform', 'translate(20, 0)')
-          .style('cursor', 'pointer');
-
-      const editRect = editButton
-          .append('rect')
-          .attr('width', 16)
-          .attr('height', 16)
-          .attr('fill', '#409eff')
-          .attr('rx', 3)
-          .style('pointer-events', 'all');
-
-      editButton
-          .append('text')
-          .attr('x', 8)
-          .attr('y', 12)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '12px')
-          .attr('font-weight', 'bold')
-          .style('pointer-events', 'none')
-          .text('✒️');
-
-      // 添加点击事件到矩形上
-      deleteRect.on('click', () => {
-        if (isStored) {
-          store.dispatch('deleteAnomaly', {
-            channelName: anomaly.channelName,
-            anomalyId: anomaly.id,
-          });
+          // 修改右侧拖动手柄
+          anomalyGroup
+              .append('rect')
+              .attr('class', `right-handle-${anomaly.id}-${channelName}`)
+              .attr('x', x(anomaly.endX) - 5)
+              .attr('y', 0)
+              .attr('width', 10)
+              .attr('height', height)
+              .attr('fill', 'transparent')
+              .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
+              .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+              .call(
+                  d3.drag()
+                      .on('drag', function (event) {
+                        if (!isBoxSelect.value) return;
+                        const newX = x.invert(event.x);
+                        if (newX > anomaly.startX && newX <= x.domain()[1]) {
+                          anomaly.endX = newX;
+                          updateAnomalyElements(anomaly, isStored);
+                        }
+                      })
+                      .on('end', function () {
+                        if (!isBoxSelect.value) return;
+                        const index = anomalies.value.findIndex(
+                            (a) => a.id === anomaly.id
+                        );
+                        if (index !== -1) {
+                          anomalies.value[index] = anomaly;
+                        }
+                      })
+              );
         } else {
-          anomalies.value = anomalies.value.filter(
-              (a) => a.id !== anomaly.id
-          );
+          // 已保存的异常标注显示红色矩形
+          anomalyGroup
+              .append('rect')
+              .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+              .attr('x', x(anomaly.startX))
+              .attr('y', 0)
+              .attr('width', x(anomaly.endX) - x(anomaly.startX))
+              .attr('height', height)
+              .attr('fill', 'red')
+              .attr('fill-opacity', 0.1)
+              .attr('stroke', 'red')
+              .attr('stroke-width', 1)
+              .style('pointer-events', 'none');
         }
-        removeAnomalyElements(anomaly.id, channelName);
-      });
 
-      editRect.on('click', () => {
-        Object.assign(currentAnomaly, anomaly);
-        currentAnomaly.isStored = isStored;
-        showAnomalyForm.value = true;
-      });
+        // 修改按钮组实现
+        const buttonGroup = anomalyGroup
+            .append('g')
+            .attr('class', `anomaly-buttons-${anomaly.id}-${channelName}`)
+            .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
 
-      const startIndex = data.X_value.findIndex(
-          (xVal) => xVal >= anomaly.startX
-      );
-      const endIndex = data.X_value.findIndex(
-          (xVal) => xVal >= anomaly.endX
-      );
-      const anomalyXValues = data.X_value.slice(
-          startIndex,
-          endIndex + 1
-      );
-      const anomalyYValues = data.Y_value.slice(
-          startIndex,
-          endIndex + 1
-      );
+        // 删除按钮
+        const deleteButton = buttonGroup
+            .append('g')
+            .attr('class', 'delete-button')
+            .style('cursor', 'pointer');
 
-      anomalyGroup
-          .append('path')
-          .datum(anomalyYValues)
-          .attr('class', `anomaly-line-${anomaly.id}-${channelName}`)
-          .attr('fill', 'none')
-          .attr('stroke', isStored ? 'red' : 'orange')
-          .attr('stroke-width', 3)
-          .attr(
-              'd',
-              d3
-                  .line()
-                  .x((d, i) => x(anomalyXValues[i]))
-                  .y((d, i) => y(d))
-          );
+        const deleteRect = deleteButton
+            .append('rect')
+            .attr('width', 16)
+            .attr('height', 16)
+            .attr('fill', '#f56c6c')
+            .attr('rx', 3)
+            .style('pointer-events', 'all');
 
-      if (isStored) {
+        deleteButton
+            .append('text')
+            .attr('x', 8)
+            .attr('y', 12)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'white')
+            .attr('font-size', '12px')
+            .attr('font-weight', 'bold')
+            .style('pointer-events', 'none')
+            .text('×');
+
+        // 编辑按钮
+        const editButton = buttonGroup
+            .append('g')
+            .attr('class', 'edit-button')
+            .attr('transform', 'translate(20, 0)')
+            .style('cursor', 'pointer');
+
+        const editRect = editButton
+            .append('rect')
+            .attr('width', 16)
+            .attr('height', 16)
+            .attr('fill', '#409eff')
+            .attr('rx', 3)
+            .style('pointer-events', 'all');
+
+        editButton
+            .append('text')
+            .attr('x', 8)
+            .attr('y', 12)
+            .attr('text-anchor', 'middle')
+            .attr('fill', 'white')
+            .attr('font-size', '12px')
+            .attr('font-weight', 'bold')
+            .style('pointer-events', 'none')
+            .text('✒️');
+
+        // 添加点击事件到矩形上
+        deleteRect.on('click', () => {
+          if (isStored) {
+            store.dispatch('deleteAnomaly', {
+              channelName: anomaly.channelName,
+              anomalyId: anomaly.id,
+            });
+          } else {
+            anomalies.value = anomalies.value.filter(
+                (a) => a.id !== anomaly.id
+            );
+          }
+          removeAnomalyElements(anomaly.id, channelName);
+        });
+
+        editRect.on('click', () => {
+          Object.assign(currentAnomaly, anomaly);
+          currentAnomaly.isStored = isStored;
+          showAnomalyForm.value = true;
+        });
+
+        const startIndex = data.X_value.findIndex(
+            (xVal) => xVal >= anomaly.startX
+        );
+        const endIndex = data.X_value.findIndex(
+            (xVal) => xVal >= anomaly.endX
+        );
+        const anomalyXValues = data.X_value.slice(
+            startIndex,
+            endIndex + 1
+        );
+        const anomalyYValues = data.Y_value.slice(
+            startIndex,
+            endIndex + 1
+        );
+
+        anomalyGroup
+            .append('path')
+            .datum(anomalyYValues)
+            .attr('class', `anomaly-line-${anomaly.id}-${channelName}`)
+            .attr('fill', 'none')
+            .attr('stroke', isStored ? 'red' : 'orange')
+            .attr('stroke-width', 3)
+            .attr(
+                'd',
+                d3
+                    .line()
+                    .x((d, i) => x(anomalyXValues[i]))
+                    .y((d, i) => y(d))
+            );
+
+        if (isStored) {
+          anomalyGroup
+              .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
+              .style('pointer-events', 'none');
+          anomalyGroup
+              .selectAll(
+                  `.left-handle-${anomaly.id}-${channelName}, .right-handle-${anomaly.id}-${channelName}`
+              )
+              .remove();
+        }
+      }
+
+      function updateAnomalyElements(anomaly, isStored = false) {
+        const anomalyGroup = d3.select(`#chart-${anomaly.channelName}`)
+            .select('.anomalies-group')
+            .select(`.anomaly-group-${anomaly.id}-${channelName}`);
+
+        // 更新矩形位置和大小
         anomalyGroup
             .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
-            .style('pointer-events', 'none');
+            .attr('x', x(anomaly.startX))
+            .attr('width', x(anomaly.endX) - x(anomaly.startX))
+            .attr('fill', isStored ? 'red' : 'orange')
+            .attr('stroke', isStored ? 'red' : 'orange');
+
+        // 更新左侧手柄位置
         anomalyGroup
-            .selectAll(
-                `.left-handle-${anomaly.id}-${channelName}, .right-handle-${anomaly.id}-${channelName}`
+            .select(`.left-handle-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.startX) - 5);
+
+        // 更新右侧手柄位置
+        anomalyGroup
+            .select(`.right-handle-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.endX) - 5);
+
+        // 更新按钮组位置
+        const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}-${channelName}`);
+        buttonGroup.attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
+
+        // 更新标签位置和文本
+        g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .left-label-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.startX))
+            .text(anomaly.startX.toFixed(3));
+
+        g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .right-label-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.endX))
+            .text(anomaly.endX.toFixed(3));
+
+        // 更新高亮曲线
+        const startIndex = data.X_value.findIndex(xVal => xVal >= anomaly.startX);
+        const endIndex = data.X_value.findIndex(xVal => xVal >= anomaly.endX);
+        const anomalyXValues = data.X_value.slice(startIndex, endIndex + 1);
+        const anomalyYValues = data.Y_value.slice(startIndex, endIndex + 1);
+
+        anomalyGroup
+            .select(`.anomaly-line-${anomaly.id}-${channelName}`)
+            .datum(anomalyYValues)
+            .attr('d', d3.line()
+                .x((d, i) => x(anomalyXValues[i]))
+                .y((d, i) => y(d))
             )
+            .attr('stroke', isStored ? 'red' : 'orange');
+      }
+
+      function removeAnomalyElements(anomalyId, channelName) {
+        // 从store中删除异常数据
+        const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+        const storedAnomaly = storedAnomalies.find(a => a.id === anomalyId);
+        if (storedAnomaly) {
+          store.dispatch('deleteAnomaly', {
+            channelName: channelName,
+            anomalyId: anomalyId
+          });
+        }
+
+        // 移除异常组
+        d3.select(`#chart-${channelName}`)
+            .select(`.anomaly-group-${anomalyId}-${channelName}`)
             .remove();
-      }
-    }
 
-    function updateAnomalyElements(anomaly, isStored = false) {
-      const anomalyGroup = d3.select(`#chart-${anomaly.channelName}`)
-          .select('.anomalies-group')
-          .select(`.anomaly-group-${anomaly.id}-${channelName}`);
+        // 移除标签组
+        d3.select(`#chart-${channelName}`)
+            .select(`.anomaly-labels-group-${anomalyId}-${channelName}`)
+            .remove();
 
-      // 更新矩形位置和大小
-      anomalyGroup
-          .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.startX))
-          .attr('width', x(anomaly.endX) - x(anomaly.startX))
-          .attr('fill', isStored ? 'red' : 'orange')
-          .attr('stroke', isStored ? 'red' : 'orange');
+        // 移除按钮组
+        d3.select(`#chart-${channelName}`)
+            .select(`.anomaly-buttons-${anomalyId}-${channelName}`)
+            .remove();
 
-      // 更新左侧手柄位置
-      anomalyGroup
-          .select(`.left-handle-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.startX) - 5);
-
-      // 更新右侧手柄位置
-      anomalyGroup
-          .select(`.right-handle-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.endX) - 5);
-
-      // 更新按钮组位置
-      const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}-${channelName}`);
-      buttonGroup.attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
-
-      // 更新标签位置和文本
-      g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .left-label-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.startX))
-          .text(anomaly.startX.toFixed(3));
-
-      g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .right-label-${anomaly.id}-${channelName}`)
-          .attr('x', x(anomaly.endX))
-          .text(anomaly.endX.toFixed(3));
-
-      // 更新高亮曲线
-      const startIndex = data.X_value.findIndex(xVal => xVal >= anomaly.startX);
-      const endIndex = data.X_value.findIndex(xVal => xVal >= anomaly.endX);
-      const anomalyXValues = data.X_value.slice(startIndex, endIndex + 1);
-      const anomalyYValues = data.Y_value.slice(startIndex, endIndex + 1);
-
-      anomalyGroup
-          .select(`.anomaly-line-${anomaly.id}-${channelName}`)
-          .datum(anomalyYValues)
-          .attr('d', d3.line()
-              .x((d, i) => x(anomalyXValues[i]))
-              .y((d, i) => y(d))
-          )
-          .attr('stroke', isStored ? 'red' : 'orange');
-    }
-
-    function removeAnomalyElements(anomalyId, channelName) {
-      // 从store中删除异常数据
-      const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
-      const storedAnomaly = storedAnomalies.find(a => a.id === anomalyId);
-      if (storedAnomaly) {
-        store.dispatch('deleteAnomaly', {
-          channelName: channelName,
-          anomalyId: anomalyId
-        });
+        // 恢复刷选功能
+        const g = d3.select(`#chart-${channelName}`).select('g');
+        g.select('.selection-brush .overlay').style('pointer-events', 'all');
+        g.select('.selection-brush .selection').style('display', null);
       }
 
-      // 移除异常组
-      d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-group-${anomalyId}-${channelName}`)
-          .remove();
+      performance.mark(`Draw Chart ${channelName}-end`);
+      performance.measure(`Draw Chart ${channelName}`,
+          `Draw Chart ${channelName}-start`,
+          `Draw Chart ${channelName}-end`);
 
-      // 移除标签组
-      d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-labels-group-${anomalyId}-${channelName}`)
-          .remove();
+      // 在图表绘制完成后，检查是否有匹配结果需要高亮
+      const channelMatchedResults = matchedResults.value.filter(
+          r => r.channelName === channelName.split('_')[0] &&
+              r.shotNumber === channelName.split('_')[1]
+      );
 
-      // 移除按钮组
-      d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-buttons-${anomalyId}-${channelName}`)
-          .remove();
+      if (channelMatchedResults.length > 0) {
+        drawHighlightRects(channelName, channelMatchedResults);
+      }
 
-      // 恢复刷选功能
-      const g = d3.select(`#chart-${channelName}`).select('g');
-      g.select('.selection-brush .overlay').style('pointer-events', 'all');
-      g.select('.selection-brush .selection').style('display', null);
+      resolve();
+    } catch (error) {
+      console.error('Error in drawChart:', error);
+      reject(error);
     }
-
-    performance.mark(`Draw Chart ${channelName}-end`);
-    performance.measure(`Draw Chart ${channelName}`,
-        `Draw Chart ${channelName}-start`,
-        `Draw Chart ${channelName}-end`);
-
-    // 在图表绘制完成后，检查是否有匹配结果需要高亮
-    const channelMatchedResults = matchedResults.value.filter(
-        r => r.channelName === channelName.split('_')[0] &&
-            r.shotNumber === channelName.split('_')[1]
-    );
-
-    if (channelMatchedResults.length > 0) {
-      drawHighlightRects(channelName, channelMatchedResults);
-    }
-  } catch (error) {
-    console.error('Error in drawChart:', error);
-  }
+  });
 };
 
 // 添加解码函数
