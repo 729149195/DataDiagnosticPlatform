@@ -82,9 +82,12 @@ def get_error_origin_index(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
     
-def get_channel_data(request):
+def get_channel_data(request, channel_key=None):
     try:
-        channel_key = request.GET.get('channel_key')
+        if channel_key is None:
+            channel_key = request.GET.get('channel_key')
+        else:
+            pass
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
             if '_' in channel_key:
@@ -249,7 +252,7 @@ def process_channel_names(request):
         print(func_name)
 
         if os.path.exists(FUNCTIONS_FILE_PATH):
-            with open(FUNCTIONS_FILE_PATH, "r") as f:
+            with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
                 functions_data = json.load(f)
         else:
             functions_data = []
@@ -315,7 +318,7 @@ except ImportError:
 # Helper function to read and update the JSON file
 def update_functions_file(function_data):
     if os.path.exists(FUNCTIONS_FILE_PATH):
-        with open(FUNCTIONS_FILE_PATH, "r") as f:
+        with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
             existing_data = json.load(f)
     else:
         existing_data = []
@@ -324,8 +327,8 @@ def update_functions_file(function_data):
     existing_data.append(function_data)
 
     # Write updated data back to the JSON file
-    with open(FUNCTIONS_FILE_PATH, "w") as f:
-        json.dump(existing_data, f, indent=4)
+    with open(FUNCTIONS_FILE_PATH, "w", encoding='utf-8') as f:
+        json.dump(existing_data, f, indent=4, ensure_ascii=False)
 
 # Function to load Python functions with parameter names
 def load_python_functions(file_path):
@@ -416,7 +419,7 @@ def function_details(request, function_name):
 @csrf_exempt
 def view_imported_functions(request):
     if os.path.exists(FUNCTIONS_FILE_PATH):
-        with open(FUNCTIONS_FILE_PATH, "r") as f:
+        with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
             functions_data = json.load(f)
     else:
         functions_data = []
@@ -428,6 +431,23 @@ def execute_function(data):
     global loaded_module
     function_name = data.get("function_name")
     parameters = data.get("parameters", [])
+
+    # 参数逻辑更换，如通道名的数据切换为通道数据
+    if os.path.exists(FUNCTIONS_FILE_PATH):
+        with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
+            functions_data = json.load(f)
+
+    matched_func = next((d for d in functions_data if d.get('name') == function_name), None)
+    for idx, param in enumerate(matched_func['input']):
+        if param['paraType'] == '通道对象':
+            cur_param = parameters[idx]
+            response = get_channel_data('', cur_param)
+            ret = json.loads(response.content.decode('utf-8'))
+            fields_values = sum(([k, matlab.double(v) if isinstance(v, list) else v] for k, v in ret.items()), [])
+            parameters[idx] = eng.feval('struct', *fields_values)
+
+
+
     if loaded_module:
         # Execute Python function
         func = getattr(loaded_module, function_name, None)
