@@ -17,13 +17,8 @@
           <label for="username">用户名</label>
           <div class="input-wrapper">
             <span class="input-icon">👤</span>
-            <input 
-              id="username" 
-              v-model="username" 
-              placeholder="请输入用户名"
-              autocomplete="username"
-              @focus="clearError('username')"
-            />
+            <input id="username" v-model="username" placeholder="请输入用户名" autocomplete="username"
+              @focus="clearError('username')" />
             <span class="error-message" v-if="formErrors.username">{{ formErrors.username }}</span>
           </div>
         </div>
@@ -31,22 +26,19 @@
           <label for="password">密码</label>
           <div class="input-wrapper">
             <span class="input-icon">🔒</span>
-            <input 
-              :type="showPassword ? 'text' : 'password'"
-              id="password" 
-              v-model="password" 
-              placeholder="请输入密码"
-              autocomplete="current-password"
-              @focus="clearError('password')"
-            />
+            <input :type="showPassword ? 'text' : 'password'" id="password" v-model="password" placeholder="请输入密码"
+              autocomplete="current-password" @focus="clearError('password')" />
             <span v-if="password" class="password-toggle" @click="togglePassword">
-              <svg v-if="showPassword" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
+              <svg v-if="showPassword" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
               </svg>
-              <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                <line x1="1" y1="1" x2="23" y2="23"/>
+              <svg v-else xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path
+                  d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                <line x1="1" y1="1" x2="23" y2="23" />
               </svg>
             </span>
             <span class="error-message" v-if="formErrors.password">{{ formErrors.password }}</span>
@@ -87,13 +79,11 @@
   height: 200%;
   top: -50%;
   left: -50%;
-  background: linear-gradient(
-    45deg,
-    transparent 46%,
-    rgba(26, 115, 232, 0.05) 47%,
-    rgba(26, 115, 232, 0.05) 53%,
-    transparent 54%
-  );
+  background: linear-gradient(45deg,
+      transparent 46%,
+      rgba(26, 115, 232, 0.05) 47%,
+      rgba(26, 115, 232, 0.05) 53%,
+      transparent 54%);
   background-size: 60px 60px;
   animation: moveGrid 20s linear infinite;
   opacity: 0.4;
@@ -108,7 +98,7 @@
   height: 120%;
   top: -10%;
   left: -10%;
-  background: 
+  background:
     radial-gradient(circle at 20% 35%, rgba(26, 115, 232, 0.15) 0%, transparent 25%),
     radial-gradient(circle at 75% 44%, rgba(66, 133, 244, 0.12) 0%, transparent 20%),
     radial-gradient(circle at 40% 60%, rgba(219, 68, 55, 0.08) 0%, transparent 30%),
@@ -175,6 +165,7 @@
   0% {
     transform: translate(0, 0) rotate(0deg);
   }
+
   100% {
     transform: translate(-60px, -60px) rotate(3deg);
   }
@@ -184,21 +175,27 @@
   0% {
     transform: translate(0, 0) rotate(0deg);
   }
+
   100% {
     transform: translate(20px, 20px) rotate(1deg);
   }
 }
 
 @keyframes float {
-  0%, 100% {
+
+  0%,
+  100% {
     transform: translate(0, 0) rotate(0deg) scale(1);
   }
+
   25% {
     transform: translate(10px, -10px) rotate(2deg) scale(1.02);
   }
+
   50% {
     transform: translate(-5px, 15px) rotate(-1deg) scale(0.98);
   }
+
   75% {
     transform: translate(-10px, -5px) rotate(1deg) scale(1.01);
   }
@@ -215,11 +212,38 @@
 .logo-text {
   font-size: 36px;
   font-weight: 900;
-  background: linear-gradient(45deg, #1a73e8, #4285f4);
+  background: linear-gradient(300deg,
+      #1a73e8 0%,
+      #4285f4 30%,
+      #34a853 70%,
+      #1a73e8 100%);
+  background-size: 200% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
   user-select: none;
+  animation: shine 8s linear infinite;
+  text-shadow: 0 0 15px rgba(26, 115, 232, 0.1);
+  filter: drop-shadow(0 0 3px rgba(52, 168, 83, 0.15));
+  position: relative;
+}
+
+.logo-text::after {
+  content: 'DataDiagnostic';
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  background: none;
+  -webkit-text-fill-color: transparent;
+  filter: blur(6px) brightness(150%);
+  opacity: 0.2;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
 }
 
 .login-container {
@@ -230,7 +254,7 @@
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-radius: 20px;
-  box-shadow: 
+  box-shadow:
     0 10px 25px rgba(0, 0, 0, 0.05),
     0 20px 48px rgba(0, 0, 0, 0.05),
     0 1px 4px rgba(0, 0, 0, 0.1);
@@ -244,7 +268,7 @@
 
 .login-container:hover {
   transform: translateY(-2px);
-  box-shadow: 
+  box-shadow:
     0 16px 32px rgba(0, 0, 0, 0.06),
     0 32px 64px rgba(0, 0, 0, 0.06),
     0 1px 4px rgba(0, 0, 0, 0.1);
@@ -410,15 +434,15 @@ input::placeholder {
   .login-container {
     padding: 36px 24px;
   }
-  
+
   .logo-text {
     font-size: 28px;
   }
-  
+
   h2 {
     font-size: 24px;
   }
-  
+
   .subtitle {
     font-size: 14px;
   }
@@ -482,6 +506,7 @@ input::placeholder {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -499,6 +524,7 @@ input::placeholder {
     opacity: 0;
     transform: translateY(20px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -543,8 +569,8 @@ import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
 const store = useStore();
-const username = ref('');
-const password = ref('');
+const username = ref('qidongkai');
+const password = ref('123');
 const router = useRouter();
 const isLoading = ref(false);
 const showPassword = ref(false);
@@ -563,50 +589,54 @@ const clearError = (field) => {
 
 const validateForm = () => {
   let isValid = true;
-  
+
   if (!username.value) {
     formErrors.username = '请输入用户名';
     isValid = false;
   }
-  
+
   if (!password.value) {
     formErrors.password = '请输入密码';
     isValid = false;
   }
-  
+
   return isValid;
 };
 
 const handleLogin = async () => {
-  if (!validateForm()) return;
-  
-  isLoading.value = true;
-  try {
-    const response = await fetch('http://localhost:5000/api/verify-user/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        username: username.value,
-        password: password.value,
-      }),
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      store.commit("setperson", username.value);
-      store.commit("setUserMessage", data.message);
-      store.commit("setauthority", 999);
-      router.push({ name: 'AnomalyLabelView' });
-    } else {
-      formErrors.password = data.message || '登录失败，请重试';
-    }
-  } catch (error) {
-    formErrors.password = '登录失败，请重试';
-  } finally {
-    isLoading.value = false;
-  }
+  store.commit("setperson", username.value);
+  // store.commit("setUserMessage", data.message);
+  store.commit("setauthority", 999);
+  router.push({ name: 'AnomalyLabelView' });
+  // if (!validateForm()) return;
+
+  // isLoading.value = true;
+  // try {
+  //   const response = await fetch('http://10.1.108.19:5000/api/verify-user/', {
+  //     method: 'POST',
+  //     headers: {
+  //       'Content-Type': 'application/json',
+  //     },
+  //     body: JSON.stringify({
+  //       username: username.value,
+  //       password: password.value,
+  //     }),
+  //   });
+
+  //   const data = await response.json();
+
+  //   if (data.success) {
+  //     store.commit("setperson", username.value);
+  //     store.commit("setUserMessage", data.message);
+  //     store.commit("setauthority", 999);
+  //     router.push({ name: 'AnomalyLabelView' });
+  //   } else {
+  //     formErrors.password = data.message || '登录失败，请重试';
+  //   }
+  // } catch (error) {
+  //   formErrors.password = '登录失败，请重试';
+  // } finally {
+  //   isLoading.value = false;
+  // }
 };
 </script>

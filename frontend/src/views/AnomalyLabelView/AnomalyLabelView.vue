@@ -23,10 +23,22 @@
           <template #dropdown>
             <el-dropdown-menu class="user-dropdown">
               <div class="user-info">
-                <p><span>用户:</span> {{ person }}</p>
-                <p><span>权限: </span>{{ authorityLabel }}</p>
+                <div class="user-avatar">
+                  <el-avatar :style="avatarStyle" size="large">{{ avatarText }}</el-avatar>
+                  <div class="user-name">{{ person }}</div>
+                </div>
+                <div class="user-detail">
+                  <div class="detail-item">
+                    <el-icon><User /></el-icon>
+                    <span class="label">身份</span>
+                    <span class="value">{{ authorityLabel }}</span>
+                  </div>
+                </div>
               </div>
-              <el-dropdown-item divided @click="logout">退出</el-dropdown-item>
+              <el-dropdown-item divided class="danger" @click="logout">
+                <el-icon><SwitchButton /></el-icon>
+                <span>退出登录</span>
+              </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -193,9 +205,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { FolderChecked, Upload } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router';
+import { FolderChecked, Upload, User, SwitchButton } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas';
 // 颜色配置及通道选取组件
 import ChannelType from '@/components/Channel-Type.vue';
@@ -207,10 +220,8 @@ import MultiChannelSingleRow from '@/views/AnomalyLabelView/DataExploration/Mult
 import SingleChannelMultiRow from '@/views/AnomalyLabelView/DataExploration/SingleChannelMultiRow.vue';
 
 import HeatMap from '@/views/AnomalyLabelView/LabelResult/HeatMapResult.vue';
-import ListResult from '@/views/AnomalyLabelView/LabelResult/ListResult.vue';
 
 import Sketch from '@/views/AnomalyLabelView/Sketch/Sketch.vue';
-
 
 import ChannelCards from '@/views/ChannelAnalysisView/ChannelList/ChannelCards.vue';
 import ChannelOperator from '../ChannelAnalysisView/ChannelOperator/ChannelOperator.vue';
@@ -218,11 +229,31 @@ import ChannelStr from '../ChannelAnalysisView/ChannelStr/ChannelStr.vue';
 import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalculation/ChannelCalculationResults.vue';
 
 const store = useStore()
+const router = useRouter()
 const sampling = ref(1)
 const smoothness = ref(0)
 
 const person = computed(() => store.state.person);
 const authority = computed(() => store.state.authority);
+
+// 检查登录状态
+const checkLoginStatus = () => {
+  if (!person.value) {
+    router.push('/');
+  }
+};
+
+// 组件挂载时检查登录状态
+onMounted(() => {
+  checkLoginStatus();
+});
+
+// 监听 person 的变化
+watch(person, (newValue) => {
+  if (!newValue) {
+    router.push('/');
+  }
+});
 
 const avatarText = computed(() => person.value ? person.value.charAt(0) : 'U');
 
@@ -241,7 +272,9 @@ const avatarStyle = computed(() => {
 });
 
 const logout = () => {
-  console.log('用户已退出');
+  store.commit('setperson', '');
+  store.commit('setauthority', 0);
+  router.push('/');
 };
 
 const updateSampling = (value) => {
@@ -470,7 +503,7 @@ const exportResultSVG = () => {
       // 导出为 PNG
       const pngData = canvas.toDataURL('image/png');
 
-      // 创建���个链接并自动下载 PNG
+      // 创建一个链接并自动下载 PNG
       const link = document.createElement('a');
       link.href = pngData;
       link.download = 'exported_image.png';
@@ -517,7 +550,7 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
   }
 }, { deep: true });
 
-// 添加对 test_channel_number ��监听
+// 添加对 test_channel_number 的监听
 watch(test_channel_number, (newValue) => {
   if (!newValue) {
     // 切换到多通道单行时，保存当前的 boxSelect 状态并设置为 false
@@ -578,33 +611,117 @@ watch(test_channel_number, (newValue) => {
 }
 
 .user-dropdown {
-  padding: 10px 0;
-  min-width: 150px;
+  padding: 0;
+  min-width: 240px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  margin-top: 8px;
+  overflow: hidden;
 }
 
 .user-info {
-  flex-direction: column;
-  padding: 10px 20px;
+  padding: 20px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.02), transparent);
 }
 
-.user-info p {
-  color: #303133;
-  line-height: 1.5;
+.user-avatar {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
+  margin-bottom: 16px;
+  
+  .el-avatar {
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+  
+  .user-name {
+    font-size: 16px;
+    font-weight: 500;
+    color: #1d1d1f;
+  }
 }
 
-.el-dropdown-menu {
-  min-width: 150px;
+.user-detail {
+  margin-top: 12px;
+  
+  .detail-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.02);
+    border-radius: 8px;
+    
+    .el-icon {
+      font-size: 16px;
+      color: #86868b;
+      margin-right: 8px;
+    }
+    
+    .label {
+      color: #86868b;
+      font-size: 14px;
+      margin-right: 8px;
+    }
+    
+    .value {
+      color: #1d1d1f;
+      font-size: 14px;
+      font-weight: 500;
+    }
+  }
+}
+
+.el-dropdown-menu :deep(.el-dropdown-menu__item) {
+  padding: 12px 20px;
+  font-size: 14px;
+  color: #1d1d1f;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  margin: 4px 8px;
+  border-radius: 8px;
+  
+  .el-icon {
+    margin-right: 8px;
+    font-size: 16px;
+  }
+}
+
+.el-dropdown-menu :deep(.el-dropdown-menu__item:hover) {
+  background-color: rgba(0, 0, 0, 0.04);
+  color: #1d1d1f;
+}
+
+.el-dropdown-menu :deep(.el-dropdown-menu__item.danger) {
+  color: #ff3b30;
+  margin-top: 4px;
+  margin-bottom: 8px;
+  
+  .el-icon {
+    color: #ff3b30;
+  }
+  
+  &:hover {
+    background-color: rgba(255, 59, 48, 0.08);
+  }
 }
 
 .el-avatar {
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .el-avatar:hover {
-  transform: scale(1.1);
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .aside {

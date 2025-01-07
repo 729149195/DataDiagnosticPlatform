@@ -380,7 +380,7 @@ const fetchDataAndStore = async (channel) => {
 
       // 获取数据...
       const response = await limit(() => retryRequest(async () => {
-        return await axios.get(`http://localhost:5000/api/channel-data/`, {
+        return await axios.get(`http://10.1.108.19:5000/api/channel-data/`, {
           params: {
             channel_key: channelKey,
             channel_type: channel.channel_type
@@ -1066,7 +1066,7 @@ const processChannelData = async (data, channel) => {
           if (error_name === "NO ERROR")
             continue;
           const errorResponse = await limit(() => retryRequest(async () => {
-            return await axios.get(`http://localhost:5000/api/error-data/`, {params: errorParams});
+            return await axios.get(`http://10.1.108.19:5000/api/error-data/`, {params: errorParams});
           }));
           errorResponseData = errorResponse.data;
 

@@ -295,11 +295,54 @@ const store = createStore({
     setUserMessage(state, message) {
       state.userMessage = message;
     },
+    refreshStructTree(state, data) {
+      // 保存当前选中状态
+      const selectedStates = new Map();
+      if (state.displayedData) {
+        state.displayedData.forEach(item => {
+          if (item.channels) {
+            item.channels.forEach(channel => {
+              const key = `${channel.channel_name}_${channel.shot_number}`;
+              selectedStates.set(key, {
+                channelChecked: channel.checked,
+                typeChecked: item.checked,
+                showAllErrors: channel.showAllErrors
+              });
+            });
+          }
+        });
+      }
+
+      // 更新数据
+      state.rawData = data;
+      
+      // 恢复选中状态
+      if (state.displayedData) {
+        state.displayedData.forEach(item => {
+          if (item.channels) {
+            item.channels.forEach(channel => {
+              const key = `${channel.channel_name}_${channel.shot_number}`;
+              const savedState = selectedStates.get(key);
+              if (savedState) {
+                channel.checked = savedState.channelChecked;
+                item.checked = savedState.typeChecked;
+                channel.showAllErrors = savedState.showAllErrors;
+                if (channel.showAllErrors) {
+                  channel.displayedErrors = channel.errors;
+                } else {
+                  channel.displayedErrors = channel.errors.slice(0, 1);
+                }
+              }
+            });
+          }
+        });
+      }
+    },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, indices = []) {
       try {
-        let url = "http://localhost:5000/api/struct-tree";
+        let url = "http://10.1.108.19:5000/api/struct-tree";
         if (indices.length > 0) {
           const indicesParam = indices.join(",");
           url += `?indices=${encodeURIComponent(indicesParam)}`;
@@ -404,6 +447,16 @@ const store = createStore({
     },
     updatePreviousBoxSelectState({ commit }, value) {
       commit('UPDATE_PREVIOUS_BOX_SELECT_STATE', value);
+    },
+    async refreshStructTreeData({ commit, dispatch }) {
+      try {
+        const response = await fetch("http://10.1.108.19:5000/api/struct-tree");
+        const data = await response.json();
+        commit("refreshStructTree", data);
+        await dispatch("loadMoreData", true);
+      } catch (error) {
+        console.error("Failed to refresh data:", error);
+      }
     },
   },
 });

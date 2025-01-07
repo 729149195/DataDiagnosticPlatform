@@ -13,40 +13,61 @@
             clearable
         ></el-autocomplete>
         <span>通道类别：</span>
-        <el-select-v2
+        <el-select
             v-model="selectedChannelTypes"
-            :options="channelTypeOptionsWithAll"
-            placeholder="请选择"
+            filterable
             multiple
             collapse-tags
             collapse-tags-tooltip
-            clearable
+            placeholder="请输入通道类别"
             @clear="handleChannelTypeClear"
-        />
+            clearable
+        >
+          <el-option
+              v-for="item in channelTypeOptions"
+              :key="item.value"
+              :label="item.value"
+              :value="item.value"
+          />
+        </el-select>
       </div>
       <div>
         <span>通道名：</span>
-        <el-select-v2
+        <el-select
             v-model="selectedChannelNames"
-            :options="channelNameOptionsWithAll"
-            placeholder="请选择"
+            filterable
             multiple
             collapse-tags
             collapse-tags-tooltip
-            clearable
+            placeholder="请输入通道名"
             @clear="handleChannelNameClear"
-        />
+            clearable
+        >
+          <el-option
+              v-for="item in filteredChannelNameOptions"
+              :key="item.value"
+              :label="item.value"
+              :value="item.value"
+          />
+        </el-select>
         <span>异常名：</span>
-        <el-select-v2
+        <el-select
             v-model="selectederrorsNames"
-            :options="errorsNameOptionsWithAll"
-            placeholder="请选择"
+            filterable
             multiple
             collapse-tags
             collapse-tags-tooltip
-            clearable
+            placeholder="请输入异常名"
             @clear="handleErrorsNameClear"
-        />
+            clearable
+        >
+          <el-option
+              v-for="item in filteredErrorsNameOptions"
+              :key="item.value"
+              :label="item.value"
+              :value="item.value"
+          />
+        </el-select>
       </div>
     </div>
     <div class="buttons">
@@ -88,15 +109,15 @@ const errorsNameOptions = ref([]);
 const selectederrorsNames = ref([]);
 const errorsNameData = ref({});
 
-// 异常来源相关数据
-// const errorsOriginOptions = ref([]);
-// const selectederrorsOrigin = ref([]);
-// const errorsOriginData = ref({});
-
 // 添加全选状态管理
 const channelTypesAllSelected = ref(false);
 const channelNamesAllSelected = ref(false);
 const errorsNamesAllSelected = ref(false);
+
+// 添加新的输入变量
+const channelTypeInput = ref('');
+const channelNameInput = ref('');
+const errorNameInput = ref('');
 
 // 通用函数，用于设置选项和默认选中值
 const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
@@ -104,7 +125,8 @@ const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
     label: key,
     value: key,
   }));
-  selectedRef.value = optionsRef.value.map(option => option.value);
+  // 初始化时不选中任何选项
+  selectedRef.value = [];
   dataRef.value = data; // 保存原始数据
 };
 
@@ -118,11 +140,11 @@ const fetData = async () => {
       errorsNameResponse,
       // errorsOriginResponse
     ] = await Promise.all([
-      axios.get('http://localhost:5000/api/get-shot-number-index'),
-      axios.get('http://localhost:5000/api/get-channel-type-index'),
-      axios.get('http://localhost:5000/api/get-channel-name-index'),
-      axios.get('http://localhost:5000/api/get-errors-name-index'),
-      // axios.get('http://localhost:5000/api/get-error-origin-index'),
+      axios.get('http://10.1.108.19:5000/api/get-shot-number-index'),
+      axios.get('http://10.1.108.19:5000/api/get-channel-type-index'),
+      axios.get('http://10.1.108.19:5000/api/get-channel-name-index'),
+      axios.get('http://10.1.108.19:5000/api/get-errors-name-index'),
+      // axios.get('http://10.1.108.19:5000/api/get-error-origin-index'),
     ]);
 
     // 设置炮号选项和保存原始数据
@@ -516,9 +538,109 @@ const handleErrorsNameClear = () => {
   selectederrorsNames.value = [];
 };
 
+// 通道类别搜索建议
+const querySearchChannelTypes = debounce((queryString, cb) => {
+  const results = queryString
+    ? channelTypeOptions.value.filter(
+        item => item.value.toLowerCase().includes(queryString.toLowerCase())
+      )
+    : channelTypeOptions.value;
+  cb(results.map(item => ({ value: item.value })));
+}, 300);
+
+// 通道名搜索建议
+const querySearchChannelNames = debounce((queryString, cb) => {
+  const results = queryString
+    ? filteredChannelNameOptions.value.filter(
+        item => item.value.toLowerCase().includes(queryString.toLowerCase())
+      )
+    : filteredChannelNameOptions.value;
+  cb(results.map(item => ({ value: item.value })));
+}, 300);
+
+// 异常名搜索建议
+const querySearchErrorNames = debounce((queryString, cb) => {
+  const results = queryString
+    ? filteredErrorsNameOptions.value.filter(
+        item => item.value.toLowerCase().includes(queryString.toLowerCase())
+      )
+    : filteredErrorsNameOptions.value;
+  cb(results.map(item => ({ value: item.value })));
+}, 300);
+
+// 处理选择事件
+const handleChannelTypeSelect = (item) => {
+  if (!selectedChannelTypes.value.includes(item.value)) {
+    selectedChannelTypes.value.push(item.value);
+  }
+  channelTypeInput.value = selectedChannelTypesText.value;
+};
+
+const handleChannelNameSelect = (item) => {
+  if (!selectedChannelNames.value.includes(item.value)) {
+    selectedChannelNames.value.push(item.value);
+  }
+  channelNameInput.value = selectedChannelNamesText.value;
+};
+
+const handleErrorNameSelect = (item) => {
+  if (!selectederrorsNames.value.includes(item.value)) {
+    selectederrorsNames.value.push(item.value);
+  }
+  errorNameInput.value = selectedErrorNamesText.value;
+};
+
+// 添加移除标签的处理函数
+const removeChannelType = (type) => {
+  selectedChannelTypes.value = selectedChannelTypes.value.filter(t => t !== type);
+};
+
+const removeChannelName = (name) => {
+  selectedChannelNames.value = selectedChannelNames.value.filter(n => n !== name);
+};
+
+const removeErrorName = (name) => {
+  selectederrorsNames.value = selectederrorsNames.value.filter(n => n !== name);
+};
+
+// 添加计算属性来处理选中选项的文本显示
+const selectedChannelTypesText = computed(() => {
+  return selectedChannelTypes.value.join(', ');
+});
+
+const selectedChannelNamesText = computed(() => {
+  return selectedChannelNames.value.join(', ');
+});
+
+const selectedErrorNamesText = computed(() => {
+  return selectederrorsNames.value.join(', ');
+});
+
+// 添加输入监听
+watch(channelTypeInput, (newVal) => {
+  if (!newVal) {
+    selectedChannelTypes.value = [];
+  }
+});
+
+watch(channelNameInput, (newVal) => {
+  if (!newVal) {
+    selectedChannelNames.value = [];
+  }
+});
+
+watch(errorNameInput, (newVal) => {
+  if (!newVal) {
+    selectederrorsNames.value = [];
+  }
+});
+
 onMounted(async () => {
   await fetData();
-  // 初始不进行过滤，等待用户输入
+  // 初始化时所有选择都为空
+  selectedChannelTypes.value = [];
+  selectedChannelNames.value = [];
+  selectederrorsNames.value = [];
   store.dispatch('fetchStructTree');
 });
 </script>
@@ -527,6 +649,24 @@ onMounted(async () => {
 .buttons {
   margin-top: 10px;
   width: 100%;
+}
+
+.select-container {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 200px;
+  margin-right: 20px;
+}
+
+.selected-tags {
+  margin-top: 5px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.selected-tag {
+  margin: 2px;
 }
 
 .selected-data {

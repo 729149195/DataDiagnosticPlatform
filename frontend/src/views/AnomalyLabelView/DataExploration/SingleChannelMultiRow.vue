@@ -296,7 +296,7 @@ const processChannelData = async (data, channel) => {
           if(error_name === "NO ERROR")
             continue;
           const errorResponse = await limit(() => retryRequest(async () => {
-            return await axios.get(`http://localhost:5000/api/error-data/`, {params});
+            return await axios.get(`http://10.1.108.19:5000/api/error-data/`, {params});
           }));
           errorData = errorResponse.data;
           channelDataCache.value[errorKey] = errorData;
@@ -423,7 +423,7 @@ const fetchChannelData = async (channel) => {
 
     try {
       const response = await limit(() => retryRequest(async () => {
-        return await axios.get(`http://localhost:5000/api/channel-data/`, {params});
+        return await axios.get(`http://10.1.108.19:5000/api/channel-data/`, {params});
       }));
 
       const data = response.data;

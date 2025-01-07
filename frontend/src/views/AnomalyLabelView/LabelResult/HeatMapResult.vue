@@ -383,7 +383,7 @@ const syncUpload = async () => {
     const reorganizedData = Object.values(groupedByChannel);
 
     // 发送到后端
-    const response = await fetch('http://localhost:5000/api/sync-error-data/', {
+    const response = await fetch('http://10.1.108.19:5000/api/sync-error-data/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -395,6 +395,8 @@ const syncUpload = async () => {
       throw new Error('同步失败');
     }
 
+    // 同步成功后刷新数据
+    await store.dispatch('refreshStructTreeData');
     ElMessage.success('同步成功');
   } catch (error) {
     console.error('同步失败:', error);
@@ -792,7 +794,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
         const errorPromise = limit(() => retryRequest(async () => {
           try {
             const response = await fetch(
-              `http://localhost:5000/api/error-data/?${new URLSearchParams(params).toString()}`
+              `http://10.1.108.19:5000/api/error-data/?${new URLSearchParams(params).toString()}`
             );
             if (!response.ok) {
               throw new Error(`HTTP error! status: ${response.status}`);

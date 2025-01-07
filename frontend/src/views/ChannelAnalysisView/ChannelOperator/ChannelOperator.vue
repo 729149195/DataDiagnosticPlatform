@@ -164,6 +164,14 @@ const store = useStore();
 
 const fileList = ref([]);
 const dialogVisible = ref(false);
+const fileInfo = ref({
+  name: "",
+  description: "",
+  type: "",
+  file: null,
+  input: [],
+  output: []
+})
 // const fileInfo = ref({
 //     name: 'NoiseThreshold',
 //     description: '过滤噪声，产出新数据',
@@ -183,26 +191,26 @@ const dialogVisible = ref(false);
 //         { outputName: 'channel_data', type: '通道数据', definition: '新通道XY数据' },
 //     ]
 // });
-const fileInfo = ref({
-    name: 'LargerThanThreshold',
-    description: '绝对值大于阈值的时间段都会被标记',
-    type: '诊断分析',
-    file: null,
-    input: [
-        { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
-        { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
-    ],
-    output: [
-        { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
-    ]
-});
+// const fileInfo = ref({
+//     name: 'LargerThanThreshold',
+//     description: '绝对值大于阈值的时间段都会被标记',
+//     type: '诊断分析',
+//     file: null,
+//     input: [
+//         { paraName: 'channel_key', paraType: '通道对象', paraDefinition: '炮号', domain: 'None', default: 'None' },
+//         { paraName: 'threshold', paraType: '浮点数', paraDefinition: '阈值', domain: 'None', default: 'None' },
+//     ],
+//     output: [
+//         { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
+//     ]
+// });
 const formLabelWidth = '120px';
 
 // 定义运算符分类
 const operators = {
-    arithmetic: ["+", "-", "*", "/", "%", "^", "()"],
-    comparison: [">", "<", ">=", "<=", "==", "!="],
-    logical: ["&&", "||", "!"],
+    arithmetic: ["+", "-", "*", "/"],
+    // comparison: [">", "<", ">=", "<=", "==", "!="],
+    // logical: ["&&", "||", "!"],
     functions: ["FFT()"],
     // brackets: ["()", "[]", "{}"],
     da_functions: ["Pca()"],
@@ -249,7 +257,7 @@ const handleSubmit = async () => {
     }));
 
     try {
-        const response = await axios.post('http://localhost:5000/api/upload/', formData, {
+        const response = await axios.post('http://10.1.108.19:5000/api/upload/', formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
@@ -259,7 +267,7 @@ const handleSubmit = async () => {
         let ttda = ["Pca()"]
         let ttcp = ['FFT()']
         // 更新 detect anomaly functions
-        const response2 = await axios.get(`http://localhost:5000/api/view-functions/`);
+        const response2 = await axios.get(`http://10.1.108.19:5000/api/view-functions/`);
         for(let func of response2.data.imported_functions) {
             if(func.type === '诊断分析') {
                 ttda.push(func['name'] + '()')
@@ -323,18 +331,18 @@ const buttons = ref([
         category: "arithmetic",
         explanation: "展开算术运算符",
     },
-    {
-        label: "比较运算符",
-        type: "primary",
-        category: "comparison",
-        explanation: "展开比较运算符",
-    },
-    {
-        label: "逻辑运算符",
-        type: "primary",
-        category: "logical",
-        explanation: "展开逻辑运算符",
-    },
+    // {
+    //     label: "比较运算符",
+    //     type: "primary",
+    //     category: "comparison",
+    //     explanation: "展开比较运算符",
+    // },
+    // {
+    //     label: "逻辑运算符",
+    //     type: "primary",
+    //     category: "logical",
+    //     explanation: "展开逻辑运算符",
+    // },
     {
         label: "运算函数",
         type: "primary",
@@ -396,7 +404,7 @@ const handleButtonClick = async (button, index) => {
         // const formData = new FormData();
         // formData.append("file", file);
         // try {
-        //     const response = await axios.post("http://localhost:5000/api/upload/", formData, {
+        //     const response = await axios.post("http://10.1.108.19:5000/api/upload/", formData, {
         //         headers: { "Content-Type": "multipart/form-data" }
         //     });
         //     functions.value = response.data.functions;
@@ -452,18 +460,18 @@ const collapseAllCategories = () => {
             category: "arithmetic",
             explanation: "展开算术运算符",
         },
-        {
-            label: "比较运算符",
-            type: "primary",
-            category: "comparison",
-            explanation: "展开比较运算符",
-        },
-        {
-            label: "逻辑运算符",
-            type: "primary",
-            category: "logical",
-            explanation: "展开逻辑运算符",
-        },
+        // {
+        //     label: "比较运算符",
+        //     type: "primary",
+        //     category: "comparison",
+        //     explanation: "展开比较运算符",
+        // },
+        // {
+        //     label: "逻辑运算符",
+        //     type: "primary",
+        //     category: "logical",
+        //     explanation: "展开逻辑运算符",
+        // },
         {
             label: "运算函数",
             type: "primary",
@@ -508,7 +516,7 @@ onMounted(async () => {
     document.addEventListener("click", handleClickOutside);
 
     // 更新 detect anomaly functions
-    const response = await axios.get(`http://localhost:5000/api/view-functions/`);
+    const response = await axios.get(`http://10.1.108.19:5000/api/view-functions/`);
     let ttda = ["Pca()"]
     let ttcp = ['FFT()']
     for(let func of response.data.imported_functions) {

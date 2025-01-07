@@ -118,7 +118,7 @@ const fetchChannelData = async (channel) => {
                 channel_key: channelKey,
                 channel_type: channelType,
             };
-            const response = await axios.get(`http://localhost:5000/api/channel-data/`, { params });
+            const response = await axios.get(`http://10.1.108.19:5000/api/channel-data/`, { params });
             xValues = response.data.X_value;
             yValues = response.data.Y_value;
             dataCache[channelKey] = { xValues, yValues };
