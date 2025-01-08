@@ -21,10 +21,11 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import debounce from 'lodash/debounce';
 import * as d3 from 'd3';
+import chartWorkerManager from '@/workers/chartWorkerManager';
 
 const store = useStore();
 
@@ -89,30 +90,25 @@ const updateSelectedChannels = () => {
     store.commit('updateSelectedChannels', selected);
 };
 
-const sampleData = (data, numSamples) => {
-    const sampledData = [];
-    const dataLength = data.length;
-    if (dataLength <= numSamples) {
-        return data.slice();
-    }
-    const samplingInterval = dataLength / numSamples;
-    for (let i = 0; i < numSamples; i++) {
-        sampledData.push(data[Math.floor(i * samplingInterval)]);
-    }
-    return sampledData;
-};
-
 const renderChannelChart = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         const channelData = channelDataCache.value[channelKey];
 
         if (channelData) {
-            const numSamples = 100;
-            const sampledXValues = sampleData(channelData.X_value, numSamples);
-            const sampledYValues = sampleData(channelData.Y_value, numSamples);
+            // 使用 worker 处理数据
+            const processedData = await chartWorkerManager.processData({
+                X_value: Array.from(channelData.X_value),
+                Y_value: Array.from(channelData.Y_value)
+            }, 0.1); // 使用较低的采样率以适应缩略图显示
 
-            renderChart(sampledXValues, sampledYValues, channel);
+            if (processedData && processedData.processedData) {
+                renderChart(
+                    processedData.processedData.X_value,
+                    processedData.processedData.Y_value,
+                    channel
+                );
+            }
         }
     } catch (error) {
         console.error('Error rendering channel chart:', error);
@@ -190,6 +186,10 @@ watch(
 
 onMounted(() => {
     renderCharts();
+});
+
+onBeforeUnmount(() => {
+    chartWorkerManager.terminate();
 });
 </script>
 

@@ -68,7 +68,7 @@ const drawChart = (xValues, yValues, channel=-1, channelKey=-1) => {
 
     // 使用容器的宽度来计算图表的宽度
     const width = containerWidth - margin.left - margin.right;
-    const height = 500 - margin.top - margin.bottom; // 固定高度可以根据需要调整
+    const height = 400 - margin.top - margin.bottom; // 固定高度可以根据需要调整
 
     svg.selectAll('*').remove(); // 清空之前的绘图
 
