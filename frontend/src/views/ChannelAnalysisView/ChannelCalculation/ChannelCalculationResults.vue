@@ -10,16 +10,15 @@
 import * as d3 from "d3";
 import { useStore } from 'vuex';
 import { computed, ref, watch } from "vue";
-import axios from "axios";
 
 // 获取 Vuex 状态
 const store = useStore();
-const dataCache = {};
 const scaleCache = {};
 const curChannel = ref({});
 const curChannelKey = ref('');
 const ErrorLineXScopes = computed(() => store.state.ErrorLineXScopes);
 const CalculateResult = computed(() => store.state.CalculateResult);
+const channelDataCache = computed(() => store.state.channelDataCache);
 const resultSvgRef = ref(null);
 const resultData = ref(null);
 defineExpose({
@@ -29,30 +28,21 @@ defineExpose({
 
 const fetchChannelData = async (channel) => {
     try {
-        let xValues, yValues, xUnit, yUnit;
-
-        // 构建 channelKey 和 channelType
+        // 构建 channelKey
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const channelType = channel.channel_type;
+        const channelData = channelDataCache.value[channelKey];
 
-        // 使用 channelKey 作为缓存键
-        if (dataCache[channelKey]) {
-            ({ xValues, yValues, xUnit, yUnit } = dataCache[channelKey]);
+        if (channelData) {
+            // 绘制图表
+            drawChart(
+                channelData.X_value,
+                channelData.Y_value,
+                channel,
+                channelKey
+            );
         } else {
-            const params = { 
-                "channel_key": channelKey, 
-                "channel_type": channelType 
-            };
-            const response = await axios.get(`http://10.1.108.19:5000/api/channel-data/`, { params });
-            xValues = response.data.X_value;
-            yValues = response.data.Y_value;
-            xUnit = response.data.X_unit;
-            yUnit = response.data.Y_unit;
-            dataCache[channelKey] = { xValues, yValues, xUnit, yUnit };
+            console.error('Channel data not found in cache:', channelKey);
         }
-
-        // 绘制图表，传递 channelKey
-        drawChart(xValues, yValues, channel, channelKey);
     } catch (error) {
         console.error('Error fetching channel data:', error);
     }
@@ -232,7 +222,7 @@ const scope2Index = (scope, X) => {
 const drawResult = async (CalculateResult) => {
     // 绘制新通道数据
     if('X_value' in CalculateResult) {
-      drawChart(CalculateResult['X_value'], CalculateResult['Y_value'])
+        drawChart(CalculateResult['X_value'], CalculateResult['Y_value'])
     }
     // 绘制异常数据
     if('X_range' in CalculateResult) {
@@ -243,7 +233,15 @@ const drawResult = async (CalculateResult) => {
         const contentG = container.select('#chart .contentG');
 
         let channel = curChannel.value;
-        let {xValues, yValues} = dataCache[channelKey];
+        const channelData = channelDataCache.value[channelKey];
+        if (!channelData) {
+            console.error('Channel data not found in cache:', channelKey);
+            return;
+        }
+
+        let xValues = channelData.X_value;
+        let yValues = channelData.Y_value;
+
         ErrorLineXScopes.forEach((ErrorLineXScope, errorIndex) => {
             let ErrorLineXIndex = scope2Index(ErrorLineXScope, xValues);
             let X_value_error = xValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
@@ -284,7 +282,6 @@ watch(CalculateResult, async (newCalculateResult, oldV) => {
     resultData.value = newCalculateResult;
     await drawResult(newCalculateResult);
 }, { deep: true });
-
 
 </script>
 

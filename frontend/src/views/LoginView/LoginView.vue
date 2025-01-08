@@ -604,39 +604,38 @@ const validateForm = () => {
 };
 
 const handleLogin = async () => {
-  store.commit("setperson", username.value);
-  // store.commit("setUserMessage", data.message);
-  store.commit("setauthority", 999);
-  router.push({ name: 'AnomalyLabelView' });
-  // if (!validateForm()) return;
+  // store.commit("setperson", username.value);
+  // store.commit("setauthority", 999);
+  // router.push({ name: 'AnomalyLabelView' });
+  if (!validateForm()) return;
 
-  // isLoading.value = true;
-  // try {
-  //   const response = await fetch('http://10.1.108.19:5000/api/verify-user/', {
-  //     method: 'POST',
-  //     headers: {
-  //       'Content-Type': 'application/json',
-  //     },
-  //     body: JSON.stringify({
-  //       username: username.value,
-  //       password: password.value,
-  //     }),
-  //   });
+  isLoading.value = true;
+  try {
+    const response = await fetch('http://10.1.108.19:5000/api/verify-user/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: username.value,
+        password: password.value,
+      }),
+    });
 
-  //   const data = await response.json();
+    const data = await response.json();
 
-  //   if (data.success) {
-  //     store.commit("setperson", username.value);
-  //     store.commit("setUserMessage", data.message);
-  //     store.commit("setauthority", 999);
-  //     router.push({ name: 'AnomalyLabelView' });
-  //   } else {
-  //     formErrors.password = data.message || '登录失败，请重试';
-  //   }
-  // } catch (error) {
-  //   formErrors.password = '登录失败，请重试';
-  // } finally {
-  //   isLoading.value = false;
-  // }
+    if (data.success) {
+      store.commit("setperson", username.value);
+      store.commit("setUserMessage", data.message);
+      store.commit("setauthority", 999);
+      router.push({ name: 'AnomalyLabelView' });
+    } else {
+      formErrors.password = data.message || '登录失败，请重试';
+    }
+  } catch (error) {
+    formErrors.password = '登录失败，请重试';
+  } finally {
+    isLoading.value = false;
+  }
 };
 </script>
