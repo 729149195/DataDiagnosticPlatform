@@ -49,22 +49,9 @@ import debounce from 'lodash/debounce';
 import {ref, watch, computed, onMounted, nextTick, reactive, onUnmounted} from 'vue';
 import {ElInput, ElMessage, ElEmpty, ElDivider, ElTag, ElProgress} from 'element-plus';
 import {useStore} from 'vuex';
-import axios from 'axios';
 import LegendComponent from '@/components/LegendComponent.vue';
-import {
-  sampleData,
-  sampleErrorSegment,
-  findStartIndex,
-  findEndIndex
-} from '@/utils/dataProcessing';
+import chartWorkerManager from '@/workers/chartWorkerManager';
 import pLimit from 'p-limit';
-
-// 归一化函数
-const normalize = (yValues) => {
-  const yAbsMax = d3.max(yValues, d => Math.abs(d));
-  if (yAbsMax === 0) return yValues.map(() => 0);
-  return yValues.map(y => y / yAbsMax);
-};
 
 // Reactive references
 const overviewData = ref([]);
@@ -74,7 +61,6 @@ const brush_end = ref(0);
 const brushSelections = ref({overview: null});
 const channelsData = ref([]);
 const exposeData = ref([])
-const dataCache = computed(() => store.state.dataCache); // 数据缓存
 const channelsSvgRef = ref(null);
 const resetProgress = () => {
   loadingStates.channels.clear();
@@ -88,30 +74,6 @@ defineExpose({
   channelsData: exposeData,
   resetProgress
 })
-
-const predefineColors = ref([
-  '#000000', // Black
-  '#4169E1', // Royal Blue
-  '#DC143C', // Crimson
-  '#228B22', // Forest Green
-  '#FF8C00', // Dark Orange
-  '#800080', // Purple
-  '#FF1493', // Deep Pink
-  '#40E0D0', // Turquoise
-  '#FFD700', // Gold
-  '#8B4513', // Saddle Brown
-  '#2F4F4F', // Dark Slate Gray
-  '#1E90FF', // Dodger Blue
-  '#32CD32', // Lime Green
-  '#FF6347', // Tomato
-  '#DA70D6', // Orchid
-  '#191970', // Midnight Blue
-  '#FA8072', // Salmon
-  '#6B8E23', // Olive Drab
-  '#6A5ACD', // Slate Blue
-  '#FF7F50', // Coral
-  '#4682B4'  // Steel Blue
-]);
 
 const mainChartDimensions = ref({
   margin: {top: 110, right: 20, bottom: 150, left: 80},
@@ -1001,139 +963,108 @@ const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-    // 采样数据
-    const sampledData = sampleData(data, sampleRate.value);
+    // 准备数据
+    const channelData = {
+      X_value: [...data.X_value],
+      Y_value: [...data.Y_value],
+      originalFrequency: data.originalFrequency,
+      originalDataPoints: data.X_value.length
+    };
 
-    // 存储归一化前的 Y 值
-    sampledData.Y_original = sampledData.Y_value.slice();
+    // 使用 chartWorkerManager 处理数据
+    const processedData = await chartWorkerManager.processData(
+      channelData,
+      sampleRate.value,
+      smoothnessValue.value,
+      channelKey,
+      channel.color,
+      data.X_unit,
+      data.Y_unit,
+      data.channel_type,
+      data.channel_number,
+      channel.shot_number
+    );
 
-    // 归一化 Y_value
-    sampledData.Y_value = normalize(sampledData.Y_value);
+    if (processedData) {
+      // 归一化 Y 值
+      const yAbsMax = d3.max(processedData.processedData.Y_value, d => Math.abs(d));
+      const normalizedY = yAbsMax === 0 ? 
+        processedData.processedData.Y_value.map(() => 0) : 
+        processedData.processedData.Y_value.map(y => y / yAbsMax);
 
-    let errorsData = [];
-    // 处理错误数据
-    for (const [errorIndex, error] of channel.errors.entries()) {
-      const error_name = error.error_name;
-      const error_color = error.color;
+      // 更新图表数据
+      channelsData.value.push({
+        channelName: channel.channel_name,
+        channelshotnumber: channel.shot_number,
+        X_value: processedData.processedData.X_value,
+        Y_value: normalizedY,
+        Y_original: processedData.processedData.Y_value,
+        color: channel.color,
+        errorsData: [],
+        xUnit: data.X_unit,
+        yUnit: data.Y_unit,
+        channelType: data.channel_type,
+        channelNumber: data.channel_number,
+        shotNumber: channel.shot_number
+      });
 
-      // 构建用于缓存的 errorCacheKey
-      const errorCacheKey = `${channelKey}-error-${error_name}-${errorIndex}-sampling-${sampleRate.value}`;
-      let errorResponseData;
+      // 更新导出数据
+      exposeData.value.push({
+        channel_type: data.channel_type,
+        channel_name: channel.channel_name,
+        X_value: processedData.processedData.X_value,
+        X_unit: data.X_unit,
+        Y_value: processedData.processedData.Y_value,
+        Y_unit: data.Y_unit,
+        errorsData: [],
+        shot_number: channel.shot_number
+      });
 
-      // 检查错误数据缓存
-      if (dataCache.value.has(errorCacheKey)) {
-        errorResponseData = dataCache.value.get(errorCacheKey);
-      } else {
-        const errorParams = {
-          channel_key: channelKey,
-          channel_type: channel.channel_type,
-          error_name: error_name,
-          error_index: errorIndex,
-        };
+      // 更新总览数据
+      overviewData.value.push({
+        channelName: channel.channel_name,
+        X_value: processedData.processedData.X_value,
+        Y_value: normalizedY,
+        color: channel.color,
+      });
 
-        try {
-          // 使用重试机制和并发限制获取错误数据
-          if (error_name === "NO ERROR")
-            continue;
-          const errorResponse = await limit(() => retryRequest(async () => {
-            return await axios.get(`http://10.1.108.19:5000/api/error-data/`, {params: errorParams});
-          }));
-          errorResponseData = errorResponse.data;
+      // 处理错误数据
+      if (channel.errors && channel.errors.length > 0) {
+        const errorData = channel.errors.map(error => ({
+          color: error.color,
+          person: error.person,
+          X_error: error.X_error ? [...error.X_error] : []
+        }));
 
-          dataCache.value.set(errorCacheKey, errorResponseData);
-        } catch (err) {
-          console.warn(`Failed to fetch error data for ${errorCacheKey}:`, err);
-          continue; // 跳过这个错误数据，继续处理其他
-        }
-      }
-
-      // 处理人工标注和机器识别的异常数据
-      const [manualErrors, machineErrors] = errorResponseData;
-
-      // 处理机器识别的异常
-      for (const machineError of machineErrors) {
-        if (!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
-          continue; // 跳过空的错误数据
-        }
-
-        const processedErrorSegments = machineError.X_error.map(
-            (errorSegment) => {
-              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-            }
+        const errorResult = await chartWorkerManager.processErrorData(
+          errorData,
+          channelData,
+          channelKey
         );
 
-        const sampledErrorData = {
-          X_value_error: processedErrorSegments.map((seg) => seg.X),
-          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-          color: error_color,
-          person: machineError.person,
-        };
+        if (errorResult && errorResult.processedErrors) {
+          const currentChannelData = channelsData.value.find(
+            cd => cd.channelName === channel.channel_name && 
+                 cd.channelshotnumber === channel.shot_number
+          );
+          if (currentChannelData) {
+            currentChannelData.errorsData = errorResult.processedErrors;
+          }
 
-        errorsData.push(sampledErrorData);
-      }
-
-      // 处理人工标注的异常
-      for (const manualError of manualErrors) {
-        if (!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
-          continue; // 跳过空的错误数据
+          const currentExportData = exposeData.value.find(
+            ed => ed.channel_name === channel.channel_name && 
+                 ed.shot_number === channel.shot_number
+          );
+          if (currentExportData) {
+            currentExportData.errorsData = errorResult.processedErrors;
+          }
         }
-
-        const processedErrorSegments = manualError.X_error.map(
-            (errorSegment) => {
-              return sampleErrorSegment(errorSegment, sampledData, findStartIndex, findEndIndex);
-            }
-        );
-
-        const sampledErrorData = {
-          X_value_error: processedErrorSegments.map((seg) => seg.X),
-          Y_value_error: processedErrorSegments.map((seg) => seg.Y),
-          color: error_color,
-          person: manualError.person,
-        };
-
-        errorsData.push(sampledErrorData);
       }
     }
 
-    // 更新图表数据
-    channelsData.value.push({
-      channelName: channel.channel_name,
-      channelshotnumber: channel.shot_number,
-      X_value: sampledData.X_value,
-      Y_value: sampledData.Y_value,
-      Y_original: sampledData.Y_original,
-      color: channel.color,
-      errorsData: errorsData,
-      xUnit: data.X_unit,
-      yUnit: data.Y_unit,
-      channelType: data.channel_type,
-      channelNumber: data.channel_number,
-      shotNumber: channel.shot_number
-    });
-
-    // 更新导出数据
-    exposeData.value.push({
-      channel_type: data.channel_type,
-      channel_name: channel.channel_name,
-      X_value: sampledData.X_value,
-      X_unit: data.X_unit,
-      Y_value: sampledData.Y_original,
-      Y_unit: data.Y_unit,
-      errorsData: errorsData,
-      shot_number: channel.shot_number
-    });
-
-    // 更新总览数据
-    overviewData.value.push({
-      channelName: channel.channel_name,
-      X_value: sampledData.X_value,
-      Y_value: sampledData.Y_value,
-      color: channel.color,
-    });
-
   } catch (error) {
-    console.error('Error in processChannelData:', error);
-    throw error;
+    console.error(`Error processing channel data for ${channel.channel_name}:`, error);
+    ElMessage.error(`处理通道数据错误: ${error.message}`);
   }
 };
 
@@ -1146,6 +1077,11 @@ const handleResize = debounce(() => {
 
 // 在 script setup 部分添加原始域存储
 const originalDomains = ref({}); // 存储原始的显示范围
+
+// 在组件卸载时终止 Worker
+onUnmounted(() => {
+  chartWorkerManager.terminate();
+});
 </script>
 
 

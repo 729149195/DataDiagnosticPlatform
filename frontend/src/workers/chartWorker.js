@@ -1,7 +1,14 @@
 // Web Worker for chart data processing
+import { DataSmoother } from '../views/AnomalyLabelView/Sketch/data-smoother.js';
+import { PatternMatcher } from '../views/AnomalyLabelView/Sketch/pattern-matcher.js';
 
 /**
  * MATLAB interp1 函数的 JavaScript 实现
+ *@param {Array} x - 原始x值数组(必须严格单调递增)
+ * @param {Array} y - 原始y值数组 
+ * @param {Array} xNew - 需要插值的新x点
+ * @param {string} method - 插值方法 ('linear', 'nearest', 'spline', etc.)
+ * @returns {Array} 插值后的y值数组
  */
 function interp1(x, y, xNew, method = 'linear') {
   // 输入验证
@@ -64,6 +71,8 @@ function interp1(x, y, xNew, method = 'linear') {
 
 /**
  * 计算数据的原始采样频率(kHz)
+ * @param {Array} X_value - 时间序列数据(单位:s)
+ * @returns {number} 采样频率(kHz)
  */
 function calculateSamplingRate(X_value) {
   const deltaT = X_value[1] - X_value[0]; // 单位:s
@@ -72,10 +81,11 @@ function calculateSamplingRate(X_value) {
 
 /**
  * 对数据进行重采样处理
+ * @param {Object} data - 包含 X_value 和 Y_value 的数据对象
+ * @param {number} targetRate - 目标采样频率(kHz)
+ * @returns {Object} 重采样后的数据对象
  */
 function sampleData(data, targetRate) {
-  if (!data || !data.X_value || !data.Y_value) return null;
-
   // 计算原始采样频率
   const originalRate = calculateSamplingRate(data.X_value);
   
@@ -84,7 +94,7 @@ function sampleData(data, targetRate) {
     return {
       X_value: data.X_value,
       Y_value: data.Y_value,
-      originalFrequency: data.originalFrequency,
+      originalFrequency: originalRate,
       originalDataPoints: data.X_value.length
     };
   }
@@ -130,7 +140,7 @@ function sampleData(data, targetRate) {
       return {
         X_value: data.X_value,
         Y_value: data.Y_value,
-        originalFrequency: data.originalFrequency,
+        originalFrequency: originalRate,
         originalDataPoints: data.X_value.length
       };
     }
@@ -140,7 +150,7 @@ function sampleData(data, targetRate) {
     return {
       X_value: data.X_value.filter((_, i) => i % samplingInterval === 0),
       Y_value: data.Y_value.filter((_, i) => i % samplingInterval === 0),
-      originalFrequency: data.originalFrequency,
+      originalFrequency: originalRate,
       originalDataPoints: data.X_value.length
     };
   }
@@ -148,81 +158,88 @@ function sampleData(data, targetRate) {
   return {
     X_value: newX,
     Y_value: newY,
-    originalFrequency: data.originalFrequency,
+    originalFrequency: originalRate,
     originalDataPoints: data.X_value.length
   };
 }
 
-// 创建高斯核函数
-function createGaussianKernel(sigma, size) {
-  const kernel = [];
-  const center = Math.floor(size / 2);
-  const sigma2 = 2 * sigma * sigma;
-  let sum = 0;
-
-  for (let i = 0; i < size; i++) {
-    const x = i - center;
-    const value = Math.exp(-x * x / sigma2);
-    kernel.push(value);
-    sum += value;
-  }
-
-  return kernel.map(value => value / sum);
-}
-
-// 高斯平滑处理
-function gaussianSmooth(data, sigma) {
-  const kernelSize = Math.ceil(sigma * 6);
-  const kernel = createGaussianKernel(sigma, kernelSize);
-  const halfSize = Math.floor(kernelSize / 2);
-  const smoothedData = [];
-
-  for (let i = 0; i < data.length; i++) {
-    let smoothedValue = 0;
-    for (let j = 0; j < kernelSize; j++) {
-      const dataIndex = i + j - halfSize;
-      if (dataIndex >= 0 && dataIndex < data.length) {
-        smoothedValue += data[dataIndex] * kernel[j];
-      }
+/**
+ * 二分查找起始索引
+ * @param {Array} array - 要搜索的数组
+ * @param {number} startX - 要查找的值
+ * @returns {number} 找到的索引
+ */
+function findStartIndex(array, startX) {
+  let low = 0;
+  let high = array.length - 1;
+  let result = -1;
+  while (low <= high) {
+    let mid = Math.floor((low + high) / 2);
+    if (array[mid] >= startX) {
+      result = mid;
+      high = mid - 1;
+    } else {
+      low = mid + 1;
     }
-    smoothedData.push(smoothedValue);
   }
-
-  return smoothedData;
+  return result;
 }
 
-// 数据平滑插值
-function interpolateData(data, t) {
-  if (t === 0) return data;
-  const sigma = t * 20;
-  return gaussianSmooth(data, sigma);
+/**
+ * 二分查找结束索引
+ * @param {Array} array - 要搜索的数组
+ * @param {number} endX - 要查找的值
+ * @returns {number} 找到的索引
+ */
+function findEndIndex(array, endX) {
+  let low = 0;
+  let high = array.length - 1;
+  let result = -1;
+  while (low <= high) {
+    let mid = Math.floor((low + high) / 2);
+    if (array[mid] <= endX) {
+      result = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return result;
 }
 
-// 处理异常数据段
+/**
+ * 对异常数据段进行采样处理
+ * @param {Object} errorSegment - 错误数据段
+ * @param {Array} sampledData - 采样后的数据
+ * @returns {Object} 采样后的错误数据段
+ */
 function processErrorSegment(errorSegment, sampledData) {
-  try {
-    if (!errorSegment || !sampledData) return null;
-    
-    // 找到对应的起始和结束索引
-    const startIndex = sampledData.X_value.findIndex(x => x >= errorSegment[0]);
-    const endIndex = sampledData.X_value.findIndex(x => x >= errorSegment[errorSegment.length - 1]);
-    
-    if (startIndex === -1 || endIndex === -1) return null;
+  if (errorSegment.length === 0) return { X: [], Y: [] };
 
-    return {
-      X: errorSegment,
-      Y: sampledData.Y_value.slice(startIndex, endIndex + 1)
-    };
-  } catch (error) {
-    console.error('Error in processErrorSegment:', error);
-    return null;
+  const startX = errorSegment[0];
+  const endX = errorSegment[errorSegment.length - 1];
+
+  const startIndex = findStartIndex(sampledData.X_value, startX);
+  const endIndex = findEndIndex(sampledData.X_value, endX);
+
+  if (startIndex === -1 || endIndex === -1 || startIndex > endIndex) {
+    return { X: [], Y: [] };
   }
+
+  const sampledX = sampledData.X_value
+    .slice(startIndex, endIndex + 1)
+    .filter(x => x >= startX && x <= endX);
+  const sampledY = sampledData.Y_value
+    .slice(startIndex, endIndex + 1)
+    .filter((_, i) => sampledX.includes(sampledData.X_value[startIndex + i]));
+
+  return { X: sampledX, Y: sampledY };
 }
 
 // 主要的消息处理函数
 self.onmessage = function(e) {
   try {
-    const { type, data } = e.data;
+    const { type, data, messageId } = e.data;
 
     switch (type) {
       case 'processData': {
@@ -237,9 +254,15 @@ self.onmessage = function(e) {
         // 平滑处理
         let processedData = sampledData;
         if (smoothnessValue > 0 && smoothnessValue <= 1) {
+          const dataSmoother = new DataSmoother();
           processedData = {
             ...sampledData,
-            Y_value: interpolateData(sampledData.Y_value, smoothnessValue)
+            Y_value: dataSmoother.interpolateData(sampledData.Y_value.map((y, i) => ({
+              x: sampledData.X_value[i],
+              y: y,
+              origX: sampledData.X_value[i],
+              origY: y
+            })), smoothnessValue).map(p => p.y)
           };
         }
 
@@ -250,6 +273,7 @@ self.onmessage = function(e) {
 
         self.postMessage({
           type: 'processedData',
+          messageId,
           data: {
             processedData,
             channelKey,
@@ -288,6 +312,7 @@ self.onmessage = function(e) {
 
         self.postMessage({
           type: 'processedErrorData',
+          messageId,
           data: {
             channelKey,
             processedErrors
@@ -295,11 +320,42 @@ self.onmessage = function(e) {
         });
         break;
       }
+
+      case 'findPatterns': {
+        const { queryPattern, dataPoints, xValues } = data;
+        const patternMatcher = new PatternMatcher({
+          distanceMetric: 'euclidean',
+          matchThreshold: 1.0,
+          windowSize: 1.5
+        });
+
+        // 将数据点转换为正确的格式
+        const normalizedDataPoints = dataPoints.map((y, index) => ({
+          x: xValues[index],
+          y: y,
+          origX: xValues[index],
+          origY: y
+        }));
+
+        const matches = patternMatcher.findPatterns(queryPattern, normalizedDataPoints.map(p => p.y), normalizedDataPoints.map(p => p.x));
+
+        self.postMessage({
+          type: 'patternMatches',
+          messageId,
+          data: matches
+        });
+        break;
+      }
+
+      default:
+        throw new Error(`Unknown message type: ${type}`);
     }
   } catch (error) {
+    // 确保错误消息中包含 messageId
     self.postMessage({
       type: 'error',
-      error: error.message
+      messageId: e.data.messageId,
+      error: error.message || 'Unknown error occurred'
     });
   }
 }; 

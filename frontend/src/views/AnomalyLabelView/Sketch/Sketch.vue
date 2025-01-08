@@ -151,12 +151,13 @@ import {
   watch,
 } from 'vue';
 import { Search } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import paper from 'paper';
-import { DataSmoother } from './data-smoother'; // 导入数据平滑器
-import { PatternMatcher } from './pattern-matcher'; // 导入模式匹配类
+import { DataSmoother } from './data-smoother';
+import { PatternMatcher } from './pattern-matcher';
 import curveTemplates from '@/assets/templates/curveTemplates.json'
-import { sampleData } from '@/utils/dataProcessing';
+import chartWorkerManager from '@/workers/chartWorkerManager';
 
 // 使用 Vuex store
 const store = useStore();
@@ -599,15 +600,6 @@ onBeforeUnmount(() => {
 
 // 提交数据函数
 const submitData = async () => {
-  // 创建数据平滑器实例
-  const dataSmoother = new DataSmoother();
-
-  const patternMatcher = new PatternMatcher({
-    distanceMetric: 'euclidean',
-    matchThreshold: 1.0,
-    windowSize: 1.5
-  });
-
   const channelDataCache = store.state.channelDataCache;
   const rawQueryPattern = drawingApp ? drawingApp.getPathsData() : [];
 
@@ -621,7 +613,7 @@ const submitData = async () => {
     const maxY = Math.max(...rawQueryPattern.map(p => p.y));
     const yRange = maxY - minY;
 
-    // 只在里翻转 Y 值
+    // 只在这里翻转 Y 值
     const queryPattern = rawQueryPattern.map((point, index) => ({
       x: -1 + (2 * (point.x - minX) / xRange),
       y: -(-1 + (2 * (point.y - minY) / yRange))  // 翻转 Y 值
@@ -631,76 +623,66 @@ const submitData = async () => {
     const matchResults = {};
     const smoothedData = {};
 
-    selectedGunNumbers.value.forEach(channel => {
+    // 使用 Promise.all 并行处理所有通道数据
+    await Promise.all(selectedGunNumbers.value.map(async channel => {
       const channelData = channelDataCache[channel];
       if (channelData && queryPattern.length > 0) {
-        const sampledData = sampleData(channelData, sampling.value);
-        
-        // 创建据点数组
-        const dataPoints = sampledData.Y_value.map((y, index) => ({
-          x: sampledData.X_value[index],
-          y: y,
-          origX: sampledData.X_value[index],
-          origY: y
-        }));
-
-        // 对数据进行平滑处理
-        const smoothedPoints = dataSmoother.smoothData(dataPoints, smoothness.value);
-
         try {
-          // 使用平滑后的数据进行模式匹配
-          const matches = patternMatcher.findPatterns(
-            queryPattern,
-            smoothedPoints.map(p => p.y),  // 用平滑后的 Y 值
-            smoothedPoints.map(p => p.x)   // 使用平滑后的 X 值
-          );
+          // 使用 Worker 处理数据
+          const processedData = await chartWorkerManager.processData({
+            X_value: Array.from(channelData.X_value),
+            Y_value: Array.from(channelData.Y_value)
+          }, sampling.value);
 
-          // 使用 selectV2Options 中格式作为键
-          const channelInfo = selectV2Options.value.find(option =>
-            option.children.some(child => child.value === channel)
-          );
+          if (processedData) {
+            // 使用 Worker 进行模式匹配
+            const matches = await chartWorkerManager.findPatterns(
+              queryPattern,
+              Array.from(processedData.processedData.Y_value),
+              Array.from(processedData.processedData.X_value)
+            );
 
-          if (channelInfo) {
-            const child = channelInfo.children.find(child => child.value === channel);
-            if (child) {
-              const shotNumber = channel.split('_').pop();
-              const channelName = child.label.split('_')[0];
-              const key = `${channelName}_${shotNumber}`;
+            // 使用 selectV2Options 中的格式作为键
+            const channelInfo = selectV2Options.value.find(option =>
+              option.children.some(child => child.value === channel)
+            );
 
-              // 存储匹配结果，包含所有必要的指标
-              matchResults[key] = matches.map(match => ({
-                range: match.range,                // X值区间 [startX, endX]
-                distance: match.distance,          // DTW距离
-                confidence: match.confidence,      // 匹配置信度
-                timeSpan: match.range[1] - match.range[0],  // 时间跨度
-                startTime: match.range[0],        // 开始时间
-                endTime: match.range[1],          // 结束时间
-                channelName: channelName,         // 通道名称
-                shotNumber: shotNumber            // 炮号
-              }));
+            if (channelInfo) {
+              const child = channelInfo.children.find(child => child.value === channel);
+              if (child) {
+                const shotNumber = channel.split('_').pop();
+                const channelName = child.label.split('_')[0];
+                const key = `${channelName}_${shotNumber}`;
 
-              // 存储采样后的数据
-              smoothedData[key] = sampledData;
+                // 存储匹配结果
+                matchResults[key] = matches.map(match => ({
+                  range: match.range,
+                  distance: match.distance,
+                  confidence: match.confidence,
+                  timeSpan: match.range[1] - match.range[0],
+                  startTime: match.range[0],
+                  endTime: match.range[1],
+                  channelName: channelName,
+                  shotNumber: shotNumber
+                }));
+
+                // 存储采样后的数据
+                smoothedData[key] = processedData;
+              }
             }
           }
         } catch (error) {
           console.error(`处理通道 ${channel} 时出错:`, error);
+          ElMessage.error(`处理通道 ${channel} 失败: ${error.message}`);
         }
       }
-    });
-
-    // 输出结果
-    console.log('平滑后的数据:', smoothedData);
-    console.log('匹配结果:', matchResults);
-    console.log('查询模式:', queryPattern);
+    }));
 
     // 当获取到匹配结果后
     if (Object.keys(matchResults).length > 0) {
       // 将匹配结果存入 store
       store.dispatch('updateMatchedResults', Object.values(matchResults));
     }
-
-    console.log(store.state.matchedResults);
   }
 };
 

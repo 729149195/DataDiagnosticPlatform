@@ -23,7 +23,6 @@
 <script setup>
 import { computed, ref, onMounted, watch, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import axios from 'axios';
 import debounce from 'lodash/debounce';
 import * as d3 from 'd3';
 
@@ -60,6 +59,7 @@ const predefineColors = ref([
 ]);
 
 const selectedChannels = computed(() => store.state.selectedChannels);
+const channelDataCache = computed(() => store.state.channelDataCache);
 
 const sanitizeChannelName = (name) => {
     return name.replace(/[^a-zA-Z0-9_]/g, '');
@@ -68,7 +68,7 @@ const sanitizeChannelName = (name) => {
 const setSingleChannelColor = (channel) => {
     if (channel) {
         updateSelectedChannels();
-        fetchChannelData(channel);
+        renderChannelChart(channel);
     } else {
         console.error('Invalid channel:', channel);
     }
@@ -89,8 +89,6 @@ const updateSelectedChannels = () => {
     store.commit('updateSelectedChannels', selected);
 };
 
-const dataCache = {};
-
 const sampleData = (data, numSamples) => {
     const sampledData = [];
     const dataLength = data.length;
@@ -104,33 +102,20 @@ const sampleData = (data, numSamples) => {
     return sampledData;
 };
 
-const fetchChannelData = async (channel) => {
+const renderChannelChart = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const channelType = channel.channel_type;
+        const channelData = channelDataCache.value[channelKey];
 
-        let xValues, yValues;
+        if (channelData) {
+            const numSamples = 100;
+            const sampledXValues = sampleData(channelData.X_value, numSamples);
+            const sampledYValues = sampleData(channelData.Y_value, numSamples);
 
-        if (dataCache[channelKey]) {
-            ({ xValues, yValues } = dataCache[channelKey]);
-        } else {
-            const params = {
-                channel_key: channelKey,
-                channel_type: channelType,
-            };
-            const response = await axios.get(`http://10.1.108.19:5000/api/channel-data/`, { params });
-            xValues = response.data.X_value;
-            yValues = response.data.Y_value;
-            dataCache[channelKey] = { xValues, yValues };
+            renderChart(sampledXValues, sampledYValues, channel);
         }
-
-        const numSamples = 100;
-        const sampledXValues = sampleData(xValues, numSamples);
-        const sampledYValues = sampleData(yValues, numSamples);
-
-        renderChart(sampledXValues, sampledYValues, channel);
     } catch (error) {
-        console.error('Error fetching channel data:', error);
+        console.error('Error rendering channel chart:', error);
     }
 };
 
@@ -180,7 +165,7 @@ const renderChart = (xValues, yValues, channel) => {
 
 const renderCharts = debounce(async () => {
     await Promise.all(
-        selectedChannels.value.map((channel) => fetchChannelData(channel))
+        selectedChannels.value.map((channel) => renderChannelChart(channel))
     );
 }, 150);
 
@@ -191,6 +176,14 @@ watch(
             await nextTick();
             renderCharts();
         }
+    },
+    { deep: true }
+);
+
+watch(
+    channelDataCache,
+    () => {
+        renderCharts();
     },
     { deep: true }
 );

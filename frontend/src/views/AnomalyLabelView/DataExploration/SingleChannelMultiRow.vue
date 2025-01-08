@@ -127,7 +127,7 @@ import {
   ElMessage,
 } from 'element-plus';
 import {useStore} from 'vuex';
-import axios from 'axios';
+import chartWorkerManager from '@/workers/chartWorkerManager';
 
 const currentAnomaly = reactive({});
 const showAnomalyForm = ref(false);
@@ -179,8 +179,6 @@ const channelDataCache = computed(() => store.state.channelDataCache);
 // 在 script setup 部分添加新的应式变量
 const loadingStates = reactive({});  // 用于存储每个通道的加载状态
 const renderingStates = reactive({}); // 用于存储每个通道的渲染状态
-
-const limit = pLimit(50); // 限制最大并发请求数为5
 
 // 添加重试函数
 const retryRequest = async (fn, retries = 3, delay = 1000) => {
@@ -253,11 +251,8 @@ const updateChannelColor = (channel) => {
   renderCharts();
 };
 
-// 初始化Web Worker
-const chartWorker = new Worker(new URL('@/workers/chartWorker.js', import.meta.url), { type: 'module' });
-
 // 添加Worker消息处理
-chartWorker.onmessage = function(e) {
+chartWorkerManager.onmessage = function(e) {
   const { type, data, error } = e.data;
   
   if (error) {
@@ -349,9 +344,9 @@ chartWorker.onmessage = function(e) {
   }
 };
 
-// 在组件卸载时终止Worker
+// 在组件卸载时终止 Worker
 onUnmounted(() => {
-  chartWorker.terminate();
+  chartWorkerManager.terminate();
 });
 
 // 修改processChannelData函数
@@ -360,7 +355,7 @@ const processChannelData = async (data, channel) => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     renderingStates[channelKey] = 25; // 开始处理数据
     
-    // 发送数据到Worker进行处理
+    // 准备数据
     const channelData = {
       X_value: [...data.X_value],
       Y_value: [...data.Y_value],
@@ -370,38 +365,98 @@ const processChannelData = async (data, channel) => {
 
     renderingStates[channelKey] = 50; // 数据准备完成
 
-    chartWorker.postMessage({
-      type: 'processData',
-      data: {
-        channelData,
-        sampleRate: sampleRate.value,
-        smoothnessValue: smoothnessValue.value,
-        channelKey,
-        color: channel.color,
-        xUnit: data.X_unit,
-        yUnit: data.Y_unit,
-        channelType: data.channel_type,
-        channelNumber: data.channel_number,
-        shotNumber: channel.shot_number
-      }
-    });
+    // 使用 chartWorkerManager 处理数据
+    const processedData = await chartWorkerManager.processData(
+      channelData,
+      sampleRate.value,
+      smoothnessValue.value,
+      channelKey,
+      channel.color,
+      data.X_unit,
+      data.Y_unit,
+      data.channel_type,
+      data.channel_number,
+      channel.shot_number
+    );
 
-    // 处理错误数据
-    if (channel.errors && channel.errors.length > 0) {
-      const errorData = channel.errors.map(error => ({
-        color: error.color,
-        person: error.person,
-        X_error: error.X_error ? [...error.X_error] : []
-      }));
-
-      chartWorker.postMessage({
-        type: 'processErrorData',
-        data: {
-          errorData,
-          sampledData: channelData,
-          channelKey
+    if (processedData) {
+      // 更新处理后的数据到 overviewData
+      if (processedData.processedData.X_value.length > 0 && processedData.processedData.Y_value.length > 0) {
+        const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
+        if (existingIndex !== -1) {
+          overviewData.value[existingIndex] = {
+            channelName: channelKey,
+            X_value: processedData.processedData.X_value,
+            Y_value: processedData.processedData.Y_value,
+            color: processedData.color,
+          };
+        } else {
+          overviewData.value.push({
+            channelName: channelKey,
+            X_value: processedData.processedData.X_value,
+            Y_value: processedData.processedData.Y_value,
+            color: processedData.color,
+          });
         }
+      }
+
+      renderingStates[channelKey] = 75; // 更新渲染状态
+      nextTick(() => {
+        drawChart(processedData.processedData, [], channelKey, processedData.color, 
+          processedData.xUnit, processedData.yUnit, processedData.channelType, 
+          processedData.channelNumber, processedData.shotNumber)
+          .then(() => {
+            renderingStates[channelKey] = 100;
+          })
+          .catch(error => {
+            console.error(`Error drawing chart for ${channelKey}:`, error);
+            renderingStates[channelKey] = 100;
+          });
       });
+
+      // 处理错误数据
+      if (channel.errors && channel.errors.length > 0) {
+        const errorData = channel.errors.map(error => ({
+          color: error.color,
+          person: error.person,
+          X_error: error.X_error ? [...error.X_error] : []
+        }));
+
+        const errorResult = await chartWorkerManager.processErrorData(
+          errorData,
+          channelData,
+          channelKey
+        );
+
+        if (errorResult && errorResult.processedErrors) {
+          // 获取当前图表的实例
+          const svg = d3.select(`#chart-${channelKey}`);
+          if (!svg.node()) return;
+
+          // 更新错误数据显示
+          errorResult.processedErrors.forEach(error => {
+            error.segments.forEach(segment => {
+              // 绘制错误数据
+              const errorLine = d3.line()
+                .x(d => x(d))
+                .y((d, i) => y(segment.Y[i]))
+                .curve(d3.curveMonotoneX);
+
+              svg.select('g')
+                .append('path')
+                .datum(segment.X)
+                .attr('class', 'error-line')
+                .attr('fill', 'none')
+                .attr('stroke', error.color)
+                .attr('stroke-width', 2)
+                .attr('opacity', 0.8)
+                .attr('transform', `translate(0,${error.person === 'machine' ? 6 : -6})`)
+                .attr('d', errorLine)
+                .attr('stroke-dasharray', error.person === 'machine' ? '5, 5' : null);
+            });
+          });
+        }
+      }
     }
 
   } catch (error) {
@@ -765,38 +820,6 @@ const drawHighlightRects = (channelName, results) => {
           });
     }
   });
-};
-
-const findStartIndex = (array, startX) => {
-  let low = 0;
-  let high = array.length - 1;
-  let result = -1;
-  while (low <= high) {
-    let mid = Math.floor((low + high) / 2);
-    if (array[mid] >= startX) {
-      result = mid;
-      high = mid - 1;
-    } else {
-      low = mid + 1;
-    }
-  }
-  return result;
-};
-
-const findEndIndex = (array, endX) => {
-  let low = 0;
-  let high = array.length - 1;
-  let result = -1;
-  while (low <= high) {
-    let mid = Math.floor((low + high) / 2);
-    if (array[mid] <= endX) {
-      result = mid;
-      low = mid + 1;
-    } else {
-      high = mid - 1;
-    }
-  }
-  return result;
 };
 
 // 绘制概览图表
