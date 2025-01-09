@@ -758,6 +758,7 @@ const drawCombinedChart = () => {
         // 解构人工标注和机器识别的错误数据
         const [manualErrors, machineErrors] = errorData;
 
+
         // 辅助函数：根据时间范围获取对应的数据点
         const getDataPointsInRange = (xRange) => {
           const startTime = xRange[0];

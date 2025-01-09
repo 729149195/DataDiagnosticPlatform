@@ -349,7 +349,7 @@ onUnmounted(() => {
   chartWorkerManager.terminate();
 });
 
-// 修改processChannelData函数
+// 修改 processChannelData 函数
 const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -362,6 +362,17 @@ const processChannelData = async (data, channel) => {
       originalFrequency: data.originalFrequency,
       originalDataPoints: data.X_value.length
     };
+
+    // 获取错误数据
+    let errorDataResults = [];
+    if (channel.errors && channel.errors.length > 0) {
+      try {
+        // 使用store中的方法获取异常数据
+        errorDataResults = await store.dispatch('fetchAllErrorData', channel);
+      } catch (err) {
+        console.warn('Failed to fetch error data:', err);
+      }
+    }
 
     renderingStates[channelKey] = 50; // 数据准备完成
 
@@ -400,9 +411,18 @@ const processChannelData = async (data, channel) => {
         }
       }
 
+      // 更新 channelDataCache
+      store.commit('updateChannelDataCache', {
+        key: channelKey,
+        data: {
+          ...processedData.processedData,
+          errorsData: errorDataResults  // 添加错误数据到缓存
+        }
+      });
+
       renderingStates[channelKey] = 75; // 更新渲染状态
       nextTick(() => {
-        drawChart(processedData.processedData, [], channelKey, processedData.color, 
+        drawChart(processedData.processedData, errorDataResults, channelKey, processedData.color, 
           processedData.xUnit, processedData.yUnit, processedData.channelType, 
           processedData.channelNumber, processedData.shotNumber)
           .then(() => {
@@ -413,50 +433,6 @@ const processChannelData = async (data, channel) => {
             renderingStates[channelKey] = 100;
           });
       });
-
-      // 处理错误数据
-      if (channel.errors && channel.errors.length > 0) {
-        const errorData = channel.errors.map(error => ({
-          color: error.color,
-          person: error.person,
-          X_error: error.X_error ? [...error.X_error] : []
-        }));
-
-        const errorResult = await chartWorkerManager.processErrorData(
-          errorData,
-          channelData,
-          channelKey
-        );
-
-        if (errorResult && errorResult.processedErrors) {
-          // 获取当前图表的实例
-          const svg = d3.select(`#chart-${channelKey}`);
-          if (!svg.node()) return;
-
-          // 更新错误数据显示
-          errorResult.processedErrors.forEach(error => {
-            error.segments.forEach(segment => {
-              // 绘制错误数据
-              const errorLine = d3.line()
-                .x(d => x(d))
-                .y((d, i) => y(segment.Y[i]))
-                .curve(d3.curveMonotoneX);
-
-              svg.select('g')
-                .append('path')
-                .datum(segment.X)
-                .attr('class', 'error-line')
-                .attr('fill', 'none')
-                .attr('stroke', error.color)
-                .attr('stroke-width', 2)
-                .attr('opacity', 0.8)
-                .attr('transform', `translate(0,${error.person === 'machine' ? 6 : -6})`)
-                .attr('d', errorLine)
-                .attr('stroke-dasharray', error.person === 'machine' ? '5, 5' : null);
-            });
-          });
-        }
-      }
     }
 
   } catch (error) {
@@ -1233,6 +1209,7 @@ const drawChart = async (
           .attr('fill', '#000')
           .text(yUnit);
 
+      // 绘制每个通道的主线
       clipGroup
           .append('path')
           .datum(data.Y_value)
@@ -1243,35 +1220,129 @@ const drawChart = async (
           .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
           .attr('d', line);
 
-      errorsData.forEach((errorData, errorIndex) => {
-        errorData.X_value_error.forEach((X_value_error, index) => {
-          const Y_value_error = errorData.Y_value_error[index];
+      // 处理错误数据
+      if (errorsData) {
+        // 遍历所有错误数据组
+        errorsData.forEach(errorGroup => {
+          // 解构每组中的人工标注和机器识别的错误数据
+          const [manualErrors, machineErrors] = [errorGroup[0], errorGroup[1]];
 
-          const errorLine = d3
-              .line()
-              .x((d, i) => x(X_value_error[i]))
-              .y((d, i) => y(d))
-              .curve(d3.curveMonotoneX);
+          // 辅助函数：根据时间范围获取对应的数据点
+          const getDataPointsInRange = (xRange) => {
+            const startTime = xRange[0];
+            const endTime = xRange[1];
+            const points = [];
+            
+            // 找到对应时间范围内的数据点
+            data.X_value.forEach((x, i) => {
+              if (x >= startTime && x <= endTime) {
+                points.push({
+                  x: x,
+                  y: data.Y_value[i]
+                });
+              }
+            });
+            
+            return points;
+          };
 
-          const yOffset = errorData.person === 'machine' ? 6 : -6;
-          const isMachine = errorData.person === 'machine';
+          // 处理人工标注的错误
+          if (manualErrors && manualErrors.length > 0) {
+            manualErrors.forEach(error => {
+              if (error.X_error && error.X_error.length > 0) {
+                error.X_error.forEach(xRange => {
+                  const errorPoints = getDataPointsInRange(xRange);
+                  if (errorPoints.length > 0) {
+                    // 创建错误标记
+                    clipGroup
+                      .append('path')
+                      .datum(errorPoints)
+                      .attr('class', 'error-line')
+                      .attr('fill', 'none')
+                      .attr('stroke', error.color || 'rgba(220, 20, 60, 0.3)')
+                      .attr('stroke-width', 10)
+                      .attr('stroke-linecap', 'round')
+                      .attr('stroke-linejoin', 'round')
+                      .attr('opacity', 0.8)
+                      .attr('d', d3.line()
+                        .x(d => x(d.x))
+                        .y(d => y(d.y))
+                        .curve(d3.curveMonotoneX)
+                      )
+                      .style('vector-effect', 'non-scaling-stroke');
+                  }
+                });
+              }
+            });
+          }
 
-          // 先移除旧的错误线
-          clipGroup.selectAll(`.error-line-${index}-${channelName}`).remove();
-
-          clipGroup
-              .append('path')
-              .datum(Y_value_error)
-              .attr('class', `error-line-${index}-${channelName}`)
-              .attr('fill', 'none')
-              .attr('stroke', errorData.color || 'rgba(0,0,0,0)')
-              .attr('stroke-width', 2)
-              .attr('opacity', 0.8)
-              .attr('transform', `translate(0,${yOffset})`)
-              .attr('d', errorLine)
-              .attr('stroke-dasharray', isMachine ? '5, 5' : null);
+          // 处理机器识别的错误
+          if (machineErrors && machineErrors.length > 0) {
+            machineErrors.forEach(error => {
+              if (error.X_error && error.X_error.length > 0) {
+                error.X_error.forEach(xRange => {
+                  const errorPoints = getDataPointsInRange(xRange);
+                  if (errorPoints.length > 0) {
+                    // 创建错误标记
+                    clipGroup
+                      .append('path')
+                      .datum(errorPoints)
+                      .attr('class', 'error-line')
+                      .attr('fill', 'none')
+                      .attr('stroke', error.color || 'rgba(220, 20, 60, 0.3)')
+                      .attr('stroke-width', 10)
+                      .attr('stroke-linecap', 'round')
+                      .attr('stroke-linejoin', 'round')
+                      .attr('opacity', 0.8)
+                      .attr('stroke-dasharray', '5, 5')
+                      .attr('d', d3.line()
+                        .x(d => x(d.x))
+                        .y(d => y(d.y))
+                        .curve(d3.curveMonotoneX)
+                      )
+                      .style('vector-effect', 'non-scaling-stroke');
+                  }
+                });
+              }
+            });
+          }
         });
-      });
+      }
+
+      // 移除旧的错误数据处理代码，因为已经在上面处理过了
+      if (errorsData && Array.isArray(errorsData)) {
+        errorsData.forEach((errorData) => {
+          if (errorData && errorData.X_value_error && Array.isArray(errorData.X_value_error)) {
+            errorData.X_value_error.forEach((X_value_error, index) => {
+              if (errorData.Y_value_error && Array.isArray(errorData.Y_value_error)) {
+                const Y_value_error = errorData.Y_value_error[index];
+                if (Y_value_error && Array.isArray(Y_value_error)) {
+                  const errorLine = d3
+                    .line()
+                    .x((d, i) => x(X_value_error[i]))
+                    .y((d, i) => y(d))
+                    .curve(d3.curveMonotoneX);
+
+                  const yOffset = errorData.person === 'machine' ? 6 : -6;
+                  const isMachine = errorData.person === 'machine';
+
+                  clipGroup
+                    .append('path')
+                    .datum(Y_value_error)
+                    .attr('class', `error-line-${index}-${channelName}`)
+                    .attr('fill', 'none')
+                    .attr('stroke', errorData.color || 'rgba(0,0,0,0)')
+                    .attr('stroke-width', 2)
+                    .attr('opacity', 0.8)
+                    .attr('transform', `translate(0,${yOffset})`)
+                    .attr('d', errorLine)
+                    .attr('stroke-dasharray', isMachine ? '5, 5' : null);
+                }
+              }
+            });
+          }
+        });
+      }
 
       if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
         clipGroup
