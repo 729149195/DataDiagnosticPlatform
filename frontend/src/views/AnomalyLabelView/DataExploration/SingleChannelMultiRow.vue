@@ -1222,6 +1222,7 @@ const drawChart = async (
 
       // 处理错误数据
       if (errorsData) {
+
         // 遍历所有错误数据组
         errorsData.forEach(errorGroup => {
           // 解构每组中的人工标注和机器识别的错误数据
