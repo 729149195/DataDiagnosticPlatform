@@ -219,6 +219,7 @@
       #1a73e8 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: -0.5px;
   user-select: none;
