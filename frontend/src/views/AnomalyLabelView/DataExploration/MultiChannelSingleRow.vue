@@ -78,7 +78,7 @@ defineExpose({
 const mainChartDimensions = ref({
   margin: {top: 110, right: 20, bottom: 150, left: 80},
   width: 0,
-  height: 500 - 80 - 80, // main chart height
+  height: 500 - 110 - 100, // main chart height
 });
 
 const overviewChartDimensions = ref({
@@ -752,6 +752,94 @@ const drawCombinedChart = () => {
         .y((v, i) => y(v))
         .curve(d3.curveMonotoneX);
 
+    // 绘制错误数据
+    if (data.errorsData && data.errorsData.length > 0) {
+      data.errorsData.forEach(errorData => {
+        // 解构人工标注和机器识别的错误数据
+        const [manualErrors, machineErrors] = errorData;
+
+        // 辅助函数：根据时间范围获取对应的数据点
+        const getDataPointsInRange = (xRange) => {
+          const startTime = xRange[0];
+          const endTime = xRange[1];
+          const points = [];
+          
+          // 找到对应时间范围内的数据点
+          data.X_value.forEach((x, i) => {
+            if (x >= startTime && x <= endTime) {
+              points.push({
+                x: x,
+                y: data.Y_value[i]
+              });
+            }
+          });
+          
+          return points;
+        };
+
+        // 处理人工标注的错误
+        if (manualErrors && manualErrors.length > 0) {
+          manualErrors.forEach(error => {
+            if (error.X_error && error.X_error.length > 0) {
+              error.X_error.forEach(xRange => {
+                const errorPoints = getDataPointsInRange(xRange);
+                if (errorPoints.length > 0) {
+                  // 创建错误标记
+                  dataGroup
+                    .append('path')
+                    .datum(errorPoints)
+                    .attr('class', 'error-line')
+                    .attr('fill', 'none')
+                    .attr('stroke', error.color || 'rgba(220, 20, 60, 0.3)')  // 使用错误定义的颜色
+                    .attr('stroke-width', 10)  // 使用较粗的线条
+                    .attr('stroke-linecap', 'round')  // 使线条端点圆滑
+                    .attr('stroke-linejoin', 'round')  // 使线条连接处圆滑
+                    .attr('opacity', 0.8)
+                    .attr('d', d3.line()
+                      .x(d => x(d.x))
+                      .y(d => y(d.y))
+                      .curve(d3.curveMonotoneX)
+                    )
+                    .style('vector-effect', 'non-scaling-stroke');  // 保持描边宽度不随缩放变化
+                }
+              });
+            }
+          });
+        }
+
+        // 处理机器识别的错误
+        if (machineErrors && machineErrors.length > 0) {
+          machineErrors.forEach(error => {
+            if (error.X_error && error.X_error.length > 0) {
+              error.X_error.forEach(xRange => {
+                const errorPoints = getDataPointsInRange(xRange);
+                if (errorPoints.length > 0) {
+                  // 创建错误标记
+                  dataGroup
+                    .append('path')
+                    .datum(errorPoints)
+                    .attr('class', 'error-line')
+                    .attr('fill', 'none')
+                    .attr('stroke', error.color || 'rgba(220, 20, 60, 0.3)')  // 使用错误定义的颜色
+                    .attr('stroke-width', 10)  // 使用较粗的线条
+                    .attr('stroke-linecap', 'round')  // 使线条端点圆滑
+                    .attr('stroke-linejoin', 'round')  // 使线条连接处圆滑
+                    .attr('opacity', 0.8)
+                    .attr('stroke-dasharray', '5, 5')  // 机器识别使用虚线
+                    .attr('d', d3.line()
+                      .x(d => x(d.x))
+                      .y(d => y(d.y))
+                      .curve(d3.curveMonotoneX)
+                    )
+                    .style('vector-effect', 'non-scaling-stroke');  // 保持描边宽度不随缩放变化
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+
     // 绘制初始曲线
     dataGroup.append('path')
         .datum(data.Y_value)
@@ -761,34 +849,6 @@ const drawCombinedChart = () => {
         .attr('stroke-width', 1.5)
         .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
         .attr('d', lineGenerator);
-
-
-    // 绘制错误数据
-    data.errorsData.forEach((errorData, errorIndex) => {
-      errorData.X_value_error.forEach((X_value_error, idx) => {
-        const Y_value_error = errorData.Y_value_error[idx];
-
-        const errorLine = d3.line()
-            .x((v, i) => x(X_value_error[i]))
-            .y((v, i) => y(v))
-            .curve(d3.curveMonotoneX);
-
-        const yOffset = errorData.person === 'machine' ? 6 : -6;
-        const isMachine = errorData.person === 'machine';
-
-        dataGroup.append('path')
-            .datum(Y_value_error)
-            .attr('class', `error-line-${errorIndex}-${data.channelName}`)
-            .attr('fill', 'none')
-            .attr('stroke', errorData.color) // 使用最新的异常颜色
-            .attr('stroke-width', 2)
-            .attr('opacity', 0.8)
-            .attr('transform', `translate(0,${yOffset})`)
-            .attr('d', errorLine)
-            .attr('stroke-dasharray', isMachine ? '5,5' : null); // Dashed or solid
-      });
-    });
-
 
     // 绘制平滑后的线
     if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
@@ -962,7 +1022,8 @@ const drawCombinedChart = () => {
 const processChannelData = async (data, channel) => {
   try {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-
+    renderingStates[channelKey] = 25; // 开始处理数据
+    
     // 准备数据
     const channelData = {
       X_value: [...data.X_value],
@@ -970,6 +1031,19 @@ const processChannelData = async (data, channel) => {
       originalFrequency: data.originalFrequency,
       originalDataPoints: data.X_value.length
     };
+
+    // 获取错误数据
+    let errorDataResults = [];
+    if (channel.errors && channel.errors.length > 0) {
+      try {
+        // 使用store中的方法获取异常数据
+        errorDataResults = await store.dispatch('fetchAllErrorData', channel);
+      } catch (err) {
+        console.warn('Failed to fetch error data:', err);
+      }
+    }
+
+    renderingStates[channelKey] = 50; // 数据准备完成
 
     // 使用 chartWorkerManager 处理数据
     const processedData = await chartWorkerManager.processData(
@@ -1000,7 +1074,7 @@ const processChannelData = async (data, channel) => {
         Y_value: normalizedY,
         Y_original: processedData.processedData.Y_value,
         color: channel.color,
-        errorsData: [],
+        errorsData: errorDataResults,  // 添加错误数据
         xUnit: data.X_unit,
         yUnit: data.Y_unit,
         channelType: data.channel_type,
@@ -1016,55 +1090,34 @@ const processChannelData = async (data, channel) => {
         X_unit: data.X_unit,
         Y_value: processedData.processedData.Y_value,
         Y_unit: data.Y_unit,
-        errorsData: [],
+        errorsData: errorDataResults,  // 添加错误数据
         shot_number: channel.shot_number
       });
 
       // 更新总览数据
       overviewData.value.push({
-        channelName: channel.channel_name,
+        channelName: channelKey,
         X_value: processedData.processedData.X_value,
         Y_value: normalizedY,
-        color: channel.color,
+        color: processedData.color,
       });
 
-      // 处理错误数据
-      if (channel.errors && channel.errors.length > 0) {
-        const errorData = channel.errors.map(error => ({
-          color: error.color,
-          person: error.person,
-          X_error: error.X_error ? [...error.X_error] : []
-        }));
-
-        const errorResult = await chartWorkerManager.processErrorData(
-          errorData,
-          channelData,
-          channelKey
-        );
-
-        if (errorResult && errorResult.processedErrors) {
-          const currentChannelData = channelsData.value.find(
-            cd => cd.channelName === channel.channel_name && 
-                 cd.channelshotnumber === channel.shot_number
-          );
-          if (currentChannelData) {
-            currentChannelData.errorsData = errorResult.processedErrors;
-          }
-
-          const currentExportData = exposeData.value.find(
-            ed => ed.channel_name === channel.channel_name && 
-                 ed.shot_number === channel.shot_number
-          );
-          if (currentExportData) {
-            currentExportData.errorsData = errorResult.processedErrors;
-          }
+      renderingStates[channelKey] = 75; // 更新渲染状态
+      nextTick(() => {
+        try {
+          drawCombinedChart();
+          renderingStates[channelKey] = 100;
+        } catch (error) {
+          console.error(`Error drawing chart for ${channelKey}:`, error);
+          renderingStates[channelKey] = 100;
         }
-      }
+      });
     }
 
   } catch (error) {
     console.error(`Error processing channel data for ${channel.channel_name}:`, error);
     ElMessage.error(`处理通道数据错误: ${error.message}`);
+    renderingStates[channelKey] = 100; // 确保错误时也更新状态
   }
 };
 
