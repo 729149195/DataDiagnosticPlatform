@@ -154,8 +154,6 @@ import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import paper from 'paper';
-import { DataSmoother } from './data-smoother';
-import { PatternMatcher } from './pattern-matcher';
 import curveTemplates from '@/assets/templates/curveTemplates.json'
 import chartWorkerManager from '@/workers/chartWorkerManager';
 
