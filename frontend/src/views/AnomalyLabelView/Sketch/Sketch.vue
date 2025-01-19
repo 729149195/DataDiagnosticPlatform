@@ -207,27 +207,45 @@ const brush_begin = computed(() => store.state.brush_begin);
 const brush_end = computed(() => store.state.brush_end);
 const time_begin = computed({
   get: () => store.state.time_begin,
-  set: (value) => store.dispatch('updateTimeBegin', value)
+  set: (value) => {
+    store.dispatch('updateTimeBegin', value);
+    // 移除不必要的重新渲染
+  }
 });
 const time_during = computed({
   get: () => store.state.time_during,
-  set: (value) => store.dispatch('updateTimeDuring', value)
+  set: (value) => {
+    store.dispatch('updateTimeDuring', value);
+    // 移除不必要的重新渲染
+  }
 });
 const time_end = computed({
   get: () => store.state.time_end,
-  set: (value) => store.dispatch('updateTimeEnd', value)
+  set: (value) => {
+    store.dispatch('updateTimeEnd', value);
+    // 移除不必要的重新渲染
+  }
 });
 const upper_bound = computed({
   get: () => store.state.upper_bound,
-  set: (value) => store.dispatch('updateUpperBound', value)
+  set: (value) => {
+    store.dispatch('updateUpperBound', value);
+    // 移除不必要的重新渲染
+  }
 });
 const scope_bound = computed({
   get: () => store.state.scope_bound,
-  set: (value) => store.dispatch('updateScopeBound', value)
+  set: (value) => {
+    store.dispatch('updateScopeBound', value);
+    // 移除不必要的重新渲染
+  }
 });
 const lower_bound = computed({
   get: () => store.state.lower_bound,
-  set: (value) => store.dispatch('updateLowerBound', value)
+  set: (value) => {
+    store.dispatch('updateLowerBound', value);
+    // 移除不必要的重新渲染
+  }
 });
 
 // ----------- 画绘图逻辑开始 -----------
@@ -284,6 +302,9 @@ class DrawingApp {
     this.drawGrid();
 
     window.addEventListener('resize', this.resizeCanvas.bind(this));
+
+    // 添加一个标志来追踪是否已经初始化
+    this.isInitialized = false;
   }
 
   setupTool() {
@@ -465,18 +486,20 @@ class DrawingApp {
       this.path.remove();
       this.path = null;
     }
-    if (this.tool) {
-      this.tool.remove();
-    }
-    if (paper.project) {
-      paper.project.clear();
-      // 新初始化网格
-      this.gridGroup = new paper.Group();
-      this.drawGrid();
-      // 重新设置工具
-      this.setupTool();
-      // 确保视图更新
-      paper.view.update();
+    
+    // 只有在未初始化时才重新设置工具和网格
+    if (!this.isInitialized) {
+      if (this.tool) {
+        this.tool.remove();
+      }
+      if (paper.project) {
+        paper.project.clear();
+        this.gridGroup = new paper.Group();
+        this.drawGrid();
+        this.setupTool();
+        paper.view.update();
+      }
+      this.isInitialized = true;
     }
   }
 
