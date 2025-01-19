@@ -12,24 +12,6 @@
             @clear="handleGunNumberClear"
             clearable
         ></el-autocomplete>
-        <span>通道类别：</span>
-        <el-select
-            v-model="selectedChannelTypes"
-            filterable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="请输入通道类别"
-            @clear="handleChannelTypeClear"
-            clearable
-        >
-          <el-option
-              v-for="item in channelTypeOptions"
-              :key="item.value"
-              :label="item.value"
-              :value="item.value"
-          />
-        </el-select>
       </div>
       <div>
         <span>通道名：</span>
@@ -44,7 +26,7 @@
             clearable
         >
           <el-option
-              v-for="item in filteredChannelNameOptions"
+              v-for="item in channelNameOptions"
               :key="item.value"
               :label="item.value"
               :value="item.value"
@@ -62,7 +44,7 @@
             clearable
         >
           <el-option
-              v-for="item in filteredErrorsNameOptions"
+              v-for="item in errorsNameOptions"
               :key="item.value"
               :label="item.value"
               :value="item.value"
@@ -144,7 +126,6 @@ const fetData = async () => {
       axios.get('https://10.1.108.19:5000/api/get-channel-type-index'),
       axios.get('https://10.1.108.19:5000/api/get-channel-name-index'),
       axios.get('https://10.1.108.19:5000/api/get-errors-name-index'),
-      // axios.get('https://10.1.108.19:5000/api/get-error-origin-index'),
     ]);
 
     // 设置炮号选项和保存原始数据
@@ -158,9 +139,6 @@ const fetData = async () => {
 
     // 设置异常名选项和保存原始数据
     setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorsNameResponse.data);
-
-    // 设置异常来源选项和保存原始数据
-    // setOptionsAndSelectAll(errorsOriginOptions, selectederrorsOrigin, errorsOriginData, errorsOriginResponse.data);
   } catch (error) {
     console.error('Failed to fetch data:', error);
     ElMessage.error('数据获取失败，请稍后再试。');
@@ -351,31 +329,38 @@ const filterGunNumbers = () => {
   parseGunNumberInput();
 
   // 检查是否有任何选中的数据
-  if (!hasSelectedData.value) {
-    ElMessage.warning('没有选中的数据。');
+  if (!selectedGunNumbers.value.length && !selectedChannelNames.value.length && !selectederrorsNames.value.length) {
+    ElMessage.warning('请至少输入一个搜索条件。');
     return;
   }
 
   const filterData = {
     gunNumbers: selectedGunNumbersWithValues.value,
-    channelTypes: selectedChannelTypesWithValues.value,
     channelNames: selectedChannelNamesWithValues.value,
     errorsNames: selectederrorsNamesWithValues.value,
   };
 
-  // 收集所有选中选项的 values 数组
+  // 收集所有有选中值的选项的 values 数组
   let selectedValuesArrays = [];
 
-  ['gunNumbers', 'channelTypes', 'channelNames', 'errorsNames'].forEach(key => {
-    let values = [];
-    filterData[key].forEach(item => {
-      values = values.concat(item.values);
-    });
-    selectedValuesArrays.push(values);
+  Object.entries(filterData).forEach(([key, value]) => {
+    if (value.length > 0) {  // 只处理有选中值的选项
+      let values = [];
+      value.forEach(item => {
+        values = values.concat(item.values);
+      });
+      selectedValuesArrays.push(values);
+    }
   });
 
-  // 计算所有选项的交集
-  let intersectionArray = selectedValuesArrays[0] || [];
+  // 如果没有任何选中的值，返回空结果
+  if (selectedValuesArrays.length === 0) {
+    ElMessage.warning('请至少选择一个过滤条件。');
+    return;
+  }
+
+  // 计算所有选中选项的交集
+  let intersectionArray = selectedValuesArrays[0];
 
   for (let i = 1; i < selectedValuesArrays.length; i++) {
     intersectionArray = _.intersection(intersectionArray, selectedValuesArrays[i]);
@@ -385,7 +370,7 @@ const filterGunNumbers = () => {
   const finalResult = intersectionArray;
 
   if (!finalResult || finalResult.length === 0) {
-    ElMessage.warning('过滤结果为空。');
+    ElMessage.warning('没有找到符合条件的结果。');
     return;
   }
 
@@ -638,7 +623,6 @@ watch(errorNameInput, (newVal) => {
 onMounted(async () => {
   await fetData();
   // 初始化时所有选择都为空
-  selectedChannelTypes.value = [];
   selectedChannelNames.value = [];
   selectederrorsNames.value = [];
   store.dispatch('fetchStructTree');
