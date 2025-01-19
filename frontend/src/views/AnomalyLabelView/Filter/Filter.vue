@@ -140,11 +140,11 @@ const fetData = async () => {
       errorsNameResponse,
       // errorsOriginResponse
     ] = await Promise.all([
-      axios.get('http://10.1.108.19:5000/api/get-shot-number-index'),
-      axios.get('http://10.1.108.19:5000/api/get-channel-type-index'),
-      axios.get('http://10.1.108.19:5000/api/get-channel-name-index'),
-      axios.get('http://10.1.108.19:5000/api/get-errors-name-index'),
-      // axios.get('http://10.1.108.19:5000/api/get-error-origin-index'),
+      axios.get('https://10.1.108.19:5000/api/get-shot-number-index'),
+      axios.get('https://10.1.108.19:5000/api/get-channel-type-index'),
+      axios.get('https://10.1.108.19:5000/api/get-channel-name-index'),
+      axios.get('https://10.1.108.19:5000/api/get-errors-name-index'),
+      // axios.get('https://10.1.108.19:5000/api/get-error-origin-index'),
     ]);
 
     // 设置炮号选项和保存原始数据

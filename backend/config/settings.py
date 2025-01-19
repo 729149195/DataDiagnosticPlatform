@@ -12,8 +12,29 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 
 from pathlib import Path
 
+import os
+
+# 强制 HTTPS
+SECURE_SSL_REDIRECT = True  # 所有 HTTP 重定向到 HTTPS
+SECURE_HSTS_SECONDS = 3600  # 启用 HSTS
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_BROWSER_XSS_FILTER = True  # 防御 XSS 攻击
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
+# 仅允许安全 Cookie
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 本地开发配置 HTTPS 证书路径
+DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.19+3.pem')  # 证书路径
+DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.19+3-key.pem')  # 私钥路径
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
@@ -37,7 +58,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'channels',
-    'corsheaders'
+    'corsheaders',
+    'django_extensions'
 ]
 
 ASGI_APPLICATION = 'config.asgi.application'
@@ -70,9 +92,30 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8080',
     'http://localhost:5173',
     'http://192.168.21.179:5173',
+    'https://10.1.108.19:5173',
     'http://10.1.108.19:5173'
 ]
-# CORS_ALLOWED_ORIGINS = True
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 ROOT_URLCONF = 'config.urls'
 

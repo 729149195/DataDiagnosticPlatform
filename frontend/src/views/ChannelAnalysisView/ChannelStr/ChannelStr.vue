@@ -125,7 +125,7 @@ const restoreCursorPosition = (element, cursorPosition) => {
 const sendClickedChannelNames = async () => {
     try {
         console.log(selectedChannels)
-        const response = await axios.post('http://10.1.108.19:5000/api/operator-strs/', {
+        const response = await axios.post('https://10.1.108.19:5000/api/operator-strs/', {
             clickedChannelNames: formulasarea.value,
             anomaly_func_str: formulasarea.value,
             channel_mess: selectedChannels.value[0], // 目前只做一个通道的情况

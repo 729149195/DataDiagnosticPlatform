@@ -383,7 +383,7 @@ const syncUpload = async () => {
     const reorganizedData = Object.values(groupedByChannel);
 
     // 发送到后端
-    const response = await fetch('http://10.1.108.19:5000/api/sync-error-data/', {
+    const response = await fetch('https://10.1.108.19:5000/api/sync-error-data/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -747,92 +747,48 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
         visData[channelKey] = Array(rectNum).fill().map(() => []);
       }
 
-      // 对于每个错误
-      for (const [errorIndex, error] of channel.errors.entries()) {
-        // 添加判断，如果是 NO ERROR 则跳过
-        if (error.error_name === 'NO ERROR') {
-          // 更新进度
-          completedRequests.value++;
-          loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
-          continue;
-        }
-
-        const errorIdxCurrent = errorIdxCounter++;
-        errorColors[errorIdxCurrent] = error.color;
-        const errorName = error.error_name;
-
-        // 构建缓存键
-        const errorCacheKey = `${channelKey}-error-${errorName}-${errorIndex}-heatmap`;
-
-        // 检查缓存中是否已有数据
-        if (dataCache.value.has(errorCacheKey)) {
-          const errorData = dataCache.value.get(errorCacheKey);
-          errorDataMap.set(errorIdxCurrent, {
-            channelKey,
-            errorIdx: errorIdxCurrent,
-            errorData: errorData,
-            isAnomaly: false
-          });
-          
-          // 处理缓存数据
-          processErrorData(errorData, channelKey, errorIdxCurrent, visData, rectNum, Domain, step);
-          
-          // 更新进度
-          completedRequests.value++;
-          loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
-          continue;
-        }
-
-        // 构建请求参数
-        const params = {
-          channel_key: channelKey,
-          channel_type: channelType,
-          error_name: errorName,
-          error_index: errorIndex,
-        };
-
-        const errorPromise = limit(() => retryRequest(async () => {
-          try {
-            const response = await fetch(
-              `http://10.1.108.19:5000/api/error-data/?${new URLSearchParams(params).toString()}`
-            );
-            if (!response.ok) {
-              throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            const errorData = await response.json();
-            
-            // 将数据存入缓存
-            dataCache.value.set(errorCacheKey, errorData);
-            
-            // 存储错误数据
-            errorDataMap.set(errorIdxCurrent, {
-              channelKey,
-              errorIdx: errorIdxCurrent,
-              errorData: errorData,
-              isAnomaly: false
-            });
-
+      // 获取错误数据
+      try {
+        // 使用 store 中的方法获取错误数据
+        const errorDataResults = await store.dispatch('fetchAllErrorData', channel);
+        
+        // 处理每个错误数据
+        for (const [errorIndex, error] of channel.errors.entries()) {
+          // 添加判断，如果是 NO ERROR 则跳过
+          if (error.error_name === 'NO ERROR') {
             // 更新进度
             completedRequests.value++;
             loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
-            
-            return { channelKey, errorIdx: errorIdxCurrent, errorData };
-          } catch (err) {
-            console.warn(
-              `Failed to fetch error data for ${errorName} at index ${errorIndex}:`,
-              err
-            );
-            return null;
+            continue;
           }
-        }));
 
-        errorPromises.push(errorPromise);
+          const errorIdxCurrent = errorIdxCounter++;
+          errorColors[errorIdxCurrent] = error.color;
+
+          // 存储错误数据
+          if (errorDataResults[errorIndex]) {
+            errorDataMap.set(errorIdxCurrent, {
+              channelKey,
+              errorIdx: errorIdxCurrent,
+              errorData: errorDataResults[errorIndex],
+              isAnomaly: false
+            });
+
+            // 处理错误数据
+            processErrorData(errorDataResults[errorIndex], channelKey, errorIdxCurrent, visData, rectNum, Domain, step);
+          }
+
+          // 更新进度
+          completedRequests.value++;
+          loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
+        }
+      } catch (err) {
+        console.warn(`Failed to fetch error data for channel ${channelKey}:`, err);
+        // 继续处理下一个通道
+        continue;
       }
     }
 
-    // 等待所有错误数据加载完成
-    await Promise.allSettled(errorPromises);
-    
     // 将所有错误数据添加到 errorResults
     errorResults = Array.from(errorDataMap.values());
 

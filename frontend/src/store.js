@@ -349,7 +349,7 @@ const store = createStore({
   actions: {
     async fetchStructTree({ commit, dispatch }, indices = []) {
       try {
-        let url = "http://10.1.108.19:5000/api/struct-tree";
+        let url = "https://10.1.108.19:5000/api/struct-tree";
         if (indices.length > 0) {
           const indicesParam = indices.join(",");
           url += `?indices=${encodeURIComponent(indicesParam)}`;
@@ -457,7 +457,7 @@ const store = createStore({
     },
     async refreshStructTreeData({ commit, dispatch }) {
       try {
-        const response = await fetch("http://10.1.108.19:5000/api/struct-tree");
+        const response = await fetch("https://10.1.108.19:5000/api/struct-tree");
         const data = await response.json();
         commit("refreshStructTree", data);
         await dispatch("loadMoreData", true);
@@ -479,7 +479,7 @@ const store = createStore({
           channel_type: channel.channel_type
         };
 
-        const response = await axios.get(`http://10.1.108.19:5000/api/channel-data/`, { params });
+        const response = await axios.get(`https://10.1.108.19:5000/api/channel-data/`, { params });
         const data = response.data;
 
         // 计算原始采样频率
@@ -492,6 +492,63 @@ const store = createStore({
         return data;
       } catch (error) {
         console.error('Error fetching channel data:', error);
+        throw error;
+      }
+    },
+    
+    // 添加获取所有错误数据的 action
+    async fetchAllErrorData({ state }, channel) {
+      try {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const errorResults = [];
+
+        // 对每个错误类型进行处理
+        for (const [errorIndex, error] of channel.errors.entries()) {
+          // 如果是 NO ERROR，跳过
+          if (error.error_name === "NO ERROR") continue;
+
+          // 构建缓存键
+          const errorCacheKey = `${channelKey}-error-${error.error_name}-${errorIndex}-heatmap`;
+
+          // 检查缓存中是否已有数据
+          if (state.dataCache.has(errorCacheKey)) {
+            errorResults.push(state.dataCache.get(errorCacheKey));
+            continue;
+          }
+
+          try {
+            // 构建请求参数
+            const params = {
+              channel_key: channelKey,
+              channel_type: channel.channel_type,
+              error_name: error.error_name,
+              error_index: errorIndex
+            };
+
+            // 发送请求获取错误数据
+            const response = await fetch(
+              `https://10.1.108.19:5000/api/error-data/?${new URLSearchParams(params).toString()}`
+            );
+            
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const errorData = await response.json();
+
+            // 将数据存入缓存
+            state.dataCache.set(errorCacheKey, errorData);
+            errorResults.push(errorData);
+          } catch (err) {
+            console.warn(`Failed to fetch error data for ${error.error_name}:`, err);
+            // 继续处理下一个错误，而不是中断整个过程
+            continue;
+          }
+        }
+
+        return errorResults;
+      } catch (error) {
+        console.error('Error fetching all error data:', error);
         throw error;
       }
     }

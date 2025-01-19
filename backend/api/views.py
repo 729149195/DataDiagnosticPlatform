@@ -91,7 +91,7 @@ def get_channel_data(request, channel_key=None):
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
             if '_' in channel_key:
-                channel_name, shot_number = channel_key.rsplit('_', 1)
+                channel_name, shot_number = channel_key.split('_', 1)
                 try:
                     num = int(channel_name)
                     channel_name, shot_number = shot_number, channel_name
@@ -248,48 +248,93 @@ def process_channel_names(request):
 
         # 判定是否函数名是导入函数
         end_idx = anomaly_func_str.find('(')
-        func_name = anomaly_func_str[:end_idx]
-        print(func_name)
 
-        if os.path.exists(FUNCTIONS_FILE_PATH):
-            with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
-                functions_data = json.load(f)
+        # 这里其实还会出现有函数且有加减的情况，暂时先不考虑
+        if end_idx == -1:
+            # 非函数模式
+            # 解析表达式，提取通道名和运算符
+            for operator in ['+', '-', '*', '/']:  # 遍历所有可能的运算符
+                if operator in anomaly_func_str:
+                    channel1, channel2 = anomaly_func_str.split(operator)
+                    break
+            else:
+                raise ValueError("无效的表达式，没有找到运算符")
+
+            # 获取对应的通道数据
+            response1 = get_channel_data('', channel1)
+            data1 = json.loads(response1.content.decode('utf-8'))
+
+            response2 = get_channel_data('', channel2)
+            data2 = json.loads(response2.content.decode('utf-8'))
+
+            if data1 is None or data2 is None:
+                raise ValueError(f"未找到通道数据：{channel1.strip()} 或 {channel2.strip()}")
+
+            # 不匹配警告
+            if data1['X_value'] != data2['X_value']:
+                return JsonResponse({"error": 'not_match'}, status=500)
+
+            new_channel_data = {
+                'channel_number': anomaly_func_str,
+                'X_value': data1['X_value'],
+                'X_unit': data1['X_unit'],
+                'Y_unit': data1['Y_unit']
+            }
+            # 根据运算符进行计算
+            if operator == '+':
+                new_channel_data['Y_value'] = [x + y for x, y in zip(data1['Y_value'], data2['Y_value'])]
+            elif operator == '-':
+                new_channel_data['Y_value'] = [x - y for x, y in zip(data1['Y_value'], data2['Y_value'])]
+            elif operator == '*':
+                new_channel_data['Y_value'] = [x * y for x, y in zip(data1['Y_value'], data2['Y_value'])]
+            elif operator == '/':
+                new_channel_data['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(data1['Y_value'], data2['Y_value'])]  # 避免除以0
+
+            return JsonResponse({"data": new_channel_data}, status=200)
+
         else:
-            functions_data = []
-        is_import_func = False
-        for function in functions_data:
-            if function['name'] == func_name:
-                is_import_func = True
+            func_name = anomaly_func_str[:end_idx]
+            print(func_name)
 
-        if is_import_func:
-            data = {}
-            data['function_name'] = func_name
-            params_str = anomaly_func_str[end_idx:].replace(" ", "").replace("(", "").replace(")", "")
-            data['parameters'] = params_str.split(',')
+            if os.path.exists(FUNCTIONS_FILE_PATH):
+                with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
+                    functions_data = json.load(f)
+            else:
+                functions_data = []
+            is_import_func = False
+            for function in functions_data:
+                if function['name'] == func_name:
+                    is_import_func = True
 
-            ##
-            # 需要补一段输入参数转换的代码
-            ##
-            # data['parameters'] = [float(i) for i in data['parameters']]
-            data['parameters'][1] = float(data['parameters'][1])
-            ret = execute_function(data)
-            return JsonResponse({"data": ret}, status=200)
-        else:
-            # 在这里可以添加对channel_names的处理逻辑
-            print("operator-strs:", anomaly_func_str)
-            if anomaly_func_str[:3] == 'Pca':
-                print('xxxx')
-                anomaly_func_str = anomaly_func_str[3:]
-                params_list = anomaly_func_str.replace(" ", "")[1:-1].split(',')
-                [channel_name, period, condition_str, mode] = [params_list[0], ",".join(params_list[1:-2]),
-                                                               params_list[-2], params_list[-1]]
-                period = ast.literal_eval(period)
-                print('xxx')
-                ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_mess)
+            if is_import_func:
+                data = {}
+                data['function_name'] = func_name
+                params_str = anomaly_func_str[end_idx:].replace(" ", "").replace("(", "").replace(")", "")
+                data['parameters'] = params_str.split(',')
 
-                print(ret)
+                ##
+                # 需要补一段输入参数转换的代码
+                ##
+                # data['parameters'] = [float(i) for i in data['parameters']]
+                data['parameters'][1] = float(data['parameters'][1])
+                ret = execute_function(data)
+                return JsonResponse({"data": ret}, status=200)
+            else:
+                # 在这里可以添加对channel_names的处理逻辑
+                print("operator-strs:", anomaly_func_str)
+                if anomaly_func_str[:3] == 'Pca':
+                    print('xxxx')
+                    anomaly_func_str = anomaly_func_str[3:]
+                    params_list = anomaly_func_str.replace(" ", "")[1:-1].split(',')
+                    [channel_name, period, condition_str, mode] = [params_list[0], ",".join(params_list[1:-2]),
+                                                                   params_list[-2], params_list[-1]]
+                    period = ast.literal_eval(period)
+                    print('xxx')
+                    ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_mess)
 
-            return JsonResponse({"data": ret.tolist()}, status=200)
+                    print(ret)
+
+                return JsonResponse({"data": ret.tolist()}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
