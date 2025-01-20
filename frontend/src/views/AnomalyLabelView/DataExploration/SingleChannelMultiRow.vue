@@ -1089,8 +1089,8 @@ const drawChart = async (
       const containerWidth = container.node().getBoundingClientRect().width;
 
       const svg = d3.select(`#chart-${channelName}`);
-      // 修改边距，减小上下左右的空间，最大化图表显示区域
-      const margin = {top: 15, right: 20, bottom: 35, left: 60};
+      // 修改边距，增加底部空间
+      const margin = {top: 15, right: 20, bottom: 50, left: 60};
 
       const width = containerWidth - margin.left - margin.right;
       const height = 230 - margin.top - margin.bottom;
@@ -1103,7 +1103,8 @@ const drawChart = async (
               `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
           )
           .attr('preserveAspectRatio', 'xMidYMid meet')
-          .attr('width', '100%');
+          .attr('width', '100%')
+          .style('overflow', 'visible'); // 添加这行，允许内容超出 SVG 边界
 
       const yExtent = d3.extent(data.Y_value);
       const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
@@ -1162,7 +1163,7 @@ const drawChart = async (
           .attr('text-anchor', 'middle')
           .style('font-size', '1.1em')
           .style('font-weight', 'bold')
-          .text('Time(s)');
+          .text('Time');  // 移除了 (s)
 
       g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
 
@@ -1200,7 +1201,7 @@ const drawChart = async (
           .style('font-size', '1.1em')
           .style('font-weight', 'bold')
           .attr('fill', '#000')
-          .text(xUnit);
+          .text('');  // 移除 xUnit，不显示单位
 
       // 添加Y轴单位标签
       svg
@@ -1220,22 +1221,13 @@ const drawChart = async (
 
       // 添加通道信息文本
       legendGroup.append('text')
-          .attr('x', 5)
+          .attr('x', -122)
           .attr('y', 30)
           .attr('text-anchor', 'start')
-          .style('font-size', '1.1em')
+          .style('font-size', '1.0em')
           .style('font-weight', 'bold')
-          .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点)`);
-
-      // 移除原来的通道信息显示
-      // g.append('text')
-      //     .attr('x', 10)
-      //     .attr('y', -5)
-      //     .attr('text-anchor', 'start')
-      //     .style('font-size', '1.1em')
-      //     .style('font-weight', 'bold')
-      //     .style('fill', '#000')
-      //     .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点):`);
+          .style('fill', color || 'steelblue')  // 添加这行，使用与图表相同的颜色
+          .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点 -> ${(data.originalFrequency * sampling.value).toFixed(2)}KHz, ${Math.ceil(data.originalDataPoints * sampling.value)}点)`);
 
       // 绘制每个通道的主线
       clipGroup
@@ -1534,7 +1526,7 @@ const drawChart = async (
             .attr('class', `left-label-${anomaly.id}-${channelName}`)
             .attr('x', x(anomaly.startX))
             .attr('y', -5)
-            .style('font-size', '1.1em')
+            .style('font-size', '1em')
             .style('font-weight', 'bold')
             .attr('text-anchor', 'middle')
             .attr('fill', 'black')
@@ -1545,7 +1537,7 @@ const drawChart = async (
             .attr('class', `right-label-${anomaly.id}-${channelName}`)
             .attr('x', x(anomaly.endX))
             .attr('y', -5)
-            .style('font-size', '1.1em')
+            .style('font-size', '1em')
             .style('font-weight', 'bold')
             .attr('text-anchor', 'middle')
             .attr('fill', 'black')
