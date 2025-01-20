@@ -102,66 +102,7 @@ const dataCache = computed(() => store.state.dataCache);
 // 在 script setup 部分的开头添加 channelDataCache 的计算属性
 const channelDataCache = computed(() => store.state.channelDataCache);
 
-//导出功能函数
-const HeatMapRef = ref(null)
-const exportHeatMapSvg = () => {
-  let HeatMap = HeatMapRef.value;
-  console.log(HeatMapRef)
-  if (HeatMap) {
-    // 克隆 SVG 元素并创建一个新的 XML 序列化器
-    const clonedSvgElement = HeatMap.cloneNode(true);
-    const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-
-    // 创建一个新的 Image 对象用于 SVG
-    const svgImg = new Image();
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const svgUrl = URL.createObjectURL(svgBlob);
-
-    svgImg.onload = function () {
-      // 获取图例图片
-      const legendImg = document.getElementById('heatmapLegend');
-
-      legendImg.onload = function () {
-        // 创建一个 canvas 元素
-        const canvas = document.createElement('canvas');
-        const legendWidth = legendImg.width;  // 缩小一半
-        const legendHeight = legendImg.height; // 缩小一半
-        const padding = 30
-        const canvasWidth = Math.max(HeatMap.width.baseVal.value, legendImg.width);
-        const canvasHeight = HeatMap.height.baseVal.value + legendImg.height + padding;
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        const ctx = canvas.getContext('2d');
-
-        // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-        ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
-
-        // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
-        ctx.drawImage(svgImg, 0, legendHeight + padding);
-
-        // 导出为 PNG
-        const pngData = canvas.toDataURL('image/png');
-
-        // 创建一个链接并自动下载 PNG
-        const link = document.createElement('a');
-        link.href = pngData;
-        link.download = 'exported_image_with_legend.png';
-        link.click();
-
-        // 释放 URL 对象
-        URL.revokeObjectURL(svgUrl);
-      };
-
-      // 设置图例图片的源
-      legendImg.src = legendImg.src; // 重新加载以确保图片正确绘制
-    };
-
-    // 设置 SVG 图片的源
-    svgImg.src = svgUrl;
-  }
-}
-
-// 修改解码函数
+// 添加解码中文文本的函数
 const decodeChineseText = (text) => {
   if (!text) return '';
   try {
@@ -212,7 +153,7 @@ const decodeChineseText = (text) => {
   }
 };
 
-// 修改处理对象的函数
+// 添加处理对象的函数
 const processObject = (obj) => {
   if (!obj) return obj;
   
@@ -247,39 +188,116 @@ const processObject = (obj) => {
   return obj;
 };
 
-const exportHeatMapData = () => {
+//导出功能函数
+const HeatMapRef = ref(null)
+
+// 添加通用的下载函数
+const downloadFile = async (blob, suggestedName, fileType = 'json') => {
+  try {
+    // 根据文件类型设置accept选项
+    const acceptOptions = {
+      'json': {
+        'application/json': ['.json'],
+      },
+      'png': {
+        'image/png': ['.png'],
+      },
+      'svg': {
+        'image/svg+xml': ['.svg'],
+      }
+    };
+
+    // 使用 showSaveFilePicker API 来显示保存对话框
+    const handle = await window.showSaveFilePicker({
+      suggestedName: suggestedName,
+      types: [{
+        description: '导出文件',
+        accept: acceptOptions[fileType] || acceptOptions['json'],
+      }],
+    });
+    
+    // 创建 FileSystemWritableFileStream 来写入数据
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    
+    // 显示成功提示
+    ElMessage({
+      message: '文件保存成功',
+      type: 'success',
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      // 用户取消保存，不显示错误
+      return;
+    }
+    console.error('保存文件时出错:', err);
+    ElMessage({
+      message: '保存文件失败，请重试',
+      type: 'error',
+    });
+  }
+};
+
+// 修改导出SVG功能
+const exportHeatMapSvg = async () => {
+  let HeatMap = HeatMapRef.value;
+  if (HeatMap) {
+    try {
+      // 克隆 SVG 元素并创建一个新的 XML 序列化器
+      const clonedSvgElement = HeatMap.cloneNode(true);
+      const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
+
+      // 创建一个新的 Image 对象用于 SVG
+      const svgImg = new Image();
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const svgUrl = URL.createObjectURL(svgBlob);
+
+      // 获取图例图片
+      const legendImg = document.getElementById('heatmapLegend');
+
+      // 创建一个 canvas 元素
+      const canvas = document.createElement('canvas');
+      const legendWidth = legendImg.width;  // 缩小一半
+      const legendHeight = legendImg.height; // 缩小一半
+      const padding = 30;
+      const canvasWidth = Math.max(HeatMap.width.baseVal.value, legendImg.width);
+      const canvasHeight = HeatMap.height.baseVal.value + legendImg.height + padding;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      const ctx = canvas.getContext('2d');
+
+      // 等待SVG图像加载
+      await new Promise((resolve, reject) => {
+        svgImg.onload = resolve;
+        svgImg.onerror = reject;
+        svgImg.src = svgUrl;
+      });
+
+      // 绘制图例图片和SVG到canvas上
+      ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
+      ctx.drawImage(svgImg, 0, legendHeight + padding);
+
+      // 转换为blob并保存
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      await downloadFile(blob, 'heatmap_with_legend.png', 'png');
+
+      // 释放 URL 对象
+      URL.revokeObjectURL(svgUrl);
+    } catch (error) {
+      console.error('导出SVG时出错:', error);
+      ElMessage({
+        message: '导出图像失败，请重试',
+        type: 'error',
+      });
+    }
+  }
+};
+
+// 修改导出数据功能
+const exportHeatMapData = async () => {
   // 深拷贝数据以避免修改原始数据
   let processedData = JSON.parse(JSON.stringify(errorResults));
-
-  // 递归处理对象中的所有字符串字段
-  const processObject = (obj) => {
-    if (!obj) return obj;
-    
-    if (Array.isArray(obj)) {
-      return obj.map(item => processObject(item));
-    }
-    
-    if (typeof obj === 'object') {
-      const newObj = {};
-      for (const key in obj) {
-        if (obj.hasOwnProperty(key)) {
-          // 跳过 X_error 和 Y_error 字段
-          if (key !== 'X_error' && key !== 'Y_error') {
-            newObj[key] = processObject(obj[key]);
-          } else {
-            newObj[key] = obj[key];
-          }
-        }
-      }
-      return newObj;
-    }
-    
-    if (typeof obj === 'string') {
-      return decodeChineseText(obj);
-    }
-    
-    return obj;
-  };
 
   // 按通道分组数据
   const groupedByChannel = processedData.reduce((acc, result) => {
@@ -323,21 +341,9 @@ const exportHeatMapData = () => {
 
   // 转换为数组
   const reorganizedData = Object.values(groupedByChannel);
-
   const jsonData = JSON.stringify(reorganizedData, null, 2);
   const blob = new Blob([jsonData], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-
-  // 创建一个下载链接，并点击下载
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "error_data.json";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  // 释放 Blob URL
-  URL.revokeObjectURL(url);
+  await downloadFile(blob, "heatmap_error_data.json", 'json');
 };
 
 // 添加同步上传函数

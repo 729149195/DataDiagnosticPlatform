@@ -200,6 +200,7 @@ import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { FolderChecked, Upload, User, SwitchButton } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas';
+import { ElMessage } from 'element-plus'
 // 颜色配置及通道选取组件
 import ChannelType from '@/components/Channel-Type.vue';
 import ExceptionType from '@/components/Exception-Type.vue';
@@ -306,226 +307,211 @@ const selectButton = (button) => {
 
 const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
 
+// 修改通用的下载函数以使用现代的文件系统API
+const downloadFile = async (blob, suggestedName, fileType = 'json') => {
+  try {
+    // 根据文件类型设置accept选项
+    const acceptOptions = {
+      'json': {
+        'application/json': ['.json'],
+      },
+      'png': {
+        'image/png': ['.png'],
+      },
+      'svg': {
+        'image/svg+xml': ['.svg'],
+      }
+    };
 
-const exportChannelSVG = () => {
+    // 使用 showSaveFilePicker API 来显示保存对话框
+    const handle = await window.showSaveFilePicker({
+      suggestedName: suggestedName,
+      types: [{
+        description: '导出文件',
+        accept: acceptOptions[fileType] || acceptOptions['json'],
+      }],
+    });
+    
+    // 创建 FileSystemWritableFileStream 来写入数据
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    
+    // 显示成功提示
+    ElMessage({
+      message: '文件保存成功',
+      type: 'success',
+    });
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      // 用户取消保存，不显示错误
+      return;
+    }
+    console.error('保存文件时出错:', err);
+    ElMessage({
+      message: '保存文件失败，请重试',
+      type: 'error',
+    });
+  }
+};
+
+const exportChannelSVG = async () => {
   if (test_channel_number.value) {
     // 单通道多行的情况
-    channelSvgElementsRefs.value.forEach((svgElement, index) => {
+    for (let [index, svgElement] of channelSvgElementsRefs.value.entries()) {
       if (svgElement) {
-        // 克隆 SVG 元素并创建一个新的 XML 序列化器
-        const clonedSvgElement = svgElement.cloneNode(true);
-        const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-
-        // 创建一个新的 Image 对象用于 SVG
-        const svgImg = new Image();
-        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-        const svgUrl = URL.createObjectURL(svgBlob);
-
-        svgImg.onload = function () {
-          // 获取图例图片
+        try {
+          // 克隆 SVG 元素并创建一个新的 XML 序列化器
+          const clonedSvgElement = svgElement.cloneNode(true);
+          const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
           const legendImg = document.getElementById('channelLegendImage');
 
+          // 创建 canvas
           const canvas = document.createElement('canvas');
-          const legendWidth = legendImg.width;  // 缩小一半
-          const legendHeight = legendImg.height; // 缩小一半
-          const padding = 30
+          const legendWidth = legendImg.width;
+          const legendHeight = legendImg.height;
+          const padding = 30;
           const canvasWidth = Math.max(svgElement.width.baseVal.value, legendImg.width);
           const canvasHeight = svgElement.height.baseVal.value + legendImg.height + padding;
           canvas.width = canvasWidth;
           canvas.height = canvasHeight;
           const ctx = canvas.getContext('2d');
 
-          // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-          ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
+          // 创建图像并等待加载
+          const svgImg = new Image();
+          await new Promise((resolve, reject) => {
+            svgImg.onload = resolve;
+            svgImg.onerror = reject;
+            svgImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+          });
 
-          // 绘制 SVG 图像到 canvas 上（图片的下方）
+          // 绘制图例和SVG
+          ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
           ctx.drawImage(svgImg, 0, legendHeight + padding);
 
-          // 导出为 PNG
-          const pngData = canvas.toDataURL('image/png');
-
-          // 创建一个链接并自动下载 PNG
-          const link = document.createElement('a');
-          link.href = pngData;
-          link.download = `exported_image_with_legend_${index + 1}.png`; // 使用唯一的文件名
-          link.click();
-
-          // 释放 URL 对象
-          URL.revokeObjectURL(svgUrl);
-        };
-
-        // 设置 SVG 图片的源
-        svgImg.src = svgUrl;
+          // 转换为blob并保存
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+          await downloadFile(blob, `channel_${index + 1}_image.png`, 'png');
+        } catch (error) {
+          console.error('导出SVG时出错:', error);
+          ElMessage({
+            message: '导出图像失败，请重试',
+            type: 'error',
+          });
+        }
       }
-    });
-  }
-  else {
+    }
+  } else {
     let svgRef = MultiChannelRef.value.channelsSvgRef;
     if (svgRef) {
-      // 克隆 SVG 元素并创建一个新的 XML 序列化器
-      const clonedSvgElement = svgRef.cloneNode(true);
-      const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-
-      // 创建一个新的 Image 对象用于 SVG
-      const svgImg = new Image();
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
-
-      svgImg.onload = function () {
-        // 获取图例图片
+      try {
+        const clonedSvgElement = svgRef.cloneNode(true);
+        const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
         const legendImg = document.getElementById('channelLegendImage');
 
-        legendImg.onload = function () {
-          // 创建一个 canvas 元素
-          // 使用 html2canvas 将 div 内容转换为 canvas
-          html2canvas(document.getElementById('channelLegendContainer'), { scale: 0.75 }).then(function (divCanvas) {
-            const canvas = document.createElement('canvas');
-            const legendWidth = legendImg.width;  // 缩小一半
-            const legendHeight = legendImg.height; // 缩小一半
-            const padding = 30
-            const canvasWidth = Math.max(svgRef.width.baseVal.value, legendImg.width);
-            const canvasHeight = svgRef.height.baseVal.value + legendImg.height + padding;
-            canvas.width = canvasWidth;
-            canvas.height = canvasHeight;
-            const ctx = canvas.getContext('2d');
+        // 创建 canvas
+        const canvas = document.createElement('canvas');
+        const legendWidth = legendImg.width;
+        const legendHeight = legendImg.height;
+        const padding = 30;
+        const canvasWidth = Math.max(svgRef.width.baseVal.value, legendImg.width);
+        const canvasHeight = svgRef.height.baseVal.value + legendImg.height + padding;
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+        const ctx = canvas.getContext('2d');
 
+        // 创建图像并等待加载
+        const svgImg = new Image();
+        await new Promise((resolve, reject) => {
+          svgImg.onload = resolve;
+          svgImg.onerror = reject;
+          svgImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+        });
 
+        // 绘制图例和SVG
+        ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
+        ctx.drawImage(svgImg, 0, legendHeight + padding);
 
-            // 绘制 SVG 图像到 canvas 上（在图例图片的下方）
-            ctx.drawImage(divCanvas, 200, legendHeight + padding / 2);
-            // 绘制图例图片到 canvas 上（在最上面，缩小一半）
-            ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
-            ctx.drawImage(svgImg, 0, legendHeight);
-
-            // 导出为 PNG
-            const pngData = canvas.toDataURL('image/png');
-
-            // 创建一个链接并自动下载 PNG
-            const link = document.createElement('a');
-            link.href = pngData;
-            link.download = 'exported_image_with_legend.png';
-            link.click();
-
-            // 释放 URL 对象
-            URL.revokeObjectURL(svgUrl);
-          })
-        };
-
-        // 设置图例图片的源
-        legendImg.src = legendImg.src; // 重新加载以确保图片正确绘制
-      };
-
-      // 设置 SVG 图片的源
-      svgImg.src = svgUrl;
+        // 转换为blob并保存
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        await downloadFile(blob, 'multi_channel_image.png', 'png');
+      } catch (error) {
+        console.error('导出SVG时出错:', error);
+        ElMessage({
+          message: '导出图像失败，请重试',
+          type: 'error',
+        });
+      }
     }
   }
 };
 
-const exportChannelData = () => {
+const exportChannelData = async () => {
   if (test_channel_number.value) {
     // 单通道多行的情况
-    channelSvgElementsRefs.value.forEach((svgElement, index) => {
+    for (let [index, svgElement] of channelSvgElementsRefs.value.entries()) {
       let channel = selectedChannels.value[index];
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       let data = channelDataCache.value[channelKey];
       const jsonData = JSON.stringify(data, null, 2);
       const blob = new Blob([jsonData], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-
-      // 创建一个下载链接，并点击下载
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "channel_data.json";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      // 释放 Blob URL
-      URL.revokeObjectURL(url);
-    })
-  }
-  else {
+      await downloadFile(blob, `${channel.channel_name}_${channel.shot_number}_data.json`, 'json');
+    }
+  } else {
     let channelsData = MultiChannelRef.value.channelsData;
     if (channelsData) {
-      let data = channelsData;
-      const jsonData = JSON.stringify(data, null, 2);
+      const jsonData = JSON.stringify(channelsData, null, 2);
       const blob = new Blob([jsonData], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-
-      // 创建一个下载链接，并点击下载
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "channel_data.json";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      // 释放 Blob URL
-      URL.revokeObjectURL(url);
+      await downloadFile(blob, "multi_channel_data.json", 'json');
     }
   }
-}
+};
 
-
-
-const exportResultSVG = () => {
+const exportResultSVG = async () => {
   let svg = resultRef.value.resultSvgRef;
   if (svg) {
-    // 克隆 SVG 元素并创建一个新的 XML 序列化器
-    const clonedSvgElement = svg.cloneNode(true);
-    const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-
-    // 创建一个新的 Image 对象
-    const img = new Image();
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
-
-    img.onload = function () {
-      // 创建一个 canvas 元素
+    try {
+      const clonedSvgElement = svg.cloneNode(true);
+      const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
+      
+      // 创建 canvas
       const canvas = document.createElement('canvas');
       canvas.width = svg.width.baseVal.value;
       canvas.height = svg.height.baseVal.value;
       const ctx = canvas.getContext('2d');
 
-      // 将 SVG 像绘制到 canvas 上
+      // 创建图像并等待加载
+      const img = new Image();
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
+      });
+
+      // 绘制SVG
       ctx.drawImage(img, 0, 0);
 
-      // 导出为 PNG
-      const pngData = canvas.toDataURL('image/png');
-
-      // 创建一个链接并自动下载 PNG
-      const link = document.createElement('a');
-      link.href = pngData;
-      link.download = 'exported_image.png';
-      link.click();
-
-      // 释放 URL 对象
-      URL.revokeObjectURL(url);
-    };
-
-    // 设置图片源为 SVG Blob URL
-    img.src = url;
+      // 转换为blob并保存
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+      await downloadFile(blob, 'analysis_result.png', 'png');
+    } catch (error) {
+      console.error('导出SVG时出错:', error);
+      ElMessage({
+        message: '导出图像失败，请重试',
+        type: 'error',
+      });
+    }
   }
-}
+};
 
-const exportResultData = () => {
+const exportResultData = async () => {
   let data = resultRef.value.resultData;
-
-  const jsonData = JSON.stringify(data, null, 2);
-  const blob = new Blob([jsonData], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-
-  // 创建一个下载链接，并点击下载
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "error_data.json";
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  // 释放 Blob URL
-  URL.revokeObjectURL(url);
-}
+  if (data) {
+    const jsonData = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonData], { type: "application/json" });
+    await downloadFile(blob, "analysis_result.json", 'json');
+  }
+};
 
 // 修改 updateSelectedChannels mutation 的调用时机
 watch(selectedChannels, async (newChannels, oldChannels) => {
