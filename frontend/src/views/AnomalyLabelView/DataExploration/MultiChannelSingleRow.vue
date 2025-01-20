@@ -1262,7 +1262,7 @@ svg {
 .legend-container {
   position: absolute;
   top: 60px;
-  right: 30px;
+  right: 50px;
   z-index: 999;
   min-width: 100px;
   max-width: 200px;

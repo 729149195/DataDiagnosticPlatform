@@ -1089,7 +1089,8 @@ const drawChart = async (
       const containerWidth = container.node().getBoundingClientRect().width;
 
       const svg = d3.select(`#chart-${channelName}`);
-      const margin = {top: 20, right: 30, bottom: 50, left: 65};
+      // 修改边距，减小上下左右的空间，最大化图表显示区域
+      const margin = {top: 15, right: 20, bottom: 35, left: 60};
 
       const width = containerWidth - margin.left - margin.right;
       const height = 230 - margin.top - margin.bottom;
@@ -1144,13 +1145,24 @@ const drawChart = async (
           .append('g')
           .attr('clip-path', `url(#clip-${channelName})`);
 
+      // 修改横坐标标签
       g.append('g')
           .attr('class', 'x-axis')
           .attr('transform', `translate(0,${height})`)
           .call(d3.axisBottom(x))
-          .selectAll("text") // 选择所有刻度标签
-          .style("font-size", "1.3em") // 增大字体大小
+          .selectAll("text")
+          .style("font-size", "1.1em")
           .style("font-weight", "bold");
+
+      // 添加统一的横坐标标签
+      g.append('text')
+          .attr('class', 'x-label')
+          .attr('x', width / 2)
+          .attr('y', height + 30)
+          .attr('text-anchor', 'middle')
+          .style('font-size', '1.1em')
+          .style('font-weight', 'bold')
+          .text('Time(s)');
 
       g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
 
@@ -1179,35 +1191,51 @@ const drawChart = async (
           .style('stroke', '#ccc')
           .style('stroke-dasharray', '3,3');
 
-      g.append('text')
-          .attr('x', 20)
-          .attr('y', margin.top - 25)
-          .attr('text-anchor', 'start')
-          .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
-          // .style('fill', color)
-          .style('fill', '#000')
-          .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点):`);
-
+      // 添加X轴单位标签
       svg
           .append('text')
           .attr('x', width + margin.left + 15)
           .attr('y', height + margin.top + 20)
           .attr('text-anchor', 'end')
           .style('font-size', '1.1em')
-          .style('font-weight', 'bold') // 加粗字体
+          .style('font-weight', 'bold')
           .attr('fill', '#000')
           .text(xUnit);
 
+      // 添加Y轴单位标签
       svg
           .append('text')
           .attr('transform', `translate(${margin.left - 50}, ${margin.top + height / 2}) rotate(-90)`)
           .attr('text-anchor', 'middle')
           .style('font-size', '1.1em')
-          .style('font-weight', 'bold') // 加粗字体
+          .style('font-weight', 'bold')
           .attr('alignment-baseline', 'middle')
           .attr('fill', '#000')
           .text(yUnit);
+
+      // 修改通道信息显示位置和样式，将其移动到右上角并与颜色选择器组合
+      const legendGroup = g.append('g')
+          .attr('class', 'legend-group')
+          .attr('transform', `translate(${width - 280}, -10)`);  // 调整位置
+
+      // 添加通道信息文本
+      legendGroup.append('text')
+          .attr('x', 5)
+          .attr('y', 30)
+          .attr('text-anchor', 'start')
+          .style('font-size', '1.1em')
+          .style('font-weight', 'bold')
+          .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点)`);
+
+      // 移除原来的通道信息显示
+      // g.append('text')
+      //     .attr('x', 10)
+      //     .attr('y', -5)
+      //     .attr('text-anchor', 'start')
+      //     .style('font-size', '1.1em')
+      //     .style('font-weight', 'bold')
+      //     .style('fill', '#000')
+      //     .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点):`);
 
       // 绘制每个通道的主线
       clipGroup
@@ -2066,11 +2094,46 @@ svg {
 
 .color-picker-container {
   position: absolute;
-  top: -3px;
-  left: 60px;
+  top: 16px;
+  right: 17px;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background-color: transparent;
+  padding: 2px 5px;
 }
 
+/* 添加新的图例样式 */
+.legend-group {
+  pointer-events: none;
+}
+
+
+/* 去除颜色选择器里面的箭头 */
+:deep(.is-icon-arrow-down) {
+  display: none !important;
+}
+
+/* 去除颜色选择器最外层的边框 */
+:deep(.el-color-picker__trigger) {
+  border: none;
+  padding: 2px;
+  height: 24px !important;
+  width: 24px !important;
+}
+
+/* 将颜色色块变为圆形并调整大小 */
+:deep(.el-color-picker__color) {
+  border-radius: 50%;
+  width: 20px !important;
+  height: 20px !important;
+}
+
+/* 调整颜色选择器下拉面板的位置 */
+:deep(.el-color-dropdown.el-color-picker__panel) {
+  transform: translateX(-50%) !important;
+}
 
 .divider {
   width: 100%;
