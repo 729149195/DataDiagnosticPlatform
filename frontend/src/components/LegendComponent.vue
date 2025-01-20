@@ -41,17 +41,13 @@ const predefineColors = [
 // Construct legend items
 const legendItems = computed(() => {
     return props.channelsData.map((data) => {
-        const minY = Math.min(...data.Y_original);
-        const maxY = Math.max(...data.Y_original);
-        const text = `${data.channelNumber} / ${data.channelshotnumber} / max(${maxY.toFixed(
-            2
-        )}) | min(${minY.toFixed(2)})`;
+        const text = `${data.channelshotnumber}_${data.channelName}`;
         return {
             text,
             color: data.color,
             channelKey: `${data.channelName}_${data.channelshotnumber}`,
-            channelName: data.channelName,  // 添加通道名称
-            shotNumber: data.channelshotnumber  // 添加炮号
+            channelName: data.channelName,
+            shotNumber: data.channelshotnumber
         };
     });
 });
@@ -65,25 +61,61 @@ const colorChanged = (item) => {
 <style scoped>
 .legend {
     display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
-    height: 100px;
-    max-height: 100px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 6px;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 4px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    max-height: 200px;
     overflow-y: auto;
-    margin-top: 5px;
+    transition: box-shadow 0.2s ease;
+}
+
+.legend:hover {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.15);
 }
 
 .legend-item {
     display: flex;
     align-items: center;
-    justify-content: center;
-    margin-right: 15px;
+    gap: 4px;
+    margin: 0;
+    padding: 2px 4px;
+    border-radius: 2px;
+    transition: background-color 0.2s ease;
+    cursor: default;
+    min-height: 20px;
+}
+
+.legend-item:hover {
+    background-color: rgba(0, 0, 0, 0.04);
 }
 
 .legend-text {
-    font-weight: bold;
-    margin-left: 0px;
-    font-size: 0.95em;
+    font-size: 12px;
+    font-weight: normal;
+    color: rgba(0, 0, 0, 0.75);
+    white-space: nowrap;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 自定义滚动条样式 */
+.legend::-webkit-scrollbar {
+    width: 4px;
+}
+
+.legend::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.legend::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.15);
+    border-radius: 2px;
+}
+
+.legend::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.25);
 }
 </style>

@@ -76,9 +76,9 @@ defineExpose({
 })
 
 const mainChartDimensions = ref({
-  margin: {top: 110, right: 20, bottom: 150, left: 80},
+  margin: {top: 50, right: 20, bottom: 60, left: 80},
   width: 0,
-  height: 500 - 110 - 100, // main chart height
+  height: 500 - 50 - 60, // 调整主图表高度
 });
 
 const overviewChartDimensions = ref({
@@ -874,12 +874,13 @@ const drawCombinedChart = () => {
 
   svg.append('text')
       .attr('class', 'x-label')
-      .attr('x', mainChartDimensions.value.margin.left + width + 15)
-      .attr('y', mainChartDimensions.value.margin.top + height + 8)
+      .attr('x', mainChartDimensions.value.margin.left + width / 2)
+      .attr('y', mainChartDimensions.value.margin.top + height + 40)
       .attr('text-anchor', 'middle')
-      .attr('font-size', '1.4em').style('font-weight', 'bold')
+      .attr('font-size', '1.4em')
+      .style('font-weight', 'bold')
       .attr('fill', '#000')
-      .text('s')
+      .text('Time(s)')
 
   svg.append('text')
       .attr('class', 'y-label')
@@ -1260,9 +1261,25 @@ svg {
 
 .legend-container {
   position: absolute;
-  top: 0;
-  width: 100%;
+  top: 60px;
+  right: 30px;
   z-index: 999;
+  min-width: 100px;
+  max-width: 200px;
+}
+
+/* 修改颜色选择器样式，使其更加紧凑 */
+:deep(.el-color-picker__trigger) {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+}
+
+:deep(.el-color-picker__color) {
+  width: 16px;
+  height: 16px;
+  border: none;
 }
 
 .progress-wrapper {
