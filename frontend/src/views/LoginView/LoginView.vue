@@ -605,9 +605,6 @@ const validateForm = () => {
 };
 
 const handleLogin = async () => {
-  // store.commit("setperson", username.value);
-  // store.commit("setauthority", 999);
-  // router.push({ name: 'AnomalyLabelView' });
   if (!validateForm()) return;
 
   isLoading.value = true;
@@ -631,7 +628,7 @@ const handleLogin = async () => {
     if (data.success) {
       store.commit("setperson", username.value);
       store.commit("setUserMessage", data.message);
-      store.commit("setauthority", 999);
+      store.commit("setauthority", data.message);
       router.push({ name: 'AnomalyLabelView' });
     } else {
       formErrors.password = data.message || '登录失败，请重试';

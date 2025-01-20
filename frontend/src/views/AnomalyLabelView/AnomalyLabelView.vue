@@ -248,7 +248,10 @@ watch(person, (newValue) => {
 
 const avatarText = computed(() => person.value ? person.value.charAt(0) : 'U');
 
-const authorityLabel = computed(() => authority.value === 0 ? '普通用户' : '管理员');
+const authorityLabel = computed(() => {
+  // console.log('当前权限值:', authority.value);
+  return authority.value === '0' ? '查看者' : '标注者';
+});
 
 const avatarStyle = computed(() => {
   const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399'];
