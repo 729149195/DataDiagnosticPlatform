@@ -561,44 +561,61 @@ const renderCharts = debounce(async () => {
   }
 }, 200);
 
-// 修改 watch 函数中的处理逻辑
+// 修改 selectedChannels 的 watch
 watch(selectedChannels, async (newChannels, oldChannels) => {
-  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
-    try {
-      // 检查是否只是颜色发生了变化
-      const isOnlyColorChange = newChannels.length === oldChannels.length &&
-          newChannels.every((newCh, index) => {
-            const oldCh = oldChannels[index];
-            return newCh.channel_key === oldCh.channel_key &&
-                (newCh.color !== oldCh.color ||
-                    JSON.stringify(newCh.errors) !== JSON.stringify(oldCh.errors));
-          });
+  // 避免不必要的深度比较
+  const hasStructuralChanges = newChannels.length !== oldChannels.length ||
+    newChannels.some((newCh, index) => {
+      const oldCh = oldChannels[index];
+      return newCh.channel_key !== oldCh.channel_key;
+    });
 
-      if (isOnlyColorChange) {
-        // 如果只是颜色变化，直接重新渲染当前图表
-        for (const channel of newChannels) {
-          const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
-          if (data) {
-            await drawChannelChart(channel, data);
-          }
-        }
-      } else {
-        // 如果是其他变化，执行完整的重新渲染流程
-        overviewData.value = [];
-        await nextTick();
+  const hasColorChanges = !hasStructuralChanges &&
+    newChannels.some((newCh, index) => {
+      const oldCh = oldChannels[index];
+      return newCh.color !== oldCh.color;
+    });
 
-        if (newChannels && newChannels.length > 0) {
-          await renderCharts();
-          if (overviewData.value && overviewData.value.length > 0) {
-            drawOverviewChart();
-          }
+  const hasErrorChanges = !hasStructuralChanges &&
+    newChannels.some((newCh, index) => {
+      const oldCh = oldChannels[index];
+      return JSON.stringify(newCh.errors) !== JSON.stringify(oldCh.errors);
+    });
+
+  try {
+    if (hasStructuralChanges) {
+      // 通道结构发生变化，需要完全重绘
+      overviewData.value = [];
+      await nextTick();
+      if (newChannels && newChannels.length > 0) {
+        await renderCharts();
+        if (overviewData.value && overviewData.value.length > 0) {
+          drawOverviewChart();
         }
       }
-    } catch (error) {
-      console.error('Error in selectedChannels watch:', error);
+    } else if (hasColorChanges || hasErrorChanges) {
+      // 只有颜色或错误数据变化，只更新受影响的图表
+      for (const channel of newChannels) {
+        const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+        if (data) {
+          await drawChannelChart(channel, data);
+        }
+      }
     }
+  } catch (error) {
+    console.error('Error in selectedChannels watch:', error);
   }
-}, {deep: true});
+}, { deep: true });
+
+// 优化采样和平滑度的监听器
+const debouncedRenderCharts = debounce(renderCharts, 300);
+
+watch([sampling, smoothnessValue], ([newSampling, newSmoothness], [oldSampling, oldSmoothness]) => {
+  if (newSampling !== oldSampling) {
+    sampleRate.value = newSampling;
+  }
+  debouncedRenderCharts();
+});
 
 // 添加窗口大小变化的处理函数
 const handleResize = debounce(() => {
@@ -1082,6 +1099,14 @@ const drawChart = async (
 ) => {
   return new Promise((resolve, reject) => {
     try {
+      // 添加防抖检查
+      const chartKey = `${channelName}-${color}-${sampling.value}-${smoothnessValue.value}`;
+      if (chartKey === drawChart.lastDrawnChart) {
+        resolve();
+        return;
+      }
+      drawChart.lastDrawnChart = chartKey;
+
       performance.mark(`Draw Chart ${channelName}-start`);
 
       const container = d3.select('.chart-container');
