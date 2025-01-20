@@ -294,12 +294,31 @@ const boxSelect = computed({
     if (!test_channel_number.value) {
       return false;
     }
+    if (authority.value === '0') {
+      store.dispatch('updateIsBoxSelect', false);
+      return false;
+    }
     return store.state.isBoxSelect;
   },
   set: (value) => {
+    if (authority.value === '0') {
+      ElMessage({
+        message: '您当前为查看者权限，无法进行标注操作',
+        type: 'warning'
+      });
+      store.dispatch('updateIsBoxSelect', false);
+      return;
+    }
     if (test_channel_number.value) {
       store.dispatch('updateIsBoxSelect', value);
     }
+  }
+});
+
+// 监听权限变化，自动更新isBoxSelect状态
+watch(authority, (newValue) => {
+  if (newValue === '0') {
+    store.dispatch('updateIsBoxSelect', false);
   }
 });
 

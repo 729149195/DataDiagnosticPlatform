@@ -106,7 +106,6 @@
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
-import pLimit from 'p-limit';
 
 import {
   ref,
