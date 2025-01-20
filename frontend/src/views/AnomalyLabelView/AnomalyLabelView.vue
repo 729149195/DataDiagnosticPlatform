@@ -60,7 +60,7 @@
                   inactive-text="异常颜色" />
               </span>
               <div>
-                <el-scrollbar height="55vh" :always="false">
+                <el-scrollbar height="60vh" :always="false">
                   <div v-if="color_table_value === true">
                     <ChannelType />
                   </div>
@@ -74,7 +74,7 @@
               <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">可视化配置</span>
               </span>
-              <el-scrollbar height="55vh" :always="false">
+              <el-scrollbar height="60vh" :always="false">
                 <div>
                   <ChannelTypeP />
                 </div>
@@ -715,7 +715,7 @@ watch(test_channel_number, (newValue) => {
 }
 
 .aside {
-  width: 18vw;
+  width:22vw;
   background-color: #e9e9e9;
   height: 95vh;
   padding: 5px;
