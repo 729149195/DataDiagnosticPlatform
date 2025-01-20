@@ -1,81 +1,94 @@
 <template>
   <div class="exception-list">
-    <div v-for="item in displayedData" :key="item.id" class="card">
-      <table class="channel-table">
-        <tbody>
-          <template v-for="(channel, channelIndex) in item.channels" :key="channel.channel_key">
-            <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
-
-              <!-- 通道类别单元格 -->
-              <td
-                class="channel-type"
-                :rowspan="computeTotalDisplayedErrors(item)"
-                v-if="channelIndex === 0 && errorIndex === 0"
-              >
-                <div class="type-header">
-                  <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
-                  <el-checkbox
-                    v-model="item.checked"
-                    @change="toggleChannelCheckboxes(item)"
-                    class="checkbox-margin"
-                  />
-                </div>
-              </td>
-
-              <!-- 通道名称单元格 -->
-              <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
-                'channel-name': true,
-                'channel-name-last': isLastChannel(item.channels, channel),
-              }">
-                <div class="name-container">
-                  <span>{{ channel.channel_name }}</span>
-                  <div class="name-right">
-                    <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
-                      class="checkbox-margin"></el-checkbox>
-                  </div>
-                </div>
-                <el-tag type="info" effect="plain" class="shot-number-tag">
-                  {{ channel.shot_number }}
-                </el-tag>
-                <div class="show-more-container">
-                  <el-button link @click="toggleShowAllErrors(channel)">
-                    {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
-                    <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">
-                      ({{ hiddenErrorsCount(channel) }})
-                    </span>
-                  </el-button>
-                </div>
-              </td>
-
-              <!-- 异常类别单元格 -->
-              <td :class="{
-                'error-column': true,
-                'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
-              }">
-                <div class="error-container">
-                  <span :title="error.error_name">
-                    {{ formatError(error.error_name) }}
-                  </span>
-                  <ErrorColorPicker
-                    :color="error.color"
-                    :predefine="predefineColors"
-                    :error-name="error.error_name"
-                    :shot-number="channel.shot_number"
-                    :channel-name="channel.channel_name"
-                    @change="setErrorColor(channel, error)"
-                    @update:color="error.color = $event"
-                  />
-                </div>
-              </td>
-
-            </tr>
-          </template>
-        </tbody>
+    <div class="table-header-container">
+      <table class="channel-table header-table">
+        <thead>
+          <tr>
+            <th class="channel-type-header">通道类别</th>
+            <th class="channel-name-header">通道名 & 炮号</th>
+            <th class="error-header">异常类别</th>
+          </tr>
+        </thead>
       </table>
     </div>
-    <div v-if="loading" class="loading-indicator">
-      <el-icon class="is-loading"><Loading /></el-icon>
-      加载中...
+    <div class="table-content">
+      <div v-for="item in displayedData" :key="item.id" class="card">
+        <table class="channel-table content-table">
+          <tbody>
+            <template v-for="(channel, channelIndex) in item.channels" :key="channel.channel_key">
+              <tr v-for="(error, errorIndex) in channel.displayedErrors" :key="error.error_key">
+
+                <!-- 通道类别单元格 -->
+                <td
+                  class="channel-type"
+                  :rowspan="computeTotalDisplayedErrors(item)"
+                  v-if="channelIndex === 0 && errorIndex === 0"
+                >
+                  <div class="type-header">
+                    <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
+                    <el-checkbox
+                      v-model="item.checked"
+                      @change="toggleChannelCheckboxes(item)"
+                      class="checkbox-margin"
+                    />
+                  </div>
+                </td>
+
+                <!-- 通道名称单元格 -->
+                <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
+                  'channel-name': true,
+                  'channel-name-last': isLastChannel(item.channels, channel),
+                }">
+                  <div class="name-container">
+                    <span>{{ channel.channel_name }}</span>
+                    <div class="name-right">
+                      <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                        class="checkbox-margin"></el-checkbox>
+                    </div>
+                  </div>
+                  <el-tag type="info" effect="plain" class="shot-number-tag">
+                    {{ channel.shot_number }}
+                  </el-tag>
+                  <div class="show-more-container">
+                    <el-button link @click="toggleShowAllErrors(channel)">
+                      {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
+                      <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">
+                        ({{ hiddenErrorsCount(channel) }})
+                      </span>
+                    </el-button>
+                  </div>
+                </td>
+
+                <!-- 异常类别单元格 -->
+                <td :class="{
+                  'error-column': true,
+                  'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
+                }">
+                  <div class="error-container">
+                    <span :title="error.error_name">
+                      {{ formatError(error.error_name) }}
+                    </span>
+                    <ErrorColorPicker
+                      :color="error.color"
+                      :predefine="predefineColors"
+                      :error-name="error.error_name"
+                      :shot-number="channel.shot_number"
+                      :channel-name="channel.channel_name"
+                      @change="setErrorColor(channel, error)"
+                      @update:color="error.color = $event"
+                    />
+                  </div>
+                </td>
+
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div v-if="loading" class="loading-indicator">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        加载中...
+      </div>
     </div>
   </div>
 </template>
@@ -148,9 +161,6 @@ const formatChannelType = (name) => {
         console.warn('Failed to decode channel type:', name, e);
       }
     }
-    if (decodedName.length > 8) {
-      return decodedName.slice(0, 8) + '...';
-    }
     return decodedName;
   } catch (err) {
     console.warn('Error formatting channel type:', err);
@@ -170,9 +180,6 @@ const formatError = (name) => {
       } catch (e) {
         console.warn('Failed to decode error name:', name, e);
       }
-    }
-    if (decodedName.length > 8) {
-      return decodedName.slice(0, 8) + '...';
     }
     return decodedName;
   } catch (err) {
@@ -375,6 +382,77 @@ const setErrorColor = (channel, error) => {
 </script>
 
 <style scoped>
+.exception-list {
+  position: relative;
+  height: 100%;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.table-header-container {
+  position: absolute;
+  top: 0;
+  left: 10px;
+  right: 10px;
+  z-index: 2;
+  background-color: #f5f7fa;
+}
+
+.header-table {
+  margin: 0;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table-content {
+  padding: 44px 10px 10px;
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.channel-table {
+  width: 100%;
+  table-layout: fixed;
+  font-family: inherit;
+}
+
+.content-table {
+  border-collapse: collapse;
+}
+
+.channel-table th {
+  padding: 12px;
+  text-align: center;
+  font-weight: normal;
+  color: #606266;
+  white-space: nowrap;
+  overflow: visible;
+  border: none;
+  background-color: #f5f7fa;
+  font-size: 14px;
+}
+
+.channel-type-header {
+  width: 25%;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.channel-name-header {
+  width: 45%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.error-header {
+  width: 30%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .card {
   border: 1px solid #ddd;
   margin-bottom: 10px;
@@ -382,116 +460,134 @@ const setErrorColor = (channel, error) => {
   width: 100%;
 }
 
-.channel-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: inherit;
-}
-
 .channel-table td {
-  padding: 8px;
+  padding: 12px;
   vertical-align: top;
-  text-align: center;
+  text-align: left;
   font-family: inherit;
+  border-right: 1px solid #eee;
+  word-wrap: break-word;
+  white-space: normal;
 }
 
 .channel-type {
-  width: 20%;
+  width: 25%;
   vertical-align: top;
-  text-align: center;
+  text-align: left;
   font-family: inherit;
+  background-color: #fafafa;
+  padding: 12px;
+}
+
+.channel-type span {
+  display: block;
+  word-wrap: break-word;
+  white-space: normal;
+  margin-bottom: 8px;
+}
+
+.type-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .channel-name {
-  width: 40%;
-  vertical-align: middle;
-  text-align: center;
-  border-bottom: 0.5px solid #ddd;
+  width: 45%;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid #eee;
   font-family: inherit;
+  background-color: #fff;
+  padding: 12px;
 }
 
 .name-container {
   display: flex;
+  flex-wrap: nowrap;
   justify-content: space-between;
-  align-items: center;
-  font-family: inherit;
+  align-items: flex-start;
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.name-container span {
+  flex: 1;
+  word-wrap: break-word;
+  white-space: normal;
+  margin-right: 8px;
+  min-width: 0;
 }
 
 .name-right {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .error-column {
   width: 30%;
-  vertical-align: middle;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  vertical-align: top;
+  text-align: left;
+  word-wrap: break-word;
+  white-space: normal;
   border-bottom: none;
+  background-color: #fff;
+  padding: 12px;
 }
 
-.error-last {
-  border-bottom: 0.5px solid #ddd;
-}
-
-.checkbox-margin {
-  margin: 0;
-}
-
-.type-header {
+.error-container {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  justify-content: space-between;
+  align-items: flex-start;
   gap: 8px;
-  padding: 8px 0;
 }
 
-.type-header span {
-  font-size: 14px;
-  word-break: break-all;
-  text-align: center;
-}
-
-.channel-name-last {
-  border-bottom: none;
+.error-container span {
+  flex: 1;
+  word-wrap: break-word;
+  white-space: normal;
 }
 
 .shot-number-tag {
-  color: gray;
+  display: block;
   width: 100%;
-  margin-top: 5px;
+  margin: 8px 0;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #666;
 }
 
 .show-more-container {
+  margin-top: 8px;
+  text-align: left;
+}
+
+.loading-indicator {
   display: flex;
+  align-items: center;
   justify-content: center;
-  margin-top: 3px;
+  padding: 10px;
+  color: #909399;
 }
 
-.hidden-errors-count {
-  text-align: center;
-  color: #888;
-  margin-top: 2px;
-}
-
-/* 去除颜色选择器里面的箭头 */
+/* 颜色选择器相关样式 */
 :deep(.is-icon-arrow-down) {
   display: none !important;
 }
 
-/* 去除颜色选择器最外层的边框 */
 :deep(.el-color-picker__trigger) {
   border: none;
 }
 
-/* 将颜色色块变为圆形 */
 :deep(.el-color-picker__color) {
   border-radius: 50%;
 }
 
-/* 将下拉面板中的选色区域的选框变为圆形 */
 :deep(.el-color-dropdown__main-wrapper .el-color-alpha-slider__thumb,
   .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
   width: 14px;
@@ -499,7 +595,6 @@ const setErrorColor = (channel, error) => {
   border-radius: 50%;
 }
 
-/* 将下拉面板中的预设颜色方块变为圆形 */
 :deep(.el-color-predefine__color-selector) {
   border-radius: 50%;
 }
@@ -512,7 +607,6 @@ const setErrorColor = (channel, error) => {
   border-radius: 50%;
 }
 
-/* 添加新的样式 */
 :deep(.error-color-picker-dropdown) {
   .el-color-dropdown__btns {
     &::before {
@@ -524,25 +618,5 @@ const setErrorColor = (channel, error) => {
       font-size: 14px;
     }
   }
-}
-
-.exception-list {
-  padding: 10px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
-}
-
-.loading-indicator {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-  color: #909399;
-}
-
-.error-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-family: inherit;
 }
 </style>

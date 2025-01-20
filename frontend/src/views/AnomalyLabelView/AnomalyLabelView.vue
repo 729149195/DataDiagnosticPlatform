@@ -60,11 +60,6 @@
                   inactive-text="异常颜色" />
               </span>
               <div>
-                <div class="header-row">
-                  <span>通道类别</span>
-                  <span>通道名 & 炮号</span>
-                  <span>异常类别</span>
-                </div>
                 <el-scrollbar height="55vh" :always="false">
                   <div v-if="color_table_value === true">
                     <ChannelType />
@@ -79,11 +74,6 @@
               <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">可视化配置</span>
               </span>
-              <div class="header-row">
-                <span>通道类别</span>
-                <span>通道名</span>
-                <span>异常类别</span>
-              </div>
               <el-scrollbar height="55vh" :always="false">
                 <div>
                   <ChannelTypeP />
@@ -764,10 +754,35 @@ watch(test_channel_number, (newValue) => {
 .table {
   flex-grow: 1;
   position: relative;
+  display: flex;
+  flex-direction: column;
 
   .color_table_switch {
     position: absolute;
     right: 10px;
+  }
+
+  .title-row {
+    padding: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .table-container {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: calc(100% - 32px); // 减去title-row的高度
+  }
+
+  :deep(.el-scrollbar) {
+    height: 100%;
+    
+    .el-scrollbar__wrap {
+      overflow-x: hidden;
+    }
   }
 }
 
