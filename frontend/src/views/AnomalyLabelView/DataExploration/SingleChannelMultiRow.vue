@@ -1163,7 +1163,7 @@ const drawChart = async (
           .attr('text-anchor', 'middle')
           .style('font-size', '1.1em')
           .style('font-weight', 'bold')
-          .text('Time');  // 移除了 (s)
+          .text('Time(s)');  // 移除了 (s)
 
       g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
 
