@@ -575,12 +575,8 @@ const formatChannelType = (name) => {
 
 .shot-number-tag {
   color: #666;
-  margin: 8px 0;
-  display: block;
-  width: calc(100% - 16px);
-  font-size: 12px;
-  line-height: 1.4;
-  text-align: left;
+  width: calc(100%);
+  text-align: center;
 }
 
 .show-more-container {
