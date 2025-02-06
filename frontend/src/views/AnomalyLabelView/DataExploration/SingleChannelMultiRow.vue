@@ -1,103 +1,87 @@
 <template>
   <div class="chart-container">
     <div v-if="selectedChannels.length === 0">
-      <el-empty description="请选择通道" style="margin-top: 15vh;"/>
+      <el-empty description="请选择通道" style="margin-top: 15vh;" />
     </div>
     <div v-else>
       <div class="chart-wrapper" v-for="(channel, index) in selectedChannels"
-           :key="channel.channel_name + '_' + channel.shot_number">
+        :key="channel.channel_name + '_' + channel.shot_number">
         <div v-if="loadingStates[channel.channel_name + '_' + channel.shot_number] !== 100 ||
-                    renderingStates[channel.channel_name + '_' + channel.shot_number] !== 100"
-             class="progress-wrapper">
+          renderingStates[channel.channel_name + '_' + channel.shot_number] !== 100"
+          class="progress-wrapper">
           <div class="progress-title">
-                        <span>{{
-                            `${channel.channel_name}#${channel.shot_number}`
-                          }} - {{
-                            loadingStates[channel.channel_name + '_' + channel.shot_number] === 100
-                                ? '图表渲染中' : '数据加载中'
-                          }}</span>
+            <span>{{
+              `${channel.channel_name}#${channel.shot_number}`
+            }} - {{
+                loadingStates[channel.channel_name + '_' + channel.shot_number] === 100
+                  ? '图表渲染中' : '数据加载中'
+              }}</span>
             <span class="progress-percentage">{{
-                getProgressPercentage(channel.channel_name + '_' + channel.shot_number)
-              }}%</span>
+              getProgressPercentage(channel.channel_name + '_' + channel.shot_number)
+            }}%</span>
           </div>
-          <el-progress
-              :percentage="getProgressPercentage(channel.channel_name + '_' + channel.shot_number)"
-              :stroke-width="10"
-              :status="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '' : 'warning'"
-              :color="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '#409EFF' : ''"
-          />
+          <el-progress :percentage="getProgressPercentage(channel.channel_name + '_' + channel.shot_number)"
+            :stroke-width="10"
+            :status="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '' : 'warning'"
+            :color="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '#409EFF' : ''" />
         </div>
         <svg :id="'chart-' + channel.channel_name + '_' + channel.shot_number"
-             :ref="el => channelSvgElementsRefs[index] = el"
-             :style="{
-                        opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
-                        transition: 'opacity 0.5s ease'
-                    }"></svg>
+          :ref="el => channelSvgElementsRefs[index] = el" :style="{
+            opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
+            transition: 'opacity 0.5s ease'
+          }"></svg>
         <!-- Position the color picker near the chart -->
-        <div class="color-picker-container"
-             :style="{
-                        opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
-                        visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
-                        transition: 'opacity 0.5s ease'
-                    }"
-             v-show="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100"
-        >
+        <div class="color-picker-container" :style="{
+          opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
+          visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
+          transition: 'opacity 0.5s ease'
+        }" v-show="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100">
           <ChannelColorPicker :color="channel.color" :predefineColors="predefineColors"
-                              @change="updateChannelColor(channel)" @update:color="channel.color = $event"
-                              :channelName="channel.channel_name" :shotNumber="channel.shot_number"/>
+            @change="updateChannelColor(channel)" @update:color="channel.color = $event"
+            :channelName="channel.channel_name" :shotNumber="channel.shot_number" />
         </div>
       </div>
       <div class="overview-container">
-        <el-divider/>
+        <el-divider />
         <div class="overview-content">
-                    <span class="brush-controls-left">
-                        <el-tag type="info">总览条起点</el-tag>
-                        <el-input
-                            size="small"
-                            style="width: 80px;"
-                            v-model="brush_begin"
-                            @blur="handleInputBlur('begin')"
-                            @keyup.enter="handleInputBlur('begin')"
-                        ></el-input>
-                    </span>
+          <span class="brush-controls-left">
+            <el-tag type="info">总览条起点</el-tag>
+            <el-input size="small" style="width: 80px;" v-model="brush_begin" @blur="handleInputBlur('begin')"
+              @keyup.enter="handleInputBlur('begin')"></el-input>
+          </span>
           <div class="overview-svg-container">
             <svg id="overview-chart" class="overview-svg"></svg>
           </div>
           <span class="brush-controls-right">
-                        <el-tag type="info">总览条终点</el-tag>
-                        <el-input
-                            size="small"
-                            style="width: 80px"
-                            v-model="brush_end"
-                            @blur="handleInputBlur('end')"
-                            @keyup.enter="handleInputBlur('end')"
-                        ></el-input>
-                    </span>
+            <el-tag type="info">总览条终点</el-tag>
+            <el-input size="small" style="width: 80px" v-model="brush_end" @blur="handleInputBlur('end')"
+              @keyup.enter="handleInputBlur('end')"></el-input>
+          </span>
         </div>
       </div>
     </div>
     <el-dialog v-if="showAnomalyForm && currentAnomaly.channelName" v-model="showAnomalyForm" title="编辑/修改异常信息">
       <el-form :model="currentAnomaly" label-width="auto">
         <el-form-item label="通道名">
-          <el-input v-model="currentAnomaly.channelName" disabled/>
+          <el-input v-model="currentAnomaly.channelName" disabled />
         </el-form-item>
         <el-form-item label="异常类别">
-          <el-input v-model="currentAnomaly.anomalyCategory"/>
+          <el-input v-model="currentAnomaly.anomalyCategory" />
         </el-form-item>
         <el-form-item label="异常诊断名称">
-          <el-input v-model="currentAnomaly.anomalyDiagnosisName"/>
+          <el-input v-model="currentAnomaly.anomalyDiagnosisName" />
         </el-form-item>
         <el-form-item label="时间轴范围">
-          <el-input :value="timeAxisRange" disabled/>
+          <el-input :value="timeAxisRange" disabled />
         </el-form-item>
         <el-form-item label="异常描述">
-          <el-input v-model="currentAnomaly.anomalyDescription" :rows="4" type="textarea"/>
+          <el-input v-model="currentAnomaly.anomalyDescription" :rows="4" type="textarea" />
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
-                <el-button @click="closeAnomalyForm">取消</el-button>
-                <el-button type="primary" @click="saveAnomaly">保存</el-button>
-            </span>
+        <el-button @click="closeAnomalyForm">取消</el-button>
+        <el-button type="primary" @click="saveAnomaly">保存</el-button>
+      </span>
     </el-dialog>
   </div>
 </template>
@@ -125,7 +109,7 @@ import {
   ElButton,
   ElMessage,
 } from 'element-plus';
-import {useStore} from 'vuex';
+import { useStore } from 'vuex';
 import chartWorkerManager from '@/workers/chartWorkerManager';
 
 const currentAnomaly = reactive({});
@@ -140,12 +124,12 @@ const brush_end = ref(0);
 
 const timeAxisRange = computed(() => {
   if (
-      currentAnomaly &&
-      currentAnomaly.startX !== undefined &&
-      currentAnomaly.endX !== undefined
+    currentAnomaly &&
+    currentAnomaly.startX !== undefined &&
+    currentAnomaly.endX !== undefined
   ) {
     return `${currentAnomaly.startX.toFixed(3)} - ${currentAnomaly.endX.toFixed(
-        2
+      2
     )}`;
   }
   return '';
@@ -164,7 +148,7 @@ const domains = computed(() => ({
 }));
 
 const chartContainerWidth = ref(0);
-const brushSelections = ref({overview: null});
+const brushSelections = ref({ overview: null });
 
 const matchedResults = computed(() => store.state.matchedResults);
 
@@ -218,7 +202,7 @@ watch(matchedResults, (newResults) => {
       drawHighlightRects(channelKey, results);
     });
   }
-}, {deep: true});
+}, { deep: true });
 
 // **New: Define predefined colors**
 const predefineColors = ref([
@@ -246,31 +230,31 @@ const predefineColors = ref([
 ]);
 
 const updateChannelColor = (channel) => {
-  store.commit('updateChannelColor', {channel_key: channel.channel_key, color: channel.color});
+  store.commit('updateChannelColor', { channel_key: channel.channel_key, color: channel.color });
   renderCharts();
 };
 
 // 添加Worker消息处理
-chartWorkerManager.onmessage = function(e) {
+chartWorkerManager.onmessage = function (e) {
   const { type, data, error } = e.data;
-  
+
   if (error) {
     console.error('Worker error:', error);
     ElMessage.error(`数据处理错误: ${error}`);
     return;
   }
-  
+
   switch (type) {
     case 'processedData': {
       try {
         const { processedData, channelKey, color, xUnit, yUnit, channelType, channelNumber, shotNumber } = data;
-        
+
         // 验证处理后的数据
         if (!processedData || !processedData.X_value || !processedData.Y_value) {
           console.warn(`Invalid processed data for channel ${channelKey}`);
           return;
         }
-        
+
         // 更新处理后的数据到overviewData
         if (processedData.X_value.length > 0 && processedData.Y_value.length > 0) {
           const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
@@ -353,7 +337,7 @@ const processChannelData = async (data, channel) => {
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   try {
     renderingStates[channelKey] = 25; // 开始处理数据
-    
+
     // 准备数据
     const channelData = {
       X_value: [...data.X_value],
@@ -419,10 +403,38 @@ const processChannelData = async (data, channel) => {
         }
       });
 
+      // 计算并更新全局 X 轴范围
+      const allX = overviewData.value.flatMap(d => d.X_value);
+      const xExtent = d3.extent(allX);
+      // 更新所有通道的 domain
+      selectedChannels.value.forEach((ch) => {
+        const chKey = `${ch.channel_name}_${ch.shot_number}`;
+        store.dispatch('updateDomains', {
+          channelName: chKey,
+          xDomain: xExtent,
+          yDomain: domains.value.y[chKey]
+        });
+
+        // 如果不是当前正在处理的通道,则重新渲染该通道
+        if (chKey !== channelKey) {
+          const data = channelDataCache.value[chKey];
+          if (data) {
+            nextTick(() => {
+              drawChart(data, data.errorsData, chKey, ch.color,
+                data.X_unit, data.Y_unit, data.channel_type,
+                data.channel_number, ch.shot_number)
+                .catch(error => {
+                  console.error(`Error redrawing chart for ${chKey}:`, error);
+                });
+            });
+          }
+        }
+      });
+
       renderingStates[channelKey] = 75; // 更新渲染状态
       nextTick(() => {
-        drawChart(processedData.processedData, errorDataResults, channelKey, processedData.color, 
-          processedData.xUnit, processedData.yUnit, processedData.channelType, 
+        drawChart(processedData.processedData, errorDataResults, channelKey, processedData.color,
+          processedData.xUnit, processedData.yUnit, processedData.channelType,
           processedData.channelNumber, processedData.shotNumber)
           .then(() => {
             renderingStates[channelKey] = 100;
@@ -450,7 +462,7 @@ const fetchChannelData = async (channel) => {
     }
 
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    
+
     // 初始化加载状态
     loadingStates[channelKey] = Number(0);
 
@@ -517,7 +529,7 @@ const renderCharts = debounce(async () => {
 
     // 过滤掉无效的数据
     const validChannelsData = channelsData.filter(data => data !== null);
-    
+
     if (validChannelsData.length === 0) {
       console.warn('No valid channel data fetched');
       return;
@@ -551,8 +563,8 @@ const renderCharts = debounce(async () => {
 
     performance.mark('Total Render Time-end');
     performance.measure('Total Render Time',
-        'Total Render Time-start',
-        'Total Render Time-end');
+      'Total Render Time-start',
+      'Total Render Time-end');
 
     window.dataLoaded = true;
   } catch (error) {
@@ -665,14 +677,14 @@ const drawHighlightRects = (channelName, results) => {
   const svg = d3.select(`#chart-${channelName}`);
   if (!svg.node()) return;
 
-  const margin = {top: 20, right: 30, bottom: 50, left: 65};
+  const margin = { top: 20, right: 30, bottom: 50, left: 65 };
   const width = svg.node().getBoundingClientRect().width - margin.left - margin.right;
   const height = 230 - margin.top - margin.bottom;
 
   // 获取当前图表的x比例尺
   const x = d3.scaleLinear()
-      .domain(domains.value.x[channelName] || [-2, 6])
-      .range([0, width]);
+    .domain(domains.value.x[channelName] || [-2, 6])
+    .range([0, width]);
 
   // 获取当前通道的数据并进行采样和平处理
   const channelData = channelDataCache.value[channelName];
@@ -699,16 +711,16 @@ const drawHighlightRects = (channelName, results) => {
 
   // 创建与主图表相同的y比例尺
   const y = d3.scaleLinear()
-      .domain([yMin, yMax])
-      .range([height, 0]);
+    .domain([yMin, yMax])
+    .range([height, 0]);
 
   // 移除之前的高亮区域
   svg.select(`.highlight-group-${channelName}`).remove();
 
   // 创建新的高亮区域
   const highlightGroup = svg.select('g')
-      .append('g')
-      .attr('class', `highlight-group-${channelName}`);
+    .append('g')
+    .attr('class', `highlight-group-${channelName}`);
 
   // 获取时间边界值约束
   const timeBegin = store.state.time_begin;
@@ -758,32 +770,32 @@ const drawHighlightRects = (channelName, results) => {
       const rectHeight = y(minY - padding) - y(maxY + padding);
 
       highlightGroup.append('rect')
-          .attr('x', x(startX))
-          .attr('y', rectY)
-          .attr('width', x(endX) - x(startX))
-          .attr('height', rectHeight)
-          .attr('fill', 'rgba(255, 165, 0, 0.2)')
-          .attr('stroke', 'rgba(255, 140, 0, 0.8)')
-          .attr('stroke-width', 2)
-          .attr('opacity', result.confidence)
-          .style('filter', 'drop-shadow(2px 2px 2px rgba(0,0,0,0.2))')
-          .on('mouseover', function (event) {
-            const tooltip = d3.select('body')
-                .append('div')
-                .attr('class', 'custom-tooltip')
-                .style('position', 'absolute')
-                .style('background-color', 'rgba(50, 50, 50, 0.9)')
-                .style('color', 'white')
-                .style('padding', '8px 12px')
-                .style('border-radius', '4px')
-                .style('font-size', '12px')
-                .style('box-shadow', '0 2px 12px 0 rgba(0,0,0,0.3)')
-                .style('z-index', 9999)
-                .style('pointer-events', 'none')
-                .style('transition', 'opacity 0.3s');
+        .attr('x', x(startX))
+        .attr('y', rectY)
+        .attr('width', x(endX) - x(startX))
+        .attr('height', rectHeight)
+        .attr('fill', 'rgba(255, 165, 0, 0.2)')
+        .attr('stroke', 'rgba(255, 140, 0, 0.8)')
+        .attr('stroke-width', 2)
+        .attr('opacity', result.confidence)
+        .style('filter', 'drop-shadow(2px 2px 2px rgba(0,0,0,0.2))')
+        .on('mouseover', function (event) {
+          const tooltip = d3.select('body')
+            .append('div')
+            .attr('class', 'custom-tooltip')
+            .style('position', 'absolute')
+            .style('background-color', 'rgba(50, 50, 50, 0.9)')
+            .style('color', 'white')
+            .style('padding', '8px 12px')
+            .style('border-radius', '4px')
+            .style('font-size', '12px')
+            .style('box-shadow', '0 2px 12px 0 rgba(0,0,0,0.3)')
+            .style('z-index', 9999)
+            .style('pointer-events', 'none')
+            .style('transition', 'opacity 0.3s');
 
-            tooltip.html(
-                `<div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
+          tooltip.html(
+            `<div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
                             <span style="color: #67C23A;">置信度:</span> ${(result.confidence * 100).toFixed(2)}%
                         </div>
                         <div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
@@ -795,21 +807,21 @@ const drawHighlightRects = (channelName, results) => {
                         <div>
                             <span style="color: #F56C6C;">Y值幅度:</span> ${yRange.toFixed(3)}
                         </div>`
-            );
+          );
 
-            // 设提示框位置
-            const tooltipWidth = tooltip.node().getBoundingClientRect().width;
-            const tooltipHeight = tooltip.node().getBoundingClientRect().height;
-            const mouseX = event.pageX;
-            const mouseY = event.pageY;
+          // 设提示框位置
+          const tooltipWidth = tooltip.node().getBoundingClientRect().width;
+          const tooltipHeight = tooltip.node().getBoundingClientRect().height;
+          const mouseX = event.pageX;
+          const mouseY = event.pageY;
 
-            tooltip
-                .style('left', `${mouseX - tooltipWidth / 2}px`)
-                .style('top', `${mouseY - tooltipHeight - 10}px`);
-          })
-          .on('mouseout', function () {
-            d3.selectAll('.custom-tooltip').remove();
-          });
+          tooltip
+            .style('left', `${mouseX - tooltipWidth / 2}px`)
+            .style('top', `${mouseY - tooltipHeight - 10}px`);
+        })
+        .on('mouseout', function () {
+          d3.selectAll('.custom-tooltip').remove();
+        });
     }
   });
 };
@@ -827,16 +839,16 @@ const drawOverviewChart = () => {
   const svgNode = svg.node();
   const svgWidth = svgNode.getBoundingClientRect().width;
 
-  const margin = {top: 10, right: 45, bottom: 35, left: 45};
+  const margin = { top: 10, right: 45, bottom: 35, left: 45 };
   const width = svgWidth - margin.left - margin.right;
   const height = 80 - margin.top - margin.bottom;
 
   svg
-      .attr(
-          'viewBox',
-          `0 0 ${svgWidth} ${height + margin.top + margin.bottom}`
-      )
-      .attr('preserveAspectRatio', 'xMidYMid meet');
+    .attr(
+      'viewBox',
+      `0 0 ${svgWidth} ${height + margin.top + margin.bottom}`
+    )
+    .attr('preserveAspectRatio', 'xMidYMid meet');
 
   const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -854,13 +866,21 @@ const drawOverviewChart = () => {
       xDomain: xExtent,
       yDomain: domains.value.y[channelName]
     });
+
+    // 重新渲染每个通道的图表以更新显示范围
+    const data = channelDataCache.value[channelName];
+    if (data) {
+      nextTick(() => {
+        drawChannelChart(channel, data);
+      });
+    }
   });
 
   // 更新 brush_begin 和 brush_end 到当前数据范围
   updatingBrush.value = true;
   brush_begin.value = xExtent[0].toFixed(4);
   brush_end.value = xExtent[1].toFixed(4);
-  store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+  store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
   updatingBrush.value = false;
 
   const x = d3.scaleLinear().domain(xExtent).range([0, width]);
@@ -870,47 +890,47 @@ const drawOverviewChart = () => {
 
   // 绘制总览数据线条
   const lines = g.selectAll('.overview-line')
-      .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
+    .data(overviewData.value, d => `${d.channelName}_${d.channelshotnumber}`);
 
   // 进入
   lines.enter()
-      .append('path')
-      .attr('class', 'overview-line')
-      .attr('fill', 'none')
-      .attr('stroke', d => d.color || 'steelblue')
-      .attr('stroke-width', 1)
-      .attr('d', d => d3.line()
-          .x((v, i) => x(d.X_value[i]))
-          .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX)(d.Y_value)
-      );
+    .append('path')
+    .attr('class', 'overview-line')
+    .attr('fill', 'none')
+    .attr('stroke', d => d.color || 'steelblue')
+    .attr('stroke-width', 1)
+    .attr('d', d => d3.line()
+      .x((v, i) => x(d.X_value[i]))
+      .y((v, i) => y(v))
+      .curve(d3.curveMonotoneX)(d.Y_value)
+    );
 
   // 更新
   lines
-      .attr('stroke', d => d.color || 'steelblue')
-      .attr('d', d => d3.line()
-          .x((v, i) => x(d.X_value[i]))
-          .y((v, i) => y(v))
-          .curve(d3.curveMonotoneX)(d.Y_value)
-      );
+    .attr('stroke', d => d.color || 'steelblue')
+    .attr('d', d => d3.line()
+      .x((v, i) => x(d.X_value[i]))
+      .y((v, i) => y(v))
+      .curve(d3.curveMonotoneX)(d.Y_value)
+    );
 
   // 退出
   lines.exit().remove();
 
   // 绘制坐标轴
   g.append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x))
-      .style("font-size", "1em")
-      .style("font-weight", "bold");
+    .attr('transform', `translate(0,${height})`)
+    .call(d3.axisBottom(x))
+    .style("font-size", "1em")
+    .style("font-weight", "bold");
 
   // 添加刷子功能
   const brush = d3.brushX()
-      .extent([
-        [0, 0],
-        [width, height],
-      ])
-      .on('brush end', debounce(brushed, 150));
+    .extent([
+      [0, 0],
+      [width, height],
+    ])
+    .on('brush end', debounce(brushed, 150));
 
   overviewBrushInstance.value = brush;
 
@@ -931,7 +951,7 @@ const drawOverviewChart = () => {
     updatingBrush.value = true;
     brush_begin.value = newDomain[0].toFixed(4);
     brush_end.value = newDomain[1].toFixed(4);
-    store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+    store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
     updatingBrush.value = false;
 
     // 如果是点击空白处，手动设置刷选框
@@ -1008,7 +1028,7 @@ const handleInputBlur = (type) => {
   brush_end.value = end.toFixed(4);
 
   // 更新 store 中的值
-  store.commit("updatebrush", {begin: brush_begin.value, end: brush_end.value});
+  store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
 
   // 更新刷选区域
   const selection = [x(start), x(end)];
@@ -1034,7 +1054,7 @@ const handleInputBlur = (type) => {
 // 修改 watch 函数，移除即时格式化
 watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
   // 仅在输入框失焦或按下回车时处理
-}, {immediate: false});
+}, { immediate: false });
 
 const createGaussianKernel = (sigma, size) => {
   const kernel = [];
@@ -1087,15 +1107,15 @@ const interpolateData = (data, t) => {
 const originalDomains = ref({}); // 存储原始的显示范围
 
 const drawChart = async (
-    data,
-    errorsData,
-    channelName,
-    color,
-    xUnit,
-    yUnit,
-    channelType,
-    channelNumber,
-    shotNumber
+  data,
+  errorsData,
+  channelName,
+  color,
+  xUnit,
+  yUnit,
+  channelType,
+  channelNumber,
+  shotNumber
 ) => {
   return new Promise((resolve, reject) => {
     try {
@@ -1114,7 +1134,7 @@ const drawChart = async (
 
       const svg = d3.select(`#chart-${channelName}`);
       // 修改边距，增加底部空间
-      const margin = {top: 15, right: 20, bottom: 50, left: 60};
+      const margin = { top: 15, right: 20, bottom: 50, left: 60 };
 
       const width = containerWidth - margin.left - margin.right;
       const height = 230 - margin.top - margin.bottom;
@@ -1122,13 +1142,13 @@ const drawChart = async (
       svg.selectAll('*').remove();
 
       svg
-          .attr(
-              'viewBox',
-              `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
-          )
-          .attr('preserveAspectRatio', 'xMidYMid meet')
-          .attr('width', '100%')
-          .style('overflow', 'visible'); // 添加这行，允许内容超出 SVG 边界
+        .attr(
+          'viewBox',
+          `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
+        )
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .attr('width', '100%')
+        .style('overflow', 'visible'); // 添加这行，允许内容超出 SVG 边界
 
       const yExtent = d3.extent(data.Y_value);
       const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
@@ -1136,13 +1156,13 @@ const drawChart = async (
       const yMax = yExtent[1] + yRangePadding;
 
       const x = d3
-          .scaleLinear()
-          .domain(domains.value.x[channelName] || [-2, 6])
-          .range([0, width]);
+        .scaleLinear()
+        .domain(domains.value.x[channelName])
+        .range([0, width]);
 
       const y = d3.scaleLinear()
-          .domain(domains.value.y[channelName] || [yMin, yMax])
-          .range([height, 0]);
+        .domain(domains.value.y[channelName] || [yMin, yMax])
+        .range([height, 0]);
 
       let smoothedYValue = data.Y_value;
       if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
@@ -1150,119 +1170,119 @@ const drawChart = async (
       }
 
       const line = d3
-          .line()
-          .x((d, i) => x(data.X_value[i]))
-          .y((d, i) => y(d))
-          .curve(d3.curveMonotoneX);
+        .line()
+        .x((d, i) => x(data.X_value[i]))
+        .y((d, i) => y(d))
+        .curve(d3.curveMonotoneX);
 
       const g = svg
-          .append('g')
-          .attr('transform', `translate(${margin.left},${margin.top})`);
+        .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
 
       g.append('defs')
-          .append('clipPath')
-          .attr('id', `clip-${channelName}`)
-          .append('rect')
-          .attr('width', width)
-          .attr('height', height);
+        .append('clipPath')
+        .attr('id', `clip-${channelName}`)
+        .append('rect')
+        .attr('width', width)
+        .attr('height', height);
 
       const clipGroup = g
-          .append('g')
-          .attr('clip-path', `url(#clip-${channelName})`);
+        .append('g')
+        .attr('clip-path', `url(#clip-${channelName})`);
 
       // 修改横坐标标签
       g.append('g')
-          .attr('class', 'x-axis')
-          .attr('transform', `translate(0,${height})`)
-          .call(d3.axisBottom(x))
-          .selectAll("text")
-          .style("font-size", "1.1em")
-          .style("font-weight", "bold");
+        .attr('class', 'x-axis')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x))
+        .selectAll("text")
+        .style("font-size", "1.1em")
+        .style("font-weight", "bold");
 
       // 添加统一的横坐标标签
       g.append('text')
-          .attr('class', 'x-label')
-          .attr('x', width / 2)
-          .attr('y', height + 30)
-          .attr('text-anchor', 'middle')
-          .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
-          .text('Time(s)');  // 移除了 (s)
+        .attr('class', 'x-label')
+        .attr('x', width / 2)
+        .attr('y', height + 30)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '1.1em')
+        .style('font-weight', 'bold')
+        .text('Time(s)');  // 移除了 (s)
 
       g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
 
       g.append('g')
-          .attr('class', 'grid')
-          .call(
-              d3
-                  .axisLeft(y)
-                  .tickSize(-width)
-                  .tickFormat('')
-          )
-          .selectAll('line')
-          .style('stroke', '#ccc')
-          .style('stroke-dasharray', '3,3');
+        .attr('class', 'grid')
+        .call(
+          d3
+            .axisLeft(y)
+            .tickSize(-width)
+            .tickFormat('')
+        )
+        .selectAll('line')
+        .style('stroke', '#ccc')
+        .style('stroke-dasharray', '3,3');
 
       g.append('g')
-          .attr('class', 'grid')
-          .attr('transform', `translate(0,${height})`)
-          .call(
-              d3
-                  .axisBottom(x)
-                  .tickSize(-height)
-                  .tickFormat('')
-          )
-          .selectAll('line')
-          .style('stroke', '#ccc')
-          .style('stroke-dasharray', '3,3');
+        .attr('class', 'grid')
+        .attr('transform', `translate(0,${height})`)
+        .call(
+          d3
+            .axisBottom(x)
+            .tickSize(-height)
+            .tickFormat('')
+        )
+        .selectAll('line')
+        .style('stroke', '#ccc')
+        .style('stroke-dasharray', '3,3');
 
       // 添加X轴单位标签
       svg
-          .append('text')
-          .attr('x', width + margin.left + 15)
-          .attr('y', height + margin.top + 20)
-          .attr('text-anchor', 'end')
-          .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
-          .attr('fill', '#000')
-          .text('');  // 移除 xUnit，不显示单位
+        .append('text')
+        .attr('x', width + margin.left + 15)
+        .attr('y', height + margin.top + 20)
+        .attr('text-anchor', 'end')
+        .style('font-size', '1.1em')
+        .style('font-weight', 'bold')
+        .attr('fill', '#000')
+        .text('');  // 移除 xUnit，不显示单位
 
       // 添加Y轴单位标签
       svg
-          .append('text')
-          .attr('transform', `translate(${margin.left - 50}, ${margin.top + height / 2}) rotate(-90)`)
-          .attr('text-anchor', 'middle')
-          .style('font-size', '1.1em')
-          .style('font-weight', 'bold')
-          .attr('alignment-baseline', 'middle')
-          .attr('fill', '#000')
-          .text(yUnit);
+        .append('text')
+        .attr('transform', `translate(${margin.left - 50}, ${margin.top + height / 2}) rotate(-90)`)
+        .attr('text-anchor', 'middle')
+        .style('font-size', '1.1em')
+        .style('font-weight', 'bold')
+        .attr('alignment-baseline', 'middle')
+        .attr('fill', '#000')
+        .text(yUnit);
 
       // 修改通道信息显示位置和样式，将其移动到右上角并与颜色选择器组合
       const legendGroup = g.append('g')
-          .attr('class', 'legend-group')
-          .attr('transform', `translate(${width - 280}, -10)`);  // 调整位置
+        .attr('class', 'legend-group')
+        .attr('transform', `translate(${width - 280}, -10)`);  // 调整位置
 
       // 添加通道信息文本
       legendGroup.append('text')
-          .attr('x', -122)
-          .attr('y', 30)
-          .attr('text-anchor', 'start')
-          .style('font-size', '1.0em')
-          .style('font-weight', 'bold')
-          .style('fill', color || 'steelblue')  // 添加这行，使用与图表相同的颜色
-          .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz, ${data.originalDataPoints}点 -> ${(data.originalFrequency * sampling.value).toFixed(2)}KHz, ${Math.ceil(data.originalDataPoints * sampling.value)}点)`);
+        .attr('x', -60)
+        .attr('y', 30)
+        .attr('text-anchor', 'start')
+        .style('font-size', '1.0em')
+        .style('font-weight', 'bold')
+        .style('fill', color || 'steelblue')  // 添加这行，使用与图表相同的颜色
+        .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`);
 
       // 绘制每个通道的主线
       clipGroup
-          .append('path')
-          .datum(data.Y_value)
-          .attr('class', 'original-line')
-          .attr('fill', 'none')
-          .attr('stroke', color || 'steelblue')
-          .attr('stroke-width', 1.5)
-          .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
-          .attr('d', line);
+        .append('path')
+        .datum(data.Y_value)
+        .attr('class', 'original-line')
+        .attr('fill', 'none')
+        .attr('stroke', color || 'steelblue')
+        .attr('stroke-width', 1.5)
+        .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
+        .attr('d', line);
 
       // 处理错误数据
       if (errorsData) {
@@ -1277,7 +1297,7 @@ const drawChart = async (
             const startTime = xRange[0];
             const endTime = xRange[1];
             const points = [];
-            
+
             // 找到对应时间范围内的数据点
             data.X_value.forEach((x, i) => {
               if (x >= startTime && x <= endTime) {
@@ -1287,7 +1307,7 @@ const drawChart = async (
                 });
               }
             });
-            
+
             return points;
           };
 
@@ -1391,48 +1411,48 @@ const drawChart = async (
 
       if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
         clipGroup
-            .append('path')
-            .datum(smoothedYValue)
-            .attr('class', 'smoothed-line')
-            .attr('fill', 'none')
-            .attr('stroke', color || 'steelblue')
-            .attr('stroke-width', 1.5)
-            .attr('d', line);
+          .append('path')
+          .datum(smoothedYValue)
+          .attr('class', 'smoothed-line')
+          .attr('fill', 'none')
+          .attr('stroke', color || 'steelblue')
+          .attr('stroke-width', 1.5)
+          .attr('d', line);
       }
 
       const selectionBrush = d3
-          .brushX()
-          .extent([
-            [0, 0],
-            [width, height],
-          ])
-          .on('end', selectionBrushed);
+        .brushX()
+        .extent([
+          [0, 0],
+          [width, height],
+        ])
+        .on('end', selectionBrushed);
 
       const zoomBrush = d3
-          .brush()
-          .extent([
-            [0, 0],
-            [width, height],
-          ])
-          .on('end', zoomBrushed);
+        .brush()
+        .extent([
+          [0, 0],
+          [width, height],
+        ])
+        .on('end', zoomBrushed);
 
       // 创建两个不同的brush组
       const selectionBrushG = g.append('g')
-          .attr('class', 'selection-brush')
-          .style('display', isBoxSelect.value ? null : 'none')
-          .call(selectionBrush);
+        .attr('class', 'selection-brush')
+        .style('display', isBoxSelect.value ? null : 'none')
+        .call(selectionBrush);
 
       const zoomBrushG = g.append('g')
-          .attr('class', 'zoom-brush')
-          .style('display', isBoxSelect.value ? 'none' : null)
-          .call(zoomBrush);
+        .attr('class', 'zoom-brush')
+        .style('display', isBoxSelect.value ? 'none' : null)
+        .call(zoomBrush);
 
       // 创建anomaliesGroup
       const anomaliesGroup = g.append('g').attr('class', 'anomalies-group');
 
       // 加载已有的异常标注
       const channelAnomalies = anomalies.value.filter(
-          (a) => a.channelName === channelName
+        (a) => a.channelName === channelName
       );
       channelAnomalies.forEach((anomaly) => {
         drawAnomalyElements(anomaly, anomaliesGroup);
@@ -1538,223 +1558,223 @@ const drawChart = async (
 
       function drawAnomalyElements(anomaly, anomaliesGroup, isStored = false) {
         const anomalyGroup = anomaliesGroup
-            .append('g')
-            .attr('class', `anomaly-group-${anomaly.id}-${channelName}`);
+          .append('g')
+          .attr('class', `anomaly-group-${anomaly.id}-${channelName}`);
 
         const anomalyLabelsGroup = g
-            .append('g')
-            .attr('class', `anomaly-labels-group-${anomaly.id}-${channelName}`);
+          .append('g')
+          .attr('class', `anomaly-labels-group-${anomaly.id}-${channelName}`);
 
         anomalyLabelsGroup
-            .append('text')
-            .attr('class', `left-label-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.startX))
-            .attr('y', -5)
-            .style('font-size', '1em')
-            .style('font-weight', 'bold')
-            .attr('text-anchor', 'middle')
-            .attr('fill', 'black')
-            .text(anomaly.startX.toFixed(3));
+          .append('text')
+          .attr('class', `left-label-${anomaly.id}-${channelName}`)
+          .attr('x', x(anomaly.startX))
+          .attr('y', -5)
+          .style('font-size', '1em')
+          .style('font-weight', 'bold')
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'black')
+          .text(anomaly.startX.toFixed(3));
 
         anomalyLabelsGroup
-            .append('text')
-            .attr('class', `right-label-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.endX))
-            .attr('y', -5)
-            .style('font-size', '1em')
-            .style('font-weight', 'bold')
-            .attr('text-anchor', 'middle')
-            .attr('fill', 'black')
-            .text(anomaly.endX.toFixed(3));
+          .append('text')
+          .attr('class', `right-label-${anomaly.id}-${channelName}`)
+          .attr('x', x(anomaly.endX))
+          .attr('y', -5)
+          .style('font-size', '1em')
+          .style('font-weight', 'bold')
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'black')
+          .text(anomaly.endX.toFixed(3));
 
         if (!isStored) {
           const anomalyRect = anomalyGroup
-              .append('rect')
-              .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
-              .attr('x', x(anomaly.startX))
-              .attr('y', 0)
-              .attr('width', x(anomaly.endX) - x(anomaly.startX))
-              .attr('height', height)
-              .attr('fill', 'orange')
-              .attr('fill-opacity', 0.1)
-              .attr('stroke', 'orange')
-              .attr('stroke-width', 1)
-              .attr('cursor', isBoxSelect.value ? 'move' : 'not-allowed')
-              .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-              .call(
-                  d3.drag()
-                      .on('start', function (event) {
-                        if (!isBoxSelect.value) return;
-                        anomaly.initialX = event.x;
-                      })
-                      .on('drag', function (event) {
-                        if (!isBoxSelect.value) return;
-                        const dx = x.invert(event.x) - x.invert(anomaly.initialX);
-                        anomaly.initialX = event.x;
+            .append('rect')
+            .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.startX))
+            .attr('y', 0)
+            .attr('width', x(anomaly.endX) - x(anomaly.startX))
+            .attr('height', height)
+            .attr('fill', 'orange')
+            .attr('fill-opacity', 0.1)
+            .attr('stroke', 'orange')
+            .attr('stroke-width', 1)
+            .attr('cursor', isBoxSelect.value ? 'move' : 'not-allowed')
+            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+            .call(
+              d3.drag()
+                .on('start', function (event) {
+                  if (!isBoxSelect.value) return;
+                  anomaly.initialX = event.x;
+                })
+                .on('drag', function (event) {
+                  if (!isBoxSelect.value) return;
+                  const dx = x.invert(event.x) - x.invert(anomaly.initialX);
+                  anomaly.initialX = event.x;
 
-                        let newStartX = anomaly.startX + dx;
-                        let newEndX = anomaly.endX + dx;
+                  let newStartX = anomaly.startX + dx;
+                  let newEndX = anomaly.endX + dx;
 
-                        const domain = x.domain();
-                        if (newStartX < domain[0]) {
-                          newStartX = domain[0];
-                          newEndX = newStartX + (anomaly.endX - anomaly.startX);
-                        } else if (newEndX > domain[1]) {
-                          newEndX = domain[1];
-                          newStartX = newEndX - (anomaly.endX - anomaly.startX);
-                        }
+                  const domain = x.domain();
+                  if (newStartX < domain[0]) {
+                    newStartX = domain[0];
+                    newEndX = newStartX + (anomaly.endX - anomaly.startX);
+                  } else if (newEndX > domain[1]) {
+                    newEndX = domain[1];
+                    newStartX = newEndX - (anomaly.endX - anomaly.startX);
+                  }
 
-                        anomaly.startX = newStartX;
-                        anomaly.endX = newEndX;
+                  anomaly.startX = newStartX;
+                  anomaly.endX = newEndX;
 
-                        updateAnomalyElements(anomaly, isStored);
-                      })
-                      .on('end', function () {
-                        if (!isBoxSelect.value) return;
-                        const index = anomalies.value.findIndex(
-                            (a) => a.id === anomaly.id
-                        );
-                        if (index !== -1) {
-                          anomalies.value[index] = anomaly;
-                        }
-                      })
-              );
+                  updateAnomalyElements(anomaly, isStored);
+                })
+                .on('end', function () {
+                  if (!isBoxSelect.value) return;
+                  const index = anomalies.value.findIndex(
+                    (a) => a.id === anomaly.id
+                  );
+                  if (index !== -1) {
+                    anomalies.value[index] = anomaly;
+                  }
+                })
+            );
 
           // 修改左侧拖动手柄
           anomalyGroup
-              .append('rect')
-              .attr('class', `left-handle-${anomaly.id}-${channelName}`)
-              .attr('x', x(anomaly.startX) - 5)
-              .attr('y', 0)
-              .attr('width', 10)
-              .attr('height', height)
-              .attr('fill', 'transparent')
-              .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-              .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-              .call(
-                  d3.drag()
-                      .on('drag', function (event) {
-                        if (!isBoxSelect.value) return;
-                        const newX = x.invert(event.x);
-                        if (newX < anomaly.endX && newX >= x.domain()[0]) {
-                          anomaly.startX = newX;
-                          updateAnomalyElements(anomaly, isStored);
-                        }
-                      })
-                      .on('end', function () {
-                        if (!isBoxSelect.value) return;
-                        const index = anomalies.value.findIndex(
-                            (a) => a.id === anomaly.id
-                        );
-                        if (index !== -1) {
-                          anomalies.value[index] = anomaly;
-                        }
-                      })
-              );
+            .append('rect')
+            .attr('class', `left-handle-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.startX) - 5)
+            .attr('y', 0)
+            .attr('width', 10)
+            .attr('height', height)
+            .attr('fill', 'transparent')
+            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
+            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+            .call(
+              d3.drag()
+                .on('drag', function (event) {
+                  if (!isBoxSelect.value) return;
+                  const newX = x.invert(event.x);
+                  if (newX < anomaly.endX && newX >= x.domain()[0]) {
+                    anomaly.startX = newX;
+                    updateAnomalyElements(anomaly, isStored);
+                  }
+                })
+                .on('end', function () {
+                  if (!isBoxSelect.value) return;
+                  const index = anomalies.value.findIndex(
+                    (a) => a.id === anomaly.id
+                  );
+                  if (index !== -1) {
+                    anomalies.value[index] = anomaly;
+                  }
+                })
+            );
 
           // 修改右侧拖动手柄
           anomalyGroup
-              .append('rect')
-              .attr('class', `right-handle-${anomaly.id}-${channelName}`)
-              .attr('x', x(anomaly.endX) - 5)
-              .attr('y', 0)
-              .attr('width', 10)
-              .attr('height', height)
-              .attr('fill', 'transparent')
-              .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-              .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-              .call(
-                  d3.drag()
-                      .on('drag', function (event) {
-                        if (!isBoxSelect.value) return;
-                        const newX = x.invert(event.x);
-                        if (newX > anomaly.startX && newX <= x.domain()[1]) {
-                          anomaly.endX = newX;
-                          updateAnomalyElements(anomaly, isStored);
-                        }
-                      })
-                      .on('end', function () {
-                        if (!isBoxSelect.value) return;
-                        const index = anomalies.value.findIndex(
-                            (a) => a.id === anomaly.id
-                        );
-                        if (index !== -1) {
-                          anomalies.value[index] = anomaly;
-                        }
-                      })
-              );
+            .append('rect')
+            .attr('class', `right-handle-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.endX) - 5)
+            .attr('y', 0)
+            .attr('width', 10)
+            .attr('height', height)
+            .attr('fill', 'transparent')
+            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
+            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
+            .call(
+              d3.drag()
+                .on('drag', function (event) {
+                  if (!isBoxSelect.value) return;
+                  const newX = x.invert(event.x);
+                  if (newX > anomaly.startX && newX <= x.domain()[1]) {
+                    anomaly.endX = newX;
+                    updateAnomalyElements(anomaly, isStored);
+                  }
+                })
+                .on('end', function () {
+                  if (!isBoxSelect.value) return;
+                  const index = anomalies.value.findIndex(
+                    (a) => a.id === anomaly.id
+                  );
+                  if (index !== -1) {
+                    anomalies.value[index] = anomaly;
+                  }
+                })
+            );
         } else {
           // 已保存的异常标注显示红色矩形
           anomalyGroup
-              .append('rect')
-              .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
-              .attr('x', x(anomaly.startX))
-              .attr('y', 0)
-              .attr('width', x(anomaly.endX) - x(anomaly.startX))
-              .attr('height', height)
-              .attr('fill', 'red')
-              .attr('fill-opacity', 0.1)
-              .attr('stroke', 'red')
-              .attr('stroke-width', 1)
-              .style('pointer-events', 'none');
+            .append('rect')
+            .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+            .attr('x', x(anomaly.startX))
+            .attr('y', 0)
+            .attr('width', x(anomaly.endX) - x(anomaly.startX))
+            .attr('height', height)
+            .attr('fill', 'red')
+            .attr('fill-opacity', 0.1)
+            .attr('stroke', 'red')
+            .attr('stroke-width', 1)
+            .style('pointer-events', 'none');
         }
 
         // 修改按钮组实现
         const buttonGroup = anomalyGroup
-            .append('g')
-            .attr('class', `anomaly-buttons-${anomaly.id}-${channelName}`)
-            .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
+          .append('g')
+          .attr('class', `anomaly-buttons-${anomaly.id}-${channelName}`)
+          .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
 
         // 删除按钮
         const deleteButton = buttonGroup
-            .append('g')
-            .attr('class', 'delete-button')
-            .style('cursor', 'pointer');
+          .append('g')
+          .attr('class', 'delete-button')
+          .style('cursor', 'pointer');
 
         const deleteRect = deleteButton
-            .append('rect')
-            .attr('width', 16)
-            .attr('height', 16)
-            .attr('fill', '#f56c6c')
-            .attr('rx', 3)
-            .style('pointer-events', 'all');
+          .append('rect')
+          .attr('width', 16)
+          .attr('height', 16)
+          .attr('fill', '#f56c6c')
+          .attr('rx', 3)
+          .style('pointer-events', 'all');
 
         deleteButton
-            .append('text')
-            .attr('x', 8)
-            .attr('y', 12)
-            .attr('text-anchor', 'middle')
-            .attr('fill', 'white')
-            .attr('font-size', '12px')
-            .attr('font-weight', 'bold')
-            .style('pointer-events', 'none')
-            .text('×');
+          .append('text')
+          .attr('x', 8)
+          .attr('y', 12)
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'white')
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .style('pointer-events', 'none')
+          .text('×');
 
         // 编辑按钮
         const editButton = buttonGroup
-            .append('g')
-            .attr('class', 'edit-button')
-            .attr('transform', 'translate(20, 0)')
-            .style('cursor', 'pointer');
+          .append('g')
+          .attr('class', 'edit-button')
+          .attr('transform', 'translate(20, 0)')
+          .style('cursor', 'pointer');
 
         const editRect = editButton
-            .append('rect')
-            .attr('width', 16)
-            .attr('height', 16)
-            .attr('fill', '#409eff')
-            .attr('rx', 3)
-            .style('pointer-events', 'all');
+          .append('rect')
+          .attr('width', 16)
+          .attr('height', 16)
+          .attr('fill', '#409eff')
+          .attr('rx', 3)
+          .style('pointer-events', 'all');
 
         editButton
-            .append('text')
-            .attr('x', 8)
-            .attr('y', 12)
-            .attr('text-anchor', 'middle')
-            .attr('fill', 'white')
-            .attr('font-size', '12px')
-            .attr('font-weight', 'bold')
-            .style('pointer-events', 'none')
-            .text('✒️');
+          .append('text')
+          .attr('x', 8)
+          .attr('y', 12)
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'white')
+          .attr('font-size', '12px')
+          .attr('font-weight', 'bold')
+          .style('pointer-events', 'none')
+          .text('✒️');
 
         // 添加点击事件到矩形上
         deleteRect.on('click', () => {
@@ -1765,7 +1785,7 @@ const drawChart = async (
             });
           } else {
             anomalies.value = anomalies.value.filter(
-                (a) => a.id !== anomaly.id
+              (a) => a.id !== anomaly.id
             );
           }
           removeAnomalyElements(anomaly.id, channelName);
@@ -1778,69 +1798,69 @@ const drawChart = async (
         });
 
         const startIndex = data.X_value.findIndex(
-            (xVal) => xVal >= anomaly.startX
+          (xVal) => xVal >= anomaly.startX
         );
         const endIndex = data.X_value.findIndex(
-            (xVal) => xVal >= anomaly.endX
+          (xVal) => xVal >= anomaly.endX
         );
         const anomalyXValues = data.X_value.slice(
-            startIndex,
-            endIndex + 1
+          startIndex,
+          endIndex + 1
         );
         const anomalyYValues = data.Y_value.slice(
-            startIndex,
-            endIndex + 1
+          startIndex,
+          endIndex + 1
         );
 
         anomalyGroup
-            .append('path')
-            .datum(anomalyYValues)
-            .attr('class', `anomaly-line-${anomaly.id}-${channelName}`)
-            .attr('fill', 'none')
-            .attr('stroke', isStored ? 'red' : 'orange')
-            .attr('stroke-width', 3)
-            .attr(
-                'd',
-                d3
-                    .line()
-                    .x((d, i) => x(anomalyXValues[i]))
-                    .y((d, i) => y(d))
-            );
+          .append('path')
+          .datum(anomalyYValues)
+          .attr('class', `anomaly-line-${anomaly.id}-${channelName}`)
+          .attr('fill', 'none')
+          .attr('stroke', isStored ? 'red' : 'orange')
+          .attr('stroke-width', 3)
+          .attr(
+            'd',
+            d3
+              .line()
+              .x((d, i) => x(anomalyXValues[i]))
+              .y((d, i) => y(d))
+          );
 
         if (isStored) {
           anomalyGroup
-              .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
-              .style('pointer-events', 'none');
+            .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
+            .style('pointer-events', 'none');
           anomalyGroup
-              .selectAll(
-                  `.left-handle-${anomaly.id}-${channelName}, .right-handle-${anomaly.id}-${channelName}`
-              )
-              .remove();
+            .selectAll(
+              `.left-handle-${anomaly.id}-${channelName}, .right-handle-${anomaly.id}-${channelName}`
+            )
+            .remove();
         }
       }
 
       function updateAnomalyElements(anomaly, isStored = false) {
         const anomalyGroup = d3.select(`#chart-${anomaly.channelName}`)
-            .select('.anomalies-group')
-            .select(`.anomaly-group-${anomaly.id}-${channelName}`);
+          .select('.anomalies-group')
+          .select(`.anomaly-group-${anomaly.id}-${channelName}`);
 
         // 更新矩形位置和大小
         anomalyGroup
-            .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.startX))
-            .attr('width', x(anomaly.endX) - x(anomaly.startX))
-            .attr('fill', isStored ? 'red' : 'orange')
-            .attr('stroke', isStored ? 'red' : 'orange');
+          .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
+          .attr('x', x(anomaly.startX))
+          .attr('width', x(anomaly.endX) - x(anomaly.startX))
+          .attr('fill', isStored ? 'red' : 'orange')
+          .attr('stroke', isStored ? 'red' : 'orange');
 
         // 更新左侧手柄位置
         anomalyGroup
-            .select(`.left-handle-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.startX) - 5);
+          .select(`.left-handle-${anomaly.id}-${channelName}`)
+          .attr('x', x(anomaly.startX) - 5);
 
         // 更新右侧手柄位置
         anomalyGroup
-            .select(`.right-handle-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.endX) - 5);
+          .select(`.right-handle-${anomaly.id}-${channelName}`)
+          .attr('x', x(anomaly.endX) - 5);
 
         // 更新按钮组位置
         const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}-${channelName}`);
@@ -1848,12 +1868,12 @@ const drawChart = async (
 
         // 更新标签位置和文本
         g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .left-label-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.startX))
-            .text(anomaly.startX.toFixed(3));
+          .attr('x', x(anomaly.startX))
+          .text(anomaly.startX.toFixed(3));
 
         g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .right-label-${anomaly.id}-${channelName}`)
-            .attr('x', x(anomaly.endX))
-            .text(anomaly.endX.toFixed(3));
+          .attr('x', x(anomaly.endX))
+          .text(anomaly.endX.toFixed(3));
 
         // 更新高亮曲线
         const startIndex = data.X_value.findIndex(xVal => xVal >= anomaly.startX);
@@ -1862,13 +1882,13 @@ const drawChart = async (
         const anomalyYValues = data.Y_value.slice(startIndex, endIndex + 1);
 
         anomalyGroup
-            .select(`.anomaly-line-${anomaly.id}-${channelName}`)
-            .datum(anomalyYValues)
-            .attr('d', d3.line()
-                .x((d, i) => x(anomalyXValues[i]))
-                .y((d, i) => y(d))
-            )
-            .attr('stroke', isStored ? 'red' : 'orange');
+          .select(`.anomaly-line-${anomaly.id}-${channelName}`)
+          .datum(anomalyYValues)
+          .attr('d', d3.line()
+            .x((d, i) => x(anomalyXValues[i]))
+            .y((d, i) => y(d))
+          )
+          .attr('stroke', isStored ? 'red' : 'orange');
       }
 
       function removeAnomalyElements(anomalyId, channelName) {
@@ -1884,18 +1904,18 @@ const drawChart = async (
 
         // 移除异常组
         d3.select(`#chart-${channelName}`)
-            .select(`.anomaly-group-${anomalyId}-${channelName}`)
-            .remove();
+          .select(`.anomaly-group-${anomalyId}-${channelName}`)
+          .remove();
 
         // 移除标签组
         d3.select(`#chart-${channelName}`)
-            .select(`.anomaly-labels-group-${anomalyId}-${channelName}`)
-            .remove();
+          .select(`.anomaly-labels-group-${anomalyId}-${channelName}`)
+          .remove();
 
         // 移除按钮组
         d3.select(`#chart-${channelName}`)
-            .select(`.anomaly-buttons-${anomalyId}-${channelName}`)
-            .remove();
+          .select(`.anomaly-buttons-${anomalyId}-${channelName}`)
+          .remove();
 
         // 恢复刷选功能
         const g = d3.select(`#chart-${channelName}`).select('g');
@@ -1905,13 +1925,13 @@ const drawChart = async (
 
       performance.mark(`Draw Chart ${channelName}-end`);
       performance.measure(`Draw Chart ${channelName}`,
-          `Draw Chart ${channelName}-start`,
-          `Draw Chart ${channelName}-end`);
+        `Draw Chart ${channelName}-start`,
+        `Draw Chart ${channelName}-end`);
 
       // 在图表绘制完成后，检查是否有匹配结果需要高亮
       const channelMatchedResults = matchedResults.value.filter(
-          r => r.channelName === channelName.split('_')[0] &&
-              r.shotNumber === channelName.split('_')[1]
+        r => r.channelName === channelName.split('_')[0] &&
+          r.shotNumber === channelName.split('_')[1]
       );
 
       if (channelMatchedResults.length > 0) {
@@ -1934,7 +1954,7 @@ const decodeChineseText = (text) => {
     if (typeof text === 'string' && /^[\u4e00-\u9fa5]+$/.test(text)) {
       return text;
     }
-    
+
     // 如果文本包含需要解码的字符，才进行解码
     if (typeof text === 'string' && /[\u0080-\uffff]/.test(text)) {
       try {
@@ -1973,7 +1993,7 @@ const saveAnomaly = () => {
       store.dispatch('addAnomaly', payload);
       // 从临时列表中移除
       anomalies.value = anomalies.value.filter(
-          (a) => a.id !== currentAnomaly.id
+        (a) => a.id !== currentAnomaly.id
       );
     }
 
@@ -1986,20 +2006,20 @@ const saveAnomaly = () => {
 
     // 更新矩形颜色
     anomalyGroup.select(`.anomaly-rect-${payload.anomaly.id}-${payload.channelName}`)
-        .attr('fill', 'red')
-        .attr('fill-opacity', 0.1)
-        .attr('stroke', 'red')
-        .attr('stroke-width', 1)
-        .style('pointer-events', 'none')
-        .attr('cursor', 'default');
+      .attr('fill', 'red')
+      .attr('fill-opacity', 0.1)
+      .attr('stroke', 'red')
+      .attr('stroke-width', 1)
+      .style('pointer-events', 'none')
+      .attr('cursor', 'default');
 
     // 更新曲线颜色
     anomalyGroup.select(`.anomaly-line-${payload.anomaly.id}-${payload.channelName}`)
-        .attr('stroke', 'red');
+      .attr('stroke', 'red');
 
     // 移除拖动手柄
     anomalyGroup.selectAll(
-        `.left-handle-${payload.anomaly.id}-${payload.channelName}, .right-handle-${payload.anomaly.id}-${payload.channelName}`
+      `.left-handle-${payload.anomaly.id}-${payload.channelName}, .right-handle-${payload.anomaly.id}-${payload.channelName}`
     ).remove();
 
     // 重新绘制图表以更新所有标注
@@ -2052,11 +2072,11 @@ watch(isBoxSelect, (newValue) => {
   selectedChannels.value.forEach(channel => {
     const channelName = `${channel.channel_name}_${channel.shot_number}`;
     const svg = d3.select(`#chart-${channelName}`);
-    
+
     // 更新selection-brush的显示状态
     svg.select('.selection-brush')
       .style('display', newValue ? null : 'none');
-    
+
     // 更新zoom-brush的显示状态
     svg.select('.zoom-brush')
       .style('display', newValue ? 'none' : null);
@@ -2065,16 +2085,16 @@ watch(isBoxSelect, (newValue) => {
 
 // 添加一个新的 watch
 watch(() => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
-    () => {
-      // 当异常颜色发生变化时，重新渲染所有图表
-      selectedChannels.value.forEach(channel => {
-        const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
-        if (data) {
-          drawChannelChart(channel, data);
-        }
-      });
-    },
-    {deep: true}
+  () => {
+    // 当异常颜色发生变化时，重新渲染所有图表
+    selectedChannels.value.forEach(channel => {
+      const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+      if (data) {
+        drawChannelChart(channel, data);
+      }
+    });
+  },
+  { deep: true }
 );
 </script>
 
@@ -2222,7 +2242,7 @@ svg {
 
 /* 将下拉面板中的选色区域的选框变为圆形 */
 :deep(.el-color-dropdown__main-wrapper .el-color-alpha-slider__thumb,
-    .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
+  .el-color-dropdown__main-wrapper .el-color-hue-slider__thumb) {
   width: 14px;
   height: 14px;
   border-radius: 50%;
