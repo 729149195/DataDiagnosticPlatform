@@ -258,7 +258,7 @@ function compressArray(arr) {
 
 // 主要的消息处理函数
 self.onmessage = function(e) {
-  console.log('Worker received:', e.data.type); // 调试日志
+  console.log('Worker received:', e.data.type);
   try {
     const { type, data, messageId } = e.data;
 
@@ -372,12 +372,12 @@ self.onmessage = function(e) {
         throw new Error(`Unknown message type: ${type}`);
     }
   } catch (error) {
-    // 确保错误消息中包含 messageId
+    console.error('Worker error:', error);
     self.postMessage({
       type: 'error',
       messageId: e.data.messageId,
       error: error.message || 'Unknown error occurred'
     });
   }
-  console.log('Worker processed:', result); // 调试日志
+  console.log('Worker processed message type:', e.data.type); // 修正后的日志
 }; 
