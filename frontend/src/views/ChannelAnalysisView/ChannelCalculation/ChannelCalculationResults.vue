@@ -28,27 +28,41 @@ defineExpose({
 
 const fetchChannelData = async (channel) => {
     try {
-        // 构建 channelKey
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const channelData = channelDataCache.value[channelKey];
-
-        if (channelData) {
-            // 绘制图表
-            drawChart(
-                channelData.X_value,
-                channelData.Y_value,
-                channel,
-                channelKey
-            );
-        } else {
-            console.error('Channel data not found in cache:', channelKey);
+        
+        // 确保使用最新数据
+        let channelData = channelDataCache.value[channelKey];
+        if (!channelData) {
+            const data = await store.dispatch('fetchChannelData', { channel });
+            store.commit('updateChannelDataCache', {
+                channelKey: channelKey,
+                data: data
+            });
+            channelData = data; // 获取最新数据
         }
+
+        // 强制重新绘制
+        drawChart(
+            channelData.X_value,
+            channelData.Y_value,
+            channel,
+            channelKey
+        );
+        
     } catch (error) {
         console.error('Error fetching channel data:', error);
     }
 };
 
-const drawChart = (xValues, yValues, channel=-1, channelKey=-1) => {
+const drawChart = (xValues, yValues, channel, channelKey) => {
+    if (!xValues || xValues.length === 0 || !yValues || yValues.length === 0) {
+        console.error('Invalid data for drawing chart');
+        return;
+    }
+
+    // 添加动画过渡
+    const t = d3.transition().duration(500);
+
     // 获取父容器的宽度
     const container = d3.select('.result-chart-container');
     const containerWidth = container.node().getBoundingClientRect().width;
@@ -192,6 +206,7 @@ const drawChart = (xValues, yValues, channel=-1, channelKey=-1) => {
     contentG
         .append('path')
         .datum(yValues)
+        .transition(t)
         .attr('fill', 'none')
         .attr('stroke', channel.color || 'steelblue')
         .attr('stroke-width', 1.5)
