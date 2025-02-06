@@ -93,22 +93,66 @@ const updateSelectedChannels = () => {
 const renderChannelChart = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const channelData = channelDataCache.value[channelKey];
-
-        if (channelData) {
-            // 使用 worker 处理数据
-            const processedData = await chartWorkerManager.processData({
-                X_value: Array.from(channelData.X_value),
-                Y_value: Array.from(channelData.Y_value)
-            }, 0.1); // 使用较低的采样率以适应缩略图显示
-
-            if (processedData && processedData.processedData) {
-                renderChart(
-                    processedData.processedData.X_value,
-                    processedData.processedData.Y_value,
-                    channel
-                );
+        
+        let channelData = channelDataCache.value[channelKey];
+        if (!channelData) {
+            try {
+                channelData = await store.dispatch('fetchChannelData', { channel });
+                if (!channelData?.X_value || !channelData?.Y_value) {
+                    console.error('Invalid data structure from API');
+                    return;
+                }
+            } catch (error) {
+                console.error('Fetch data error:', error);
+                return;
             }
+            
+            store.commit('updateChannelDataCache', {
+                channelKey: channelKey,
+                data: channelData
+            });
+        }
+
+        if (!channelData?.X_value || !channelData?.Y_value) {
+            console.warn('Invalid channel data structure');
+            return;
+        }
+
+        const workerData = {
+            X_value: Array.from(channelData.X_value),
+            Y_value: Array.from(channelData.Y_value)
+        };
+
+        const processedData = await chartWorkerManager.processData(
+            workerData,
+            0.1
+        );
+
+        if (!processedData?.processedData?.X_value) {
+            console.error('Processed data is invalid:', processedData);
+            return;
+        }
+
+        const processedArray = {
+            ...processedData.processedData,
+            X_value: Array.from(processedData.processedData.X_value),
+            Y_value: Array.from(processedData.processedData.Y_value),
+            meta: { isThumbnail: true }
+        };
+        
+        store.commit('updateChannelDataCache', {
+            channelKey: channelKey,
+            data: processedArray
+        });
+
+        if (processedArray.X_value?.length && processedArray.Y_value?.length) {
+            renderChart(
+                processedArray.X_value,
+                processedArray.Y_value,
+                channel
+            );
+        } else {
+            console.warn('Empty processed data for channel:', channelKey);
         }
     } catch (error) {
         console.error('Error rendering channel chart:', error);

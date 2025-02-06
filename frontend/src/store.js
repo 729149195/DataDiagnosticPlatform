@@ -356,8 +356,15 @@ const store = createStore({
       }
     },
     updateChannelDataCache(state, { channelKey, data }) {
+      // 确保数据结构完整
+      const safeData = {
+        X_value: data?.X_value || [],
+        Y_value: data?.Y_value || [],
+        ...data
+      };
+      
       dataCache.put(channelKey, {
-        data: reactive(data),
+        data: reactive(safeData),
         timestamp: Date.now()
       });
     },

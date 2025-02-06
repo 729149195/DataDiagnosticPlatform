@@ -258,6 +258,7 @@ function compressArray(arr) {
 
 // 主要的消息处理函数
 self.onmessage = function(e) {
+  console.log('Worker received:', e.data.type); // 调试日志
   try {
     const { type, data, messageId } = e.data;
 
@@ -378,4 +379,5 @@ self.onmessage = function(e) {
       error: error.message || 'Unknown error occurred'
     });
   }
+  console.log('Worker processed:', result); // 调试日志
 }; 
