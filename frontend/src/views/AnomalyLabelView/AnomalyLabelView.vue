@@ -29,14 +29,18 @@
                 </div>
                 <div class="user-detail">
                   <div class="detail-item">
-                    <el-icon><User /></el-icon>
+                    <el-icon>
+                      <User />
+                    </el-icon>
                     <span class="label">身份</span>
                     <span class="value">{{ authorityLabel }}</span>
                   </div>
                 </div>
               </div>
               <el-dropdown-item divided class="danger" @click="logout">
-                <el-icon><SwitchButton /></el-icon>
+                <el-icon>
+                  <SwitchButton />
+                </el-icon>
                 <span>退出登录</span>
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -99,27 +103,25 @@
                   style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
                   inactive-text="多通道单行" />
 
-                <el-switch 
-                  v-model="boxSelect"
-                  style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1" 
-                  active-text="框选标注/编辑"
-                  inactive-text="局部缩放" 
-                  :disabled="!test_channel_number"
-                />
-                  
+                <el-switch v-model="boxSelect" style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1"
+                  active-text="框选标注/编辑" inactive-text="局部缩放" :disabled="!test_channel_number" />
+
                 <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage">
-                <div>
-                  <el-button type="primary" @click="exportChannelSVG">
-                    导出SVG<el-icon class="el-icon--right">
-                      <Upload />
-                    </el-icon>
-                  </el-button>
-                  <el-button type="primary" @click="exportChannelData">
-                    导出数据<el-icon class="el-icon--right">
-                      <Upload />
-                    </el-icon>
-                  </el-button>
-                </div>
+                <span style="display: flex; align-items: center;">
+                  <el-dropdown trigger="click" @command="handleExportCommand">
+                    <el-button type="primary">
+                      导出<el-icon class="el-icon--right">
+                        <Upload />
+                      </el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
+                        <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </span>
               </span>
               <div style=" height: 100%; position: relative;">
                 <el-scrollbar height="58vh" :always="false">
@@ -168,17 +170,20 @@
               <span style="display: flex; justify-content: space-between;">
                 <span class="title">通道分析结果</span>
                 <span>
+                  <el-dropdown trigger="click" @command="handleResultExportCommand">
+                    <el-button type="primary" style="margin-right: 10px;">
+                      导出<el-icon class="el-icon--right">
+                        <Upload />
+                      </el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
+                        <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                   <el-button type="primary" :icon="FolderChecked">另存为新通道</el-button>
-                  <el-button type="primary" @click="exportResultSVG">
-                    导出SVG<el-icon class="el-icon--right">
-                      <Upload />
-                    </el-icon>
-                  </el-button>
-                  <el-button type="primary" @click="exportResultData">
-                    导出数据<el-icon class="el-icon--right">
-                      <Upload />
-                    </el-icon>
-                  </el-button>
                 </span>
               </span>
               <div style="display: flex; justify-content: center; align-items: center;">
@@ -353,12 +358,12 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
         accept: acceptOptions[fileType] || acceptOptions['json'],
       }],
     });
-    
+
     // 创建 FileSystemWritableFileStream 来写入数据
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
-    
+
     // 显示成功提示
     ElMessage({
       message: '文件保存成功',
@@ -495,7 +500,7 @@ const exportResultSVG = async () => {
     try {
       const clonedSvgElement = svg.cloneNode(true);
       const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-      
+
       // 创建 canvas
       const canvas = document.createElement('canvas');
       canvas.width = svg.width.baseVal.value;
@@ -562,6 +567,22 @@ watch(test_channel_number, (newValue) => {
     store.dispatch('updateIsBoxSelect', previousState);
   }
 });
+
+const handleExportCommand = (command) => {
+  if (command === 'exportSvg') {
+    exportChannelSVG();
+  } else if (command === 'exportData') {
+    exportChannelData();
+  }
+}
+
+const handleResultExportCommand = (command) => {
+  if (command === 'exportSvg') {
+    exportResultSVG();
+  } else if (command === 'exportData') {
+    exportResultData();
+  }
+}
 </script>
 
 
@@ -623,7 +644,7 @@ watch(test_channel_number, (newValue) => {
 
 .user-info {
   padding: 20px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.02), transparent);
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.02), transparent);
 }
 
 .user-avatar {
@@ -631,14 +652,14 @@ watch(test_channel_number, (newValue) => {
   flex-direction: column;
   align-items: center;
   margin-bottom: 16px;
-  
+
   .el-avatar {
     width: 60px;
     height: 60px;
     font-size: 24px;
     margin-bottom: 8px;
   }
-  
+
   .user-name {
     font-size: 16px;
     font-weight: 500;
@@ -648,26 +669,26 @@ watch(test_channel_number, (newValue) => {
 
 .user-detail {
   margin-top: 12px;
-  
+
   .detail-item {
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    background: rgba(0,0,0,0.02);
+    background: rgba(0, 0, 0, 0.02);
     border-radius: 8px;
-    
+
     .el-icon {
       font-size: 16px;
       color: #86868b;
       margin-right: 8px;
     }
-    
+
     .label {
       color: #86868b;
       font-size: 14px;
       margin-right: 8px;
     }
-    
+
     .value {
       color: #1d1d1f;
       font-size: 14px;
@@ -685,7 +706,7 @@ watch(test_channel_number, (newValue) => {
   align-items: center;
   margin: 4px 8px;
   border-radius: 8px;
-  
+
   .el-icon {
     margin-right: 8px;
     font-size: 16px;
@@ -701,11 +722,11 @@ watch(test_channel_number, (newValue) => {
   color: #ff3b30;
   margin-top: 4px;
   margin-bottom: 8px;
-  
+
   .el-icon {
     color: #ff3b30;
   }
-  
+
   &:hover {
     background-color: rgba(255, 59, 48, 0.08);
   }
@@ -723,7 +744,7 @@ watch(test_channel_number, (newValue) => {
 }
 
 .aside {
-  width:22vw;
+  width: 22vw;
   background-color: #e9e9e9;
   height: 95vh;
   padding: 5px;
@@ -787,7 +808,7 @@ watch(test_channel_number, (newValue) => {
 
   :deep(.el-scrollbar) {
     height: 100%;
-    
+
     .el-scrollbar__wrap {
       overflow-x: hidden;
     }

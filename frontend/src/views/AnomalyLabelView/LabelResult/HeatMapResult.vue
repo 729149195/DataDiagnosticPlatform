@@ -5,16 +5,19 @@
       active-text="他人标注模式" inactive-text="自己标注" /> -->
     <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend">
     <div>
-      <el-button type="primary" @click="exportHeatMapSvg">
-        导出SVG<el-icon class="el-icon--right">
-          <Upload />
-        </el-icon>
-      </el-button>
-      <el-button type="primary" @click="exportHeatMapData">
-        导出数据<el-icon class="el-icon--right">
-          <Upload />
-        </el-icon>
-      </el-button>
+      <el-dropdown trigger="click" @command="handleHeatmapExport">
+        <el-button type="primary" style="margin-right: 10px;">
+          导出<el-icon class="el-icon--right">
+            <Upload />
+          </el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
+            <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <el-button type="primary" @click="syncUpload">
         同步上传<el-icon class="el-icon--right">
           <Upload />
@@ -34,11 +37,8 @@
               <span>热力图数据加载中</span>
               <span class="progress-percentage">{{ loadingPercentage }}%</span>
             </div>
-            <el-progress 
-              :percentage="loadingPercentage"
-              :stroke-width="10"
-              :status="loadingPercentage === 100 ? 'success' : ''"
-            />
+            <el-progress :percentage="loadingPercentage" :stroke-width="10"
+              :status="loadingPercentage === 100 ? 'success' : ''" />
           </div>
           <div class="heatmap-container" :style="{ opacity: loading ? 0 : 1, transition: 'opacity 0.3s ease' }">
             <svg id="heatmap" ref="HeatMapRef" preserveAspectRatio="xMidYMid slice"></svg>
@@ -110,7 +110,7 @@ const decodeChineseText = (text) => {
     if (typeof text === 'string' && /^[\u4e00-\u9fa5]+$/.test(text)) {
       return text;
     }
-    
+
     // 如果是 URI 编码的字符串
     if (typeof text === 'string' && text.includes('%')) {
       try {
@@ -119,7 +119,7 @@ const decodeChineseText = (text) => {
         console.warn('Failed to decode URI component:', text, e);
       }
     }
-    
+
     // 如果包含 Unicode 转义序列
     if (typeof text === 'string' && text.includes('\\u')) {
       try {
@@ -128,7 +128,7 @@ const decodeChineseText = (text) => {
         console.warn('Failed to decode Unicode escape:', text, e);
       }
     }
-    
+
     // 如果包含需要解码的字符
     if (typeof text === 'string' && /[\u0080-\uffff]/.test(text)) {
       try {
@@ -156,11 +156,11 @@ const decodeChineseText = (text) => {
 // 添加处理对象的函数
 const processObject = (obj) => {
   if (!obj) return obj;
-  
+
   if (Array.isArray(obj)) {
     return obj.map(item => processObject(item));
   }
-  
+
   if (typeof obj === 'object') {
     const newObj = {};
     for (const key in obj) {
@@ -180,11 +180,11 @@ const processObject = (obj) => {
     }
     return newObj;
   }
-  
+
   if (typeof obj === 'string') {
     return decodeChineseText(obj);
   }
-  
+
   return obj;
 };
 
@@ -215,12 +215,12 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
         accept: acceptOptions[fileType] || acceptOptions['json'],
       }],
     });
-    
+
     // 创建 FileSystemWritableFileStream 来写入数据
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
-    
+
     // 显示成功提示
     ElMessage({
       message: '文件保存成功',
@@ -275,7 +275,7 @@ const exportHeatMapSvg = async () => {
       });
 
       // 绘制图例图片和SVG到canvas上
-      ctx.drawImage(legendImg, canvasWidth-legendWidth - 30, 0, legendWidth, legendHeight);
+      ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
       ctx.drawImage(svgImg, 0, legendHeight + padding);
 
       // 转换为blob并保存
@@ -454,7 +454,7 @@ function formatValue(value, key) {
   if (key === 'X_error' || key === 'Y_error') {
     return undefined;
   }
-  
+
   if (key === 'startX' || key === 'endX') {
     return parseFloat(value).toFixed(4);
   }
@@ -473,7 +473,7 @@ function formatValue(value, key) {
         }
         return value; // 如果无法解析，返回原值
       }
-      
+
       // 格式化为 YYYY-MM-DD HH:mm:ss
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -481,7 +481,7 @@ function formatValue(value, key) {
       const hours = String(date.getHours()).padStart(2, '0');
       const minutes = String(date.getMinutes()).padStart(2, '0');
       const seconds = String(date.getSeconds()).padStart(2, '0');
-      
+
       return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
     } catch (err) {
       console.warn('Error formatting date:', err);
@@ -513,13 +513,13 @@ function handleDialogClose() {
 const limit = pLimit(50); // 限制并发请求数为5
 
 const retryRequest = async (fn, retries = 3, delay = 1000) => {
-    try {
-        return await fn();
-    } catch (err) {
-        if (retries <= 0) throw err;
-        await new Promise(resolve => setTimeout(resolve, delay));
-        return retryRequest(fn, retries - 1, delay * 2);
-    }
+  try {
+    return await fn();
+  } catch (err) {
+    if (retries <= 0) throw err;
+    await new Promise(resolve => setTimeout(resolve, delay));
+    return retryRequest(fn, retries - 1, delay * 2);
+  }
 };
 
 onMounted(() => {
@@ -541,18 +541,18 @@ watch(
     }
 
     // 检查是否有新通道被添加
-    const hasNewChannels = !oldChannels || 
-      newChannels.length !== oldChannels.length || 
-      newChannels.some(newChannel => 
-        !oldChannels.find(oldChannel => 
+    const hasNewChannels = !oldChannels ||
+      newChannels.length !== oldChannels.length ||
+      newChannels.some(newChannel =>
+        !oldChannels.find(oldChannel =>
           oldChannel.channel_key === newChannel.channel_key
         )
       );
 
     // 检查是否只是因为懒加载导致的更新
-    const isLazyLoadUpdate = !hasNewChannels && oldChannels && 
-      newChannels.length === oldChannels.length && 
-      newChannels.every((channel, index) => 
+    const isLazyLoadUpdate = !hasNewChannels && oldChannels &&
+      newChannels.length === oldChannels.length &&
+      newChannels.every((channel, index) =>
         channel.channel_key === oldChannels[index].channel_key
       );
 
@@ -562,8 +562,8 @@ watch(
     }
 
     // 检查是否只是异常数据发生变化
-    const isOnlyAnomalyChange = !hasNewChannels && oldChannels && 
-      JSON.stringify(newChannels) === JSON.stringify(oldChannels) && 
+    const isOnlyAnomalyChange = !hasNewChannels && oldChannels &&
+      JSON.stringify(newChannels) === JSON.stringify(oldChannels) &&
       JSON.stringify(newAnomalies) !== JSON.stringify(oldAnomalies);
 
     // 使用防抖来避免频繁渲染
@@ -590,9 +590,9 @@ watch(
 
     await renderPromise;
   },
-  { 
+  {
     deep: true,
-    immediate: true 
+    immediate: true
   }
 );
 
@@ -611,11 +611,11 @@ const processDataTo1KHz = (data) => {
 
   const targetFrequency = 1000; // 1KHz
   const timeStep = 1 / targetFrequency;
-  
+
   // 计算当前采样率
   const currentTimeStep = (data.X_value[data.X_value.length - 1] - data.X_value[0]) / (data.X_value.length - 1);
   const currentFrequency = 1 / currentTimeStep;
-  
+
   // 如果当前频率接近1KHz，直接返回原始数据
   if (Math.abs(currentFrequency - targetFrequency) < 1) {
     return data;
@@ -626,30 +626,30 @@ const processDataTo1KHz = (data) => {
   const endTime = data.X_value[data.X_value.length - 1];
   const newXValues = [];
   const newYValues = [];
-  
+
   let currentTime = startTime;
   let currentIndex = 0;
-  
+
   while (currentTime <= endTime && currentIndex < data.X_value.length) {
     // 找到当前时间点对应的索引
     while (currentIndex < data.X_value.length - 1 && data.X_value[currentIndex + 1] < currentTime) {
       currentIndex++;
     }
-    
+
     // 线性插值
     if (currentIndex < data.X_value.length - 1) {
       const x0 = data.X_value[currentIndex];
       const x1 = data.X_value[currentIndex + 1];
       const y0 = data.Y_value[currentIndex];
       const y1 = data.Y_value[currentIndex + 1];
-      
+
       const ratio = (currentTime - x0) / (x1 - x0);
       const interpolatedY = y0 + ratio * (y1 - y0);
-      
+
       newXValues.push(currentTime);
       newYValues.push(interpolatedY);
     }
-    
+
     currentTime += timeStep;
   }
 
@@ -673,7 +673,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     loading.value = true;
     loadingPercentage.value = 0;
     completedRequests.value = 0;
-    
+
     const heatmap = d3.select('#heatmap');
     heatmap.selectAll('*').remove();
 
@@ -693,27 +693,27 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     // 计算所有通道数据的 X 值范围
     let globalXMin = Infinity;
     let globalXMax = -Infinity;
-    
+
     // 使用 Map 缓存已处理的通道数据
     const processedChannels = new Map();
-    
+
     // 遍历 channelDataCache 中的所有数据来计算全局 X 范围
     for (const channel of channels) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       // 从 channelDataCache.value 中获取数据
       const channelData = channelDataCache.value[channelKey];
-      
+
       if (channelData && channelData.X_value) {
         // 处理数据到1KHz
         const processedData = processDataTo1KHz(channelData);
         let xValues = processedData.X_value;
-        
+
         const localMin = Math.min(...xValues);
         const localMax = Math.max(...xValues);
-        
+
         globalXMin = Math.min(globalXMin, localMin);
         globalXMax = Math.max(globalXMax, localMax);
-        
+
         // 缓存处理后的数据
         processedChannels.set(channelKey, {
           ...processedData,
@@ -747,7 +747,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     for (const channel of channels) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       const channelType = channel.channel_type;
-      
+
       // 初始化该通道的可视化数据
       if (!visData[channelKey]) {
         visData[channelKey] = Array(rectNum).fill().map(() => []);
@@ -757,7 +757,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
       try {
         // 使用 store 中的方法获取错误数据
         const errorDataResults = await store.dispatch('fetchAllErrorData', channel);
-        
+
         // 处理每个错误数据
         for (const [errorIndex, error] of channel.errors.entries()) {
           // 添加判断，如果是 NO ERROR 则跳过
@@ -829,11 +829,11 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
         const timeStep = 0.001; // 1KHz
         const startX = Math.floor(parseFloat(anomaly.startX) / timeStep) * timeStep;
         const endX = Math.ceil(parseFloat(anomaly.endX) / timeStep) * timeStep;
-        
+
         // 计算对应的矩形索引
         const left = Math.floor((startX - Domain[0]) / step);
         const right = Math.floor((endX - Domain[0]) / step);
-        
+
         // 将异常添加到对应的矩形中
         for (let i = left; i <= right && i < rectNum; i++) {
           if (i >= 0) {
@@ -984,17 +984,17 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             const processErrorData = (errorData) => {
               // 过滤掉X_error和Y_error字段
               const { X_error, Y_error, ...filteredData } = errorData;
-              
+
               // 格式化每个字段
               const processedData = {};
               Object.keys(filteredData).forEach((key) => {
                 let value = filteredData[key];
-                
+
                 // 处理特殊的中文字符编码
                 if (typeof value === 'string') {
                   value = decodeChineseText(value);
                 }
-                
+
                 const formattedValue = formatValue(value, key);
                 if (formattedValue !== undefined && formattedValue !== null && formattedValue !== '') {
                   processedData[key] = formattedValue;
@@ -1030,7 +1030,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 // 处理来自后端的异常数据
                 try {
                   const [manualErrors, machineErrors] = error.errorData;
-                  
+
                   // 处理人工标注的异常
                   if (manualErrors && manualErrors.length > 0) {
                     manualErrors.forEach(manualError => {
@@ -1042,7 +1042,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                       }
                     });
                   }
-                  
+
                   // 处理机器识别的异常
                   if (machineErrors && machineErrors.length > 0) {
                     machineErrors.forEach(machineError => {
@@ -1126,9 +1126,9 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
               if (nonAnomalyIdx) {
                 const errorData = errorResults.find(
-                  result => result && 
-                  result.errorIdx === nonAnomalyIdx && 
-                  result.channelKey === channelKey
+                  result => result &&
+                    result.errorIdx === nonAnomalyIdx &&
+                    result.channelKey === channelKey
                 );
                 if (errorData && Array.isArray(errorData.errorData)) {
                   const [manualErrors] = errorData.errorData;
@@ -1136,7 +1136,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                     // 检查是否同时存在自己和他人的标注
                     const hasSelfAnnotation = manualErrors.some(error => error.person === storePerson.value);
                     const hasOthersAnnotation = manualErrors.some(error => error.person !== storePerson.value);
-                    
+
                     // 只有同时存在两种标注时才显示内部虚线框
                     if (hasSelfAnnotation && hasOthersAnnotation) {
                       return 'red';
@@ -1171,11 +1171,11 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
                 return result && result.isAnomaly;
               });
-              
+
               if (hasAnomaly) {
                 return 'orange';
               }
-              
+
               const nonAnomalyIdx = d.find(idx => {
                 const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
                 return result && !result.isAnomaly;
@@ -1183,9 +1183,9 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
               if (nonAnomalyIdx) {
                 const errorData = errorResults.find(
-                  result => result && 
-                  result.errorIdx === nonAnomalyIdx && 
-                  result.channelKey === channelKey
+                  result => result &&
+                    result.errorIdx === nonAnomalyIdx &&
+                    result.channelKey === channelKey
                 );
                 if (errorData && Array.isArray(errorData.errorData)) {
                   const [manualErrors] = errorData.errorData;
@@ -1205,11 +1205,11 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
                 return result && result.isAnomaly;
               });
-              
+
               if (hasAnomaly) {
                 return '0';
               }
-              
+
               const nonAnomalyIdx = d.find(idx => {
                 const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
                 return result && !result.isAnomaly;
@@ -1217,9 +1217,9 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
               if (nonAnomalyIdx) {
                 const errorData = errorResults.find(
-                  result => result && 
-                  result.errorIdx === nonAnomalyIdx && 
-                  result.channelKey === channelKey
+                  result => result &&
+                    result.errorIdx === nonAnomalyIdx &&
+                    result.channelKey === channelKey
                 );
                 if (errorData && Array.isArray(errorData.errorData)) {
                   const [manualErrors] = errorData.errorData;
@@ -1231,7 +1231,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                     // 检查是否同时存在自己和他人的标注
                     const hasSelfAnnotation = manualErrors.some(error => error.person === storePerson.value);
                     const hasOthersAnnotation = manualErrors.some(error => error.person !== storePerson.value);
-                    
+
                     // 如果只有一种标注，返回对应的样式
                     if (hasSelfAnnotation && !hasOthersAnnotation) {
                       return '0';  // 只有自己的标注，使用实线
@@ -1250,7 +1250,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
     // 在所有数据处理完成后
     await Promise.allSettled(errorPromises);
-    
+
     // 确保进度条显示完成
     loadingPercentage.value = 100;
     // 短暂延迟后隐藏加载状态，让用户能看到100%的进度
@@ -1271,8 +1271,8 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
   const [manualErrors, machineErrors] = errorData;
 
   // 处理机器识别的异常
-  for(const machineError of machineErrors) {
-    if(!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
+  for (const machineError of machineErrors) {
+    if (!machineError.X_error || machineError.X_error.length === 0 || machineError.X_error[0].length === 0) {
       continue; // 跳过空的错误数据
     }
 
@@ -1281,16 +1281,16 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
       if (!Array.isArray(idxList) || idxList.length === 0) {
         continue;
       }
-      
+
       // 处理错误数据到1KHz
       const processedErrorData = processDataTo1KHz({
         X_value: idxList,
         Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
       });
-      
+
       const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
       const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
-      
+
       for (let i = left; i <= right; i++) {
         if (i >= 0 && i < rectNum) {
           visData[channelKey][i].push(errorIdx);
@@ -1300,8 +1300,8 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
   }
 
   // 处理人工标注的异常
-  for(const manualError of manualErrors) {
-    if(!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
+  for (const manualError of manualErrors) {
+    if (!manualError.X_error || manualError.X_error.length === 0 || manualError.X_error[0].length === 0) {
       continue; // 跳过空的错误数据
     }
 
@@ -1310,22 +1310,31 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
       if (!Array.isArray(idxList) || idxList.length === 0) {
         continue;
       }
-      
+
       // 处理错误数据到1KHz
       const processedErrorData = processDataTo1KHz({
         X_value: idxList,
         Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
       });
-      
+
       const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
       const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
-      
+
       for (let i = left; i <= right; i++) {
         if (i >= 0 && i < rectNum) {
           visData[channelKey][i].push(errorIdx);
         }
       }
     }
+  }
+}
+
+// 添加处理函数
+const handleHeatmapExport = (command) => {
+  if (command === 'exportSvg') {
+    exportHeatMapSvg();
+  } else if (command === 'exportData') {
+    exportHeatMapData();
   }
 }
 </script>
@@ -1390,7 +1399,7 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
 
 .anomaly-item {
   margin-bottom: 15px;
-  
+
   &:last-child {
     margin-bottom: 0;
   }
@@ -1398,7 +1407,7 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
 
 .anomaly-descriptions {
   width: 100%;
-  
+
   :deep(.el-descriptions__body) {
     background-color: #fff;
   }
@@ -1501,7 +1510,7 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
 
 .anomaly-item {
   margin-bottom: 15px;
-  
+
   &:last-child {
     margin-bottom: 0;
   }
