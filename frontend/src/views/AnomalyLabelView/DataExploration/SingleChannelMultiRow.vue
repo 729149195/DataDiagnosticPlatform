@@ -116,7 +116,7 @@ const currentAnomaly = reactive({});
 const showAnomalyForm = ref(false);
 const overviewData = ref([]);
 
-const xDomains = ref({});
+const xDomains = ref({ global: null });
 const anomalies = ref([]);
 
 const brush_begin = ref(0);
@@ -231,7 +231,13 @@ const predefineColors = ref([
 
 const updateChannelColor = (channel) => {
   store.commit('updateChannelColor', { channel_key: channel.channel_key, color: channel.color });
-  renderCharts();
+  // 更新当前通道的图表
+  const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
+  if (data) {
+    drawChannelChart(channel, data);
+  }
+  // 更新概览图
+  drawOverviewChart();
 };
 
 // 添加Worker消息处理
@@ -928,9 +934,10 @@ const drawOverviewChart = () => {
   const brush = d3.brushX()
     .extent([
       [0, 0],
-      [width, height],
+      [width, height]
     ])
-    .on('brush end', debounce(brushed, 150));
+    .on('brush', brushed)
+    .on('end', brushed);
 
   overviewBrushInstance.value = brush;
 
@@ -1051,10 +1058,34 @@ const handleInputBlur = (type) => {
   });
 };
 
-// 修改 watch 函数，移除即时格式化
+// 修改 watch 函数，添加对 brush_begin 和 brush_end 的监听
 watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
-  // 仅在输入框失焦或按下回车时处理
-}, { immediate: false });
+  if (updatingBrush.value) return;
+  if (!selectedChannels.value || selectedChannels.value.length === 0) return;
+
+  const start = parseFloat(newBegin);
+  const end = parseFloat(newEnd);
+
+  if (isNaN(start) || isNaN(end)) return;
+
+  // 更新所有通道的 domain
+  selectedChannels.value.forEach((channel) => {
+    const channelName = `${channel.channel_name}_${channel.shot_number}`;
+    store.dispatch('updateDomains', {
+      channelName,
+      xDomain: [start, end],
+      yDomain: domains.value.y[channelName]
+    });
+
+    // 重新渲染该通道的图表
+    const data = channelDataCache.value[channelName];
+    if (data) {
+      nextTick(() => {
+        drawChannelChart(channel, data);
+      });
+    }
+  });
+}, { immediate: true });
 
 const createGaussianKernel = (sigma, size) => {
   const kernel = [];
@@ -1279,7 +1310,7 @@ const drawChart = async (
         .datum(data.Y_value)
         .attr('class', 'original-line')
         .attr('fill', 'none')
-        .attr('stroke', color || 'steelblue')
+        .attr('stroke', color)  // 直接使用传入的颜色
         .attr('stroke-width', 1.5)
         .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
         .attr('d', line);
@@ -1415,7 +1446,7 @@ const drawChart = async (
           .datum(smoothedYValue)
           .attr('class', 'smoothed-line')
           .attr('fill', 'none')
-          .attr('stroke', color || 'steelblue')
+          .attr('stroke', color)  // 直接使用传入的颜色
           .attr('stroke-width', 1.5)
           .attr('d', line);
       }
