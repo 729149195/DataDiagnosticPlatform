@@ -3,10 +3,21 @@ import { createStore } from "vuex";
 import { reactive, ref } from "vue";
 import colors from "./color.json"; // 导入 color.json 文件
 import axios from "axios";
+import { CacheFactory } from 'cachefactory';
 
 // 定义一个映射，用于存储每个 channel_key 分配的颜色
 const channelColorMap = new Map();
 let colorIndex = 0;
+
+// 在createStore之前添加缓存工厂配置
+const cacheFactory = new CacheFactory();
+const dataCache = cacheFactory.createCache('channelData', {
+  maxEntries: 100, // 最大缓存条目数
+  maxAge: 30 * 60 * 1000, // 30分钟
+  deleteOnExpire: 'aggressive',
+  storageMode: 'memory', // 纯内存存储
+  recycleFreq: 60 * 1000 // 内存回收频率
+});
 
 const store = createStore({
   state() {
@@ -26,8 +37,13 @@ const store = createStore({
       brush_end: 0,
 
       channelSvgElementsRefs: [],
-      channelDataCache: reactive({}),
-      dataCache: ref(new Map()),
+      channelDataCache: reactive({
+        // 仅存储缓存元数据
+        getCacheInfo: () => ({
+          size: dataCache.info().size,
+          keys: dataCache.keys()
+        })
+      }),
       xDomains: {},
       yDomains: {},
 
@@ -340,10 +356,13 @@ const store = createStore({
       }
     },
     updateChannelDataCache(state, { channelKey, data }) {
-      state.channelDataCache[channelKey] = data;
+      dataCache.put(channelKey, {
+        data: reactive(data),
+        timestamp: Date.now()
+      });
     },
     clearChannelDataCache(state) {
-      state.channelDataCache = reactive({});
+      dataCache.removeAll();
     }
   },
   actions: {
@@ -466,34 +485,30 @@ const store = createStore({
       }
     },
     async fetchChannelData({ state, commit }, { channel, forceRefresh = false }) {
-      try {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        
-        // 如果缓存中有数据且不强制刷新，直接返回缓存的数据
-        if (!forceRefresh && state.channelDataCache[channelKey]) {
-          return state.channelDataCache[channelKey];
-        }
-
-        const params = {
-          channel_key: channelKey,
-          channel_type: channel.channel_type
-        };
-
-        const response = await axios.get(`https://10.1.108.19:5000/api/channel-data/`, { params });
-        const data = response.data;
-
-        // 计算原始采样频率
-        const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
-        data.originalFrequency = data.X_value.length / timeRange / 1000;
-        data.originalDataPoints = data.X_value.length;
-
-        // 存入缓存
-        commit('updateChannelDataCache', { channelKey, data });
-        return data;
-      } catch (error) {
-        console.error('Error fetching channel data:', error);
-        throw error;
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      
+      // 使用缓存工厂检查数据
+      const cached = dataCache.get(channelKey);
+      if (!forceRefresh && cached && Date.now() - cached.timestamp < 300000) {
+        return cached.data;
       }
+
+      const params = {
+        channel_key: channelKey,
+        channel_type: channel.channel_type
+      };
+
+      const response = await axios.get(`https://10.1.108.19:5000/api/channel-data/`, { params });
+      const data = response.data;
+
+      // 计算原始采样频率
+      const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
+      data.originalFrequency = data.X_value.length / timeRange / 1000;
+      data.originalDataPoints = data.X_value.length;
+
+      // 存入缓存
+      commit('updateChannelDataCache', { channelKey, data });
+      return data;
     },
     
     // 添加获取所有错误数据的 action
@@ -510,9 +525,9 @@ const store = createStore({
           // 构建缓存键
           const errorCacheKey = `${channelKey}-error-${error.error_name}-${errorIndex}-heatmap`;
 
-          // 检查缓存中是否已有数据
-          if (state.dataCache.has(errorCacheKey)) {
-            errorResults.push(state.dataCache.get(errorCacheKey));
+          // 检查缓存中是否已有数据（使用新的缓存工厂）
+          if (dataCache.get(errorCacheKey)) {
+            errorResults.push(dataCache.get(errorCacheKey).data);
             continue;
           }
 
@@ -537,7 +552,10 @@ const store = createStore({
             const errorData = await response.json();
 
             // 将数据存入缓存
-            state.dataCache.set(errorCacheKey, errorData);
+            dataCache.put(errorCacheKey, {
+              data: reactive(errorData),
+              timestamp: Date.now()
+            });
             errorResults.push(errorData);
           } catch (err) {
             console.warn(`Failed to fetch error data for ${error.error_name}:`, err);

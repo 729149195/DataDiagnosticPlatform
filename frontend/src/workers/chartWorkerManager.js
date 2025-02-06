@@ -2,6 +2,8 @@
  * Chart Worker 管理器
  * 用于管理和复用 chartWorker 实例
  */
+import { dataCache } from '../services/cacheManager';
+
 class ChartWorkerManager {
   constructor() {
     this.worker = null;
@@ -62,7 +64,11 @@ class ChartWorkerManager {
    * @param {number} shotNumber - 炮号
    * @returns {Promise} 处理结果的Promise
    */
-  processData(channelData, sampleRate, smoothnessValue, channelKey, color, xUnit, yUnit, channelType, channelNumber, shotNumber) {
+  async processData(channelData, sampleRate, smoothnessValue, channelKey, color, xUnit, yUnit, channelType, channelNumber, shotNumber) {
+    const cacheKey = `chartData-${channelKey}-${sampleRate}-${smoothnessValue}`;
+    const cached = dataCache.get(cacheKey);
+    if (cached) return cached.data;
+    
     return new Promise((resolve, reject) => {
       const messageId = this.messageId++;
       
@@ -70,6 +76,11 @@ class ChartWorkerManager {
         if (error) {
           reject(new Error(error));
         } else {
+          // 缓存处理结果
+          dataCache.put(cacheKey, {
+            data: data,
+            timestamp: Date.now()
+          });
           resolve(data);
         }
       });

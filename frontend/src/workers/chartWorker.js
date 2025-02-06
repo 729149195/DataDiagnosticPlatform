@@ -236,6 +236,26 @@ function processErrorSegment(errorSegment, sampledData) {
   return { X: sampledX, Y: sampledY };
 }
 
+function compressData(data) {
+  return {
+    X: compressArray(data.X_value),
+    Y: compressArray(data.Y_value),
+    meta: data.meta
+  };
+}
+
+function compressArray(arr) {
+  // 使用delta encoding + TypedArray压缩
+  const deltas = new Float32Array(arr.length);
+  let prev = arr[0];
+  deltas[0] = prev;
+  for (let i = 1; i < arr.length; i++) {
+    deltas[i] = arr[i] - prev;
+    prev = arr[i];
+  }
+  return deltas;
+}
+
 // 主要的消息处理函数
 self.onmessage = function(e) {
   try {

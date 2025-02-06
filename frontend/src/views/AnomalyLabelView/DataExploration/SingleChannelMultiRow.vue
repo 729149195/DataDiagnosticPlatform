@@ -350,8 +350,8 @@ onUnmounted(() => {
 
 // 修改 processChannelData 函数
 const processChannelData = async (data, channel) => {
+  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   try {
-    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     renderingStates[channelKey] = 25; // 开始处理数据
     
     // 准备数据
@@ -412,7 +412,7 @@ const processChannelData = async (data, channel) => {
 
       // 更新 channelDataCache
       store.commit('updateChannelDataCache', {
-        key: channelKey,
+        channelKey: channelKey, // 修正参数名称
         data: {
           ...processedData.processedData,
           errorsData: errorDataResults  // 添加错误数据到缓存
