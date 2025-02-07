@@ -7,18 +7,17 @@
       <div class="chart-wrapper" v-for="(channel, index) in selectedChannels"
         :key="channel.channel_name + '_' + channel.shot_number">
         <div v-if="loadingStates[channel.channel_name + '_' + channel.shot_number] !== 100 ||
-          renderingStates[channel.channel_name + '_' + channel.shot_number] !== 100"
-          class="progress-wrapper">
+          renderingStates[channel.channel_name + '_' + channel.shot_number] !== 100" class="progress-wrapper">
           <div class="progress-title">
             <span>{{
               `${channel.channel_name}#${channel.shot_number}`
-            }} - {{
+              }} - {{
                 loadingStates[channel.channel_name + '_' + channel.shot_number] === 100
                   ? '图表渲染中' : '数据加载中'
               }}</span>
             <span class="progress-percentage">{{
               getProgressPercentage(channel.channel_name + '_' + channel.shot_number)
-            }}%</span>
+              }}%</span>
           </div>
           <el-progress :percentage="getProgressPercentage(channel.channel_name + '_' + channel.shot_number)"
             :stroke-width="10"
