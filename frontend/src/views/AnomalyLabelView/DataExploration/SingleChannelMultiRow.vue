@@ -9,15 +9,10 @@
         <div v-if="loadingStates[channel.channel_name + '_' + channel.shot_number] !== 100 ||
           renderingStates[channel.channel_name + '_' + channel.shot_number] !== 100" class="progress-wrapper">
           <div class="progress-title">
-            <span>{{
-              `${channel.channel_name}#${channel.shot_number}`
-            }} - {{
-                loadingStates[channel.channel_name + '_' + channel.shot_number] === 100
-                  ? '图表渲染中' : '数据加载中'
-              }}</span>
+            <span>{{ `${channel.channel_name}#${channel.shot_number}` }} - {{ loadingStates[channel.channel_name + '_' +
+              channel.shot_number] === 100 ? '图表渲染中' : '数据加载中' }}</span>
             <span class="progress-percentage">{{
-              getProgressPercentage(channel.channel_name + '_' + channel.shot_number)
-            }}%</span>
+              getProgressPercentage(channel.channel_name + '_' + channel.shot_number) }}%</span>
           </div>
           <el-progress :percentage="getProgressPercentage(channel.channel_name + '_' + channel.shot_number)"
             :stroke-width="10"
@@ -29,7 +24,6 @@
             opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
             transition: 'opacity 0.5s ease'
           }"></svg>
-        <!-- Position the color picker near the chart -->
         <div class="color-picker-container" :style="{
           opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
           visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
@@ -173,11 +167,9 @@ const updateChannelColor = (channel) => {
     // 更新原始线条颜色
     svg.select('.original-line')
       .attr('stroke', channel.color);
-      
-    // 更新平滑线条颜色(如果存在)
     svg.select('.smoothed-line')
       .attr('stroke', channel.color);
-      
+
     // 更新图例文本颜色
     svg.select('.legend-group text')
       .style('fill', channel.color);
@@ -289,7 +281,6 @@ chartWorkerManager.onmessage = function (e) {
   }
 };
 
-// 在组件卸载时终止 Worker
 onUnmounted(() => {
   chartWorkerManager.terminate();
 });
@@ -306,7 +297,6 @@ const processChannelData = async (data, channel) => {
       originalDataPoints: data.X_value.length
     };
     renderingStates[channelKey] = 25;
-    // 获取错误数据
     let errorDataResults = [];
     if (channel.errors && channel.errors.length > 0) {
       try {
@@ -315,7 +305,7 @@ const processChannelData = async (data, channel) => {
         console.warn('Failed to fetch error data:', err);
       }
     }
-    renderingStates[channelKey] = 40; 
+    renderingStates[channelKey] = 40;
 
     // 使用 chartWorkerManager 处理数据
     const processedData = await chartWorkerManager.processData(
@@ -360,7 +350,7 @@ const processChannelData = async (data, channel) => {
         }
       });
 
-      renderingStates[channelKey] = 50; 
+      renderingStates[channelKey] = 0;
 
       // 计算并更新全局 X 轴范围
       const allX = overviewData.value.flatMap(d => d.X_value);
@@ -2064,32 +2054,32 @@ watch(isBoxSelect, (newValue) => {
 });
 
 // 添加一个新的 watch 来监听每个通道的颜色变化
-watch(() => selectedChannels.value.map(ch => ({ key: ch.channel_key, color: ch.color })), 
+watch(() => selectedChannels.value.map(ch => ({ key: ch.channel_key, color: ch.color })),
   (newVal, oldVal) => {
     if (!oldVal) return;
-    
+
     // 找出颜色发生变化的通道
     newVal.forEach((channel, index) => {
       if (oldVal[index] && channel.color !== oldVal[index].color) {
         const targetChannel = selectedChannels.value[index];
         const channelKey = `${targetChannel.channel_name}_${targetChannel.shot_number}`;
-        
+
         // 更新主图表中的线条颜色
         const svg = d3.select(`#chart-${channelKey}`);
         if (svg.node()) {
           // 更新原始线条颜色
           svg.select('.original-line')
             .attr('stroke', channel.color);
-            
+
           // 更新平滑线条颜色(如果存在)
           svg.select('.smoothed-line')
             .attr('stroke', channel.color);
-            
+
           // 更新图例文本颜色
           svg.select('.legend-group text')
             .style('fill', channel.color);
         }
-        
+
         // 更新概览图中的线条颜色
         const overviewSvg = d3.select('#overview-chart');
         if (overviewSvg.node()) {
@@ -2097,7 +2087,7 @@ watch(() => selectedChannels.value.map(ch => ({ key: ch.channel_key, color: ch.c
             .filter(d => d.channelName === channelKey)
             .attr('stroke', channel.color);
         }
-        
+
         // 更新 overviewData 中的颜色
         const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
         if (existingIndex !== -1) {
