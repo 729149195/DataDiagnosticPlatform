@@ -525,39 +525,73 @@ onMounted(() => {
 
 const debounceRender = ref(null);
 
+// 添加缓存记录已渲染的通道状态
+const renderedChannelsState = ref(new Map());
+
+// 检查通道是否需要重新渲染
+function needsRerender(channel, newCache, newAnomalies) {
+  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+  const currentState = renderedChannelsState.value.get(channelKey);
+  
+  if (!currentState) return true;
+  
+  const newState = {
+    errors: channel.errors,
+    cacheData: newCache[channelKey],
+    anomalies: newAnomalies[channelKey]
+  };
+  
+  return JSON.stringify(currentState) !== JSON.stringify(newState);
+}
+
+// 更新已渲染通道的状态
+function updateRenderedState(channel, newCache, newAnomalies) {
+  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+  renderedChannelsState.value.set(channelKey, {
+    errors: channel.errors,
+    cacheData: newCache[channelKey],
+    anomalies: newAnomalies[channelKey]
+  });
+}
+
 watch(
   [() => channelDataCache.value, selectedChannels, anomaliesByChannel],
-  async ([newCache, newChannels, newAnomalies], [oldCache, oldChannels, oldAnomalies]) => {
-    // 如果没有选中的通道，不进行渲染
+  async ([newCache, newChannels, newAnomalies], [oldCache, oldChannels]) => {
     if (!newChannels || newChannels.length === 0) {
+      // 清空渲染状态和图表
+      renderedChannelsState.value.clear();
+      const heatmap = d3.select('#heatmap');
+      heatmap.selectAll('*').remove();
       return;
     }
 
-    // 检查是否有新通道被添加
-    const hasNewChannels = !oldChannels ||
-      newChannels.length !== oldChannels.length ||
-      newChannels.some(newChannel =>
-        !oldChannels.find(oldChannel =>
-          oldChannel.channel_key === newChannel.channel_key
+    // 检查是否有通道被删除
+    if (oldChannels) {
+      const removedChannels = oldChannels.filter(oldChannel => 
+        !newChannels.some(newChannel => 
+          `${newChannel.channel_name}_${newChannel.shot_number}` === 
+          `${oldChannel.channel_name}_${oldChannel.shot_number}`
         )
       );
 
-    // 检查是否只是因为懒加载导致的更新
-    const isLazyLoadUpdate = !hasNewChannels && oldChannels &&
-      newChannels.length === oldChannels.length &&
-      newChannels.every((channel, index) =>
-        channel.channel_key === oldChannels[index].channel_key
-      );
-
-    // 如果是懒加载更新且没有新的异常数据，不重新渲染热力图
-    if (isLazyLoadUpdate && !newAnomalies) {
-      return;
+      // 清理已删除通道的渲染状态
+      removedChannels.forEach(channel => {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        renderedChannelsState.value.delete(channelKey);
+      });
     }
 
-    // 检查是否只是异常数据发生变化
-    const isOnlyAnomalyChange = !hasNewChannels && oldChannels &&
-      JSON.stringify(newChannels) === JSON.stringify(oldChannels) &&
-      JSON.stringify(newAnomalies) !== JSON.stringify(oldAnomalies);
+    // 找出需要重新渲染的通道
+    const channelsToRender = newChannels.filter(channel => 
+      needsRerender(channel, newCache, newAnomalies)
+    );
+
+    // 如果有通道被删除或有需要重新渲染的通道，执行渲染
+    const shouldUpdate = channelsToRender.length > 0 || (oldChannels && oldChannels.length !== newChannels.length);
+
+    if (!shouldUpdate) {
+      return;
+    }
 
     // 使用防抖来避免频繁渲染
     if (debounceRender.value) {
@@ -569,8 +603,14 @@ watch(
       debounceRender.value = setTimeout(async () => {
         try {
           await nextTick();
-          // 如果是新通道添加，强制重新渲染所有数据
-          await renderHeatmap(newChannels, isOnlyAnomalyChange && !hasNewChannels);
+          // 传入所有通道进行完整渲染
+          await renderHeatmap(newChannels, false);
+          
+          // 更新渲染状态
+          newChannels.forEach(channel => {
+            updateRenderedState(channel, newCache, newAnomalies);
+          });
+          
           resolve();
         } catch (error) {
           console.error('Error in debounced renderHeatmap:', error);
@@ -578,14 +618,13 @@ watch(
           loadingPercentage.value = 0;
           resolve();
         }
-      }, isOnlyAnomalyChange && !hasNewChannels ? 0 : 300); // 如果只是异常数据变化且没有新通道，立即渲染
+      }, 300);
     });
 
     await renderPromise;
   },
   {
-    deep: true,
-    immediate: true
+    deep: true
   }
 );
 
@@ -656,7 +695,6 @@ const processDataTo1KHz = (data) => {
 
 async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
   try {
-    // 如果没有通道数据，直接返回
     if (!channels || channels.length === 0) {
       loading.value = false;
       return;
@@ -668,6 +706,8 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     completedRequests.value = 0;
 
     const heatmap = d3.select('#heatmap');
+    
+    // 总是清除所有元素以确保正确的渲染
     heatmap.selectAll('*').remove();
 
     // 如果只是异常数据变化，保留现有的错误数据
@@ -690,14 +730,12 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     // 使用 Map 缓存已处理的通道数据
     const processedChannels = new Map();
 
-    // 遍历 channelDataCache 中的所有数据来计算全局 X 范围
+    // 遍历所有通道数据来计算全局 X 范围
     for (const channel of channels) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      // 从 channelDataCache.value 中获取数据
       const channelData = channelDataCache.value[channelKey];
 
       if (channelData && channelData.X_value) {
-        // 处理数据到1KHz
         const processedData = processDataTo1KHz(channelData);
         let xValues = processedData.X_value;
 
@@ -707,7 +745,6 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
         globalXMin = Math.min(globalXMin, localMin);
         globalXMax = Math.max(globalXMax, localMax);
 
-        // 缓存处理后的数据
         processedChannels.set(channelKey, {
           ...processedData,
           localMin,
