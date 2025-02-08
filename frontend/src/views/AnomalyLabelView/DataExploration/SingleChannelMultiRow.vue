@@ -998,7 +998,7 @@ const handleInputBlur = (type) => {
 };
 
 // 修改 watch 函数，添加对 brush_begin 和 brush_end 的监听
-watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
+watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
   if (updatingBrush.value) return;
   if (!selectedChannels.value || selectedChannels.value.length === 0) return;
 
@@ -1006,6 +1006,8 @@ watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
   const end = parseFloat(newEnd);
 
   if (isNaN(start) || isNaN(end)) return;
+
+  console.log(start, end);
 
   // 更新所有通道的 domain
   selectedChannels.value.forEach((channel) => {
@@ -1028,6 +1030,8 @@ watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
 
 const createGaussianKernel = (sigma, size) => {
   const kernel = [];
+
+
   const center = Math.floor(size / 2);
   const sigma2 = 2 * sigma * sigma;
   let sum = 0;
@@ -1920,12 +1924,7 @@ const drawChart = async (
 const decodeChineseText = (text) => {
   if (!text) return '';
   try {
-    // 如果文本已经是正常的中文，直接返回
-    if (typeof text === 'string' && /^[\u4e00-\u9fa5]+$/.test(text)) {
-      return text;
-    }
-
-    // 如果文本包含需要解码的字符，才进行解码
+    if (typeof text === 'string' && /^[\u4e00-\u9fa5]+$/.test(text)) { return text; }
     if (typeof text === 'string' && /[\u0080-\uffff]/.test(text)) {
       try {
         const decodedText = decodeURIComponent(escape(text));
@@ -1944,7 +1943,6 @@ const decodeChineseText = (text) => {
 
 const saveAnomaly = () => {
   if (currentAnomaly) {
-    // 在保存前对中文内容进行编码处理
     const payload = {
       channelName: currentAnomaly.channelName,
       anomaly: {

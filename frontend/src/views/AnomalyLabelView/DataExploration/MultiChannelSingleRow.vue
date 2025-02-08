@@ -109,11 +109,18 @@ const updateChannelColor = ({channelKey, color}) => {
     // 更新 Vuex 存储
     store.commit('updateChannelColor', {channel_key: channelKey, color});
     
+    // 只更新特定通道的主线条颜色
     d3.select('#combined-chart')
-      .selectAll('.channel-line, .smoothed-line-' + channel.channel_name)
+      .selectAll(`.channel-line, .smoothed-line-${channel.channel_name}`)
+      .filter(d => {
+        const lineIndex = channelsData.value.findIndex(
+          cd => `${cd.channelName}_${cd.channelshotnumber}` === channelKey
+        );
+        return d === channelsData.value[lineIndex]?.Y_value;
+      })
       .attr('stroke', color);
     
-    // 更新总览图中的线条颜色
+    // 只更新特定通道在总览图中的线条颜色
     d3.select('#overview-chart')
       .selectAll('.overview-line')
       .filter(d => `${d.channelName}_${d.channelshotnumber}` === channelKey)
@@ -128,7 +135,7 @@ const updateChannelColor = ({channelKey, color}) => {
     }
     
     const overviewDataIndex = overviewData.value.findIndex(
-      d => d.channelName === channelKey
+      d => `${d.channelName}_${d.channelshotnumber}` === channelKey
     );
     if (overviewDataIndex !== -1) {
       overviewData.value[overviewDataIndex].color = color;
