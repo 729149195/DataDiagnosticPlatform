@@ -1286,7 +1286,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     // 短暂延迟后隐藏加载状态，让用户能看到100%的进度
     setTimeout(() => {
       loading.value = false;
-    }, 500);
+    });
 
   } catch (error) {
     console.error('Error in renderHeatmap:', error);
