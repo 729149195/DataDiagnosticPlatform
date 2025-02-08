@@ -249,12 +249,37 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
 });
 
-// 监听选中通道的变化
+// 修改 selectedChannels 的监听器
 watch(selectedChannels, async (newChannels, oldChannels) => {
-  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
+  // 检查是否只是颜色发生变化
+  const isOnlyColorChange = newChannels.length === oldChannels.length && 
+    newChannels.every(newCh => {
+      const oldCh = oldChannels.find(
+        old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
+      );
+      return oldCh && 
+        oldCh.color !== newCh.color && 
+        JSON.stringify({...oldCh, color: newCh.color}) === JSON.stringify(newCh);
+    });
+
+  if (isOnlyColorChange) {
+    // 只处理颜色变化的通道，复用 updateChannelColor 函数
+    newChannels.forEach(newCh => {
+      const oldCh = oldChannels.find(
+        old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
+      );
+      if (oldCh && oldCh.color !== newCh.color) {
+        updateChannelColor({
+          channelKey: `${newCh.channel_name}_${newCh.shot_number}`,
+          color: newCh.color
+        });
+      }
+    });
+  } else {
+    // 如果不是仅颜色变化，则执行完整的重新渲染
     overviewData.value = [];
     channelsData.value = [];
-    exposeData.value = []
+    exposeData.value = [];
     await nextTick();
     renderCharts();
     drawOverviewChart();
