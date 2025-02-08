@@ -11,13 +11,13 @@
           <div class="progress-title">
             <span>{{
               `${channel.channel_name}#${channel.shot_number}`
-              }} - {{
+            }} - {{
                 loadingStates[channel.channel_name + '_' + channel.shot_number] === 100
                   ? '图表渲染中' : '数据加载中'
               }}</span>
             <span class="progress-percentage">{{
               getProgressPercentage(channel.channel_name + '_' + channel.shot_number)
-              }}%</span>
+            }}%</span>
           </div>
           <el-progress :percentage="getProgressPercentage(channel.channel_name + '_' + channel.shot_number)"
             :stroke-width="10"
@@ -89,51 +89,19 @@
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
-
-import {
-  ref,
-  reactive,
-  watch,
-  computed,
-  onMounted,
-  nextTick,
-  onUnmounted,
-} from 'vue';
-
-import {
-  ElDialog,
-  ElForm,
-  ElFormItem,
-  ElInput,
-  ElButton,
-  ElMessage,
-} from 'element-plus';
+import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted } from 'vue';
+import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import chartWorkerManager from '@/workers/chartWorkerManager';
 
 const currentAnomaly = reactive({});
 const showAnomalyForm = ref(false);
 const overviewData = ref([]);
-
 const xDomains = ref({ global: null });
 const anomalies = ref([]);
-
 const brush_begin = ref(0);
 const brush_end = ref(0);
-
-const timeAxisRange = computed(() => {
-  if (
-    currentAnomaly &&
-    currentAnomaly.startX !== undefined &&
-    currentAnomaly.endX !== undefined
-  ) {
-    return `${currentAnomaly.startX.toFixed(3)} - ${currentAnomaly.endX.toFixed(
-      2
-    )}`;
-  }
-  return '';
-});
-
+const predefineColors = ref(['#000000', '#4169E1', '#DC143C', '#228B22', '#FF8C00', '#800080', '#FF1493', '#40E0D0', '#FFD700', '#8B4513', '#2F4F4F', '#1E90FF', '#32CD32', '#FF6347', '#DA70D6', '#191970', '#FA8072', '#6B8E23', '#6A5ACD', '#FF7F50', '#4682B4']);
 const store = useStore();
 const selectedChannels = computed(() => store.state.selectedChannels);
 const sampling = computed(() => store.state.sampling);
@@ -145,33 +113,26 @@ const domains = computed(() => ({
   x: store.state.xDomains,
   y: store.state.yDomains
 }));
-
 const chartContainerWidth = ref(0);
 const brushSelections = ref({ overview: null });
-
 const matchedResults = computed(() => store.state.matchedResults);
-
 const overviewBrushInstance = ref(null);
 const overviewXScale = ref(null);
 const updatingBrush = ref(false);
-
-// 🚀 **新增部分：定义缓存对象**
-const channelDataCache = computed(() => store.state.channelDataCache);
-
-// 在 script setup 部分添加新的应式变量
+const channelDataCache = computed(() => store.state.channelDataCache);// 定义缓存对象
 const loadingStates = reactive({});  // 用于存储每个通道的加载状态
 const renderingStates = reactive({}); // 用于存储每个通道的渲染状态
 
-// 添加重试函数
-const retryRequest = async (fn, retries = 3, delay = 1000) => {
-  try {
-    return await fn();
-  } catch (err) {
-    if (retries <= 0) throw err;
-    await new Promise(resolve => setTimeout(resolve, delay));
-    return retryRequest(fn, retries - 1, delay * 2);
+const timeAxisRange = computed(() => {
+  if (
+    currentAnomaly &&
+    currentAnomaly.startX !== undefined &&
+    currentAnomaly.endX !== undefined
+  ) {
+    return `${currentAnomaly.startX.toFixed(3)} - ${currentAnomaly.endX.toFixed(3)}`;
   }
-};
+  return '';
+});
 
 // 监视匹配结果，绘制高亮矩形
 watch(matchedResults, (newResults) => {
@@ -183,7 +144,6 @@ watch(matchedResults, (newResults) => {
       svg.select(`.highlight-group-${channelName}`).remove();
     }
   });
-
   // 只有在有新结果时才绘制高亮
   if (newResults && newResults.length > 0) {
     // 按通道分组结果
@@ -203,40 +163,37 @@ watch(matchedResults, (newResults) => {
   }
 }, { deep: true });
 
-// **New: Define predefined colors**
-const predefineColors = ref([
-  '#000000', // Black
-  '#4169E1', // Royal Blue
-  '#DC143C', // Crimson
-  '#228B22', // Forest Green
-  '#FF8C00', // Dark Orange
-  '#800080', // Purple
-  '#FF1493', // Deep Pink
-  '#40E0D0', // Turquoise
-  '#FFD700', // Gold
-  '#8B4513', // Saddle Brown
-  '#2F4F4F', // Dark Slate Gray
-  '#1E90FF', // Dodger Blue
-  '#32CD32', // Lime Green
-  '#FF6347', // Tomato
-  '#DA70D6', // Orchid
-  '#191970', // Midnight Blue
-  '#FA8072', // Salmon
-  '#6B8E23', // Olive Drab
-  '#6A5ACD', // Slate Blue
-  '#FF7F50', // Coral
-  '#4682B4'  // Steel Blue
-]);
-
 const updateChannelColor = (channel) => {
+  // 更新 store 中的颜色
   store.commit('updateChannelColor', { channel_key: channel.channel_key, color: channel.color });
-  // 更新当前通道的图表
-  const data = channelDataCache.value[`${channel.channel_name}_${channel.shot_number}`];
-  if (data) {
-    drawChannelChart(channel, data);
+  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+  // 更新主图表中的线条颜色
+  const svg = d3.select(`#chart-${channelKey}`);
+  if (svg.node()) {
+    // 更新原始线条颜色
+    svg.select('.original-line')
+      .attr('stroke', channel.color);
+      
+    // 更新平滑线条颜色(如果存在)
+    svg.select('.smoothed-line')
+      .attr('stroke', channel.color);
+      
+    // 更新图例文本颜色
+    svg.select('.legend-group text')
+      .style('fill', channel.color);
   }
-  // 更新概览图
-  drawOverviewChart();
+  // 更新概览图中的线条颜色
+  const overviewSvg = d3.select('#overview-chart');
+  if (overviewSvg.node()) {
+    overviewSvg.selectAll('.overview-line')
+      .filter(d => d.channelName === channelKey)
+      .attr('stroke', channel.color);
+  }
+  // 更新 overviewData 中的颜色
+  const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
+  if (existingIndex !== -1) {
+    overviewData.value[existingIndex].color = channel.color;
+  }
 };
 
 // 添加Worker消息处理
@@ -2113,7 +2070,53 @@ watch(isBoxSelect, (newValue) => {
   });
 });
 
-// 添加一个新的 watch
+// 添加一个新的 watch 来监听每个通道的颜色变化
+watch(() => selectedChannels.value.map(ch => ({ key: ch.channel_key, color: ch.color })), 
+  (newVal, oldVal) => {
+    if (!oldVal) return;
+    
+    // 找出颜色发生变化的通道
+    newVal.forEach((channel, index) => {
+      if (oldVal[index] && channel.color !== oldVal[index].color) {
+        const targetChannel = selectedChannels.value[index];
+        const channelKey = `${targetChannel.channel_name}_${targetChannel.shot_number}`;
+        
+        // 更新主图表中的线条颜色
+        const svg = d3.select(`#chart-${channelKey}`);
+        if (svg.node()) {
+          // 更新原始线条颜色
+          svg.select('.original-line')
+            .attr('stroke', channel.color);
+            
+          // 更新平滑线条颜色(如果存在)
+          svg.select('.smoothed-line')
+            .attr('stroke', channel.color);
+            
+          // 更新图例文本颜色
+          svg.select('.legend-group text')
+            .style('fill', channel.color);
+        }
+        
+        // 更新概览图中的线条颜色
+        const overviewSvg = d3.select('#overview-chart');
+        if (overviewSvg.node()) {
+          overviewSvg.selectAll('.overview-line')
+            .filter(d => d.channelName === channelKey)
+            .attr('stroke', channel.color);
+        }
+        
+        // 更新 overviewData 中的颜色
+        const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
+        if (existingIndex !== -1) {
+          overviewData.value[existingIndex].color = channel.color;
+        }
+      }
+    });
+  },
+  { deep: true }
+);
+
+// 移除原有的 watch，因为它会导致不必要的重绘
 watch(() => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
   () => {
     // 当异常颜色发生变化时，重新渲染所有图表

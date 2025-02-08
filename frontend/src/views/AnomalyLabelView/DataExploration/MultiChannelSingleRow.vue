@@ -101,16 +101,38 @@ const overviewXScale = ref(null);
 const updatingBrush = ref(false);
 
 const updateChannelColor = ({channelKey, color}) => {
-  // 更新 selectedChannels 中的颜色
   const channel = selectedChannels.value.find(
       (ch) => `${ch.channel_name}_${ch.shot_number}` === channelKey
   );
   if (channel) {
     channel.color = color;
-    // 更新 Vuex 存储，如果需要
+    // 更新 Vuex 存储
     store.commit('updateChannelColor', {channel_key: channelKey, color});
-    // 重新制图表
-    renderCharts();
+    
+    d3.select('#combined-chart')
+      .selectAll('.channel-line, .smoothed-line-' + channel.channel_name)
+      .attr('stroke', color);
+    
+    // 更新总览图中的线条颜色
+    d3.select('#overview-chart')
+      .selectAll('.overview-line')
+      .filter(d => `${d.channelName}_${d.channelshotnumber}` === channelKey)
+      .attr('stroke', color);
+      
+    // 更新数据中的颜色
+    const channelDataIndex = channelsData.value.findIndex(
+      d => `${d.channelName}_${d.channelshotnumber}` === channelKey
+    );
+    if (channelDataIndex !== -1) {
+      channelsData.value[channelDataIndex].color = color;
+    }
+    
+    const overviewDataIndex = overviewData.value.findIndex(
+      d => d.channelName === channelKey
+    );
+    if (overviewDataIndex !== -1) {
+      overviewData.value[overviewDataIndex].color = color;
+    }
   }
 };
 
@@ -574,7 +596,6 @@ const handleInputBlur = (type) => {
   };
 };
 
-// 修改 watch 函数，移除即时格式化
 watch([brush_begin, brush_end], ([newBegin, newEnd], [oldBegin, oldEnd]) => {
   // 仅在输入框失焦或按下回车时处理
 }, {immediate: false});
