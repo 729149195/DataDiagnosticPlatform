@@ -1183,13 +1183,20 @@ const drawChart = async (
         .style('font-weight', 'bold')
         .text('Time(s)');  // 移除了 (s)
 
-      g.append('g').attr('class', 'y-axis').call(d3.axisLeft(y)).style("font-size", "1em").style("font-weight", "bold"); // 加粗字体;
+      // 修改Y轴刻度
+      g.append('g')
+        .attr('class', 'y-axis')
+        .call(d3.axisLeft(y).ticks(8))  // 设置Y轴刻度数量为4
+        .style("font-size", "1em")
+        .style("font-weight", "bold");
 
+      // 修改网格线
       g.append('g')
         .attr('class', 'grid')
         .call(
           d3
             .axisLeft(y)
+            .ticks(8)  // 保持与Y轴刻度数量一致
             .tickSize(-width)
             .tickFormat('')
         )
