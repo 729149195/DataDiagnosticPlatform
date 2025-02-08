@@ -1,8 +1,6 @@
 <template>
   <span style="display: flex; align-items: center; justify-content: space-between;">
     <span class="title">自动识别和人工标注结果</span>
-    <!-- <el-switch v-model="result_switch" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF"
-      active-text="他人标注模式" inactive-text="自己标注" /> -->
     <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend">
     <div>
       <el-dropdown trigger="click" @command="handleHeatmapExport">
@@ -95,9 +93,6 @@ const showAnomalyDialog = ref(false);
 
 // 全局存储所有错误和异常的数据
 let errorResults = [];
-
-// 获取 Vuex store 中的数据缓存
-const dataCache = computed(() => store.state.dataCache);
 
 // 在 script setup 部分的开头添加 channelDataCache 的计算属性
 const channelDataCache = computed(() => store.state.channelDataCache);
@@ -441,8 +436,7 @@ function formatKey(key) {
     shot_number: '炮号',
     startTime: '开始时间',
     endTime: '结束时间',
-    annotationTime: '标注时间',
-    // ... 可以添加更多的映射
+    annotationTime: '标注时间'
   };
 
   return keyMapping[key] || key;
@@ -529,7 +523,6 @@ onMounted(() => {
   }
 });
 
-// 合并所有的监听逻辑到一个 watch 中
 const debounceRender = ref(null);
 
 watch(
