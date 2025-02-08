@@ -411,10 +411,12 @@ const formatChannelType = (name) => {
     vertical-align: top;
     text-align: left;
     word-wrap: break-word;
+    word-break: break-all;
     white-space: normal;
     border-bottom: none;
     background-color: #fff;
     padding: 12px;
+    max-width: 30%;
 }
 
 .error-container {
@@ -422,12 +424,16 @@ const formatChannelType = (name) => {
     justify-content: space-between;
     align-items: flex-start;
     gap: 8px;
+    width: 100%;
+    overflow-wrap: break-word;
 }
 
 .error-container span {
     flex: 1;
     word-wrap: break-word;
+    word-break: break-all;
     white-space: normal;
+    min-width: 0;
 }
 
 .shot-number-tag {

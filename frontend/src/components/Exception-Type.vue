@@ -533,6 +533,7 @@ const setErrorColor = (channel, error) => {
   vertical-align: top;
   text-align: left;
   word-wrap: break-word;
+  word-break: break-all;
   white-space: normal;
   border-bottom: none;
   background-color: #fff;
@@ -544,12 +545,16 @@ const setErrorColor = (channel, error) => {
   justify-content: space-between;
   align-items: flex-start;
   gap: 8px;
+  width: 100%;
 }
 
 .error-container span {
   flex: 1;
   word-wrap: break-word;
+  word-break: break-all;
   white-space: normal;
+  min-width: 0;
+  max-width: calc(100% - 40px); /* 为颜色选择器预留空间 */
 }
 
 .shot-number-tag {
@@ -615,5 +620,16 @@ const setErrorColor = (channel, error) => {
       font-size: 14px;
     }
   }
+}
+
+:deep(.el-color-picker) {
+  flex-shrink: 0;
+  width: 32px;
+}
+
+:deep(.el-color-picker__trigger) {
+  width: 32px;
+  height: 32px;
+  padding: 2px;
 }
 </style>

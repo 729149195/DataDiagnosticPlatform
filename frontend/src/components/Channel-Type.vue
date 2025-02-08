@@ -78,11 +78,6 @@
                   <span :title="error.error_name">
                     {{ formatError(error.error_name) }}
                   </span>
-                  <!-- Optional: Additional Color Picker for Errors -->
-                  <!-- 
-                    <el-color-picker v-model="error.color" @change="setErrorColor(channel, error)"
-                      class="error-color-picker" show-alpha size="small" :predefine="predefineColors" />
-                    -->
                 </td>
               </tr>
             </template>
