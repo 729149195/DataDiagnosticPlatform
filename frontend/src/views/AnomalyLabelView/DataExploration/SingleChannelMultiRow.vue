@@ -294,12 +294,10 @@ onUnmounted(() => {
   chartWorkerManager.terminate();
 });
 
-// 修改 processChannelData 函数
 const processChannelData = async (data, channel) => {
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   try {
-    renderingStates[channelKey] = 25; // 开始处理数据
-
+    renderingStates[channelKey] = 0;
     // 准备数据
     const channelData = {
       X_value: [...data.X_value],
@@ -307,19 +305,17 @@ const processChannelData = async (data, channel) => {
       originalFrequency: data.originalFrequency,
       originalDataPoints: data.X_value.length
     };
-
+    renderingStates[channelKey] = 25;
     // 获取错误数据
     let errorDataResults = [];
     if (channel.errors && channel.errors.length > 0) {
       try {
-        // 使用store中的方法获取异常数据
         errorDataResults = await store.dispatch('fetchAllErrorData', channel);
       } catch (err) {
         console.warn('Failed to fetch error data:', err);
       }
     }
-
-    renderingStates[channelKey] = 50; // 数据准备完成
+    renderingStates[channelKey] = 40; 
 
     // 使用 chartWorkerManager 处理数据
     const processedData = await chartWorkerManager.processData(
@@ -336,7 +332,6 @@ const processChannelData = async (data, channel) => {
     );
 
     if (processedData) {
-      // 更新处理后的数据到 overviewData
       if (processedData.processedData.X_value.length > 0 && processedData.processedData.Y_value.length > 0) {
         const existingIndex = overviewData.value.findIndex(d => d.channelName === channelKey);
         if (existingIndex !== -1) {
@@ -364,6 +359,8 @@ const processChannelData = async (data, channel) => {
           errorsData: errorDataResults  // 添加错误数据到缓存
         }
       });
+
+      renderingStates[channelKey] = 50; 
 
       // 计算并更新全局 X 轴范围
       const allX = overviewData.value.flatMap(d => d.X_value);
@@ -475,8 +472,6 @@ const drawChannelChart = async (channel, data) => {
 const renderCharts = debounce(async () => {
   try {
     performance.mark('Total Render Time-start');
-
-    // 重置概览数据
     overviewData.value = [];
 
     // 确保有选中的通道
@@ -484,14 +479,12 @@ const renderCharts = debounce(async () => {
       console.warn('No channels selected');
       return;
     }
-
     // 先获取所有需要的数据
     const fetchPromises = selectedChannels.value.map(channel => fetchChannelData(channel));
     const channelsData = await Promise.all(fetchPromises);
 
     // 过滤掉无效的数据
     const validChannelsData = channelsData.filter(data => data !== null);
-
     if (validChannelsData.length === 0) {
       console.warn('No valid channel data fetched');
       return;
