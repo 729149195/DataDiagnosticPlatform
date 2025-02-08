@@ -106,6 +106,7 @@ import { Loading } from '@element-plus/icons-vue'
 const store = useStore()
 const loading = ref(false)
 const displayedData = computed(() => store.getters.getDisplayedData)
+const selectedChannels = computed(() => store.state.selectedChannels)
 
 // 监听每个通道类别的选中状态
 watch(displayedData, (newData) => {
@@ -189,6 +190,27 @@ watch(
   },
   { deep: true }
 );
+
+// 修改对 selectedChannels 的深度监听
+watch(selectedChannels, (newSelectedChannels) => {
+  if (!displayedData.value) return;
+  
+  newSelectedChannels.forEach(selectedChannel => {
+    // 遍历所有通道类别
+    displayedData.value.forEach(item => {
+      // 在每个类别中查找对应的通道
+      const channel = item.channels.find(ch => 
+        ch.channel_name === selectedChannel.channel_name && 
+        ch.shot_number === selectedChannel.shot_number
+      );
+      
+      // 如果找到对应通道且颜色不同，则只更新通道的颜色
+      if (channel && channel.color !== selectedChannel.color) {
+        channel.color = selectedChannel.color;
+      }
+    });
+  });
+}, { deep: true });
 
 // 初始化组件
 onMounted(async () => {
