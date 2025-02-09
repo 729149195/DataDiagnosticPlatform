@@ -72,6 +72,7 @@ import { onMounted, watch, computed, ref, nextTick, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage } from 'element-plus';
 import pLimit from 'p-limit';
+import debounce from 'lodash/debounce';  // 添加 debounce 导入
 
 const result_switch = ref(true)
 
@@ -86,6 +87,12 @@ const store = useStore();
 const selectedChannels = computed(() => store.state.selectedChannels);
 const storePerson = computed(() => store.state.person);
 const anomaliesByChannel = computed(() => store.state.anomalies);
+
+// 添加对 brush 范围的计算属性
+const brushRange = computed(() => ({
+  begin: parseFloat(store.state.brush_begin),
+  end: parseFloat(store.state.brush_end)
+}));
 
 // 异常信息对话框的数据和显示状态
 const anomalyDialogData = ref([]);
@@ -516,6 +523,63 @@ const retryRequest = async (fn, retries = 3, delay = 1000) => {
   }
 };
 
+// 添加渲染状态控制
+const isTransitioning = ref(false);
+const renderTimeout = ref(null);
+
+// 创建防抖的渲染函数
+const debouncedRenderHeatmap = debounce(async (channels) => {
+  if (isTransitioning.value) return;
+  
+  isTransitioning.value = true;
+  
+  // 设置渐出动画
+  const heatmap = d3.select('#heatmap');
+  heatmap.style('opacity', 0.3)
+         .style('transition', 'opacity 0.2s ease-out');
+  
+  // 等待渐出动画完成
+  await new Promise(resolve => setTimeout(resolve, 200));
+  
+  // 执行实际的渲染
+  await renderHeatmap(channels);
+  
+  // 设置渐入动画
+  heatmap.style('opacity', 1)
+         .style('transition', 'opacity 0.3s ease-in');
+  
+  // 重置状态
+  setTimeout(() => {
+    isTransitioning.value = false;
+  }, 300);
+}, 300);  // 300ms 的防抖时间
+
+// 修改 brush 范围监听器
+watch(brushRange, (newRange, oldRange) => {
+  if (!oldRange || 
+      !selectedChannels.value.length || 
+      isNaN(newRange.begin) || 
+      isNaN(newRange.end)) return;
+  
+  // 检查变化是否显著（避免微小变化触发重绘）
+  const threshold = 0.0001;
+  const hasSignificantChange = 
+    Math.abs(newRange.begin - oldRange.begin) > threshold ||
+    Math.abs(newRange.end - oldRange.end) > threshold;
+    
+  if (hasSignificantChange) {
+    debouncedRenderHeatmap(selectedChannels.value);
+  }
+}, { deep: true });
+
+// 在组件卸载时清理
+onUnmounted(() => {
+  if (renderTimeout.value) {
+    clearTimeout(renderTimeout.value);
+  }
+  debouncedRenderHeatmap.cancel();
+});
+
 onMounted(() => {
   // 初始渲染
   if (selectedChannels.value.length > 0) {
@@ -707,6 +771,10 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
     const heatmap = d3.select('#heatmap');
     
+    // 保存当前的滚动位置
+    const container = document.querySelector('.heatmap-scrollbar');
+    const scrollTop = container ? container.scrollTop : 0;
+    
     // 总是清除所有元素以确保正确的渲染
     heatmap.selectAll('*').remove();
 
@@ -760,7 +828,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     }
 
     // 方案1：全移除边距
-    const Domain = [globalXMin, globalXMax];
+    const Domain = [brushRange.value.begin, brushRange.value.end];
 
     const step = (Domain[1] - Domain[0]) / 16; // 或者其他合适的步长计算方式
     const rectNum = Math.round((Domain[1] - Domain[0]) / step);
@@ -1287,6 +1355,22 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     setTimeout(() => {
       loading.value = false;
     });
+
+    // 设置 SVG 元素的过渡效果
+    heatmap.selectAll('.heatmapRectG')
+      .style('opacity', 0)
+      .transition()
+      .duration(300)
+      .style('opacity', 1);
+
+    // 为矩形添加过渡效果
+    heatmap.selectAll('.heatmapRect, .innerRect, .innerDashedRect')
+      .style('transition', 'all 0.3s ease');
+
+    // 恢复滚动位置
+    if (container) {
+      container.scrollTop = scrollTop;
+    }
 
   } catch (error) {
     console.error('Error in renderHeatmap:', error);
