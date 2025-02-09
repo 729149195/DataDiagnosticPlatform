@@ -1007,8 +1007,6 @@ watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
 
   if (isNaN(start) || isNaN(end)) return;
 
-  console.log(start, end);
-
   // 更新所有通道的 domain
   selectedChannels.value.forEach((channel) => {
     const channelName = `${channel.channel_name}_${channel.shot_number}`;
