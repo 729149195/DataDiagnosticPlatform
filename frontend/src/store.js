@@ -33,8 +33,8 @@ const store = createStore({
       clickedChannelNames: "",
       clickedShownChannelList: [],
       ErrorLineXScopes: [],
-      brush_begin: 0,
-      brush_end: 0,
+      brush_begin: -2,
+      brush_end: 6,
 
       channelSvgElementsRefs: [],
       channelDataCache: reactive({
