@@ -9,11 +9,11 @@ import { CacheFactory } from 'cachefactory';
 const channelColorMap = new Map();
 let colorIndex = 0;
 
-// 在createStore之前添加缓存工厂配置
+// 缓存工厂配置
 const cacheFactory = new CacheFactory();
 const dataCache = cacheFactory.createCache('channelData', {
-  maxEntries: 100, // 最大缓存条目数
-  maxAge: 30 * 60 * 1000, // 30分钟
+  maxEntries: 200, // 最大缓存条目数
+  maxAge: 60 * 60 * 1000, // 30分钟
   deleteOnExpire: 'aggressive',
   storageMode: 'memory', // 纯内存存储
   recycleFreq: 60 * 1000 // 内存回收频率
