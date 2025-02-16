@@ -1708,6 +1708,12 @@ watch(() => store.state.anomalies, (newAnomalies) => {
           anomalies: machineAnomalies
         }
       ];
+
+      // 检查是否两种类型的异常都为空
+      if (manualAnomalies.length === 0 && machineAnomalies.length === 0) {
+        // 如果都为空，关闭对话框
+        showAnomalyDialog.value = false;
+      }
     }
   }
 }, { deep: true });
