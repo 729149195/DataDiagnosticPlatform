@@ -371,6 +371,9 @@ const store = createStore({
     },
     clearChannelDataCache(state) {
       dataCache.removeAll();
+    },
+    clearAnomalies(state) {
+      state.anomalies = {};  // 清空 anomalies 对象
     }
   },
   actions: {

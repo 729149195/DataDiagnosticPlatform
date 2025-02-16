@@ -16,7 +16,7 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-button type="primary" @click="syncUpload">
+      <el-button type="primary" @click="syncUpload" v-if="store.state.authority != 0">
         上传同步<el-icon class="el-icon--right">
           <Upload />
         </el-icon>
@@ -67,23 +67,21 @@
                 <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item"
                   :class="{ 'highlight': isHighlighted(anomaly) }">
                   <el-card shadow="hover" :body-style="{ padding: '0px' }">
-                    <div class="anomaly-card-header">
-                      <div class="anomaly-actions">
-                        <el-button 
+                    <div class="anomaly-bookmark">
+                      <div class="bookmark-actions">
+                        <el-icon 
                           v-if="anomaly.id"
-                          type="primary" 
-                          size="small" 
+                          class="action-icon edit-icon" 
                           @click="editAnomaly(anomaly, group.type)"
                         >
-                          编辑
-                        </el-button>
-                        <el-button 
-                          type="danger" 
-                          size="small" 
+                          <Edit />
+                        </el-icon>
+                        <el-icon 
+                          class="action-icon delete-icon"
                           @click="anomaly.id ? deleteAnomalyFromList(anomaly, group.type) : deleteErrorData(anomaly, group.type)"
                         >
-                          删除
-                        </el-button>
+                          <Delete />
+                        </el-icon>
                       </div>
                     </div>
                     <el-descriptions :column="1" border class="anomaly-descriptions">
@@ -138,7 +136,7 @@ import { useStore } from 'vuex';
 import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
-import { Search } from '@element-plus/icons-vue';
+import { Search, Delete, Edit } from '@element-plus/icons-vue';
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
@@ -412,7 +410,7 @@ const exportHeatMapData = async () => {
   await downloadFile(blob, "heatmap_error_data.json", 'json');
 };
 
-// 添加同步上传函数
+// 修改 syncUpload 函数
 const syncUpload = async () => {
   const loadingInstance = ElLoading.service({
     lock: true,
@@ -473,14 +471,16 @@ const syncUpload = async () => {
       throw new Error('同步失败');
     }
 
-    // 同步成功后刷新数据
+    // 同步成功后清空 store 中的 anomalies
+    await store.commit('clearAnomalies');
+    
+    // 刷新数据
     await store.dispatch('refreshStructTreeData');
     ElMessage.success('同步成功');
   } catch (error) {
     console.error('同步失败:', error);
     ElMessage.error('同步失败: ' + error.message);
   } finally {
-    // 无论成功还是失败，都关闭加载状态
     loadingInstance.close();
   }
 };
@@ -1739,6 +1739,12 @@ watch(() => store.state.anomalies, (newAnomalies) => {
 // 添加编辑异常函数
 const editAnomaly = (anomaly, type) => {
   if (type === '人工标注异常') {
+    // 检查权限
+    if (store.state.authority == 0) {
+      ElMessage.warning('权限不足，无法编辑异常标注');
+      return;
+    }
+
     // 从store中获取最新的异常数据
     const storedAnomalies = store.getters.getAnomaliesByChannel(anomaly.channelName);
     const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
@@ -1756,6 +1762,12 @@ const editAnomaly = (anomaly, type) => {
 // 添加从列表删除异常函数
 const deleteAnomalyFromList = (anomaly, type) => {
   if (type === '人工标注异常') {
+    // 检查权限
+    if (store.state.authority == 0) {
+      ElMessage.warning('权限不足，无法删除异常标注');
+      return;
+    }
+
     ElMessageBox.confirm(
       '确定要删除这个异常标注吗？',
       '警告',
@@ -1796,6 +1808,12 @@ const timeAxisRange = computed(() => {
 
 // 在 script setup 部分添加新的删除方法
 const deleteErrorData = (errorData, type) => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
   ElMessageBox.confirm(
     '确定要删除这个异常标注吗？',
     '警告',
@@ -1964,6 +1982,7 @@ const deleteErrorData = (errorData, type) => {
 .anomaly-item {
   margin-bottom: 12px;
   transition: all 0.2s ease;
+  position: relative;
 
   &:last-child {
     margin-bottom: 0;
@@ -1987,9 +2006,65 @@ const deleteErrorData = (errorData, type) => {
     transition: all 0.2s ease;
     border: 1px solid #e0e0e0;
     box-shadow: 0 1px 2px 0 rgba(60,64,67,0.1);
+    overflow: visible;
+    padding-bottom: 8px; // 为底部图标留出空间
 
     &:hover {
       box-shadow: 0 2px 8px 0 rgba(60,64,67,0.15);
+      
+      .anomaly-bookmark {
+        transform: translateY(-2px); // 悬停时向上移动
+      }
+    }
+  }
+}
+
+.anomaly-bookmark {
+  position: absolute;
+  top: auto; // 取消顶部定位
+  bottom: -6px; // 改为底部定位
+  right: -6px; // 调整右侧位置
+  opacity: 1;
+  transition: all 0.2s ease;
+  z-index: 1;
+}
+
+.bookmark-actions {
+  display: flex;
+  gap: 4px; // 减小图标间距
+  background: white;
+  padding: 4px; // 减小内边距
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.action-icon {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px; // 减小宽度
+  height: 24px; // 减小高度
+  
+  &.edit-icon {
+    color: #409EFF;
+    
+    &:hover {
+      background-color: rgba(64,158,255,0.1);
+      transform: scale(1.1);
+    }
+  }
+  
+  &.delete-icon {
+    color: #F56C6C;
+    
+    &:hover {
+      background-color: rgba(245,108,108,0.1);
+      transform: scale(1.1);
     }
   }
 }
@@ -2002,20 +2077,20 @@ const deleteErrorData = (errorData, type) => {
   }
 
   :deep(.el-descriptions__label) {
-    width: 130px;
-    min-width: 130px;
-    max-width: 130px;
-    padding: 12px 16px !important;
-    background-color: #f8f9fa;
-    font-size: 16px;
-    color: #5f6368;
-    font-weight: 500;
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
+    padding: 8px 12px !important;
+    background-color: #fafafa;
+    font-size: 14px;
+    color: #606266;
+    font-weight: normal;
   }
 
   :deep(.el-descriptions__content) {
-    padding: 12px 16px !important;
-    font-size: 16px;
-    color: #202124;
+    padding: 8px 12px !important;
+    font-size: 14px;
+    color: #303133;
   }
 
   :deep(.el-descriptions__cell) {
@@ -2029,7 +2104,7 @@ const deleteErrorData = (errorData, type) => {
   }
 
   :deep(.el-descriptions__row) {
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid #f0f0f0;
     
     &:last-child {
       border-bottom: none;
