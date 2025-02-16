@@ -46,17 +46,37 @@
     </div>
     <el-dialog v-model="showAnomalyDialog" title="异常信息" :modal="true" :close-on-click-modal="false"
       @close="handleDialogClose" class="anomaly-dialog">
+      <div class="search-container">
+        <el-input
+          v-model="searchQuery"
+          placeholder="模糊匹配搜索异常信息..."
+          clearable
+          style="width: 100"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
       <div class="anomaly-container">
-        <div v-for="(group, groupIndex) in anomalyDialogData" :key="groupIndex" class="anomaly-group">
+        <div v-for="(group, groupIndex) in sortedAnomalies" :key="groupIndex" class="anomaly-group">
           <h3 class="group-title">{{ group.type }}</h3>
-          <el-scrollbar height="60vh" :always="false">
+          <el-scrollbar height="45vh" :always="false">
             <div class="anomaly-content">
-              <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item">
-                <el-descriptions :title="`异常 ${index + 1}`" :column="1" border class="anomaly-descriptions">
-                  <el-descriptions-item v-for="(value, key) in anomaly" :key="key" :label="formatKey(key)">
-                    {{ formatValue(value, key) }}
-                  </el-descriptions-item>
-                </el-descriptions>
+              <template v-if="group.anomalies.length > 0">
+                <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item"
+                  :class="{ 'highlight': isHighlighted(anomaly) }">
+                  <el-card shadow="hover" :body-style="{ padding: '0px' }">
+                    <el-descriptions :column="1" border class="anomaly-descriptions">
+                      <el-descriptions-item v-for="(value, key) in anomaly" :key="key" :label="formatKey(key)">
+                        {{ formatValue(value, key) }}
+                      </el-descriptions-item>
+                    </el-descriptions>
+                  </el-card>
+                </div>
+              </template>
+              <div v-else class="empty-message">
+                无{{ group.type }}数据
               </div>
             </div>
           </el-scrollbar>
@@ -73,6 +93,7 @@ import { useStore } from 'vuex';
 import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
+import { Search } from '@element-plus/icons-vue';
 
 const result_switch = ref(true)
 
@@ -1187,19 +1208,16 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             );
 
             // 组合最终显示的数据
-            const combinedAnomalies = [];
-            if (uniqueManualAnomalies.length > 0) {
-              combinedAnomalies.push({
+            const combinedAnomalies = [
+              {
                 type: '人工标注异常',
-                anomalies: uniqueManualAnomalies
-              });
-            }
-            if (uniqueMachineAnomalies.length > 0) {
-              combinedAnomalies.push({
+                anomalies: uniqueManualAnomalies.length > 0 ? uniqueManualAnomalies : []
+              },
+              {
                 type: '机器识别异常',
-                anomalies: uniqueMachineAnomalies
-              });
-            }
+                anomalies: uniqueMachineAnomalies.length > 0 ? uniqueMachineAnomalies : []
+              }
+            ];
 
             if (combinedAnomalies.length > 0) {
               anomalyDialogData.value = combinedAnomalies;
@@ -1471,6 +1489,48 @@ watch(
   },
   { deep: true }
 );
+
+// 在 script setup 部分添加搜索相关的代码
+const searchQuery = ref('');
+
+// 添加搜索和排序函数
+const sortedAnomalies = computed(() => {
+  return anomalyDialogData.value.map(group => {
+    const query = searchQuery.value.toLowerCase().trim();
+    if (!query) {
+      return group;
+    }
+
+    // 对异常数据进行搜索和排序
+    const sortedAnomalies = [...group.anomalies].sort((a, b) => {
+      const aMatch = Object.values(a).some(val => 
+        String(val).toLowerCase().includes(query)
+      );
+      const bMatch = Object.values(b).some(val => 
+        String(val).toLowerCase().includes(query)
+      );
+      
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return 0;
+    });
+
+    return {
+      ...group,
+      anomalies: sortedAnomalies
+    };
+  });
+});
+
+// 添加高亮判断函数
+const isHighlighted = (anomaly) => {
+  const query = searchQuery.value.toLowerCase().trim();
+  if (!query) return false;
+  
+  return Object.values(anomaly).some(val => 
+    String(val).toLowerCase().includes(query)
+  );
+};
 </script>
 
 <style scoped lang="scss">
@@ -1501,30 +1561,83 @@ watch(
 }
 
 .anomaly-dialog {
-  width: 90% !important; // 增加宽度以适应横向布局
-  max-width: 1400px; // 设置最大宽度
+  width: 90% !important;
+  max-width: 1400px;
+
+  :deep(.el-dialog__header) {
+    padding: 16px 24px;
+    margin: 0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  :deep(.el-dialog__title) {
+    font-size: 20px;
+    color: #202124;
+    font-weight: 500;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 16px 24px;
+  }
+}
+
+.search-container {
+  padding: 0 0 16px;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 16px;
+
+  .el-input {
+    width: 320px;
+
+    :deep(.el-input__wrapper) {
+      box-shadow: none;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+
+      &:hover {
+        border-color: #bdbdbd;
+      }
+
+      &.is-focus {
+        border-color: #1a73e8;
+        box-shadow: 0 1px 2px 0 rgba(26,115,232,0.3);
+      }
+    }
+
+    :deep(.el-input__inner) {
+      &::placeholder {
+        color: #5f6368;
+      }
+    }
+  }
 }
 
 .anomaly-container {
   display: flex;
+  margin-top: 10px;
   gap: 20px;
-  min-height: 60vh;
+  min-height: 45vh;
 }
 
 .anomaly-group {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-width: 0; // 防止flex子项溢出
+  min-width: 0;
+  width: 50%;
+  max-width: 50%;
 }
 
 .group-title {
-  margin: 0 0 10px 0;
-  padding: 8px 15px;
-  background-color: #f5f7fa;
-  border-left: 4px solid #409EFF;
+  margin: 0 0 12px 0;
+  padding: 8px 16px;
+  background-color: #f8f9fa;
+  border-left: 4px solid #1a73e8;
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 500;
+  color: #202124;
+  border-radius: 0 8px 8px 0;
 }
 
 .anomaly-content {
@@ -1532,10 +1645,35 @@ watch(
 }
 
 .anomaly-item {
-  margin-bottom: 15px;
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
 
   &:last-child {
     margin-bottom: 0;
+  }
+
+  &.highlight {
+    transform: translateY(-1px);
+
+    :deep(.el-card) {
+      border-color: #1a73e8;
+      box-shadow: 0 2px 6px 2px rgba(26,115,232,0.15);
+    }
+
+    :deep(.el-descriptions__body) {
+      background-color: #f3f8fe;
+    }
+  }
+
+  :deep(.el-card) {
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 1px 2px 0 rgba(60,64,67,0.1);
+
+    &:hover {
+      box-shadow: 0 2px 8px 0 rgba(60,64,67,0.15);
+    }
   }
 }
 
@@ -1544,6 +1682,41 @@ watch(
 
   :deep(.el-descriptions__body) {
     background-color: #fff;
+  }
+
+  :deep(.el-descriptions__label) {
+    width: 130px;
+    min-width: 130px;
+    max-width: 130px;
+    padding: 12px 16px !important;
+    background-color: #f8f9fa;
+    font-size: 16px;
+    color: #5f6368;
+    font-weight: 500;
+  }
+
+  :deep(.el-descriptions__content) {
+    padding: 12px 16px !important;
+    font-size: 16px;
+    color: #202124;
+  }
+
+  :deep(.el-descriptions__cell) {
+    padding: 0 !important;
+  }
+
+  :deep(.el-descriptions__table) {
+    border-collapse: collapse;
+    margin: 0;
+    border: none;
+  }
+
+  :deep(.el-descriptions__row) {
+    border-bottom: 1px solid #e0e0e0;
+    
+    &:last-child {
+      border-bottom: none;
+    }
   }
 }
 
@@ -1647,6 +1820,36 @@ watch(
 
   &:last-child {
     margin-bottom: 0;
+  }
+}
+
+.empty-message {
+  padding: 24px;
+  text-align: center;
+  color: #5f6368;
+  font-size: 14px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+// 修改滚动条样式
+.el-scrollbar {
+  :deep(.el-scrollbar__bar) {
+    &.is-horizontal {
+      height: 8px;
+    }
+    &.is-vertical {
+      width: 8px;
+    }
+
+    .el-scrollbar__thumb {
+      background-color: rgba(95,99,104,0.3);
+      border-radius: 4px;
+
+      &:hover {
+        background-color: rgba(95,99,104,0.5);
+      }
+    }
   }
 }
 </style>
