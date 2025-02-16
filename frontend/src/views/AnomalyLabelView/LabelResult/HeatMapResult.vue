@@ -1655,6 +1655,61 @@ watch(() => store.state.anomalies, (newAnomalies) => {
       });
     }
   }
+
+  // 如果异常列表对话框正在显示，更新其内容
+  if (showAnomalyDialog.value && anomalyDialogData.value.length > 0) {
+    // 获取当前显示的通道信息
+    const currentChannelData = anomalyDialogData.value[0].anomalies[0];
+    if (currentChannelData && currentChannelData.channelName) {
+      // 重新构建显示数据
+      const manualAnomalies = [];
+      const machineAnomalies = [];
+
+      // 从 store 获取最新的异常数据
+      const storedAnomalies = store.getters.getAnomaliesByChannel(currentChannelData.channelName);
+      if (storedAnomalies) {
+        storedAnomalies.forEach(anomaly => {
+          const processedData = processObject(anomaly);
+          if (Object.keys(processedData).length > 0) {
+            manualAnomalies.push(processedData);
+          }
+        });
+      }
+
+      // 从 errorResults 中获取机器识别的异常
+      const channelErrors = errorResults.filter(
+        result => result.channelKey === currentChannelData.channelName && !result.isAnomaly
+      );
+
+      channelErrors.forEach(error => {
+        if (Array.isArray(error.errorData)) {
+          const [, machineErrors] = error.errorData;
+          if (machineErrors && machineErrors.length > 0) {
+            machineErrors.forEach(machineError => {
+              if (machineError && Object.keys(machineError).length > 0) {
+                const processedData = processObject(machineError);
+                if (Object.keys(processedData).length > 0) {
+                  machineAnomalies.push(processedData);
+                }
+              }
+            });
+          }
+        }
+      });
+
+      // 更新对话框数据
+      anomalyDialogData.value = [
+        {
+          type: '人工标注异常',
+          anomalies: manualAnomalies
+        },
+        {
+          type: '机器识别异常',
+          anomalies: machineAnomalies
+        }
+      ];
+    }
+  }
 }, { deep: true });
 
 // 添加编辑异常函数
