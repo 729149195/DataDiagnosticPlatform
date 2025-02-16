@@ -56,12 +56,12 @@ const store = createStore({
       lower_bound: -2.4,
       isBoxSelect: true,
       previousBoxSelectState: true,
-      rawData: [], // 存储原始数据
-      displayedData: [], // 存储当前显示的数据
-      pageSize: 15, // 减小每次加载的数量
-      currentPage: 1, // 当前页码
-      hasMoreData: true, // 是否还有更多数据
-      userMessage: "", // 添加用户验证消息
+      rawData: [], 
+      displayedData: [], 
+      pageSize: 15, 
+      currentPage: 1, 
+      hasMoreData: true, 
+      userMessage: "", 
     };
   },
   getters: {
