@@ -1427,6 +1427,7 @@ const drawChart = async (
 
         const anomaly = {
           id: `${store.state.person}_${Date.now()}`, // 添加时间戳确保ID唯一
+          person: store.state.person,
           channelName: channelName,
           startX: startX,
           endX: endX,
@@ -1434,6 +1435,7 @@ const drawChart = async (
           anomalyDiagnosisName: '',
           anomalyDescription: '',
           annotationTime: formattedTime,
+          isStored: false  // 添加 isStored 字段,初始为 false
         };
 
         d3.select(this).call(selectionBrush.move, null);
@@ -1944,6 +1946,7 @@ const decodeChineseText = (text) => {
   }
 };
 
+// 修改 saveAnomaly 函数，在更新颜色的同时禁用拖拽功能
 const saveAnomaly = () => {
   if (currentAnomaly) {
     const payload = {
@@ -1952,24 +1955,36 @@ const saveAnomaly = () => {
         ...currentAnomaly,
         anomalyCategory: decodeChineseText(currentAnomaly.anomalyCategory),
         anomalyDiagnosisName: decodeChineseText(currentAnomaly.anomalyDiagnosisName),
-        anomalyDescription: decodeChineseText(currentAnomaly.anomalyDescription)
+        anomalyDescription: decodeChineseText(currentAnomaly.anomalyDescription),
+        isStored: true
       },
     };
 
     // 更新store中的异常数据
     store.dispatch('updateAnomaly', payload);
 
+    // 立即更新视觉状态
+    const svg = d3.select(`#chart-${payload.channelName}`);
+    const anomalyGroup = svg.select(`.anomaly-group-${currentAnomaly.id}`);
+    
+    // 更新矩形颜色并禁用拖拽
+    anomalyGroup.select(`.anomaly-rect-${currentAnomaly.id}`)
+      .attr('fill', 'red')
+      .attr('fill-opacity', 0.1)
+      .attr('stroke', 'red')
+      .attr('cursor', 'not-allowed')
+      .attr('pointer-events', 'none');
+
+    // 更新线条颜色
+    anomalyGroup.select(`.anomaly-line-${currentAnomaly.id}`)
+      .attr('stroke', 'red');
+
+    // 移除拖动手柄
+    anomalyGroup.selectAll(`.left-handle-${currentAnomaly.id}, .right-handle-${currentAnomaly.id}`)
+      .remove();
+
     // 关闭编辑框
     showAnomalyForm.value = false;
-
-    // 重新渲染图表以更新标注
-    const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === payload.channelName);
-    if (targetChannel) {
-      const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
-      if (data) {
-        drawChannelChart(targetChannel, data);
-      }
-    }
 
     ElMessage.success('异常标注信息已保存');
 

@@ -562,7 +562,7 @@ def sync_error_data(request):
                     continue
 
                 converted_error = {
-                    "person": error.get('id', 'unknown'),
+                    "person": error.get('person', 'unknown'),
                     "diagnostic_name": error.get('anomalyDiagnosisName', ''),
                     "channel_number": channel_name,
                     "error_type": error.get('anomalyCategory', ''),
