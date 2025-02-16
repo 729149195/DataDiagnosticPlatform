@@ -17,7 +17,7 @@
         </template>
       </el-dropdown>
       <el-button type="primary" @click="syncUpload">
-        同步上传<el-icon class="el-icon--right">
+        上传同步<el-icon class="el-icon--right">
           <Upload />
         </el-icon>
       </el-button>
@@ -45,7 +45,7 @@
       </el-scrollbar>
     </div>
     <el-dialog v-model="showAnomalyDialog" title="异常信息" :modal="true" :close-on-click-modal="false"
-      @close="handleDialogClose" class="anomaly-dialog">
+      @close="handleDialogClose" :destroy-on-close="true" class="anomaly-dialog">
       <div class="search-container">
         <el-input
           v-model="searchQuery"
@@ -67,6 +67,16 @@
                 <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item"
                   :class="{ 'highlight': isHighlighted(anomaly) }">
                   <el-card shadow="hover" :body-style="{ padding: '0px' }">
+                    <div class="anomaly-card-header">
+                      <div class="anomaly-actions">
+                        <el-button type="primary" size="small" @click="editAnomaly(anomaly, group.type)">
+                          编辑
+                        </el-button>
+                        <el-button type="danger" size="small" @click="deleteAnomalyFromList(anomaly, group.type)">
+                          删除
+                        </el-button>
+                      </div>
+                    </div>
                     <el-descriptions :column="1" border class="anomaly-descriptions">
                       <el-descriptions-item v-for="(value, key) in anomaly" :key="key" :label="formatKey(key)">
                         {{ formatValue(value, key) }}
@@ -83,19 +93,43 @@
         </div>
       </div>
     </el-dialog>
+    <el-dialog v-if="showAnomalyForm && currentAnomaly.channelName" v-model="showAnomalyForm" title="编辑/修改异常信息" :destroy-on-close="true">
+      <el-form :model="currentAnomaly" label-width="auto">
+        <el-form-item label="通道名">
+          <el-input v-model="currentAnomaly.channelName" disabled />
+        </el-form-item>
+        <el-form-item label="异常类别">
+          <el-input v-model="currentAnomaly.anomalyCategory" />
+        </el-form-item>
+        <el-form-item label="异常诊断名称">
+          <el-input v-model="currentAnomaly.anomalyDiagnosisName" />
+        </el-form-item>
+        <el-form-item label="时间轴范围">
+          <el-input :value="timeAxisRange" disabled />
+        </el-form-item>
+        <el-form-item label="异常描述">
+          <el-input v-model="currentAnomaly.anomalyDescription" :rows="4" type="textarea" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="closeAnomalyForm">取消</el-button>
+          <el-button type="primary" @click="saveAnomaly">保存</el-button>
+          <el-button type="danger" @click="deleteAnomaly">删除</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import * as d3 from 'd3';
-import { onMounted, watch, computed, ref, nextTick, onUnmounted } from 'vue';
+import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive } from 'vue';
 import { useStore } from 'vuex';
-import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage } from 'element-plus';
+import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage, ElMessageBox } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
 import { Search } from '@element-plus/icons-vue';
-
-const result_switch = ref(true)
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
@@ -526,9 +560,12 @@ function formatValue(value, key) {
   return value;
 }
 
-// 处理对话框关闭事件
+// 修改处理对话框关闭事件
 function handleDialogClose() {
-  anomalyDialogData.value = [];
+  nextTick(() => {
+    anomalyDialogData.value = [];
+    showAnomalyDialog.value = false;
+  });
 }
 
 // 添加重试和并发限制
@@ -623,7 +660,7 @@ function needsRerender(channel, newCache, newAnomalies) {
   const newState = {
     errors: channel.errors,
     cacheData: newCache[channelKey],
-    anomalies: newAnomalies[channelKey]
+    anomalies: newAnomalies ? newAnomalies[channelKey] : null
   };
 
   return JSON.stringify(currentState) !== JSON.stringify(newState);
@@ -632,10 +669,16 @@ function needsRerender(channel, newCache, newAnomalies) {
 // 更新已渲染通道的状态
 function updateRenderedState(channel, newCache, newAnomalies) {
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+  // 添加空值检查
+  if (!newCache || !newCache[channelKey]) {
+    console.warn(`Cache data not found for channel ${channelKey}`);
+    return;
+  }
+  
   renderedChannelsState.value.set(channelKey, {
     errors: channel.errors,
     cacheData: newCache[channelKey],
-    anomalies: newAnomalies[channelKey]
+    anomalies: newAnomalies ? newAnomalies[channelKey] : null
   });
 }
 
@@ -1531,6 +1574,146 @@ const isHighlighted = (anomaly) => {
     String(val).toLowerCase().includes(query)
   );
 };
+
+// 修改 saveAnomaly 函数
+const saveAnomaly = () => {
+  if (currentAnomaly) {
+    const payload = {
+      channelName: currentAnomaly.channelName,
+      anomaly: {
+        ...currentAnomaly,
+        anomalyCategory: decodeChineseText(currentAnomaly.anomalyCategory),
+        anomalyDiagnosisName: decodeChineseText(currentAnomaly.anomalyDiagnosisName),
+        anomalyDescription: decodeChineseText(currentAnomaly.anomalyDescription),
+        isStored: true
+      },
+    };
+
+    // 更新store中的异常数据
+    store.dispatch('updateAnomaly', payload);
+
+    // 关闭编辑框
+    showAnomalyForm.value = false;
+
+    ElMessage.success('异常标注信息已保存');
+
+    // 清空当前异常数据
+    Object.keys(currentAnomaly).forEach((key) => {
+      delete currentAnomaly[key];
+    });
+  }
+};
+
+// 添加 deleteAnomaly 函数
+const deleteAnomaly = () => {
+  if (currentAnomaly && currentAnomaly.channelName && currentAnomaly.id) {
+    // 从 store 中删除异常数据
+    store.dispatch('deleteAnomaly', {
+      channelName: currentAnomaly.channelName,
+      anomalyId: currentAnomaly.id
+    });
+
+    // 关闭编辑框
+    showAnomalyForm.value = false;
+
+    ElMessage.success('异常标注已删除');
+
+    // 清空当前异常数据
+    Object.keys(currentAnomaly).forEach((key) => {
+      delete currentAnomaly[key];
+    });
+  }
+};
+
+// 修改 closeAnomalyForm 函数
+const closeAnomalyForm = () => {
+  nextTick(() => {
+    showAnomalyForm.value = false;
+    // 清空当前异常数据
+    Object.keys(currentAnomaly).forEach((key) => {
+      delete currentAnomaly[key];
+    });
+  });
+};
+
+// 添加对 store 中 anomalies 的监听
+watch(() => store.state.anomalies, (newAnomalies) => {
+  // 如果当前正在编辑某个异常
+  if (showAnomalyForm.value && currentAnomaly.id) {
+    // 从store中获取最新数据
+    const storedAnomalies = store.getters.getAnomaliesByChannel(currentAnomaly.channelName);
+    const storedAnomaly = storedAnomalies.find(a => a.id === currentAnomaly.id);
+    
+    if (storedAnomaly) {
+      // 更新currentAnomaly为最新数据
+      Object.assign(currentAnomaly, storedAnomaly);
+    } else {
+      // 如果在store中找不到该异常（可能已被删除），关闭编辑框
+      showAnomalyForm.value = false;
+      Object.keys(currentAnomaly).forEach((key) => {
+        delete currentAnomaly[key];
+      });
+    }
+  }
+}, { deep: true });
+
+// 添加编辑异常函数
+const editAnomaly = (anomaly, type) => {
+  if (type === '人工标注异常') {
+    // 从store中获取最新的异常数据
+    const storedAnomalies = store.getters.getAnomaliesByChannel(anomaly.channelName);
+    const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+    
+    if (storedAnomaly) {
+      // 使用store中的数据更新currentAnomaly
+      Object.assign(currentAnomaly, storedAnomaly);
+      showAnomalyForm.value = true;
+    }
+  } else {
+    ElMessage.warning('机器识别的异常不可编辑');
+  }
+};
+
+// 添加从列表删除异常函数
+const deleteAnomalyFromList = (anomaly, type) => {
+  if (type === '人工标注异常') {
+    ElMessageBox.confirm(
+      '确定要删除这个异常标注吗？',
+      '警告',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+      .then(() => {
+        store.dispatch('deleteAnomaly', {
+          channelName: anomaly.channelName,
+          anomalyId: anomaly.id
+        });
+        ElMessage.success('异常标注已删除');
+      })
+      .catch(() => {
+        // 用户取消删除操作
+      });
+  } else {
+    ElMessage.warning('机器识别的异常不可删除');
+  }
+};
+
+// 在 script setup 的开头部分添加
+const showAnomalyForm = ref(false);
+const currentAnomaly = reactive({});
+const timeAxisRange = computed(() => {
+  if (
+    currentAnomaly &&
+    currentAnomaly.startX !== undefined &&
+    currentAnomaly.endX !== undefined
+  ) {
+    return `${currentAnomaly.startX.toFixed(3)} - ${currentAnomaly.endX.toFixed(3)}`;
+  }
+  return '';
+});
 </script>
 
 <style scoped lang="scss">
@@ -1851,5 +2034,28 @@ const isHighlighted = (anomaly) => {
       }
     }
   }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.anomaly-card-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.anomaly-actions {
+  display: flex;
+  gap: 8px;
+}
+
+:deep(.el-button--small) {
+  padding: 6px 12px;
+  font-size: 12px;
 }
 </style>

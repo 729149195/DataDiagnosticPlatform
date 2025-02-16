@@ -83,7 +83,7 @@
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
-import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted } from 'vue';
+import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw } from 'vue';
 import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import chartWorkerManager from '@/workers/chartWorkerManager';
@@ -116,6 +116,9 @@ const channelDataCache = computed(() => store.state.channelDataCache);// 定义�
 const loadingStates = reactive({});  // 用于存储每个通道的加载状态
 const renderingStates = reactive({}); // 用于存储每个通道的渲染状态
 
+// 添加一个变量来保存上一次的状态
+const previousAnomalies = ref({});
+
 const timeAxisRange = computed(() => {
   if (
     currentAnomaly &&
@@ -127,17 +130,84 @@ const timeAxisRange = computed(() => {
   return '';
 });
 
-// 监听store中anomalies的变化
+// 修改监听函数
 watch(() => store.state.anomalies, (newAnomalies) => {
-  // 如果当前正在编辑某个异常
+  // 获取原始对象
+  const rawNewAnomalies = toRaw(newAnomalies);
+  const rawPreviousAnomalies = toRaw(previousAnomalies.value);
+
+  // 遍历所有通道
+  Object.keys(rawPreviousAnomalies).forEach(channelName => {
+    const previousChannelAnomalies = rawPreviousAnomalies[channelName] || [];
+    const newChannelAnomalies = rawNewAnomalies[channelName] || [];
+
+    // 找出被删除的异常
+    const deletedAnomalies = previousChannelAnomalies.filter(prevAnomaly => {
+      const stillExists = newChannelAnomalies.some(newAnomaly => 
+        newAnomaly.id === prevAnomaly.id
+      );
+      return !stillExists;
+    });
+
+    // 删除对应的 SVG 元素
+    deletedAnomalies.forEach(anomaly => {
+      
+      // 如果正在编辑被删除的异常，关闭编辑表单
+      if (showAnomalyForm.value && currentAnomaly.id === anomaly.id) {
+        showAnomalyForm.value = false;
+        Object.keys(currentAnomaly).forEach(key => {
+          delete currentAnomaly[key];
+        });
+      }
+      // 立即删除相关的 SVG 元素
+      nextTick(() => {
+        try {
+          // 使用正确的选择器格式
+          const selectors = [
+            `.anomaly-rect-${anomaly.id}`,
+            `.anomaly-group-${anomaly.id}`,
+            `.anomaly-labels-group-${anomaly.id}`,
+            `.anomaly-line-${anomaly.id}`,
+            `.left-handle-${anomaly.id}`,
+            `.right-handle-${anomaly.id}`,
+            `.anomaly-buttons-${anomaly.id}`,
+            `.left-label-${anomaly.id}`,
+            `.right-label-${anomaly.id}`
+          ];
+          // 对每个通道的图表进行处理
+          selectedChannels.value.forEach(channel => {
+            const chartId = `#chart-${channel.channel_name}_${channel.shot_number}`;
+            
+            selectors.forEach(selector => {
+              const element = d3.select(chartId).select(selector);
+              if (element.node()) {
+                element.remove();
+              }
+            });
+          });
+        } catch (error) {
+          console.error('Error removing SVG elements:', error);
+        }
+      });
+    });
+  });
+
+  // 更新上一次的状态
+  previousAnomalies.value = JSON.parse(JSON.stringify(rawNewAnomalies));
+
+  // 如果当前正在编辑的异常还存在，更新其数据
   if (showAnomalyForm.value && currentAnomaly.id) {
-    // 从store中获取最新数据
     const storedAnomalies = store.getters.getAnomaliesByChannel(currentAnomaly.channelName);
-    const storedAnomaly = storedAnomalies.find(a => a.id === currentAnomaly.id);
+    const storedAnomaly = storedAnomalies?.find(a => a.id === currentAnomaly.id);
     
     if (storedAnomaly) {
-      // 更新currentAnomaly为最新数据
       Object.assign(currentAnomaly, storedAnomaly);
+    } else {
+      // 如果找不到正在编辑的异常，说明它已被删除，关闭编辑表单
+      showAnomalyForm.value = false;
+      Object.keys(currentAnomaly).forEach(key => {
+        delete currentAnomaly[key];
+      });
     }
   }
 }, { deep: true });
