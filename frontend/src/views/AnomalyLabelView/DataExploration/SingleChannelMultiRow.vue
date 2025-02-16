@@ -92,7 +92,6 @@ const currentAnomaly = reactive({});
 const showAnomalyForm = ref(false);
 const overviewData = ref([]);
 const xDomains = ref({ global: null });
-const anomalies = ref([]);
 const brush_begin = ref(0);
 const brush_end = ref(0);
 const predefineColors = ref(['#000000', '#4169E1', '#DC143C', '#228B22', '#FF8C00', '#800080', '#FF1493', '#40E0D0', '#FFD700', '#8B4513', '#2F4F4F', '#1E90FF', '#32CD32', '#FF6347', '#DA70D6', '#191970', '#FA8072', '#6B8E23', '#6A5ACD', '#FF7F50', '#4682B4']);
@@ -128,32 +127,18 @@ const timeAxisRange = computed(() => {
   return '';
 });
 
-// 监视匹配结果，绘制高亮矩形
-watch(matchedResults, (newResults) => {
-  // 清除所有通道的高亮
-  selectedChannels.value.forEach(channel => {
-    const channelName = `${channel.channel_name}_${channel.shot_number}`;
-    const svg = d3.select(`#chart-${channelName}`);
-    if (svg.node()) {
-      svg.select(`.highlight-group-${channelName}`).remove();
+// 监听store中anomalies的变化
+watch(() => store.state.anomalies, (newAnomalies) => {
+  // 如果当前正在编辑某个异常
+  if (showAnomalyForm.value && currentAnomaly.id) {
+    // 从store中获取最新数据
+    const storedAnomalies = store.getters.getAnomaliesByChannel(currentAnomaly.channelName);
+    const storedAnomaly = storedAnomalies.find(a => a.id === currentAnomaly.id);
+    
+    if (storedAnomaly) {
+      // 更新currentAnomaly为最新数据
+      Object.assign(currentAnomaly, storedAnomaly);
     }
-  });
-  // 只有在有新结果时才绘制高亮
-  if (newResults && newResults.length > 0) {
-    // 按通道分组结果
-    const resultsByChannel = newResults.reduce((acc, result) => {
-      const channelKey = `${result.channelName}_${result.shotNumber}`;
-      if (!acc[channelKey]) {
-        acc[channelKey] = [];
-      }
-      acc[channelKey].push(result);
-      return acc;
-    }, {});
-
-    // 为每个通道绘制高亮区域
-    Object.entries(resultsByChannel).forEach(([channelKey, results]) => {
-      drawHighlightRects(channelKey, results);
-    });
   }
 }, { deep: true });
 
@@ -1423,15 +1408,8 @@ const drawChart = async (
       const anomaliesGroup = g.append('g').attr('class', 'anomalies-group');
 
       // 加载已有的异常标注
-      const channelAnomalies = anomalies.value.filter(
-        (a) => a.channelName === channelName
-      );
+      const channelAnomalies = store.getters.getAnomaliesByChannel(channelName);
       channelAnomalies.forEach((anomaly) => {
-        drawAnomalyElements(anomaly, anomaliesGroup);
-      });
-
-      const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
-      storedAnomalies.forEach((anomaly) => {
         drawAnomalyElements(anomaly, anomaliesGroup, true);
       });
 
@@ -1443,18 +1421,12 @@ const drawChart = async (
         const [x0, x1] = event.selection;
         const [startX, endX] = [x.invert(x0), x.invert(x1)];
 
-        // 格式化当前时间为 YYYY-MM-DD HH:mm:ss
+        // 格式化当前时间
         const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const hours = String(now.getHours()).padStart(2, '0');
-        const minutes = String(now.getMinutes()).padStart(2, '0');
-        const seconds = String(now.getSeconds()).padStart(2, '0');
-        const formattedTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        const formattedTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
         const anomaly = {
-          id: store.state.person,
+          id: `${store.state.person}_${Date.now()}`, // 添加时间戳确保ID唯一
           channelName: channelName,
           startX: startX,
           endX: endX,
@@ -1465,8 +1437,15 @@ const drawChart = async (
         };
 
         d3.select(this).call(selectionBrush.move, null);
-        anomalies.value.push(anomaly);
-        drawAnomalyElements(anomaly, anomaliesGroup);
+        
+        // 添加到store
+        store.dispatch('addAnomaly', {
+          channelName: channelName,
+          anomaly: anomaly
+        });
+        
+        // 绘制新标注
+        drawAnomalyElements(anomaly, anomaliesGroup, false);
       }
 
       function zoomBrushed(event) {
@@ -1531,15 +1510,15 @@ const drawChart = async (
       function drawAnomalyElements(anomaly, anomaliesGroup, isStored = false) {
         const anomalyGroup = anomaliesGroup
           .append('g')
-          .attr('class', `anomaly-group-${anomaly.id}-${channelName}`);
+          .attr('class', `anomaly-group-${anomaly.id}`); // 使用唯一ID
 
         const anomalyLabelsGroup = g
           .append('g')
-          .attr('class', `anomaly-labels-group-${anomaly.id}-${channelName}`);
+          .attr('class', `anomaly-labels-group-${anomaly.id}`); // 使用唯一ID
 
         anomalyLabelsGroup
           .append('text')
-          .attr('class', `left-label-${anomaly.id}-${channelName}`)
+          .attr('class', `left-label-${anomaly.id}`)
           .attr('x', x(anomaly.startX))
           .attr('y', -5)
           .style('font-size', '1em')
@@ -1550,7 +1529,7 @@ const drawChart = async (
 
         anomalyLabelsGroup
           .append('text')
-          .attr('class', `right-label-${anomaly.id}-${channelName}`)
+          .attr('class', `right-label-${anomaly.id}`)
           .attr('x', x(anomaly.endX))
           .attr('y', -5)
           .style('font-size', '1em')
@@ -1562,7 +1541,7 @@ const drawChart = async (
         if (!isStored) {
           const anomalyRect = anomalyGroup
             .append('rect')
-            .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+            .attr('class', `anomaly-rect-${anomaly.id}`)
             .attr('x', x(anomaly.startX))
             .attr('y', 0)
             .attr('width', x(anomaly.endX) - x(anomaly.startX))
@@ -1603,11 +1582,18 @@ const drawChart = async (
                 })
                 .on('end', function () {
                   if (!isBoxSelect.value) return;
-                  const index = anomalies.value.findIndex(
+                  const index = store.getters.getAnomaliesByChannel(channelName).findIndex(
                     (a) => a.id === anomaly.id
                   );
                   if (index !== -1) {
-                    anomalies.value[index] = anomaly;
+                    store.dispatch('updateAnomaly', {
+                      channelName: channelName,
+                      anomaly: {
+                        ...anomaly,
+                        startX: anomaly.startX,
+                        endX: anomaly.endX
+                      }
+                    });
                   }
                 })
             );
@@ -1615,7 +1601,7 @@ const drawChart = async (
           // 修改左侧拖动手柄
           anomalyGroup
             .append('rect')
-            .attr('class', `left-handle-${anomaly.id}-${channelName}`)
+            .attr('class', `left-handle-${anomaly.id}`)
             .attr('x', x(anomaly.startX) - 5)
             .attr('y', 0)
             .attr('width', 10)
@@ -1635,11 +1621,18 @@ const drawChart = async (
                 })
                 .on('end', function () {
                   if (!isBoxSelect.value) return;
-                  const index = anomalies.value.findIndex(
+                  const index = store.getters.getAnomaliesByChannel(channelName).findIndex(
                     (a) => a.id === anomaly.id
                   );
                   if (index !== -1) {
-                    anomalies.value[index] = anomaly;
+                    store.dispatch('updateAnomaly', {
+                      channelName: channelName,
+                      anomaly: {
+                        ...anomaly,
+                        startX: anomaly.startX,
+                        endX: anomaly.endX
+                      }
+                    });
                   }
                 })
             );
@@ -1647,7 +1640,7 @@ const drawChart = async (
           // 修改右侧拖动手柄
           anomalyGroup
             .append('rect')
-            .attr('class', `right-handle-${anomaly.id}-${channelName}`)
+            .attr('class', `right-handle-${anomaly.id}`)
             .attr('x', x(anomaly.endX) - 5)
             .attr('y', 0)
             .attr('width', 10)
@@ -1667,11 +1660,18 @@ const drawChart = async (
                 })
                 .on('end', function () {
                   if (!isBoxSelect.value) return;
-                  const index = anomalies.value.findIndex(
+                  const index = store.getters.getAnomaliesByChannel(channelName).findIndex(
                     (a) => a.id === anomaly.id
                   );
                   if (index !== -1) {
-                    anomalies.value[index] = anomaly;
+                    store.dispatch('updateAnomaly', {
+                      channelName: channelName,
+                      anomaly: {
+                        ...anomaly,
+                        startX: anomaly.startX,
+                        endX: anomaly.endX
+                      }
+                    });
                   }
                 })
             );
@@ -1679,7 +1679,7 @@ const drawChart = async (
           // 已保存的异常标注显示红色矩形
           anomalyGroup
             .append('rect')
-            .attr('class', `anomaly-rect-${anomaly.id}-${channelName}`)
+            .attr('class', `anomaly-rect-${anomaly.id}`)
             .attr('x', x(anomaly.startX))
             .attr('y', 0)
             .attr('width', x(anomaly.endX) - x(anomaly.startX))
@@ -1694,7 +1694,7 @@ const drawChart = async (
         // 修改按钮组实现
         const buttonGroup = anomalyGroup
           .append('g')
-          .attr('class', `anomaly-buttons-${anomaly.id}-${channelName}`)
+          .attr('class', `anomaly-buttons-${anomaly.id}`)
           .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
 
         // 删除按钮
@@ -1756,16 +1756,33 @@ const drawChart = async (
               anomalyId: anomaly.id,
             });
           } else {
-            anomalies.value = anomalies.value.filter(
-              (a) => a.id !== anomaly.id
-            );
+            store.dispatch('deleteAnomaly', {
+              channelName: anomaly.channelName,
+              anomalyId: anomaly.id,
+            });
           }
           removeAnomalyElements(anomaly.id, channelName);
         });
 
         editRect.on('click', () => {
-          Object.assign(currentAnomaly, anomaly);
-          currentAnomaly.isStored = isStored;
+          // 从store中获取最新的异常数据
+          const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+          const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+          
+          if (storedAnomaly) {
+            // 使用store中的数据更新currentAnomaly
+            Object.assign(currentAnomaly, {
+              ...storedAnomaly,
+              channelName: channelName
+            });
+          } else {
+            // 如果在store中找不到,使用当前anomaly数据
+            Object.assign(currentAnomaly, {
+              ...anomaly,
+              channelName: channelName
+            });
+          }
+          
           showAnomalyForm.value = true;
         });
 
@@ -1787,7 +1804,7 @@ const drawChart = async (
         anomalyGroup
           .append('path')
           .datum(anomalyYValues)
-          .attr('class', `anomaly-line-${anomaly.id}-${channelName}`)
+          .attr('class', `anomaly-line-${anomaly.id}`)
           .attr('fill', 'none')
           .attr('stroke', isStored ? 'red' : 'orange')
           .attr('stroke-width', 3)
@@ -1801,11 +1818,11 @@ const drawChart = async (
 
         if (isStored) {
           anomalyGroup
-            .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
+            .select(`.anomaly-rect-${anomaly.id}`)
             .style('pointer-events', 'none');
           anomalyGroup
             .selectAll(
-              `.left-handle-${anomaly.id}-${channelName}, .right-handle-${anomaly.id}-${channelName}`
+              `.left-handle-${anomaly.id}, .right-handle-${anomaly.id}`
             )
             .remove();
         }
@@ -1814,11 +1831,11 @@ const drawChart = async (
       function updateAnomalyElements(anomaly, isStored = false) {
         const anomalyGroup = d3.select(`#chart-${anomaly.channelName}`)
           .select('.anomalies-group')
-          .select(`.anomaly-group-${anomaly.id}-${channelName}`);
+          .select(`.anomaly-group-${anomaly.id}`); // 使用唯一ID
 
         // 更新矩形位置和大小
         anomalyGroup
-          .select(`.anomaly-rect-${anomaly.id}-${channelName}`)
+          .select(`.anomaly-rect-${anomaly.id}`)
           .attr('x', x(anomaly.startX))
           .attr('width', x(anomaly.endX) - x(anomaly.startX))
           .attr('fill', isStored ? 'red' : 'orange')
@@ -1826,24 +1843,24 @@ const drawChart = async (
 
         // 更新左侧手柄位置
         anomalyGroup
-          .select(`.left-handle-${anomaly.id}-${channelName}`)
+          .select(`.left-handle-${anomaly.id}`)
           .attr('x', x(anomaly.startX) - 5);
 
         // 更新右侧手柄位置
         anomalyGroup
-          .select(`.right-handle-${anomaly.id}-${channelName}`)
+          .select(`.right-handle-${anomaly.id}`)
           .attr('x', x(anomaly.endX) - 5);
 
         // 更新按钮组位置
-        const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}-${channelName}`);
+        const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}`);
         buttonGroup.attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
 
         // 更新标签位置和文本
-        g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .left-label-${anomaly.id}-${channelName}`)
+        g.select(`.anomaly-labels-group-${anomaly.id} .left-label-${anomaly.id}`)
           .attr('x', x(anomaly.startX))
           .text(anomaly.startX.toFixed(3));
 
-        g.select(`.anomaly-labels-group-${anomaly.id}-${channelName} .right-label-${anomaly.id}-${channelName}`)
+        g.select(`.anomaly-labels-group-${anomaly.id} .right-label-${anomaly.id}`)
           .attr('x', x(anomaly.endX))
           .text(anomaly.endX.toFixed(3));
 
@@ -1854,7 +1871,7 @@ const drawChart = async (
         const anomalyYValues = data.Y_value.slice(startIndex, endIndex + 1);
 
         anomalyGroup
-          .select(`.anomaly-line-${anomaly.id}-${channelName}`)
+          .select(`.anomaly-line-${anomaly.id}`)
           .datum(anomalyYValues)
           .attr('d', d3.line()
             .x((d, i) => x(anomalyXValues[i]))
@@ -1865,29 +1882,17 @@ const drawChart = async (
 
       function removeAnomalyElements(anomalyId, channelName) {
         // 从store中删除异常数据
-        const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
-        const storedAnomaly = storedAnomalies.find(a => a.id === anomalyId);
-        if (storedAnomaly) {
-          store.dispatch('deleteAnomaly', {
-            channelName: channelName,
-            anomalyId: anomalyId
-          });
-        }
+        store.dispatch('deleteAnomaly', {
+          channelName: channelName,
+          anomalyId: anomalyId
+        });
 
-        // 移除异常组
-        d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-group-${anomalyId}-${channelName}`)
-          .remove();
-
-        // 移除标签组
-        d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-labels-group-${anomalyId}-${channelName}`)
-          .remove();
-
-        // 移除按钮组
-        d3.select(`#chart-${channelName}`)
-          .select(`.anomaly-buttons-${anomalyId}-${channelName}`)
-          .remove();
+        // 移除相关的DOM元素
+        d3.selectAll([
+          `.anomaly-group-${anomalyId}`,
+          `.anomaly-labels-group-${anomalyId}`,
+          `.anomaly-buttons-${anomalyId}`
+        ].join(',')).remove();
 
         // 恢复刷选功能
         const g = d3.select(`#chart-${channelName}`).select('g');
@@ -1951,44 +1956,13 @@ const saveAnomaly = () => {
       },
     };
 
-    // 如果是已保存的标注，则更新它
-    if (currentAnomaly.isStored) {
-      store.dispatch('updateAnomaly', payload);
-    } else {
-      // 如果是新标注，则添加到store中
-      store.dispatch('addAnomaly', payload);
-      // 从临时列表中移除
-      anomalies.value = anomalies.value.filter(
-        (a) => a.id !== currentAnomaly.id
-      );
-    }
+    // 更新store中的异常数据
+    store.dispatch('updateAnomaly', payload);
 
     // 关闭编辑框
     showAnomalyForm.value = false;
 
-    // 立即更新视觉效果
-    const svg = d3.select(`#chart-${payload.channelName}`);
-    const anomalyGroup = svg.select(`.anomaly-group-${payload.anomaly.id}-${payload.channelName}`);
-
-    // 更新矩形颜色
-    anomalyGroup.select(`.anomaly-rect-${payload.anomaly.id}-${payload.channelName}`)
-      .attr('fill', 'red')
-      .attr('fill-opacity', 0.1)
-      .attr('stroke', 'red')
-      .attr('stroke-width', 1)
-      .style('pointer-events', 'none')
-      .attr('cursor', 'default');
-
-    // 更新曲线颜色
-    anomalyGroup.select(`.anomaly-line-${payload.anomaly.id}-${payload.channelName}`)
-      .attr('stroke', 'red');
-
-    // 移除拖动手柄
-    anomalyGroup.selectAll(
-      `.left-handle-${payload.anomaly.id}-${payload.channelName}, .right-handle-${payload.anomaly.id}-${payload.channelName}`
-    ).remove();
-
-    // 重新绘制图表以更新所有标注
+    // 重新渲染图表以更新标注
     const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === payload.channelName);
     if (targetChannel) {
       const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];

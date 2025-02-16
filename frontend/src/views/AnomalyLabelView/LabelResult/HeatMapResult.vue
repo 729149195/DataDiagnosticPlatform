@@ -530,24 +530,24 @@ const renderTimeout = ref(null);
 // 创建防抖的渲染函数
 const debouncedRenderHeatmap = debounce(async (channels) => {
   if (isTransitioning.value) return;
-  
+
   isTransitioning.value = true;
-  
+
   // 设置渐出动画
   const heatmap = d3.select('#heatmap');
   heatmap.style('opacity', 0.3)
-         .style('transition', 'opacity 0.2s ease-out');
-  
+    .style('transition', 'opacity 0.2s ease-out');
+
   // 等待渐出动画完成
   await new Promise(resolve => setTimeout(resolve, 200));
-  
+
   // 执行实际的渲染
   await renderHeatmap(channels);
-  
+
   // 设置渐入动画
   heatmap.style('opacity', 1)
-         .style('transition', 'opacity 0.3s ease-in');
-  
+    .style('transition', 'opacity 0.3s ease-in');
+
   // 重置状态
   setTimeout(() => {
     isTransitioning.value = false;
@@ -556,17 +556,17 @@ const debouncedRenderHeatmap = debounce(async (channels) => {
 
 // 修改 brush 范围监听器
 watch(brushRange, (newRange, oldRange) => {
-  if (!oldRange || 
-      !selectedChannels.value.length || 
-      isNaN(newRange.begin) || 
-      isNaN(newRange.end)) return;
-  
+  if (!oldRange ||
+    !selectedChannels.value.length ||
+    isNaN(newRange.begin) ||
+    isNaN(newRange.end)) return;
+
   // 检查变化是否显著（避免微小变化触发重绘）
   const threshold = 0.0001;
-  const hasSignificantChange = 
+  const hasSignificantChange =
     Math.abs(newRange.begin - oldRange.begin) > threshold ||
     Math.abs(newRange.end - oldRange.end) > threshold;
-    
+
   if (hasSignificantChange) {
     debouncedRenderHeatmap(selectedChannels.value);
   }
@@ -596,15 +596,15 @@ const renderedChannelsState = ref(new Map());
 function needsRerender(channel, newCache, newAnomalies) {
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   const currentState = renderedChannelsState.value.get(channelKey);
-  
+
   if (!currentState) return true;
-  
+
   const newState = {
     errors: channel.errors,
     cacheData: newCache[channelKey],
     anomalies: newAnomalies[channelKey]
   };
-  
+
   return JSON.stringify(currentState) !== JSON.stringify(newState);
 }
 
@@ -619,7 +619,7 @@ function updateRenderedState(channel, newCache, newAnomalies) {
 }
 
 watch(
-  [() => channelDataCache.value, selectedChannels, anomaliesByChannel],
+  [() => channelDataCache.value, selectedChannels],
   async ([newCache, newChannels, newAnomalies], [oldCache, oldChannels]) => {
     if (!newChannels || newChannels.length === 0) {
       // 清空渲染状态和图表
@@ -631,9 +631,9 @@ watch(
 
     // 检查是否有通道被删除
     if (oldChannels) {
-      const removedChannels = oldChannels.filter(oldChannel => 
-        !newChannels.some(newChannel => 
-          `${newChannel.channel_name}_${newChannel.shot_number}` === 
+      const removedChannels = oldChannels.filter(oldChannel =>
+        !newChannels.some(newChannel =>
+          `${newChannel.channel_name}_${newChannel.shot_number}` ===
           `${oldChannel.channel_name}_${oldChannel.shot_number}`
         )
       );
@@ -646,7 +646,7 @@ watch(
     }
 
     // 找出需要重新渲染的通道
-    const channelsToRender = newChannels.filter(channel => 
+    const channelsToRender = newChannels.filter(channel =>
       needsRerender(channel, newCache, newAnomalies)
     );
 
@@ -669,12 +669,12 @@ watch(
           await nextTick();
           // 传入所有通道进行完整渲染
           await renderHeatmap(newChannels, false);
-          
+
           // 更新渲染状态
           newChannels.forEach(channel => {
             updateRenderedState(channel, newCache, newAnomalies);
           });
-          
+
           resolve();
         } catch (error) {
           console.error('Error in debounced renderHeatmap:', error);
@@ -770,11 +770,11 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     completedRequests.value = 0;
 
     const heatmap = d3.select('#heatmap');
-    
+
     // 保存当前的滚动位置
     const container = document.querySelector('.heatmap-scrollbar');
     const scrollTop = container ? container.scrollTop : 0;
-    
+
     // 总是清除所有元素以确保正确的渲染
     heatmap.selectAll('*').remove();
 
@@ -904,7 +904,8 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
     for (const channel of channels) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      const channelAnomalies = anomaliesByChannel.value[channelKey] || [];
+      // 直接从store获取异常数据
+      const channelAnomalies = store.getters.getAnomaliesByChannel(channelKey) || [];
 
       // 确保 visData[channelKey] 存在
       if (!visData[channelKey]) {
@@ -1120,9 +1121,15 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             errorsInRect.forEach((error) => {
               // 检查是否是前端标注的异常数据
               if (error.isAnomaly) {
-                const processedData = processErrorData(error.errorData);
-                if (Object.keys(processedData).length > 0) {
-                  manualAnomalies.push(processedData);
+                // 从store获取最新的异常数据
+                const storedAnomalies = store.getters.getAnomaliesByChannel(error.channelKey);
+                const storedAnomaly = storedAnomalies.find(a => a.id === error.errorData.id);
+
+                if (storedAnomaly) {
+                  const processedData = processErrorData(storedAnomaly);
+                  if (Object.keys(processedData).length > 0) {
+                    manualAnomalies.push(processedData);
+                  }
                 }
               } else {
                 // 处理来自后端的异常数据
@@ -1451,6 +1458,19 @@ const handleHeatmapExport = (command) => {
     exportHeatMapData();
   }
 }
+
+// 在 watch 部分添加以下代码
+watch(
+  anomaliesByChannel,
+  (newAnomalies) => {
+    // 仅当有选中的通道时才进行渲染
+    if (selectedChannels.value.length > 0) {
+      // 使用 isOnlyAnomalyChange 参数调用渲染函数
+      renderHeatmap(selectedChannels.value, true);
+    }
+  },
+  { deep: true }
+);
 </script>
 
 <style scoped lang="scss">

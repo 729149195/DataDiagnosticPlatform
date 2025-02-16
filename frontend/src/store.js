@@ -116,6 +116,7 @@ const store = createStore({
       if (!state.anomalies[channelName]) {
         state.anomalies[channelName] = [];
       }
+      anomaly.id = `${anomaly.id}_${Date.now()}`;
       state.anomalies[channelName].push(anomaly);
     },
     updateAnomaly(state, { channelName, anomaly }) {
