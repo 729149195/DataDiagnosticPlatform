@@ -663,4 +663,71 @@ def sync_error_data(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+def delete_error_data(request):
+    try:
+        # 获取请求数据
+        data = json.loads(request.body)
+        diagnostic_name = data.get('diagnostic_name')
+        channel_number = data.get('channel_number')
+        shot_number = data.get('shot_number')
+        error_type = data.get('error_type')
+
+        if not all([diagnostic_name, channel_number, shot_number, error_type]):
+            return JsonResponse({'error': '缺少必要参数'}, status=400)
+
+        # 构建错误数据文件路径
+        error_file_name = f"{shot_number}_{channel_number}_{error_type}.json"
+        error_file_path = os.path.join('static', 'ErrorData', error_file_name)
+
+        # 检查文件是否存在
+        if not os.path.exists(error_file_path):
+            return JsonResponse({'error': '未找到对应的错误数据文件'}, status=404)
+
+        # 读取错误数据文件
+        with open(error_file_path, 'r', encoding='utf-8') as f:
+            error_data = json.load(f)
+
+        # 分别处理人工标注和机器标注数据
+        manual_errors, machine_errors = error_data
+
+        # 从人工标注数据中移除指定的异常
+        manual_errors = [error for error in manual_errors 
+                        if error.get('diagnostic_name') != diagnostic_name]
+
+        # 从机器标注数据中移除指定的异常
+        machine_errors = [error for error in machine_errors 
+                         if error.get('diagnostic_name') != diagnostic_name]
+
+        # 保存更新后的数据
+        updated_error_data = [manual_errors, machine_errors]
+        with open(error_file_path, 'w', encoding='utf-8') as f:
+            json.dump(updated_error_data, f, indent=2, ensure_ascii=False)
+
+        # 如果两个列表都为空，删除文件
+        if not manual_errors and not machine_errors:
+            os.remove(error_file_path)
+
+            # 更新 StructTree.json
+            struct_tree_path = os.path.join('static', 'StructTree.json')
+            with open(struct_tree_path, 'r', encoding='utf-8') as f:
+                struct_tree = json.load(f)
+
+            # 更新对应通道的 error_name
+            for item in struct_tree:
+                if (item['shot_number'] == shot_number and 
+                    item['channel_name'] == channel_number and 
+                    'error_name' in item):
+                    # 从 error_name 列表中移除对应的错误类型
+                    if error_type in item['error_name']:
+                        item['error_name'].remove(error_type)
+                    break
+
+            # 保存更新后的 StructTree.json
+            with open(struct_tree_path, 'w', encoding='utf-8') as f:
+                json.dump(struct_tree, f, indent=2, ensure_ascii=False)
+
+        return JsonResponse({'message': '删除成功'})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
 

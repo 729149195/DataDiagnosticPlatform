@@ -22,4 +22,5 @@ urlpatterns = [
     path('execute/', views.execute_function, name='execute_function'),
     path('verify-user/', views.verify_user, name='verify_user'),
     path('sync-error-data/', views.sync_error_data, name='sync_error_data'),
+    path('delete-error-data/', views.delete_error_data, name='delete_error_data'),
 ]

@@ -69,10 +69,19 @@
                   <el-card shadow="hover" :body-style="{ padding: '0px' }">
                     <div class="anomaly-card-header">
                       <div class="anomaly-actions">
-                        <el-button type="primary" size="small" @click="editAnomaly(anomaly, group.type)">
+                        <el-button 
+                          v-if="anomaly.id"
+                          type="primary" 
+                          size="small" 
+                          @click="editAnomaly(anomaly, group.type)"
+                        >
                           编辑
                         </el-button>
-                        <el-button type="danger" size="small" @click="deleteAnomalyFromList(anomaly, group.type)">
+                        <el-button 
+                          type="danger" 
+                          size="small" 
+                          @click="anomaly.id ? deleteAnomalyFromList(anomaly, group.type) : deleteErrorData(anomaly, group.type)"
+                        >
                           删除
                         </el-button>
                       </div>
@@ -126,7 +135,7 @@
 import * as d3 from 'd3';
 import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive } from 'vue';
 import { useStore } from 'vuex';
-import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage, ElMessageBox } from 'element-plus';
+import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
 import { Search } from '@element-plus/icons-vue';
@@ -405,6 +414,12 @@ const exportHeatMapData = async () => {
 
 // 添加同步上传函数
 const syncUpload = async () => {
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: '正在同步数据...',
+    background: 'rgba(0, 0, 0, 0.7)'
+  });
+
   try {
     // 深拷贝数据以避免修改原始数据
     let processedData = JSON.parse(JSON.stringify(errorResults));
@@ -464,6 +479,9 @@ const syncUpload = async () => {
   } catch (error) {
     console.error('同步失败:', error);
     ElMessage.error('同步失败: ' + error.message);
+  } finally {
+    // 无论成功还是失败，都关闭加载状态
+    loadingInstance.close();
   }
 };
 
@@ -1775,6 +1793,61 @@ const timeAxisRange = computed(() => {
   }
   return '';
 });
+
+// 在 script setup 部分添加新的删除方法
+const deleteErrorData = (errorData, type) => {
+  ElMessageBox.confirm(
+    '确定要删除这个异常标注吗？',
+    '警告',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+    .then(async () => {
+      const loadingInstance = ElLoading.service({
+        lock: true,
+        text: '正在删除异常数据...',
+        background: 'rgba(0, 0, 0, 0.7)'
+      });
+
+      try {
+        const response = await fetch('https://10.1.108.19:5000/api/delete-error-data/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            diagnostic_name: errorData.diagnostic_name,
+            channel_number: errorData.channel_number,
+            shot_number: errorData.shot_number,
+            error_type: errorData.error_type
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('删除失败');
+        }
+
+        // 删除成功后刷新数据
+        await store.dispatch('refreshStructTreeData');
+        ElMessage.success('异常标注已删除');
+
+        // 关闭对话框
+        showAnomalyDialog.value = false;
+      } catch (error) {
+        console.error('删除失败:', error);
+        ElMessage.error('删除失败: ' + error.message);
+      } finally {
+        // 无论成功还是失败，都关闭加载状态
+        loadingInstance.close();
+      }
+    })
+    .catch(() => {
+      // 用户取消删除操作
+    });
+};
 </script>
 
 <style scoped lang="scss">
