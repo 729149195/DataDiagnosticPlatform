@@ -125,10 +125,10 @@
               </span>
               <div style=" height: 100%; position: relative;">
                 <el-scrollbar height="58vh" :always="false">
-                  <div v-if="test_channel_number === true">
+                  <div v-show="test_channel_number === true">
                     <SingleChannelMultiRow />
                   </div>
-                  <div v-if="test_channel_number === false">
+                  <div v-show="test_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
@@ -744,7 +744,7 @@ const handleResultExportCommand = (command) => {
 }
 
 .aside {
-  width: 22vw;
+  width: 20vw;
   background-color: #e9e9e9;
   height: 95vh;
   padding: 5px;

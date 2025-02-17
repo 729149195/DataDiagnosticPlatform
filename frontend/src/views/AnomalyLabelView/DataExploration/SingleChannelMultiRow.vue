@@ -2209,7 +2209,7 @@ svg {
 .color-picker-container {
   position: absolute;
   top: 16px;
-  right: 17px;
+  left: 60px;
   z-index: 10;
   display: flex;
   align-items: center;
