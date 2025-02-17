@@ -210,7 +210,7 @@ const formLabelWidth = '120px';
 const operators = {
     arithmetic: ["+", "-", "*", "/"],
     // comparison: [">", "<", ">=", "<=", "==", "!="],
-    // logical: ["&&", "||", "!"],
+    logical: ["&&", "||"],
     functions: ["FFT()"],
     // brackets: ["()", "[]", "{}"],
     da_functions: ["Pca()"],
@@ -337,12 +337,12 @@ const buttons = ref([
     //     category: "comparison",
     //     explanation: "展开比较运算符",
     // },
-    // {
-    //     label: "逻辑运算符",
-    //     type: "primary",
-    //     category: "logical",
-    //     explanation: "展开逻辑运算符",
-    // },
+    {
+        label: "逻辑运算符",
+        type: "primary",
+        category: "logical",
+        explanation: "展开逻辑运算符",
+    },
     {
         label: "运算函数",
         type: "primary",
@@ -466,12 +466,12 @@ const collapseAllCategories = () => {
         //     category: "comparison",
         //     explanation: "展开比较运算符",
         // },
-        // {
-        //     label: "逻辑运算符",
-        //     type: "primary",
-        //     category: "logical",
-        //     explanation: "展开逻辑运算符",
-        // },
+        {
+            label: "逻辑运算符",
+            type: "primary",
+            category: "logical",
+            explanation: "展开逻辑运算符",
+        },
         {
             label: "运算函数",
             type: "primary",
@@ -541,7 +541,7 @@ onBeforeUnmount(() => {
 const getCategoryLabel = (category) => {
     const labels = {
         arithmetic: "算术运算符",
-        comparison: "比较运算符",
+        // comparison: "比较运算符",
         logical: "逻辑运算符",
         functions: "运算函数",
         // brackets: "括号",
@@ -554,7 +554,7 @@ const getCategoryLabel = (category) => {
 const getCategoryExplanation = (category) => {
     const explanations = {
         arithmetic: "展开算术运算符",
-        comparison: "展开比较运算符",
+        // comparison: "展开比较运算符",
         logical: "展开逻辑运算符",
         functions: "展开运算函数",
         // brackets: "展开括号",
@@ -572,6 +572,10 @@ const getCategoryExplanation = (category) => {
   
   .importedFunc {
     background: lightpink;
+    color: deeppink;
+  }
+</style>
+
     color: deeppink;
   }
 </style>

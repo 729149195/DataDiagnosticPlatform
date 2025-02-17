@@ -132,6 +132,7 @@
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
+                <OverviewBrush />
               </div>
             </el-card>
             <div class="two">
@@ -223,6 +224,8 @@ import ChannelCards from '@/views/ChannelAnalysisView/ChannelList/ChannelCards.v
 import ChannelOperator from '../ChannelAnalysisView/ChannelOperator/ChannelOperator.vue';
 import ChannelStr from '../ChannelAnalysisView/ChannelStr/ChannelStr.vue';
 import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalculation/ChannelCalculationResults.vue';
+
+import OverviewBrush from '@/components/OverviewBrush.vue';
 
 const store = useStore()
 const router = useRouter()

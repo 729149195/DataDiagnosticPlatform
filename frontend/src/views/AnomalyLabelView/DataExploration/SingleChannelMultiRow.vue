@@ -34,24 +34,7 @@
             :channelName="channel.channel_name" :shotNumber="channel.shot_number" />
         </div>
       </div>
-      <div class="overview-container">
-        <el-divider />
-        <div class="overview-content">
-          <span class="brush-controls-left">
-            <el-tag type="info">总览条起点</el-tag>
-            <el-input size="small" style="width: 80px;" v-model="brush_begin" @blur="handleInputBlur('begin')"
-              @keyup.enter="handleInputBlur('begin')"></el-input>
-          </span>
-          <div class="overview-svg-container">
-            <svg id="overview-chart" class="overview-svg"></svg>
-          </div>
-          <span class="brush-controls-right">
-            <el-tag type="info">总览条终点</el-tag>
-            <el-input size="small" style="width: 80px" v-model="brush_end" @blur="handleInputBlur('end')"
-              @keyup.enter="handleInputBlur('end')"></el-input>
-          </span>
-        </div>
-      </div>
+      
     </div>
     <el-dialog v-if="showAnomalyForm && currentAnomaly.channelName" v-model="showAnomalyForm" title="编辑/修改异常信息">
       <el-form :model="currentAnomaly" label-width="auto">

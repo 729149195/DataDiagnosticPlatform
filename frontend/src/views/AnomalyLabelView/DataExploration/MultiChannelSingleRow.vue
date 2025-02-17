@@ -21,24 +21,6 @@
           transition: 'opacity 0.3s ease-in-out'
         }"></svg>
       </div>
-      <div class="overview-container">
-        <el-divider />
-        <div class="overview-content">
-          <span class="brush-controls-left">
-            <el-tag type="info">总览条起点</el-tag>
-            <el-input size="small" style="width: 80px;" v-model="brush_begin" @blur="handleInputBlur('begin')"
-                      @keyup.enter="handleInputBlur('begin')"></el-input>
-          </span>
-          <div class="overview-svg-container">
-            <svg id="overview-chart" class="overview-svg"></svg>
-          </div>
-          <span class="brush-controls-right">
-            <el-tag type="info">总览条终点</el-tag>
-            <el-input size="small" style="width: 80px" v-model="brush_end" @blur="handleInputBlur('end')"
-                      @keyup.enter="handleInputBlur('end')"></el-input>
-          </span>
-        </div>
-      </div>
     </div>
   </div>
 </template>
