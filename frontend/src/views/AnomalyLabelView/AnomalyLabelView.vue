@@ -125,14 +125,14 @@
               </span>
               <div style=" height: 100%; position: relative;">
                 <el-scrollbar height="58vh" :always="false">
-                  <div v-show="test_channel_number === true">
-                    <SingleChannelMultiRow />
+                  <div v-if="test_channel_number === true">
+                    <SingleChannelMultiRow v-if="selectedChannels.length > 0"/>
                   </div>
                   <div v-show="test_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
-                <OverviewBrush />
+                <!-- <OverviewBrush /> -->
               </div>
             </el-card>
             <div class="two">

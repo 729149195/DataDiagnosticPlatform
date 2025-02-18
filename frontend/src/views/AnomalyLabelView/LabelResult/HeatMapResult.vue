@@ -685,20 +685,20 @@ function needsRerender(channel, newCache, newAnomalies) {
 }
 
 // 更新已渲染通道的状态
-function updateRenderedState(channel, newCache, newAnomalies) {
-  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-  // 添加空值检查
-  if (!newCache || !newCache[channelKey]) {
-    console.warn(`Cache data not found for channel ${channelKey}`);
-    return;
-  }
+// function updateRenderedState(channel, newCache, newAnomalies) {
+//   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+//   // 添加空值检查
+//   if (!newCache || !newCache[channelKey]) {
+//     console.warn(`Cache data not found for channel ${channelKey}`);
+//     return;
+//   }
   
-  renderedChannelsState.value.set(channelKey, {
-    errors: channel.errors,
-    cacheData: newCache[channelKey],
-    anomalies: newAnomalies ? newAnomalies[channelKey] : null
-  });
-}
+//   renderedChannelsState.value.set(channelKey, {
+//     errors: channel.errors,
+//     cacheData: newCache[channelKey],
+//     anomalies: newAnomalies ? newAnomalies[channelKey] : null
+//   });
+// }
 
 watch(
   [() => channelDataCache.value, selectedChannels],
@@ -752,10 +752,10 @@ watch(
           // 传入所有通道进行完整渲染
           await renderHeatmap(newChannels, false);
 
-          // 更新渲染状态
-          newChannels.forEach(channel => {
-            updateRenderedState(channel, newCache, newAnomalies);
-          });
+          // // 更新渲染状态
+          // newChannels.forEach(channel => {
+          //   updateRenderedState(channel, newCache, newAnomalies);
+          // });
 
           resolve();
         } catch (error) {
@@ -2143,6 +2143,132 @@ const deleteErrorData = (errorData, type) => {
 .progress-percentage {
   font-weight: bold;
   color: #409EFF;
+}
+
+:deep(.el-progress-bar__outer) {
+  background-color: #f0f2f5;
+  border-radius: 4px;
+}
+
+:deep(.el-progress-bar__inner) {
+  transition: width 0.3s ease;
+  border-radius: 4px;
+}
+
+:deep(.el-progress--line) {
+  margin-bottom: 0;
+}
+
+/* 修改进度条成功状态的颜色 */
+:deep(.el-progress.is-success .el-progress-bar__inner) {
+  background-color: #67C23A;
+}
+
+:deep(.el-progress-bar__innerText) {
+  font-size: 12px;
+  margin: 0 5px;
+  color: #fff;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让输入框内的文字可以选中 */
+.el-input__inner {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 让对话框中的输入框文字可以选中 */
+.el-dialog .el-input {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+.anomaly-group {
+  margin-bottom: 20px;
+}
+
+.group-title {
+  margin: 10px 0;
+  padding: 5px 10px;
+  background-color: #f5f7fa;
+  border-left: 4px solid #409EFF;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.anomaly-item {
+  margin-bottom: 15px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.empty-message {
+  padding: 24px;
+  text-align: center;
+  color: #5f6368;
+  font-size: 14px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+// 修改滚动条样式
+.el-scrollbar {
+  :deep(.el-scrollbar__bar) {
+    &.is-horizontal {
+      height: 8px;
+    }
+    &.is-vertical {
+      width: 8px;
+    }
+
+    .el-scrollbar__thumb {
+      background-color: rgba(95,99,104,0.3);
+      border-radius: 4px;
+
+      &:hover {
+        background-color: rgba(95,99,104,0.5);
+      }
+    }
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.anomaly-card-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.anomaly-actions {
+  display: flex;
+  gap: 8px;
+}
+
+:deep(.el-button--small) {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+</style>
+ color: #409EFF;
 }
 
 :deep(.el-progress-bar__outer) {

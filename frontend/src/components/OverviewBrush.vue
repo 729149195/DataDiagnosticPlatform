@@ -20,7 +20,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import * as d3 from 'd3';
 import debounce from 'lodash/debounce';
@@ -34,6 +34,7 @@ const overviewBrushInstance = ref(null);
 const overviewXScale = ref(null);
 const updatingBrush = ref(false);
 const brushSelections = ref({ overview: null });
+const originalDomains = ref({});
 
 // 从store获取数据
 const brush_begin = computed({
@@ -48,6 +49,10 @@ const brush_end = computed({
 
 const selectedChannels = computed(() => store.state.selectedChannels);
 const channelDataCache = computed(() => store.state.channelDataCache);
+const domains = computed(() => ({
+  x: store.state.xDomains,
+  y: store.state.yDomains
+}));
 
 // 处理窗口大小变化
 const handleResize = debounce(() => {
@@ -71,6 +76,27 @@ watch(selectedChannels, () => {
   updateOverviewData();
 }, { deep: true });
 
+// 监听 brush 范围变化
+watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
+  if (updatingBrush.value) return;
+  if (!selectedChannels.value || selectedChannels.value.length === 0) return;
+
+  const start = parseFloat(newBegin);
+  const end = parseFloat(newEnd);
+
+  if (isNaN(start) || isNaN(end)) return;
+
+  // 更新所有通道的 domain
+  selectedChannels.value.forEach((channel) => {
+    const channelName = `${channel.channel_name}_${channel.shot_number}`;
+    store.dispatch('updateDomains', {
+      channelName,
+      xDomain: [start, end],
+      yDomain: domains.value.y[channelName]
+    });
+  });
+}, { immediate: true });
+
 // 更新总览数据
 const updateOverviewData = () => {
   overviewData.value = [];
@@ -80,23 +106,19 @@ const updateOverviewData = () => {
     const data = channelDataCache.value[channelKey];
     
     if (data) {
-      // 归一化Y值
-      const yAbsMax = d3.max(data.Y_value, d => Math.abs(d));
-      const normalizedY = yAbsMax === 0 ? 
-        data.Y_value.map(() => 0) : 
-        data.Y_value.map(y => y / yAbsMax);
-
       overviewData.value.push({
         channelName: channelKey,
         X_value: data.X_value,
-        Y_value: normalizedY,
+        Y_value: data.Y_value,
         color: channel.color
       });
     }
   });
 
   if (overviewData.value.length > 0) {
-    drawOverviewChart();
+    nextTick(() => {
+      drawOverviewChart();
+    });
   }
 };
 
@@ -116,30 +138,40 @@ const drawOverviewChart = () => {
 
   svg
     .attr('viewBox', `0 0 ${svgWidth} ${height + margin.top + margin.bottom}`)
-    .attr('preserveAspectRatio', 'xMidYMid meet')
-    .attr('width', '100%');
+    .attr('preserveAspectRatio', 'xMidYMid meet');
 
   const g = svg.append('g')
     .attr('transform', `translate(${margin.left},${margin.top})`);
 
-  // 计算数据范围
+  // 计算所有数据的范围
   const allX = overviewData.value.flatMap(d => d.X_value);
   const allY = overviewData.value.flatMap(d => d.Y_value);
   const xExtent = d3.extent(allX);
   const yExtent = d3.extent(allY);
 
-  // 更新brush值
+  // 更新所有通道的 domain
+  selectedChannels.value.forEach((channel) => {
+    const channelName = `${channel.channel_name}_${channel.shot_number}`;
+    store.dispatch('updateDomains', {
+      channelName,
+      xDomain: xExtent,
+      yDomain: domains.value.y[channelName]
+    });
+  });
+
+  // 更新 brush_begin 和 brush_end 到当前数据范围
   updatingBrush.value = true;
   brush_begin.value = xExtent[0].toFixed(4);
   brush_end.value = xExtent[1].toFixed(4);
+  store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
   updatingBrush.value = false;
 
-  // 创建比例尺
   const x = d3.scaleLinear().domain(xExtent).range([0, width]);
-  const y = d3.scaleLinear().domain(yExtent).range([height, 0]);
   overviewXScale.value = x;
 
-  // 绘制线条
+  const y = d3.scaleLinear().domain(yExtent).range([height, 0]);
+
+  // 绘制总览数据线条
   const lines = g.selectAll('.overview-line')
     .data(overviewData.value, d => d.channelName);
 
@@ -168,36 +200,17 @@ const drawOverviewChart = () => {
   // 退出
   lines.exit().remove();
 
-  // 绘制x轴
+  // 绘制坐标轴
   g.append('g')
     .attr('transform', `translate(0,${height})`)
     .call(d3.axisBottom(x))
     .style("font-size", "1em")
     .style("font-weight", "bold");
 
-  // 添加brush功能
+  // 添加刷子功能
   const brush = d3.brushX()
     .extent([[0, 0], [width, height]])
-    .on('brush end', debounce((event) => {
-      if (updatingBrush.value) return;
-
-      const selection = event.selection || initialSelection;
-      const newDomain = selection.map(x.invert, x);
-
-      updatingBrush.value = true;
-      store.commit('updatebrush', {
-        begin: newDomain[0].toFixed(4),
-        end: newDomain[1].toFixed(4)
-      });
-      updatingBrush.value = false;
-
-      if (!event.selection) {
-        brushG.call(brush.move, initialSelection);
-        brushSelections.value.overview = initialSelection;
-      } else {
-        brushSelections.value.overview = selection;
-      }
-    }, 150));
+    .on('brush end', brushed);
 
   overviewBrushInstance.value = brush;
 
@@ -205,10 +218,42 @@ const drawOverviewChart = () => {
     .attr('class', 'brush')
     .call(brush);
 
-  // 设置初始brush范围
+  // 设置初始刷选范围为当前数据范围
   const initialSelection = xExtent.map(x);
   brushG.call(brush.move, initialSelection);
   brushSelections.value.overview = initialSelection;
+
+  function brushed(event) {
+    if (updatingBrush.value) return;
+
+    // 当点击空白处时，恢复到完整范围
+    const selection = event.selection || initialSelection;
+    const newDomain = selection.map(x.invert, x);
+
+    updatingBrush.value = true;
+    brush_begin.value = newDomain[0].toFixed(4);
+    brush_end.value = newDomain[1].toFixed(4);
+    store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
+    updatingBrush.value = false;
+
+    // 如果是点击空白处，手动设置刷选框
+    if (!event.selection) {
+      brushG.call(brush.move, initialSelection);
+      brushSelections.value.overview = initialSelection;
+    } else {
+      brushSelections.value.overview = selection;
+    }
+
+    // 更新所有图表的 domain
+    selectedChannels.value.forEach((channel) => {
+      const channelName = `${channel.channel_name}_${channel.shot_number}`;
+      store.dispatch('updateDomains', {
+        channelName,
+        xDomain: newDomain,
+        yDomain: domains.value.y[channelName]
+      });
+    });
+  }
 };
 
 // 处理输入框
@@ -239,10 +284,10 @@ const handleInputBlur = (type) => {
     return;
   }
 
-  // 获取数据范围
+  // 获取数据的实际范围
   const allX = overviewData.value.flatMap(d => d.X_value);
   const dataExtent = d3.extent(allX);
-  const epsilon = 0.0001;
+  const epsilon = 0.0001; // 添加容差值
 
   // 确保在有效范围内
   if (start < dataExtent[0] - epsilon || end > dataExtent[1] + epsilon) {
@@ -252,11 +297,24 @@ const handleInputBlur = (type) => {
     return;
   }
 
-  // 更新brush
+  // 更新 store 中的值
+  store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
+
+  // 更新刷选区域
   const selection = [x(start), x(end)];
   updatingBrush.value = true;
   d3.select('#overview-chart').select('.brush').call(brush.move, selection);
   updatingBrush.value = false;
+
+  // 更新所有通道的 domain
+  selectedChannels.value.forEach((channel) => {
+    const channelName = `${channel.channel_name}_${channel.shot_number}`;
+    store.dispatch('updateDomains', {
+      channelName,
+      xDomain: [start, end],
+      yDomain: domains.value.y[channelName]
+    });
+  });
 };
 </script>
 
