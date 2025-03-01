@@ -124,11 +124,11 @@
                 </span>
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
-                <el-scrollbar :height="isSecondSectionCollapsed ? '80vh' : '58vh'" :always="false">
-                  <div v-show="test_channel_number === true">
+                <el-scrollbar :height="isSecondSectionCollapsed ? '83vh' : '58vh'" :always="false">
+                  <div v-if="test_channel_number === true">
                     <SingleChannelMultiRow v-show="selectedChannels.length > 0"/>
                   </div>
-                  <div v-show="test_channel_number === false">
+                  <div v-if="test_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
@@ -141,7 +141,7 @@
                 <el-icon class="arc-toggle-icon">
                   <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
                 </el-icon>
-                <span class="arc-toggle-text">{{ isSecondSectionCollapsed ? '展开查询和识别结果' : '收起' }}</span>
+                <!-- <span class="arc-toggle-text">{{ isSecondSectionCollapsed ? '展开查询和识别结果' : '收起' }}</span> -->
               </div>
             </div>
 
@@ -1014,14 +1014,14 @@ const toggleCollapse = () => {
 .arc-toggle-container {
   position: relative;
   display: flex;
-  justify-content: start;
+  justify-content: center;
   height: 0;
   z-index: 999;
 }
 
 .arc-toggle {
   position: absolute;
-  top: -100px;
+  top: -20px;
   padding: 3px 20px 5px 20px;
   background-color: #f2f6fc;
   border: 1px solid #dcdfe6;
@@ -1034,7 +1034,6 @@ const toggleCollapse = () => {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  min-width: 100px;  /* 添加固定最小宽度 */
   
   &:hover {
     background-color: #ecf5ff;

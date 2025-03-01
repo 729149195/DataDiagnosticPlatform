@@ -28,7 +28,6 @@
 </template>
 
 <script setup>
-import * as d3 from 'd3';
 import Highcharts from 'highcharts';
 import debounce from 'lodash/debounce';
 import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted } from 'vue';
@@ -83,7 +82,7 @@ defineExpose({
 })
 
 const mainChartDimensions = ref({
-  margin: { top: 50, right: 20, bottom: 60, left: 80 },
+  margin: { top: 30, right: 20, bottom: 80, left: 80 },
   width: 0,
   height: 0, // 将会动态计算
 });
@@ -214,27 +213,104 @@ const renderCharts = debounce(async () => {
   drawCombinedChart();
 }, 300);
 
+// 计算图表高度的函数，减少debounce时间
+const calculateChartHeight = () => {
+  // 获取容器元素
+  const container = document.querySelector('.chart-container');
+  if (!container) return;
+  
+  // 获取容器的实际高度
+  const containerHeight = container.clientHeight;
+  
+  // 设置图表高度为容器高度减去120px，再减去上下边距
+  const newHeight = Math.max(300, containerHeight) - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
+  
+  // 仅当高度有明显变化时才更新
+  if (Math.abs(newHeight - mainChartDimensions.value.height) > 5) {
+    mainChartDimensions.value.height = newHeight;
+    
+    // 更新已存在的图表高度
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      chart.setSize(null, newHeight);
+      chart.redraw();
+    }
+  }
+};
+
+// 添加窗口大小变化的处理函数，减少debounce时间提高响应速度
+const handleResize = debounce(() => {
+  // 重新计算图表高度
+  calculateChartHeight();
+  
+  const container = document.querySelector('.chart-container');
+  if (container) {
+    const containerWidth = container.offsetWidth;
+    const newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right;
+    
+    // 更新宽度
+    mainChartDimensions.value.width = newWidth;
+    
+    // 更新已存在的图表
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      chart.setSize(newWidth, null);
+      chart.redraw();
+    } else if (channelsData.value && channelsData.value.length > 0) {
+      drawCombinedChart(); // 如果图表不存在，重新绘制
+    }
+  }
+}, 100); // 降低debounce时间从200到100ms
+
+// 创建一个ResizeObserver来监听容器大小变化
+const resizeObserver = ref(null);
 
 // onMounted 生命周期钩子
 onMounted(async () => {
-  const container = document.querySelector('.chart-container');
-  const containerWidth = container.offsetWidth;
-  
-  // 计算适当的图表高度
-  calculateChartHeight();
+  // 延迟一下以确保DOM完全渲染
+  setTimeout(() => {
+    const container = document.querySelector('.chart-container');
+    if (container) {
+      const containerWidth = container.offsetWidth;
+      
+      // 计算适当的图表高度
+      calculateChartHeight();
+      
+      mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right;
+    }
+    
+    if (selectedChannels.value.length > 0) {
+      renderCharts();
+    }
+  }, 100);
 
-  mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right;
-
-  if (selectedChannels.value.length > 0) {
-    await renderCharts();
-  }
-
+  // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);
+  
+  // 初始化ResizeObserver，使用更积极的触发策略
+  resizeObserver.value = new ResizeObserver(entries => {
+    // 立即触发resize处理
+    handleResize();
+  });
+  
+  // 监听容器大小变化
+  const container = document.querySelector('.chart-container');
+  if (container) {
+    resizeObserver.value.observe(container);
+  }
 });
 
 // 在组件卸载时移除监听器
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  
+  // 断开ResizeObserver连接
+  if (resizeObserver.value) {
+    resizeObserver.value.disconnect();
+  }
+  
+  // 终止Worker
+  chartWorkerManager.terminate();
 });
 
 // 修改 selectedChannels 的监听器
@@ -291,6 +367,80 @@ watch(
   { deep: true }
 );
 
+// 添加对 brush_begin 和 brush_end 的监听
+const updateChartRangeDebounced = debounce(() => {
+  // 解析 brush 范围
+  const beginValue = parseFloat(brush_begin.value);
+  const endValue = parseFloat(brush_end.value);
+
+  // 验证值的有效性
+  if (isNaN(beginValue) || isNaN(endValue) || beginValue >= endValue) {
+    console.warn('无效的 brush 范围:', beginValue, endValue);
+    return;
+  }
+  
+  console.log('准备更新图表范围:', beginValue, endValue); // 调试输出
+  
+  try {
+    // 强制重新绘制整个图表而不是尝试更新现有图表
+    // 这样可以确保所有内容都被正确重绘
+    
+    // 更新内部状态
+    xDomains.value.global = [beginValue, endValue];
+    if (originalDomains.value.global) {
+      originalDomains.value.global.x = [beginValue, endValue];
+    } else {
+      originalDomains.value.global = {
+        x: [beginValue, endValue],
+        y: [-1, 1]
+      };
+    }
+    
+    // 销毁现有图表
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      // 先记住当前的Y轴范围
+      const yMin = chart.yAxis[0].min;
+      const yMax = chart.yAxis[0].max;
+      
+      // 保存Y轴范围
+      if (originalDomains.value.global) {
+        originalDomains.value.global.y = [yMin, yMax];
+        console.log('保存当前Y轴范围:', yMin, yMax);
+      }
+      
+      // 完全销毁图表
+      chart.destroy();
+      
+      // 重新绘制图表（确保使用新的范围）
+      nextTick(() => {
+        drawCombinedChart(); // 这将使用更新后的范围重新绘制图表
+        
+        // 确保高亮区域也被重新绘制
+        nextTick(() => {
+          selectedChannels.value.forEach((channel) => {
+            const channelMatchedResults = matchedResults.value.filter(
+              (r) => r.channel_name === channel.channel_name
+            );
+            if (channelMatchedResults.length > 0) {
+              drawHighlightRects(channel.channel_name, channelMatchedResults);
+            }
+          });
+        });
+      });
+    }
+  } catch (err) {
+    console.error('更新图表范围时出错:', err);
+  }
+}, 300);
+
+// 监听 brush_begin 和 brush_end 的变化
+watch([brush_begin, brush_end], () => {
+  // 只有在图表已经加载并且渲染完成的情况下才应用范围更新
+  if (renderingStates.completed && channelsData.value.length > 0) {
+    updateChartRangeDebounced();
+  }
+});
 
 // 修改进度状态管理的部分
 const loadingStates = reactive({
@@ -419,7 +569,9 @@ const drawCombinedChart = () => {
   // 使用存储的 Y 轴范围或默认范围
   let yExtent;
   if (originalDomains.value.global && originalDomains.value.global.y) {
+    // 确保使用保存的Y轴范围，而不是重新计算
     yExtent = originalDomains.value.global.y;
+    console.log('使用保存的Y轴范围:', yExtent);
   } else {
     yExtent = [-1, 1]; // 默认归一化范围
     // 保存初始 Y 轴范围
@@ -431,19 +583,28 @@ const drawCombinedChart = () => {
     }
   }
 
-  const yRangePadding = (yExtent[1] - yExtent[0]) * 0.1;
-  const yMin = yExtent[0] - yRangePadding;
-  const yMax = yExtent[1] + yRangePadding;
+  // 使用保存的范围，不添加额外的padding
+  const yMin = yExtent[0];
+  const yMax = yExtent[1];
 
   // 准备 Highcharts 的数据系列
   const series = [];
   
   // 为每个通道创建数据系列
-  channelsData.value.forEach((data, index) => {
+  channelsData.value.forEach((data) => {
+    // 确保X和Y数组长度一致
+    if (data.X_value.length !== data.Y_value.length) {
+      console.warn(`Channel ${data.channelName} data arrays length mismatch: X=${data.X_value.length}, Y=${data.Y_value.length}`);
+      return;
+    }
+    
+    // 创建完整的数据点数组
+    const pointsData = data.X_value.map((x, i) => ([x, data.Y_value[i]]));
+    
     // 创建主线数据
     const mainLineSeries = {
       name: `${data.channelName}_${data.channelshotnumber}`,
-      data: data.X_value.map((x, i) => [x, data.Y_value[i]]),
+      data: pointsData,
       color: data.color,
       lineWidth: 1.5,
       opacity: smoothnessValue.value > 0 ? 0.3 : 1,
@@ -456,7 +617,9 @@ const drawCombinedChart = () => {
           lineWidthPlus: 0
         }
       },
-      enableMouseTracking: false
+      enableMouseTracking: false,
+      connectNulls: true, // 连接空值点
+      step: data.channelType === 'DIGITAL' ? 'left' : false // 对数字信号使用阶梯状连接
     };
     series.push(mainLineSeries);
 
@@ -465,9 +628,23 @@ const drawCombinedChart = () => {
       let smoothedYValue = data.Y_value;
       smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
       
+      // 确保平滑后的Y值数组长度与X值数组一致
+      if (smoothedYValue.length !== data.X_value.length) {
+        console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.X_value.length})`);
+        smoothedYValue = smoothedYValue.slice(0, data.X_value.length);
+        if (smoothedYValue.length < data.X_value.length) {
+          // 填充缺失值
+          while (smoothedYValue.length < data.X_value.length) {
+            smoothedYValue.push(smoothedYValue[smoothedYValue.length - 1] || 0);
+          }
+        }
+      }
+      
+      const smoothedPointsData = data.X_value.map((x, i) => ([x, smoothedYValue[i]]));
+      
       const smoothedLineSeries = {
         name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
-        data: data.X_value.map((x, i) => [x, smoothedYValue[i]]),
+        data: smoothedPointsData,
         color: data.color,
         lineWidth: 1.5,
         zIndex: 2,
@@ -479,7 +656,9 @@ const drawCombinedChart = () => {
             lineWidthPlus: 0
           }
         },
-        enableMouseTracking: false
+        connectNulls: true, // 连接空值点
+        enableMouseTracking: false,
+        step: data.channelType === 'DIGITAL' ? 'left' : false // 对数字信号使用阶梯状连接
       };
       series.push(smoothedLineSeries);
     }
@@ -580,6 +759,9 @@ const drawCombinedChart = () => {
       panning: true,
       panKey: 'shift',
       animation: false,
+      height: mainChartDimensions.value.height,
+      marginBottom: 80,
+      marginTop: 30,
       events: {
         selection: function(event) {
           if (event.resetSelection) {
@@ -607,8 +789,9 @@ const drawCombinedChart = () => {
               y: newYDomain
             };
 
-            // 重新绘制图表
-            drawCombinedChart();
+            // 更新视图范围但不重绘整个图表
+            this.xAxis[0].setExtremes(newXDomain[0], newXDomain[1], false);
+            this.yAxis[0].setExtremes(newYDomain[1], newYDomain[0], true);
 
             // 重新绘制高亮区域
             selectedChannels.value.forEach((channel) => {
@@ -621,6 +804,42 @@ const drawCombinedChart = () => {
             });
           }
           return false; // 阻止默认缩放行为
+        },
+        // 添加双击事件处理
+        click: function(event) {
+          // 检查是否是双击（计算两次点击之间的时间间隔）
+          const now = new Date().getTime();
+          const lastClick = this.lastClickTime || 0;
+          this.lastClickTime = now;
+          
+          if (now - lastClick < 300) { // 如果两次点击间隔小于300毫秒，认为是双击
+            if (brush_begin.value && brush_end.value) {
+              // 恢复到总览条的范围
+              const beginValue = parseFloat(brush_begin.value);
+              const endValue = parseFloat(brush_end.value);
+              
+              // 设置坐标轴范围
+              this.xAxis[0].setExtremes(beginValue, endValue);
+              this.yAxis[0].setExtremes(-1, 1);
+              
+              // 更新内部状态
+              xDomains.value.global = [beginValue, endValue];
+              originalDomains.value.global = {
+                x: [beginValue, endValue],
+                y: [-1, 1]
+              };
+              
+              // 重新绘制高亮区域
+              selectedChannels.value.forEach((channel) => {
+                const channelMatchedResults = matchedResults.value.filter(
+                  (r) => r.channel_name === channel.channel_name
+                );
+                if (channelMatchedResults.length > 0) {
+                  drawHighlightRects(channel.channel_name, channelMatchedResults);
+                }
+              });
+            }
+          }
         }
       }
     },
@@ -633,17 +852,28 @@ const drawCombinedChart = () => {
       title: {
         text: 'Time(s)',
         style: {
-          fontSize: '1.4em',
-          fontWeight: 'bold'
-        }
+          fontSize: '1.3em',
+          fontWeight: 'medium'
+        },
+        align: 'middle',
+        y: -15
       },
       gridLineWidth: 1,
       gridLineDashStyle: 'ShortDash',
       gridLineColor: '#ccc',
+      // 添加网格线设置，随缩放调整
+      tickAmount: 10, // 指定标记数量，确保缩放时网格适应
+      startOnTick: false,
+      endOnTick: false,
       labels: {
         style: {
           fontSize: '1.2em',
-          fontWeight: 'bold'
+          fontWeight: 'medium'
+        },
+        y: 25,
+        formatter: function() {
+          // 格式化X轴标签，避免过多小数位
+          return this.value.toFixed(2);
         }
       }
     },
@@ -651,22 +881,27 @@ const drawCombinedChart = () => {
       min: yMin,
       max: yMax,
       title: {
-        text: 'normalization',
+        text: 'Normalization',
         style: {
           fontSize: '1.4em',
-          fontWeight: 'bold'
+          fontWeight: 'medium'
         }
       },
       gridLineWidth: 1,
       gridLineDashStyle: 'ShortDash',
       gridLineColor: '#ccc',
+      // 添加网格线设置，随缩放调整
+      tickAmount: 8, // 指定Y轴标记数量
+      startOnTick: false,
+      endOnTick: false,
       labels: {
         style: {
           fontSize: '1em',
-          fontWeight: 'bold'
+          fontWeight: 'medium'
         },
         formatter: function() {
-          return (this.value >= -1 && this.value <= 1) ? this.value : '';
+          // 限制小数位数为3位，避免布局问题
+          return (this.value >= -2 && this.value <= 2) ? this.value.toFixed(3) : '';
         }
       }
     },
@@ -679,10 +914,35 @@ const drawCombinedChart = () => {
     plotOptions: {
       series: {
         animation: false,
+        turboThreshold: 0, // 禁用数据量的限制（默认为1000点）
         states: {
           inactive: {
             opacity: 1
+          },
+          hover: {
+            enabled: false // 禁用悬停状态，避免渲染问题
           }
+        },
+        point: {
+          events: {
+            click: null // 禁用点上的单击事件，避免干扰双击检测
+          }
+        },
+        stickyTracking: false, // 禁用粘性跟踪，减少事件冲突
+        boostThreshold: 5000, // 提高性能阈值，确保大量数据点时的性能
+        connectNulls: true, // 全局设置连接空值点
+        dataGrouping: {
+          enabled: false // 禁用数据分组，确保所有点都被绘制
+        },
+        gapSize: 0, // 禁用间隙大小，确保所有点连接
+        cropThreshold: 100000, // 提高裁剪阈值，避免缩放时数据点被跳过
+        findNearestPointBy: 'x' // 按X轴查找最近点，提高连接精度
+      },
+      line: {
+        lineWidth: 1.5, // 全局线宽设置
+        connectNulls: true, // 连接空值点
+        marker: {
+          enabled: false // 禁用标记点
         }
       }
     },
@@ -702,6 +962,18 @@ const drawCombinedChart = () => {
     );
     if (channelMatchedResults.length > 0) {
       drawHighlightRects(channel.channel_name, channelMatchedResults);
+    }
+  });
+  
+  // 确保图表高度正确
+  nextTick(() => {
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      // 手动设置图表大小
+      chart.setSize(
+        mainChartDimensions.value.width,
+        mainChartDimensions.value.height
+      );
     }
   });
 };
@@ -755,21 +1027,62 @@ const processChannelData = async (data, channel) => {
         processedData.processedData.Y_value.map(() => 0) :
         processedData.processedData.Y_value.map(y => y / yAbsMax);
 
-      // 更新图表数据
-      channelsData.value.push({
-        channelName: channel.channel_name,
-        channelshotnumber: channel.shot_number,
-        X_value: processedData.processedData.X_value,
-        Y_value: normalizedY,
-        Y_original: processedData.processedData.Y_value,
-        color: channel.color,
-        errorsData: errorDataResults,  // 添加错误数据
-        xUnit: data.X_unit,
-        yUnit: data.Y_unit,
-        channelType: data.channel_type,
-        channelNumber: data.channel_number,
-        shotNumber: channel.shot_number
-      });
+      // 对于数字信号，确保值只有0和1，避免中间值
+      let finalY = normalizedY;
+      if (data.channel_type === 'DIGITAL') {
+        finalY = normalizedY.map(y => y > 0.5 ? 1 : 0);
+        
+        // 为数字信号添加额外的点，确保方波形状
+        const enhancedX = [];
+        const enhancedY = [];
+        const xValues = processedData.processedData.X_value;
+        
+        for (let i = 0; i < xValues.length; i++) {
+          if (i > 0) {
+            // 如果当前点与前一点的值不同，添加一个过渡点
+            if (finalY[i] !== finalY[i-1]) {
+              // 在两点之间添加一个极小偏移的点，确保垂直线段
+              const transitionX = xValues[i] - 0.0000001;
+              enhancedX.push(transitionX);
+              enhancedY.push(finalY[i-1]); // 使用前一点的值
+            }
+          }
+          enhancedX.push(xValues[i]);
+          enhancedY.push(finalY[i]);
+        }
+        
+        // 更新图表数据
+        channelsData.value.push({
+          channelName: channel.channel_name,
+          channelshotnumber: channel.shot_number,
+          X_value: enhancedX,
+          Y_value: enhancedY,
+          Y_original: processedData.processedData.Y_value,
+          color: channel.color,
+          errorsData: errorDataResults,
+          xUnit: data.X_unit,
+          yUnit: data.Y_unit,
+          channelType: data.channel_type,
+          channelNumber: data.channel_number,
+          shotNumber: channel.shot_number
+        });
+      } else {
+        // 对于非数字信号，使用原始归一化值
+        channelsData.value.push({
+          channelName: channel.channel_name,
+          channelshotnumber: channel.shot_number,
+          X_value: processedData.processedData.X_value,
+          Y_value: finalY,
+          Y_original: processedData.processedData.Y_value,
+          color: channel.color,
+          errorsData: errorDataResults,
+          xUnit: data.X_unit,
+          yUnit: data.Y_unit,
+          channelType: data.channel_type,
+          channelNumber: data.channel_number,
+          shotNumber: channel.shot_number
+        });
+      }
 
       // 更新导出数据
       exposeData.value.push({
@@ -786,7 +1099,16 @@ const processChannelData = async (data, channel) => {
       renderingStates[channelKey] = 75; // 更新渲染状态
       nextTick(() => {
         try {
-          drawCombinedChart();
+          // 先检查是否已经有图表实例
+          const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+          if (chart) {
+            // 如果有实例，更新现有图表
+            chart.reflow();
+            calculateChartHeight(); // 确保高度正确
+          } else {
+            // 否则绘制新图表
+            drawCombinedChart();
+          }
           renderingStates[channelKey] = 100;
         } catch (error) {
           console.error(`Error drawing chart for ${channelKey}:`, error);
@@ -802,51 +1124,8 @@ const processChannelData = async (data, channel) => {
   }
 };
 
-// 计算图表高度的函数
-const calculateChartHeight = () => {
-  // 获取视窗高度
-  const viewportHeight = window.innerHeight;
-  // 总览条高度，从OverviewBrush.vue可知约为110px
-  const overviewBrushHeight = 200;
-  // 为页面其他元素预留空间（头部、边距等）
-  const otherElementsHeight = 280; // 根据实际情况调整
-  
-  // 计算图表可用高度，确保留出足够空间给总览条
-  const availableHeight = viewportHeight - otherElementsHeight - overviewBrushHeight;
-  
-  // 设置图表高度，减去上下边距
-  mainChartDimensions.value.height = Math.max(300, availableHeight) - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
-};
-
-// 添加窗口大小变化的处理函数
-const handleResize = debounce(() => {
-  // 重新计算图表高度
-  calculateChartHeight();
-  
-  const container = document.querySelector('.chart-container');
-  if (container) {
-    const containerWidth = container.offsetWidth;
-    mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right;
-  }
-  
-  if (channelsData.value && channelsData.value.length > 0) {
-    // 获取当前图表实例
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (chart) {
-      chart.reflow(); // 让 Highcharts 自动调整大小
-    } else {
-      drawCombinedChart(); // 如果图表不存在，重新绘制
-    }
-  }
-}, 200);
-
 // 在 script setup 部分添加原始域存储
 const originalDomains = ref({}); // 存储原始的显示范围
-
-// 在组件卸载时终止 Worker
-onUnmounted(() => {
-  chartWorkerManager.terminate();
-});
 </script>
 
 
@@ -860,12 +1139,17 @@ onUnmounted(() => {
   width: 98.8%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start; /* 改为从顶部开始 */
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
 }
 
 .chart-wrapper {
@@ -873,8 +1157,10 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  height: calc(100% - 40px);
   position: relative;
+  overflow: hidden;
+  margin-top: 5px; /* 减少顶部空白 */
 }
 
 #combined-chart {
@@ -885,14 +1171,15 @@ onUnmounted(() => {
 
 .legend-container {
   position: absolute;
-  top: 60px;
-  right: 50px;
+  top: 40px;
+  right: 30px;
   z-index: 999;
   min-width: 100px;
   max-width: 200px;
 }
 
 .progress-wrapper {
+  z-index: 999;
   margin: 5px 0;
   padding: 0 10px;
 }
