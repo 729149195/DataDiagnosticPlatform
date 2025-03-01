@@ -82,6 +82,11 @@ const handleResize = debounce(() => {
         if (chart) {
           // 恢复刷选区域
           chart.xAxis[0].setExtremes(currentExtreme.min, currentExtreme.max);
+          
+          // 确保导航器也显示相同的选择范围
+          if (chart.navigator) {
+            chart.navigator.render();
+          }
         }
       });
     }
@@ -294,11 +299,11 @@ const renderChart = () => {
   // 创建Highcharts图表
   chartInstance.value = Highcharts.chart('overview-chart', {
     chart: {
-      height: 60,
+      height: 80,
       marginLeft: 20,
       marginRight: 20,
       marginTop: 10,
-      marginBottom: 30,
+      marginBottom: 20,
       animation: false,
       zoomType: 'x',
       events: {
@@ -345,9 +350,43 @@ const renderChart = () => {
       lineColor: '#999',
       tickColor: '#999',
       labels: {
+        align: 'center',
+        y: 15,
         style: {
           fontSize: '10px',
           fontWeight: 'bold'
+        }
+      },
+      tickLength: 3,
+      tickPosition: 'inside',
+      events: {
+        afterSetExtremes: function(e) {
+          if (updatingBrush.value) return; // 避免循环调用
+          
+          updatingBrush.value = true;
+          const min = e.min;
+          const max = e.max;
+          
+          // 更新输入框
+          brush_begin.value = min.toFixed(4);
+          brush_end.value = max.toFixed(4);
+          
+          // 更新store
+          store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
+          
+          // 更新所有通道的domain
+          selectedChannels.value.forEach(channel => {
+            const channelName = `${channel.channel_name}_${channel.shot_number}`;
+            store.dispatch('updateDomains', {
+              channelName,
+              xDomain: [min, max],
+              yDomain: domains.value.y[channelName]
+            });
+          });
+          
+          // 更新极值
+          extremes.value = { min, max };
+          updatingBrush.value = false;
         }
       }
     },
@@ -372,6 +411,39 @@ const renderChart = () => {
         }
       }
     },
+    // 添加导航器（划选框）
+    navigator: {
+      enabled: true,
+      height: 20,
+      margin: 5,
+      outlineWidth: 1,
+      outlineColor: '#606266',
+      maskFill: 'rgba(64, 158, 255, 0.2)',
+      handles: {
+        backgroundColor: '#fff',
+        borderColor: '#409EFF',
+        lineWidth: 1,
+        height: 16,
+        width: 8
+      },
+      series: {
+        type: 'line',
+        color: '#606266',
+        lineWidth: 1,
+        fillOpacity: 0
+      },
+      xAxis: {
+        labels: {
+          enabled: false
+        },
+        tickWidth: 0,
+        lineWidth: 0
+      }
+    },
+    // 可以禁用滚动条，因为导航器已经提供了类似功能
+    scrollbar: {
+      enabled: false
+    },
     series: series,
     credits: {
       enabled: false
@@ -394,6 +466,26 @@ const renderChart = () => {
   
   // 保存初始极值
   extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
+  
+  // 确保导航器默认显示全范围
+  if (chartInstance.value && chartInstance.value.navigator) {
+    nextTick(() => {
+      // 初始时确保导航器选中区域为整个数据范围
+      chartInstance.value.xAxis[0].setExtremes(xMin, xMax);
+      
+      // 设置导航器选中范围为当前显示的数据范围
+      if (chartInstance.value.navigator.baseSeries) {
+        chartInstance.value.navigator.baseSeries.update({
+          navigatorOptions: {
+            adaptToUpdatedData: false
+          }
+        }, false);
+      }
+      
+      // 刷新图表
+      chartInstance.value.redraw();
+    });
+  }
 };
 
 // 处理输入框
@@ -447,21 +539,13 @@ const handleInputBlur = (type) => {
   // 更新 store 中的值
   store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
 
-  // 更新图表的极值
+  // 更新图表的极值（会触发 afterSetExtremes 事件）
   updatingBrush.value = true;
   chart.xAxis[0].setExtremes(start, end);
   extremes.value = { min: start, max: end };
   updatingBrush.value = false;
 
-  // 更新所有通道的 domain
-  selectedChannels.value.forEach((channel) => {
-    const channelName = `${channel.channel_name}_${channel.shot_number}`;
-    store.dispatch('updateDomains', {
-      channelName,
-      xDomain: [start, end],
-      yDomain: domains.value.y[channelName]
-    });
-  });
+  // 此处无需再手动更新通道的domain，因为会通过afterSetExtremes事件自动处理
 };
 </script>
 
@@ -471,7 +555,8 @@ const handleInputBlur = (type) => {
   position: absolute;
   bottom: -18px;
   background-color: white;
-  min-height: 110px;
+  min-height: 130px; /* 增加高度以容纳导航器 */
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.05);
 }
 
 .overview-content {
@@ -481,16 +566,19 @@ const handleInputBlur = (type) => {
   display: flex;
   gap: 5px;
   align-items: center;
+  padding: 0 5px;
 }
 
 .overview-svg-container {
   flex: 1;
   min-width: 0;
   position: relative;
-  height: 60px;
+  height: 80px; /* 增加高度以容纳导航器 */
   border: 1px solid #e0e0e0;
+  border-radius: 3px;
   background-color: #ffffff;
   overflow: visible;
+  box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.05);
 }
 
 .overview-chart {
@@ -549,5 +637,43 @@ const handleInputBlur = (type) => {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
+}
+
+/* 为滑块添加样式 */
+:deep(.highcharts-scrollbar-thumb) {
+  fill: #909399;
+  stroke: #606266;
+  rx: 8px;
+  ry: 8px;
+}
+
+:deep(.highcharts-scrollbar-arrow) {
+  fill: #606266;
+}
+
+:deep(.highcharts-scrollbar-track) {
+  fill: #f0f2f5;
+  stroke: #e4e7ed;
+  rx: 8px;
+  ry: 8px;
+}
+
+/* 为导航器添加样式 */
+:deep(.highcharts-navigator-series) {
+  fill: transparent;
+}
+
+:deep(.highcharts-navigator-mask) {
+  fill: rgba(64, 158, 255, 0.2);
+}
+
+:deep(.highcharts-navigator-handle) {
+  fill: #fff;
+  stroke: #909399;
+}
+
+:deep(.highcharts-navigator-outline) {
+  stroke: #606266;
+  stroke-width: 1px;
 }
 </style> 
