@@ -575,7 +575,3 @@ const getCategoryExplanation = (category) => {
     color: deeppink;
   }
 </style>
-
-    color: deeppink;
-  }
-</style>
