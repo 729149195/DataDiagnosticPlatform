@@ -66,7 +66,7 @@ defineExpose({
 const mainChartDimensions = ref({
   margin: { top: 50, right: 20, bottom: 60, left: 80 },
   width: 0,
-  height: 500 - 50 - 60, // 调整主图表高度
+  height: 0, // 将会动态计算
 });
 
 // Vuex store
@@ -196,6 +196,9 @@ const renderCharts = debounce(async () => {
 onMounted(async () => {
   const container = document.querySelector('.chart-container');
   const containerWidth = container.offsetWidth;
+  
+  // 计算适当的图表高度
+  calculateChartHeight();
 
   mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right;
 
@@ -866,8 +869,33 @@ const processChannelData = async (data, channel) => {
   }
 };
 
+// 计算图表高度的函数
+const calculateChartHeight = () => {
+  // 获取视窗高度
+  const viewportHeight = window.innerHeight;
+  // 总览条高度，从OverviewBrush.vue可知约为110px
+  const overviewBrushHeight = 200;
+  // 为页面其他元素预留空间（头部、边距等）
+  const otherElementsHeight = 280; // 根据实际情况调整
+  
+  // 计算图表可用高度，确保留出足够空间给总览条
+  const availableHeight = viewportHeight - otherElementsHeight - overviewBrushHeight;
+  
+  // 设置图表高度，减去上下边距
+  mainChartDimensions.value.height = Math.max(300, availableHeight) - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
+};
+
 // 添加窗口大小变化的处理函数
 const handleResize = debounce(() => {
+  // 重新计算图表高度
+  calculateChartHeight();
+  
+  const container = document.querySelector('.chart-container');
+  if (container) {
+    const containerWidth = container.offsetWidth;
+    mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right;
+  }
+  
   if (channelsData.value && channelsData.value.length > 0) {
     drawCombinedChart();
   }
@@ -898,6 +926,7 @@ onUnmounted(() => {
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  height: 100%;
 }
 
 .chart-wrapper {
@@ -905,10 +934,13 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;
+  position: relative;
 }
 
 svg {
   width: 100%;
+  height: 100%;
   position: relative;
 }
 

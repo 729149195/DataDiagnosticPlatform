@@ -3,7 +3,7 @@ import { createStore } from "vuex";
 import { reactive, ref } from "vue";
 import colors from "./color.json"; // 导入 color.json 文件
 import axios from "axios";
-import { CacheFactory } from 'cachefactory';
+import { CacheFactory } from "cachefactory";
 
 // 定义一个映射，用于存储每个 channel_key 分配的颜色
 const channelColorMap = new Map();
@@ -11,12 +11,12 @@ let colorIndex = 0;
 
 // 缓存工厂配置
 const cacheFactory = new CacheFactory();
-const dataCache = cacheFactory.createCache('channelData', {
+const dataCache = cacheFactory.createCache("channelData", {
   maxEntries: 200, // 最大缓存条目数
   maxAge: 60 * 60 * 1000, // 30分钟
-  deleteOnExpire: 'aggressive',
-  storageMode: 'memory', // 纯内存存储
-  recycleFreq: 60 * 1000 // 内存回收频率
+  deleteOnExpire: "aggressive",
+  storageMode: "memory", // 纯内存存储
+  recycleFreq: 60 * 1000, // 内存回收频率
 });
 
 const store = createStore({
@@ -41,8 +41,8 @@ const store = createStore({
         // 仅存储缓存元数据
         getCacheInfo: () => ({
           size: dataCache.info().size,
-          keys: dataCache.keys()
-        })
+          keys: dataCache.keys(),
+        }),
       }),
       xDomains: {},
       yDomains: {},
@@ -56,12 +56,12 @@ const store = createStore({
       lower_bound: -2.4,
       isBoxSelect: true,
       previousBoxSelectState: true,
-      rawData: [], 
-      displayedData: [], 
-      pageSize: 15, 
-      currentPage: 1, 
-      hasMoreData: true, 
-      userMessage: "", 
+      rawData: [],
+      displayedData: [],
+      pageSize: 15,
+      currentPage: 1,
+      hasMoreData: true,
+      userMessage: "",
     };
   },
   getters: {
@@ -317,14 +317,14 @@ const store = createStore({
       // 保存当前选中状态
       const selectedStates = new Map();
       if (state.displayedData) {
-        state.displayedData.forEach(item => {
+        state.displayedData.forEach((item) => {
           if (item.channels) {
-            item.channels.forEach(channel => {
+            item.channels.forEach((channel) => {
               const key = `${channel.channel_name}_${channel.shot_number}`;
               selectedStates.set(key, {
                 channelChecked: channel.checked,
                 typeChecked: item.checked,
-                showAllErrors: channel.showAllErrors
+                showAllErrors: channel.showAllErrors,
               });
             });
           }
@@ -333,12 +333,12 @@ const store = createStore({
 
       // 更新数据
       state.rawData = data;
-      
+
       // 恢复选中状态
       if (state.displayedData) {
-        state.displayedData.forEach(item => {
+        state.displayedData.forEach((item) => {
           if (item.channels) {
-            item.channels.forEach(channel => {
+            item.channels.forEach((channel) => {
               const key = `${channel.channel_name}_${channel.shot_number}`;
               const savedState = selectedStates.get(key);
               if (savedState) {
@@ -361,20 +361,20 @@ const store = createStore({
       const safeData = {
         X_value: data?.X_value || [],
         Y_value: data?.Y_value || [],
-        ...data
+        ...data,
       };
-      
+
       dataCache.put(channelKey, {
         data: reactive(safeData),
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     },
     clearChannelDataCache(state) {
       dataCache.removeAll();
     },
     clearAnomalies(state) {
-      state.anomalies = {};  // 清空 anomalies 对象
-    }
+      state.anomalies = {}; // 清空 anomalies 对象
+    },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, indices = []) {
@@ -386,51 +386,54 @@ const store = createStore({
         }
         const response = await fetch(url);
         const rawData = await response.json();
-        
+
         commit("setRawData", rawData);
         commit("setHasMoreData", true);
         commit("setDisplayedData", []);
         commit("setCurrentPage", 1);
-        
+
         // 初始化显示第一页数据
         await dispatch("loadMoreData", true);
       } catch (error) {
         console.error("Failed to fetch data:", error);
       }
     },
-    
+
     async loadMoreData({ state, commit }, isInitial = false) {
       if (!state.hasMoreData && !isInitial) return;
-      
+
       if (isInitial) {
         commit("setDisplayedData", []);
         commit("setCurrentPage", 1);
         commit("setHasMoreData", true);
       }
-      
+
       const startIndex = (state.currentPage - 1) * state.pageSize;
       const endIndex = startIndex + state.pageSize;
       const newData = state.rawData.slice(startIndex, endIndex);
-      
+
       if (newData.length === 0) {
         commit("setHasMoreData", false);
         return;
       }
-      
+
       // 处理新数据
       const processedNewData = processData(newData);
-      
+
       // 合并数据
       let updatedData;
       if (isInitial) {
         updatedData = processedNewData;
       } else {
-        updatedData = mergeChannelTypeData(state.displayedData, processedNewData);
+        updatedData = mergeChannelTypeData(
+          state.displayedData,
+          processedNewData
+        );
       }
-        
+
       commit("setDisplayedData", updatedData);
       commit("incrementPage");
-      
+
       // 检查是否还有更多数据
       commit("setHasMoreData", endIndex < state.rawData.length);
     },
@@ -459,35 +462,37 @@ const store = createStore({
       commit("clearMatchedResults");
     },
     updateTimeBegin({ commit }, value) {
-      commit('updateTimeBegin', value);
+      commit("updateTimeBegin", value);
     },
     updateTimeDuring({ commit }, value) {
-      commit('updateTimeDuring', value);
+      commit("updateTimeDuring", value);
     },
     updateTimeEnd({ commit }, value) {
-      commit('updateTimeEnd', value);
+      commit("updateTimeEnd", value);
     },
     updateUpperBound({ commit }, value) {
-      commit('updateUpperBound', value);
+      commit("updateUpperBound", value);
     },
     updateScopeBound({ commit }, value) {
-      commit('updateScopeBound', value);
+      commit("updateScopeBound", value);
     },
     updateLowerBound({ commit }, value) {
-      commit('updateLowerBound', value);
+      commit("updateLowerBound", value);
     },
     updateIsBoxSelect({ commit }, value) {
-      commit('updateIsBoxSelect', value);
+      commit("updateIsBoxSelect", value);
     },
     updateDomains({ commit }, payload) {
-      commit('updateDomains', payload);
+      commit("updateDomains", payload);
     },
     updatePreviousBoxSelectState({ commit }, value) {
-      commit('UPDATE_PREVIOUS_BOX_SELECT_STATE', value);
+      commit("UPDATE_PREVIOUS_BOX_SELECT_STATE", value);
     },
     async refreshStructTreeData({ commit, dispatch }) {
       try {
-        const response = await fetch("https://10.1.108.19:5000/api/struct-tree");
+        const response = await fetch(
+          "https://10.1.108.19:5000/api/struct-tree"
+        );
         const data = await response.json();
         commit("refreshStructTree", data);
         await dispatch("loadMoreData", true);
@@ -495,9 +500,12 @@ const store = createStore({
         console.error("Failed to refresh data:", error);
       }
     },
-    async fetchChannelData({ state, commit }, { channel, forceRefresh = false }) {
+    async fetchChannelData(
+      { state, commit },
+      { channel, forceRefresh = false }
+    ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      
+
       // 使用缓存工厂检查数据
       const cached = dataCache.get(channelKey);
       if (!forceRefresh && cached && Date.now() - cached.timestamp < 300000) {
@@ -506,22 +514,27 @@ const store = createStore({
 
       const params = {
         channel_key: channelKey,
-        channel_type: channel.channel_type
+        channel_type: channel.channel_type,
       };
 
-      const response = await axios.get(`https://10.1.108.19:5000/api/channel-data/`, { params });
+      const response = await axios.get(
+        `https://10.1.108.19:5000/api/channel-data/`,
+        { params }
+      );
       const data = response.data;
 
       // 计算原始采样频率
-      const timeRange = Math.abs(data.X_value[data.X_value.length - 1] - data.X_value[0]);
+      const timeRange = Math.abs(
+        data.X_value[data.X_value.length - 1] - data.X_value[0]
+      );
       data.originalFrequency = data.X_value.length / timeRange / 1000;
       data.originalDataPoints = data.X_value.length;
 
       // 存入缓存
-      commit('updateChannelDataCache', { channelKey, data });
+      commit("updateChannelDataCache", { channelKey, data });
       return data;
     },
-    
+
     // 添加获取所有错误数据的 action
     async fetchAllErrorData({ state }, channel) {
       try {
@@ -548,28 +561,33 @@ const store = createStore({
               channel_key: channelKey,
               channel_type: channel.channel_type,
               error_name: error.error_name,
-              error_index: errorIndex
+              error_index: errorIndex,
             };
 
             // 发送请求获取错误数据
             const response = await fetch(
-              `https://10.1.108.19:5000/api/error-data/?${new URLSearchParams(params).toString()}`
+              `https://10.1.108.19:5000/api/error-data/?${new URLSearchParams(
+                params
+              ).toString()}`
             );
-            
+
             if (!response.ok) {
               throw new Error(`HTTP error! status: ${response.status}`);
             }
-            
+
             const errorData = await response.json();
 
             // 将数据存入缓存
             dataCache.put(errorCacheKey, {
               data: reactive(errorData),
-              timestamp: Date.now()
+              timestamp: Date.now(),
             });
             errorResults.push(errorData);
           } catch (err) {
-            console.warn(`Failed to fetch error data for ${error.error_name}:`, err);
+            console.warn(
+              `Failed to fetch error data for ${error.error_name}:`,
+              err
+            );
             // 继续处理下一个错误，而不是中断整个过程
             continue;
           }
@@ -577,44 +595,46 @@ const store = createStore({
 
         return errorResults;
       } catch (error) {
-        console.error('Error fetching all error data:', error);
+        console.error("Error fetching all error data:", error);
         throw error;
       }
-    }
+    },
   },
 });
 
 // 添加新的合并函数
 function mergeChannelTypeData(existingData, newData) {
   const mergedMap = new Map();
-  
+
   // 首先处理现有数据
-  existingData.forEach(item => {
+  existingData.forEach((item) => {
     mergedMap.set(item.channel_type, item);
   });
-  
+
   // 合并新数据
-  newData.forEach(newItem => {
+  newData.forEach((newItem) => {
     if (mergedMap.has(newItem.channel_type)) {
       // 如果已存在该通道类型，合并channels
       const existingItem = mergedMap.get(newItem.channel_type);
-      newItem.channels.forEach(newChannel => {
+      newItem.channels.forEach((newChannel) => {
         // 检查是否已存在相同的channel
         const existingChannel = existingItem.channels.find(
-          ch => ch.channel_key === newChannel.channel_key
+          (ch) => ch.channel_key === newChannel.channel_key
         );
         if (!existingChannel) {
           existingItem.channels.push(newChannel);
         }
       });
       // 更新通道类型的选中状态
-      existingItem.checked = existingItem.channels.every(channel => channel.checked);
+      existingItem.checked = existingItem.channels.every(
+        (channel) => channel.checked
+      );
     } else {
       // 如果是新的通道类型，直接添加
       mergedMap.set(newItem.channel_type, newItem);
     }
   });
-  
+
   // 转换回数组并返回
   return Array.from(mergedMap.values());
 }
@@ -625,14 +645,17 @@ function processData(rawData) {
 
   // 获取当前选中的通道
   const selectedChannelKeys = new Set(
-    store.state.selectedChannels.map(channel => channel.channel_key)
+    store.state.selectedChannels.map((channel) => channel.channel_key)
   );
 
   rawData.forEach((item) => {
     const channelType = item.channel_type;
     const channelName = item.channel_name;
     const shotNumber = item.shot_number;
-    const errorNames = item.error_name && item.error_name.length > 0 ? item.error_name : ["NO ERROR"];
+    const errorNames =
+      item.error_name && item.error_name.length > 0
+        ? item.error_name
+        : ["NO ERROR"];
 
     const channelKey = `${channelName}_${shotNumber}`;
 
@@ -683,12 +706,15 @@ function processData(rawData) {
 
     // 清空之前的错误
     channelEntry.errors = [];
-    
+
     // 处理错误
     errorNames.forEach((errorName) => {
       const error = {
         error_name: errorName,
-        color: errorName === "NO ERROR" ? 'rgba(0, 0, 0, 0)' : 'rgba(220, 20, 60, 0.3)',
+        color:
+          errorName === "NO ERROR"
+            ? "rgba(0, 0, 0, 0)"
+            : "rgba(220, 20, 60, 0.3)",
       };
       channelEntry.errors.push(error);
     });
@@ -698,9 +724,9 @@ function processData(rawData) {
   });
 
   // 更新通道类型的选中状态
-  groupedData.forEach(item => {
+  groupedData.forEach((item) => {
     if (item.channels.length > 0) {
-      item.checked = item.channels.every(channel => channel.checked);
+      item.checked = item.channels.every((channel) => channel.checked);
     }
   });
 

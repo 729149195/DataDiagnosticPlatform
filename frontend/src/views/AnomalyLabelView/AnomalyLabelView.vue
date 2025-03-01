@@ -123,19 +123,29 @@
                   </el-dropdown>
                 </span>
               </span>
-              <div style=" height: 100%; position: relative;">
-                <el-scrollbar height="58vh" :always="false">
-                  <div v-if="test_channel_number === true">
-                    <SingleChannelMultiRow v-if="selectedChannels.length > 0"/>
+              <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
+                <el-scrollbar :height="isSecondSectionCollapsed ? '80vh' : '58vh'" :always="false">
+                  <div v-show="test_channel_number === true">
+                    <SingleChannelMultiRow v-show="selectedChannels.length > 0"/>
                   </div>
                   <div v-show="test_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
-                <!-- <OverviewBrush /> -->
+                  <OverviewBrush />
               </div>
             </el-card>
-            <div class="two">
+
+            <div class="arc-toggle-container">
+              <div class="arc-toggle" @click="toggleCollapse">
+                <el-icon class="arc-toggle-icon">
+                  <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
+                </el-icon>
+                <span class="arc-toggle-text">{{ isSecondSectionCollapsed ? '展开查询和识别结果' : '收起' }}</span>
+              </div>
+            </div>
+
+            <div class="two" v-show="!isSecondSectionCollapsed" v-if="selectedButton === 'anay'">
               <el-card class="two_left" shadow="never">
                 <Sketch :key="selectedButton" />
               </el-card>
@@ -204,7 +214,7 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
-import { FolderChecked, Upload, User, SwitchButton } from '@element-plus/icons-vue'
+import { FolderChecked, Upload, User, SwitchButton, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import html2canvas from 'html2canvas';
 import { ElMessage } from 'element-plus'
 // 颜色配置及通道选取组件
@@ -231,6 +241,7 @@ const store = useStore()
 const router = useRouter()
 const sampling = ref(1)
 const smoothness = ref(0)
+const isSecondSectionCollapsed = ref(true) // 默认为折叠状态
 
 const person = computed(() => store.state.person);
 const authority = computed(() => store.state.authority);
@@ -586,6 +597,10 @@ const handleResultExportCommand = (command) => {
     exportResultData();
   }
 }
+
+const toggleCollapse = () => {
+  isSecondSectionCollapsed.value = !isSecondSectionCollapsed.value
+}
 </script>
 
 
@@ -747,7 +762,7 @@ const handleResultExportCommand = (command) => {
 }
 
 .aside {
-  width: 20vw;
+  width: 23vw;
   background-color: #e9e9e9;
   height: 95vh;
   padding: 5px;
@@ -826,26 +841,87 @@ const handleResultExportCommand = (command) => {
   height: 100%;
 
   .data_exploration {
-    margin-bottom: 5px;
+    margin-bottom: 0;
     width: 100%;
     height: 100%;
     flex: 2.1;
+    position: relative;
+  }
+
+  .collapse-control {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 2px 0;
+    
+    .collapse-btn {
+      padding: 2px 8px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      color: #909399;
+      height: 24px;
+      
+      &:hover {
+        color: #409EFF;
+      }
+      
+      .el-icon {
+        margin-right: 2px;
+        font-size: 12px;
+      }
+      
+      .collapse-text {
+        font-size: 12px;
+      }
+    }
+  }
+  
+  .collapse-bookmark {
+    position: absolute;
+    bottom: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    
+    .bookmark-btn {
+      width: 24px;
+      height: 16px;
+      padding: 0;
+      border-radius: 0 0 4px 4px;
+      background-color: #f2f6fc;
+      border: 1px solid #dcdfe6;
+      border-top: none;
+      box-shadow: 0 2px 2px rgba(0, 0, 0, 0.05);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      
+      &:hover {
+        background-color: #ecf5ff;
+        color: #409EFF;
+      }
+      
+      .el-icon {
+        font-size: 12px;
+        margin: 0;
+      }
+    }
   }
 
   .two {
+    margin-top: 0;
     display: flex;
     flex: 1;
     flex-grow: 1;
     gap: 5px;
     position: relative;
-
+    transition: all 0.3s ease;
   }
 
   .two_left {
     flex: 1;
     position: relative;
     width: 100%;
-
   }
 
   .two_right {
@@ -854,7 +930,6 @@ const handleResultExportCommand = (command) => {
     width: 70%;
     height: 100%;
   }
-
 }
 
 .channel_main {
@@ -934,5 +1009,49 @@ const handleResultExportCommand = (command) => {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
+}
+
+.arc-toggle-container {
+  position: relative;
+  display: flex;
+  justify-content: start;
+  height: 0;
+  z-index: 999;
+}
+
+.arc-toggle {
+  position: absolute;
+  top: -100px;
+  padding: 3px 20px 5px 20px;
+  background-color: #f2f6fc;
+  border: 1px solid #dcdfe6;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  border-top: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  min-width: 100px;  /* 添加固定最小宽度 */
+  
+  &:hover {
+    background-color: #ecf5ff;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
+    transform: translateY(1px);
+  }
+  
+  .arc-toggle-icon {
+    margin-right: 4px;
+    font-size: 14px;
+    color: #409EFF;
+  }
+  
+  .arc-toggle-text {
+    font-size: 12px;
+    color: #606266;
+    white-space: nowrap; /* 防止文本换行 */
+  }
 }
 </style>
