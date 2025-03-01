@@ -12,7 +12,7 @@
           <el-icon class="loading-icon"><Loading /></el-icon>
           <span>加载中...</span>
         </div>
-        <svg id="overview-chart" class="overview-svg"></svg>
+        <div id="overview-chart" class="overview-chart"></div>
       </div>
       <span class="brush-controls-right">
         <el-tag type="info">总览条终点</el-tag>
@@ -26,7 +26,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import * as d3 from 'd3';
+import * as Highcharts from 'highcharts';
 import debounce from 'lodash/debounce';
 import { ElMessage } from 'element-plus';
 import { Loading } from '@element-plus/icons-vue';
@@ -36,16 +36,14 @@ const chartContainer = ref(null);
 
 // 响应式引用
 const overviewData = ref([]);
-const overviewBrushInstance = ref(null);
-const overviewXScale = ref(null);
+const chartInstance = ref(null);
 const updatingBrush = ref(false);
-const brushSelections = ref({ overview: null });
 const originalDomains = ref({});
 const renderCount = ref(0);
 const initialDataLoaded = ref(false);
 const isLoading = ref(false);
 const retryCount = ref(0);
-
+const extremes = ref(null);
 
 // 追加一个强制渲染标志，用于确保至少绘制一次
 const forceRender = ref(false);
@@ -72,20 +70,18 @@ const domains = computed(() => ({
 const handleResize = debounce(() => {
   if (overviewData.value && overviewData.value.length > 0) {
     // 记住当前的刷选状态
-    const currentBrushExtent = brushSelections.value.overview;
-    const preserveCurrentSelection = currentBrushExtent && overviewXScale.value;
+    const currentExtreme = extremes.value;
     
     // 重新渲染图表
     renderChart();
     
-    // 如果原来有滑动块选择但没有应用，重新设置
-    if (preserveCurrentSelection) {
+    // 如果原来有滑动块选择，重新设置
+    if (currentExtreme && chartInstance.value) {
       nextTick(() => {
-        const brush = overviewBrushInstance.value;
-        const x = overviewXScale.value;
-        if (brush && x) {
+        const chart = chartInstance.value;
+        if (chart) {
           // 恢复刷选区域
-          d3.select('#overview-chart').select('.brush').call(brush.move, currentBrushExtent);
+          chart.xAxis[0].setExtremes(currentExtreme.min, currentExtreme.max);
         }
       });
     }
@@ -104,6 +100,12 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  
+  // 销毁图表实例
+  if (chartInstance.value) {
+    chartInstance.value.destroy();
+    chartInstance.value = null;
+  }
 });
 
 // 监听选中通道的变化
@@ -210,19 +212,6 @@ const collectData = async (forcedRender = false) => {
     } else {
       console.warn('没有收集到任何有效数据');
       clearChart();
-      
-      // 添加一个简单的提示到图表
-      const svg = d3.select('#overview-chart')
-        .attr('width', '100%')
-        .attr('height', '100%');
-        
-      svg.append('text')
-        .attr('x', '50%')
-        .attr('y', '50%')
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'middle')
-        .attr('fill', '#999999')
-        .text('等待数据加载中...');
     }
   } catch (error) {
     console.error('获取数据过程中发生错误:', error);
@@ -233,8 +222,10 @@ const collectData = async (forcedRender = false) => {
 
 // 清空图表
 const clearChart = () => {
-  const svg = d3.select('#overview-chart');
-  svg.selectAll('*').remove();
+  if (chartInstance.value) {
+    chartInstance.value.destroy();
+    chartInstance.value = null;
+  }
 };
 
 // 渲染图表
@@ -256,124 +247,143 @@ const renderChart = () => {
   // 清空现有图表
   clearChart();
   
-  // 获取容器尺寸
-  const containerRect = chartContainer.value.getBoundingClientRect();
-  const width = containerRect.width;
-  const height = containerRect.height;
+  // 准备数据系列
+  const series = [];
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  
+  // 处理每个通道的数据
+  overviewData.value.forEach((channel, index) => {
+    // 创建数据点
+    const data = channel.X_value.map((x, i) => {
+      // 更新数据范围
+      xMin = Math.min(xMin, x);
+      xMax = Math.max(xMax, x);
+      yMin = Math.min(yMin, channel.Y_value[i]);
+      yMax = Math.max(yMax, channel.Y_value[i]);
+      
+      return [x, channel.Y_value[i]];
+    });
     
-  if (width <= 0 || height <= 0) {
-    console.error('容器尺寸无效');
-    return;
-  }
-  
-  // 设置边距
-  const margin = { top: 10, right: 20, bottom: 30, left: 20 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
-  
-  // 获取SVG元素
-  const svg = d3.select('#overview-chart')
-    .attr('width', width)
-    .attr('height', height);
-  
-  // 创建主图层
-  const g = svg.append('g')
-    .attr('transform', `translate(${margin.left},${margin.top})`);
-  
-  // 计算X和Y值的范围
-  let allX = [];
-  let allY = [];
-  
-  overviewData.value.forEach(channel => {
-    allX = allX.concat(channel.X_value);
-    allY = allY.concat(channel.Y_value);
+    // 添加系列
+    series.push({
+      name: channel.channelName,
+      data: data,
+      color: channel.color,
+      lineWidth: 1.5,
+      marker: {
+        enabled: false
+      }
+    });
   });
   
-  const xExtent = d3.extent(allX);
-  const yExtent = d3.extent(allY);
-  
   // 添加一些边距到Y值范围
-  const yRange = yExtent[1] - yExtent[0];
+  const yRange = yMax - yMin;
   const yPadding = yRange * 0.05;
-  const yMin = yExtent[0] - yPadding;
-  const yMax = yExtent[1] + yPadding;
-    
-  // 创建比例尺
-  const x = d3.scaleLinear()
-    .domain(xExtent)
-    .range([0, innerWidth]);
-  
-  const y = d3.scaleLinear()
-    .domain([yMin, yMax])
-    .range([innerHeight, 0]);
-  
-  // 保存X比例尺供其他函数使用
-  overviewXScale.value = x;
+  yMin = yMin - yPadding;
+  yMax = yMax + yPadding;
   
   // 保存原始数据范围
   originalDomains.value = {
-    x: [...xExtent],
+    x: [xMin, xMax],
     y: { min: yMin, max: yMax }
   };
   
-  // 添加坐标轴
-  g.append('g')
-    .attr('class', 'x-axis')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .call(d3.axisBottom(x).ticks(5));
-  
-  // 绘制网格线
-  g.append('g')
-    .attr('class', 'grid x-grid')
-    .attr('transform', `translate(0,${innerHeight})`)
-    .style('stroke', '#e0e0e0')
-    .style('stroke-opacity', 0.7)
-    .call(
-      d3.axisBottom(x)
-        .tickSize(-innerHeight)
-        .tickFormat('')
-    );
-  
-  // 绘制每个通道的数据线
-  overviewData.value.forEach((channel, i) => {
-    try {
-      // 创建线条生成器
-      const line = d3.line()
-        .x((_, i) => x(channel.X_value[i]))
-        .y(d => y(d))
-        .curve(d3.curveMonotoneX);
-      
-      // 绘制线条
-      g.append('path')
-        .datum(channel.Y_value)
-        .attr('class', `line-${i}`)
-        .attr('fill', 'none')
-        .attr('stroke', channel.color)
-        .attr('stroke-width', 1.5)
-        .attr('d', line);
-    } catch (error) {
-      console.error(`绘制通道 ${channel.channelName} 出错:`, error);
+  // 创建Highcharts图表
+  chartInstance.value = Highcharts.chart('overview-chart', {
+    chart: {
+      height: 60,
+      marginLeft: 20,
+      marginRight: 20,
+      marginTop: 10,
+      marginBottom: 30,
+      animation: false,
+      zoomType: 'x',
+      events: {
+        selection: function(event) {
+          if (event.xAxis) {
+            const min = event.xAxis[0].min;
+            const max = event.xAxis[0].max;
+            
+            // 更新刷选值
+            updatingBrush.value = true;
+            brush_begin.value = min.toFixed(4);
+            brush_end.value = max.toFixed(4);
+            
+            // 更新store
+            store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
+            
+            // 更新所有通道的domain
+            selectedChannels.value.forEach(channel => {
+              const channelName = `${channel.channel_name}_${channel.shot_number}`;
+              store.dispatch('updateDomains', {
+                channelName,
+                xDomain: [min, max],
+                yDomain: domains.value.y[channelName]
+              });
+            });
+            
+            updatingBrush.value = false;
+            extremes.value = { min, max };
+            
+            // 保持选区
+            return false;
+          }
+        }
+      }
+    },
+    title: {
+      text: null
+    },
+    xAxis: {
+      min: xMin,
+      max: xMax,
+      gridLineWidth: 0.5,
+      gridLineColor: '#e0e0e0',
+      lineColor: '#999',
+      tickColor: '#999',
+      labels: {
+        style: {
+          fontSize: '10px',
+          fontWeight: 'bold'
+        }
+      }
+    },
+    yAxis: {
+      min: yMin,
+      max: yMax,
+      visible: false
+    },
+    legend: {
+      enabled: false
+    },
+    tooltip: {
+      enabled: false
+    },
+    plotOptions: {
+      series: {
+        animation: false,
+        states: {
+          hover: {
+            enabled: false
+          }
+        }
+      }
+    },
+    series: series,
+    credits: {
+      enabled: false
+    },
+    time: {
+      useUTC: false
     }
   });
   
-  // 创建刷选功能
-  const brush = d3.brushX()
-    .extent([[0, 0], [innerWidth, innerHeight]])
-    .on('start', () => { updatingBrush.value = true; })
-    .on('brush', brushed)
-    .on('end', brushEnded);
-  
-  // 保存刷选实例
-  overviewBrushInstance.value = brush;
-  
-  // 添加刷选层
-  const brushG = g.append('g')
-    .attr('class', 'brush')
-    .call(brush);
-  
-  // 设置初始刷选范围为整个数据范围（最左侧到最右侧）
-  const initialBrushBegin = xExtent[0];
-  const initialBrushEnd = xExtent[1];
+  // 设置初始刷选范围
+  const initialBrushBegin = xMin;
+  const initialBrushEnd = xMax;
   
   // 更新brush值到store
   updatingBrush.value = true;
@@ -382,59 +392,16 @@ const renderChart = () => {
   store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
   updatingBrush.value = false;
   
-  // 设置刷选范围
-  const initialSelection = [x(initialBrushBegin), x(initialBrushEnd)];
-  brushG.call(brush.move, initialSelection);
-  brushSelections.value.overview = initialSelection;
-    
-  // 刷选事件处理函数
-  function brushed(event) {
-    if (!event.selection) return;
-    
-    brushSelections.value.overview = event.selection;
-    const [x0, x1] = event.selection.map(x.invert);
-    
-    updatingBrush.value = true;
-    brush_begin.value = x0.toFixed(4);
-    brush_end.value = x1.toFixed(4);
-    // 在刷选过程中不立即更新store，提高性能
-  }
-  
-  function brushEnded(event) {
-    if (!event.selection) {
-      // 用户点击空白处，恢复上一次选择
-      if (brushSelections.value.overview) {
-        brushG.call(brush.move, brushSelections.value.overview);
-      }
-      return;
-    }
-    
-    const [x0, x1] = event.selection.map(x.invert);
-    
-    // 更新store
-    store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-    
-    // 更新所有通道的domain
-    selectedChannels.value.forEach(channel => {
-      const channelName = `${channel.channel_name}_${channel.shot_number}`;
-      store.dispatch('updateDomains', {
-        channelName,
-        xDomain: [x0, x1],
-        yDomain: domains.value.y[channelName]
-      });
-    });
-    
-    updatingBrush.value = false;
-  }
+  // 保存初始极值
+  extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
 };
 
 // 处理输入框
 const handleInputBlur = (type) => {
   if (updatingBrush.value) return;
-  if (!overviewXScale.value || !overviewBrushInstance.value) return;
+  if (!chartInstance.value) return;
 
-  const x = overviewXScale.value;
-  const brush = overviewBrushInstance.value;
+  const chart = chartInstance.value;
   const originalDomain = originalDomains.value.x;
 
   let start = parseFloat(brush_begin.value);
@@ -443,10 +410,9 @@ const handleInputBlur = (type) => {
   // 验证输入值
   if (isNaN(start) || isNaN(end)) {
     ElMessage.warning('请输入有效的数字');
-    if (brushSelections.value.overview) {
-      const [x0, x1] = brushSelections.value.overview.map(x.invert);
-      brush_begin.value = x0.toFixed(4);
-      brush_end.value = x1.toFixed(4);
+    if (extremes.value) {
+      brush_begin.value = extremes.value.min.toFixed(4);
+      brush_end.value = extremes.value.max.toFixed(4);
     } else {
       brush_begin.value = originalDomain[0].toFixed(4);
       brush_end.value = originalDomain[1].toFixed(4);
@@ -457,10 +423,9 @@ const handleInputBlur = (type) => {
   // 确保起点小于终点
   if (start >= end) {
     ElMessage.warning('起点必须小于终点');
-    if (brushSelections.value.overview) {
-      const [x0, x1] = brushSelections.value.overview.map(x.invert);
-      brush_begin.value = x0.toFixed(4);
-      brush_end.value = x1.toFixed(4);
+    if (extremes.value) {
+      brush_begin.value = extremes.value.min.toFixed(4);
+      brush_end.value = extremes.value.max.toFixed(4);
     } else {
       brush_begin.value = originalDomain[0].toFixed(4);
       brush_end.value = originalDomain[1].toFixed(4);
@@ -482,11 +447,10 @@ const handleInputBlur = (type) => {
   // 更新 store 中的值
   store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
 
-  // 更新刷选区域
-  const selection = [x(start), x(end)];
+  // 更新图表的极值
   updatingBrush.value = true;
-  d3.select('#overview-chart').select('.brush').call(brush.move, selection);
-  brushSelections.value.overview = selection;
+  chart.xAxis[0].setExtremes(start, end);
+  extremes.value = { min: start, max: end };
   updatingBrush.value = false;
 
   // 更新所有通道的 domain
@@ -529,7 +493,7 @@ const handleInputBlur = (type) => {
   overflow: visible;
 }
 
-.overview-svg {
+.overview-chart {
   position: absolute;
   top: 0;
   left: 0;
@@ -585,40 +549,5 @@ const handleInputBlur = (type) => {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
-}
-
-/* 添加刷选区域样式 */
-:deep(.brush .selection) {
-  fill: rgba(100, 150, 250, 0.25);
-  stroke: #3a8ee6;
-  stroke-width: 1px;
-}
-
-/* 添加刷选手柄样式 */
-:deep(.brush .handle) {
-  fill: #3a8ee6;
-  stroke: #3a8ee6;
-  stroke-width: 1px;
-}
-
-/* 样式化坐标轴 */
-:deep(.x-axis) path,
-:deep(.x-axis) line {
-  stroke: #999;
-  stroke-width: 1px;
-}
-
-:deep(.x-axis) text {
-  font-size: 10px;
-  font-weight: bold;
-}
-
-:deep(.grid) line {
-  stroke: #e0e0e0;
-  stroke-width: 0.5px;
-}
-
-:deep(.grid) path {
-  stroke-width: 0;
 }
 </style> 
