@@ -12,7 +12,7 @@
           <el-icon class="loading-icon"><Loading /></el-icon>
           <span>加载中...</span>
         </div>
-        <div id="overview-chart" class="overview-chart"></div>
+        <svg id="overview-svg" class="overview-chart" @dblclick="handleDblClick"></svg>
       </div>
       <span class="brush-controls-right">
         <el-tag type="info">总览条终点</el-tag>
@@ -26,27 +26,30 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import * as Highcharts from 'highcharts';
+// 移除Highcharts
+// import * as Highcharts from 'highcharts';
+// import 'highcharts/modules/boost';  // 使用官方的boost模块
 import debounce from 'lodash/debounce';
 import { ElMessage } from 'element-plus';
 import { Loading } from '@element-plus/icons-vue';
+import overviewWorkerManager from '@/workers/overviewWorkerManager'; // 引入专用的Worker管理器
 
 const store = useStore();
 const chartContainer = ref(null);
 
 // 响应式引用
 const overviewData = ref([]);
-const chartInstance = ref(null);
+// 移除chartInstance
+// const chartInstance = ref(null);
 const updatingBrush = ref(false);
 const originalDomains = ref({});
-const renderCount = ref(0);
-const initialDataLoaded = ref(false);
 const isLoading = ref(false);
-const retryCount = ref(0);
 const extremes = ref(null);
-
-// 追加一个强制渲染标志，用于确保至少绘制一次
-const forceRender = ref(false);
+const processedDataCache = ref({}); // 缓存处理后的数据
+// 添加SVG相关引用
+const svgElement = ref(null);
+const maskRectLeft = ref(null);
+const maskRectRight = ref(null);
 
 // 从store获取数据
 const brush_begin = computed({
@@ -73,67 +76,31 @@ const handleResize = debounce(() => {
     const currentExtreme = extremes.value;
     
     // 重新渲染图表
-    renderChart();
+    renderChart(false);
     
     // 如果原来有滑动块选择，重新设置
-    if (currentExtreme && chartInstance.value) {
+    if (currentExtreme && svgElement.value) {
       nextTick(() => {
         try {
-          const chart = chartInstance.value;
-          if (chart) {
-            // 不再设置图表的极值，只更新遮罩区域
-            const xAxis = chart.xAxis[0];
-            const xMin = originalDomains.value.x[0];
-            const xMax = originalDomains.value.x[1];
-            
-            // 移除并重新添加左侧遮罩
-            xAxis.removePlotBand('mask-before');
-            xAxis.addPlotBand({
-              id: 'mask-before',
-              from: xMin,
-              to: currentExtreme.min,
-              color: 'rgba(64, 158, 255, 0.1)'
-            });
-            
-            // 移除并重新添加右侧遮罩
-            xAxis.removePlotBand('mask-after');
-            xAxis.addPlotBand({
-              id: 'mask-after',
-              from: currentExtreme.max,
-              to: xMax,
-              color: 'rgba(64, 158, 255, 0.1)'
-            });
-            
-            // 刷新图表
-            chart.redraw();
-            
-            // 更新brush值
-            updatingBrush.value = true;
-            brush_begin.value = currentExtreme.min.toFixed(4);
-            brush_end.value = currentExtreme.max.toFixed(4);
-            store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-            updatingBrush.value = false;
-          }
+          updateBrush(currentExtreme.min, currentExtreme.max);
         } catch (error) {
           console.warn('窗口大小变化时更新遮罩区域出错:', error);
         }
       });
     }
   }
-}, 200);
+}, 300);
 
 // 组件挂载和卸载
 onMounted(() => {
   window.addEventListener('resize', handleResize);
   
-  // 添加双击事件监听
-  const chartContainer = document.getElementById('overview-chart');
-  if (chartContainer) {
-    chartContainer.addEventListener('dblclick', handleDblClick);
-  }
+  // 设置Worker消息处理函数
+  setupWorkerHandler();
   
   // 延迟初始化以确保DOM渲染完成
   setTimeout(() => {
+    svgElement.value = document.getElementById('overview-svg');
     checkDataAndRender();
   }, 500);
 });
@@ -142,195 +109,344 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
   
   // 移除双击事件监听
-  const chartContainer = document.getElementById('overview-chart');
+  const chartContainer = document.getElementById('overview-svg');
   if (chartContainer) {
     chartContainer.removeEventListener('dblclick', handleDblClick);
   }
   
-  // 销毁图表实例
-  if (chartInstance.value) {
-    try {
-      chartInstance.value.destroy();
-    } catch (error) {
-      console.warn('销毁图表时出错:', error);
-    }
-    chartInstance.value = null;
-  }
+  // 终止Worker
+  overviewWorkerManager.terminate();
 });
 
+// 设置Worker消息处理
+const setupWorkerHandler = () => {
+  overviewWorkerManager.onmessage = function(e) {
+    const { type, data, error, channelKey } = e.data;
+    
+    if (error) {
+      console.error('Worker error:', error);
+      isLoading.value = false;
+      return;
+    }
+    
+    if (type === 'processedOverviewData') {
+      // 缓存处理后的数据
+      processedDataCache.value[channelKey] = data;
+      
+      // 检查是否所有通道数据都已处理完成
+      const pendingChannels = selectedChannels.value.filter(channel => {
+        const key = `${channel.channel_name}_${channel.shot_number}`;
+        return !processedDataCache.value[key];
+      });
+      
+      if (pendingChannels.length === 0) {
+        // 所有通道数据已处理完成，准备渲染
+        prepareDataForChart();
+      }
+    }
+  };
+};
+
 // 监听选中通道的变化
-watch(selectedChannels, () => {
-  forceRender.value = false; // 重置强制渲染标记
-  checkDataAndRender();
+watch(selectedChannels, (newChannels, oldChannels) => {
+  if (!oldChannels) return;
+  
+  // 获取新旧通道的键集合
+  const oldChannelKeys = new Set(oldChannels.map(ch => `${ch.channel_name}_${ch.shot_number}`));
+  const newChannelKeys = new Set(newChannels.map(ch => `${ch.channel_name}_${ch.shot_number}`));
+  
+  // 获取被移除的通道键
+  const removedChannelKeys = [...oldChannelKeys].filter(key => !newChannelKeys.has(key));
+  
+  // 从缓存中移除这些通道
+  removedChannelKeys.forEach(key => {
+    if (processedDataCache.value[key]) {
+      delete processedDataCache.value[key];
+    }
+  });
+  
+  // 获取新添加的通道键
+  const addedChannelKeys = [...newChannelKeys].filter(key => !oldChannelKeys.has(key));
+  
+  if (addedChannelKeys.length > 0 || removedChannelKeys.length > 0) {
+    // 有通道添加或移除，重新加载数据
+    checkDataAndRender();
+  }
 }, { deep: true });
 
 // 监听通道数据缓存的变化
-watch(channelDataCache, () => {
+watch(channelDataCache, (newCache, oldCache) => {
   // 仅在有选中通道且当前无数据时才尝试重新获取
   if (selectedChannels.value.length > 0 && overviewData.value.length === 0) {
-    collectData();
+    checkDataAndRender();
   }
 }, { deep: true });
 
 // 检查数据是否准备好并渲染
 const checkDataAndRender = () => {
-  retryCount.value = 0;
-  // 直接获取数据，不需要先做检查
   collectData();
 };
 
-// 采集数据
-const collectData = async (forcedRender = false) => {
+// 并行处理所有通道数据
+const collectData = async () => {
   // 检查是否有选中的通道
   if (!selectedChannels.value || selectedChannels.value.length === 0) {
     overviewData.value = [];
+    clearChart();
     return;
   }
   
-  // 保存现有数据
-  const existingData = [...overviewData.value];
-  
-  // 使用直接获取数据的方式，而不是依赖channelDataCache
   isLoading.value = true;
   
   try {
-    const dataPromises = selectedChannels.value.map(async (channel) => {
+    // 清空处理后的数据缓存
+    processedDataCache.value = {};
+    
+    // 获取当前选中通道的键名列表
+    const selectedChannelKeys = selectedChannels.value.map(channel => 
+      `${channel.channel_name}_${channel.shot_number}`
+    );
+    
+    // 并行处理每个通道的数据
+    const promises = selectedChannels.value.map(async (channel) => {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       
-      // 避免重复处理已经有数据的通道
-      if (existingData.some(d => d.channelName === channelKey) && !forcedRender) {
-        return null;
-      }
-      
       try {
-        // 直接使用store action获取数据，不依赖channelDataCache
+        // 使用store action获取数据
         const channelData = await store.dispatch('fetchChannelData', { channel });
         
-        if (channelData && channelData.X_value && channelData.Y_value &&
-            Array.isArray(channelData.X_value) && Array.isArray(channelData.Y_value) &&
-            channelData.X_value.length > 0 && channelData.Y_value.length > 0) {
-        
-          
-          // 返回处理后的数据对象
-          return {
-            channelName: channelKey,
-            X_value: [...channelData.X_value],
-            Y_value: [...channelData.Y_value],
-            color: channel.color || '#7cb5ec'
-          };
-        } else {
-          console.warn(`通道 ${channelKey} 返回的数据无效`);
-          return null;
+        if (channelData && channelData.X_value && channelData.Y_value) {
+          // 使用Worker处理数据 - 增加点数以提高细节显示
+          overviewWorkerManager.processData({
+            channelData: {
+              X_value: [...channelData.X_value],
+              Y_value: [...channelData.Y_value]
+            },
+            channelKey,
+            downsample: true, // 启用降采样以提高性能
+            maxPoints: 10000 // 大幅增加最大点数以显示更多细节
+          });
         }
       } catch (error) {
         console.error(`获取通道 ${channelKey} 数据失败:`, error);
-        return null;
       }
     });
     
-    // 等待所有数据请求完成
-    const results = await Promise.all(dataPromises);
+    // 等待所有请求完成
+    await Promise.all(promises);
+    // 如果在这个时候还没有数据处理完成，那么就需要等待Worker处理
+    // Worker处理完成后会调用prepareDataForChart
     
-    // 过滤掉null和undefined结果
-    const newChannelsData = results.filter(Boolean);
-    
-    // 合并现有数据和新数据，避免重复
-    if (newChannelsData.length > 0) {
-      const merged = [...existingData];
-      
-      newChannelsData.forEach(newData => {
-        // 检查是否已存在
-        const existingIndex = merged.findIndex(item => item.channelName === newData.channelName);
-        if (existingIndex >= 0) {
-          // 更新现有数据
-          merged[existingIndex] = newData;
+    // 防止卡死，设置超时
+    setTimeout(() => {
+      if (isLoading.value) {
+        isLoading.value = false;
+        if (Object.keys(processedDataCache.value).length > 0) {
+          prepareDataForChart();
         } else {
-          // 添加新数据
-          merged.push(newData);
+          console.warn('数据处理超时，尝试使用可用数据渲染');
+          renderChart(true);
         }
-      });
-      
-      overviewData.value = merged;
-    } else if (existingData.length === 0) {
-      overviewData.value = [];
-    }
+      }
+    }, 5000);
     
-    // 绘制图表
-    if (overviewData.value.length > 0) {
-      initialDataLoaded.value = true;
-      renderChart();
-    } else {
-      console.warn('没有收集到任何有效数据');
-      clearChart();
-    }
   } catch (error) {
     console.error('获取数据过程中发生错误:', error);
-  } finally {
     isLoading.value = false;
+  }
+};
+
+// 准备图表数据
+const prepareDataForChart = () => {
+  if (Object.keys(processedDataCache.value).length === 0) {
+    console.warn('没有处理好的数据可用');
+    isLoading.value = false;
+    return;
+  }
+  
+  // 将处理后的数据转换为图表可用格式
+  const chartData = [];
+  
+  // 首先计算全局数据范围，用于智能降采样
+  let globalYMin = Infinity;
+  let globalYMax = -Infinity;
+  
+  // 预处理：计算全局Y值范围
+  Object.entries(processedDataCache.value).forEach(([channelKey, data]) => {
+    if (data && data.Y) {
+      for (let i = 0; i < data.Y.length; i++) {
+        const y = data.Y[i];
+        if (y < globalYMin) globalYMin = y;
+        if (y > globalYMax) globalYMax = y;
+      }
+    }
+  });
+  
+  // 添加一些边距到Y值范围
+  const globalYRange = globalYMax - globalYMin;
+  const globalYPadding = globalYRange * 0.05;
+  globalYMin = globalYMin - globalYPadding;
+  globalYMax = globalYMax + globalYPadding;
+  
+  Object.entries(processedDataCache.value).forEach(([channelKey, data]) => {
+    const channel = selectedChannels.value.find(
+      ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
+    );
+    
+    if (channel && data && data.X && data.Y) {
+      // 保留更多数据点以显示更多细节
+      let X = data.X;
+      let Y = data.Y;
+      
+      // 如果数据点超过1000个，进行简单的降采样
+      if (X.length > 1000) {
+        const step = Math.ceil(X.length / 1000);
+        const sampledX = [];
+        const sampledY = [];
+        
+        // 使用更智能的降采样算法，保留关键点
+        let prevY = null;
+        let prevSlope = null;
+        
+        for (let i = 0; i < X.length; i += step) {
+          // 始终保留第一个点
+          if (i === 0) {
+            sampledX.push(X[i]);
+            sampledY.push(Y[i]);
+            prevY = Y[i];
+            continue;
+          }
+          
+          // 计算当前斜率
+          const currentSlope = i > 0 ? (Y[i] - Y[i-1]) / (X[i] - X[i-1]) : 0;
+          
+          // 如果斜率变化明显，保留这个点（捕捉曲线变化）
+          if (prevSlope !== null && Math.abs(currentSlope - prevSlope) > 0.1) {
+            sampledX.push(X[i]);
+            sampledY.push(Y[i]);
+            prevY = Y[i];
+            prevSlope = currentSlope;
+            continue;
+          }
+          
+          // 如果Y值变化明显，保留这个点
+          if (prevY !== null && Math.abs(Y[i] - prevY) > (globalYMax - globalYMin) * 0.01) {
+            sampledX.push(X[i]);
+            sampledY.push(Y[i]);
+            prevY = Y[i];
+            prevSlope = currentSlope;
+            continue;
+          }
+          
+          // 常规采样
+          if (i % step === 0) {
+            sampledX.push(X[i]);
+            sampledY.push(Y[i]);
+            prevY = Y[i];
+            prevSlope = currentSlope;
+          }
+        }
+        
+        // 确保包含最后一个点
+        if (sampledX[sampledX.length - 1] !== X[X.length - 1]) {
+          sampledX.push(X[X.length - 1]);
+          sampledY.push(Y[Y.length - 1]);
+        }
+        
+        X = sampledX;
+        Y = sampledY;
+      }
+      
+      chartData.push({
+        channelName: channelKey,
+        X_value: X,
+        Y_value: Y,
+        color: channel.color || '#7cb5ec'
+      });
+    }
+  });
+  
+  overviewData.value = chartData;
+  
+  // 渲染图表
+  if (chartData.length > 0) {
+    renderChart(false);
+  } else {
+    isLoading.value = false;
+    console.warn('没有有效数据用于渲染');
   }
 };
 
 // 清空图表
 const clearChart = () => {
-  if (chartInstance.value) {
-    try {
-      chartInstance.value.destroy();
-    } catch (error) {
-      console.warn('销毁图表时出错:', error);
-    }
-    chartInstance.value = null;
+  if (svgElement.value) {
+    svgElement.value.innerHTML = '';
   }
+  isLoading.value = false;
 };
 
 // 渲染图表
-const renderChart = () => {
-  renderCount.value++;
-  
-  if (overviewData.value.length === 0) {
+const renderChart = (forceRender = false) => {
+  if (overviewData.value.length === 0 && !forceRender) {
     console.warn('无数据可渲染');
     clearChart();
+    isLoading.value = false;
     return;
   }
   
   // 确保容器存在
   if (!chartContainer.value) {
     console.error('图表容器不存在');
+    isLoading.value = false;
     return;
   }
   
-  // 清空现有图表
-  clearChart();
+  // 确保SVG元素存在
+  if (!svgElement.value) {
+    svgElement.value = document.getElementById('overview-svg');
+    if (!svgElement.value) {
+      console.error('找不到SVG元素');
+      isLoading.value = false;
+      return;
+    }
+  }
   
-  // 准备数据系列
-  const series = [];
+  // 清空SVG
+  svgElement.value.innerHTML = '';
+  
+  // 获取SVG尺寸
+  const svgWidth = svgElement.value.clientWidth;
+  const svgHeight = svgElement.value.clientHeight;
+  
+  // 设置图表边距
+  const margin = {
+    top: 5,
+    right: 15,
+    bottom: 20, // 为X轴留出空间
+    left: 15
+  };
+  
+  // 计算图表实际绘图区域
+  const chartWidth = svgWidth - margin.left - margin.right;
+  const chartHeight = svgHeight - margin.top - margin.bottom;
+  
+  // 计算全局数据范围
   let xMin = Infinity;
   let xMax = -Infinity;
   let yMin = Infinity;
   let yMax = -Infinity;
   
-  // 处理每个通道的数据
-  overviewData.value.forEach((channel, index) => {
-    // 创建数据点
-    const data = channel.X_value.map((x, i) => {
-      // 更新数据范围
-      xMin = Math.min(xMin, x);
-      xMax = Math.max(xMax, x);
-      yMin = Math.min(yMin, channel.Y_value[i]);
-      yMax = Math.max(yMax, channel.Y_value[i]);
+  // 首先计算所有通道的数据范围
+  overviewData.value.forEach(channel => {
+    for (let i = 0; i < channel.X_value.length; i++) {
+      const x = channel.X_value[i];
+      const y = channel.Y_value[i];
       
-      return [x, channel.Y_value[i]];
-    });
-    
-    // 添加系列
-    series.push({
-      name: channel.channelName,
-      data: data,
-      color: channel.color,
-      lineWidth: 1.5,
-      marker: {
-        enabled: false
-      }
-    });
+      if (x < xMin) xMin = x;
+      if (x > xMax) xMax = x;
+      if (y < yMin) yMin = y;
+      if (y > yMax) yMax = y;
+    }
   });
   
   // 添加一些边距到Y值范围
@@ -349,272 +465,214 @@ const renderChart = () => {
   const initialBrushBegin = xMin;
   const initialBrushEnd = xMax;
   
+  // 计算比例尺
+  const xScale = chartWidth / (xMax - xMin);
+  const yScale = chartHeight / (yMax - yMin);
+  
+  // 创建主绘图组
+  const mainGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  mainGroup.setAttribute('transform', `translate(${margin.left}, ${margin.top})`);
+  svgElement.value.appendChild(mainGroup);
+  
+  // 创建X轴组
+  const xAxisGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  xAxisGroup.setAttribute('transform', `translate(${margin.left}, ${margin.top + chartHeight})`);
+  svgElement.value.appendChild(xAxisGroup);
+  
+  // 绘制X轴线
+  const xAxisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  xAxisLine.setAttribute('x1', 0);
+  xAxisLine.setAttribute('y1', 0);
+  xAxisLine.setAttribute('x2', chartWidth);
+  xAxisLine.setAttribute('y2', 0);
+  xAxisLine.setAttribute('stroke', '#999');
+  xAxisLine.setAttribute('stroke-width', '1');
+  xAxisGroup.appendChild(xAxisLine);
+  
+  // 绘制X轴刻度
+  const tickCount = 5; // 刻度数量
+  const tickStep = chartWidth / (tickCount - 1);
+  const valueStep = (xMax - xMin) / (tickCount - 1);
+  
+  for (let i = 0; i < tickCount; i++) {
+    const x = i * tickStep;
+    const value = xMin + i * valueStep;
+    
+    // 绘制刻度线
+    const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    tick.setAttribute('x1', x);
+    tick.setAttribute('y1', 0);
+    tick.setAttribute('x2', x);
+    tick.setAttribute('y2', 3);
+    tick.setAttribute('stroke', '#999');
+    tick.setAttribute('stroke-width', '1');
+    xAxisGroup.appendChild(tick);
+    
+    // 绘制刻度值
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x);
+    text.setAttribute('y', 15);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-size', '10px');
+    text.setAttribute('font-weight', 'bold');
+    text.textContent = value.toFixed(2);
+    xAxisGroup.appendChild(text);
+  }
+  
   // 创建遮罩填充颜色
   const maskFill = 'rgba(64, 158, 255, 0.1)';
   
-  // 创建Highcharts图表
-  chartInstance.value = Highcharts.chart('overview-chart', {
-    chart: {
-      height: 80,
-      marginLeft: 20,
-      marginRight: 20,
-      marginTop: 10,
-      marginBottom: 20,
-      animation: false,
-      reflow: false,
-      borderWidth: 0,
-      backgroundColor: null,
-      zooming: {
-        type: 'x'
-      },
-      events: {
-        selection: function(event) {
-          if (event.xAxis) {
-            const min = event.xAxis[0].min;
-            const max = event.xAxis[0].max;
-            
-            // 更新刷选值
-            updatingBrush.value = true;
-            brush_begin.value = min.toFixed(4);
-            brush_end.value = max.toFixed(4);
-            
-            // 更新store
-            store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-            
-            // 更新所有通道的domain
-            selectedChannels.value.forEach(channel => {
-              const channelName = `${channel.channel_name}_${channel.shot_number}`;
-              store.dispatch('updateDomains', {
-                channelName,
-                xDomain: [min, max],
-                yDomain: domains.value.y[channelName]
-              });
-            });
-            
-            try {
-              // 更新遮罩区域
-              const xAxis = this.xAxis[0];
-              
-              // 移除并重新添加左侧遮罩
-              xAxis.removePlotBand('mask-before');
-              xAxis.addPlotBand({
-                id: 'mask-before',
-                from: xMin,
-                to: min,
-                color: maskFill
-              });
-              
-              // 移除并重新添加右侧遮罩
-              xAxis.removePlotBand('mask-after');
-              xAxis.addPlotBand({
-                id: 'mask-after',
-                from: max,
-                to: xMax,
-                color: maskFill
-              });
-            } catch (error) {
-              console.warn('更新遮罩区域时出错:', error);
-            }
-            
-            updatingBrush.value = false;
-            extremes.value = { min, max };
-            
-            // 保持选区
-            return false;
-          }
-        },
-        // 添加双击事件处理
-        dblclick: function() {
-          try {
-            // 获取原始数据范围
-            const xMin = originalDomains.value.x[0];
-            const xMax = originalDomains.value.x[1];
-            
-            // 更新刷选值为原始范围
-            updatingBrush.value = true;
-            brush_begin.value = xMin.toFixed(4);
-            brush_end.value = xMax.toFixed(4);
-            
-            // 更新store
-            store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-            
-            // 更新所有通道的domain
-            selectedChannels.value.forEach(channel => {
-              const channelName = `${channel.channel_name}_${channel.shot_number}`;
-              store.dispatch('updateDomains', {
-                channelName,
-                xDomain: [xMin, xMax],
-                yDomain: domains.value.y[channelName]
-              });
-            });
-            
-            // 更新遮罩区域
-            const xAxis = this.xAxis[0];
-            
-            // 重置遮罩区域
-            xAxis.removePlotBand('mask-before');
-            xAxis.addPlotBand({
-              id: 'mask-before',
-              from: xMin,
-              to: xMin,
-              color: maskFill
-            });
-            
-            xAxis.removePlotBand('mask-after');
-            xAxis.addPlotBand({
-              id: 'mask-after',
-              from: xMax,
-              to: xMax,
-              color: maskFill
-            });
-            
-            // 更新极值
-            extremes.value = { min: xMin, max: xMax };
-            updatingBrush.value = false;
-            
-            // 刷新图表
-            this.redraw();
-          } catch (error) {
-            console.warn('双击重置时出错:', error);
-          }
+  // 创建左侧遮罩
+  maskRectLeft.value = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  maskRectLeft.value.setAttribute('x', 0);
+  maskRectLeft.value.setAttribute('y', 0);
+  maskRectLeft.value.setAttribute('width', 0);
+  maskRectLeft.value.setAttribute('height', chartHeight);
+  maskRectLeft.value.setAttribute('fill', maskFill);
+  mainGroup.appendChild(maskRectLeft.value);
+  
+  // 创建右侧遮罩
+  maskRectRight.value = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  maskRectRight.value.setAttribute('x', chartWidth);
+  maskRectRight.value.setAttribute('y', 0);
+  maskRectRight.value.setAttribute('width', 0);
+  maskRectRight.value.setAttribute('height', chartHeight);
+  maskRectRight.value.setAttribute('fill', maskFill);
+  mainGroup.appendChild(maskRectRight.value);
+  
+  // 创建选择框
+  const selectionRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  selectionRect.setAttribute('x', 0);
+  selectionRect.setAttribute('y', 0);
+  selectionRect.setAttribute('width', 0);
+  selectionRect.setAttribute('height', chartHeight);
+  selectionRect.setAttribute('fill', 'rgba(64, 158, 255, 0.25)');
+  selectionRect.setAttribute('stroke', '#409EFF');
+  selectionRect.setAttribute('stroke-width', '1');
+  selectionRect.setAttribute('visibility', 'hidden');
+  selectionRect.setAttribute('pointer-events', 'none'); // 确保选择框不会干扰鼠标事件
+  mainGroup.appendChild(selectionRect);
+  
+  // 为每个通道绘制路径
+  overviewData.value.forEach((channel, index) => {
+    // 创建路径元素
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    
+    // 构建路径数据
+    let pathData = '';
+    
+    // 使用更高效的路径构建方法
+    if (channel.X_value.length > 0) {
+      // 开始路径
+      const startX = (channel.X_value[0] - xMin) * xScale;
+      const startY = chartHeight - (channel.Y_value[0] - yMin) * yScale;
+      pathData = `M ${startX} ${startY}`;
+      
+      // 添加线段
+      for (let i = 1; i < channel.X_value.length; i++) {
+        const x = (channel.X_value[i] - xMin) * xScale;
+        const y = chartHeight - (channel.Y_value[i] - yMin) * yScale;
+        
+        // 只有当点的位置变化足够大时才添加到路径中，避免过多的微小线段
+        const prevX = (channel.X_value[i-1] - xMin) * xScale;
+        const prevY = chartHeight - (channel.Y_value[i-1] - yMin) * yScale;
+        
+        // 如果点之间的距离太小，可以跳过一些点以提高性能
+        if (Math.abs(x - prevX) > 0.5 || Math.abs(y - prevY) > 0.5) {
+          pathData += ` L ${x} ${y}`;
         }
       }
-    },
-    title: {
-      text: null
-    },
-    accessibility: {
-      enabled: false
-    },
-    xAxis: {
-      min: xMin,
-      max: xMax,
-      gridLineWidth: 0.5,
-      gridLineColor: '#e0e0e0',
-      lineColor: '#999',
-      tickColor: '#999',
-      labels: {
-        align: 'center',
-        y: 15,
-        style: {
-          fontSize: '10px',
-          fontWeight: 'bold'
-        }
-      },
-      tickLength: 3,
-      tickPosition: 'inside',
-      plotBands: [{
-        id: 'mask-before',
-        from: xMin,
-        to: xMin,
-        color: maskFill
-      }, {
-        id: 'mask-after',
-        from: xMax,
-        to: xMax,
-        color: maskFill
-      }],
-      events: {
-        afterSetExtremes: function(e) {
-          if (updatingBrush.value) return; // 避免循环调用
-          
-          updatingBrush.value = true;
-          const min = e.min;
-          const max = e.max;
-          
-          // 更新输入框
-          brush_begin.value = min.toFixed(4);
-          brush_end.value = max.toFixed(4);
-          
-          // 更新store
-          store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-          
-          // 更新所有通道的domain
-          selectedChannels.value.forEach(channel => {
-            const channelName = `${channel.channel_name}_${channel.shot_number}`;
-            store.dispatch('updateDomains', {
-              channelName,
-              xDomain: [min, max],
-              yDomain: domains.value.y[channelName]
-            });
-          });
-          
-          try {
-            // 更新遮罩区域
-            const xAxis = chartInstance.value.xAxis[0];
-            
-            // 移除并重新添加左侧遮罩
-            xAxis.removePlotBand('mask-before');
-            xAxis.addPlotBand({
-              id: 'mask-before',
-              from: xMin,
-              to: min,
-              color: maskFill
-            });
-            
-            // 移除并重新添加右侧遮罩
-            xAxis.removePlotBand('mask-after');
-            xAxis.addPlotBand({
-              id: 'mask-after',
-              from: max,
-              to: xMax,
-              color: maskFill
-            });
-          } catch (error) {
-            console.warn('更新遮罩区域时出错:', error);
-          }
-          
-          // 更新极值
-          extremes.value = { min, max };
-          updatingBrush.value = false;
-        }
-      }
-    },
-    yAxis: {
-      min: yMin,
-      max: yMax,
-      gridLineWidth: 0,
-      labels: {
-        enabled: false
-      },
-      title: {
-        text: null
-      },
-      showFirstLabel: false
-    },
-    legend: {
-      enabled: false
-    },
-    tooltip: {
-      enabled: false
-    },
-    credits: {
-      enabled: false
-    },
-    plotOptions: {
-      series: {
-        fillColor: 'transparent', // 移除底部填充
-        lineWidth: 1,
-        marker: {
-          enabled: false
-        },
-        shadow: false,
-        states: {
-          hover: {
-            lineWidth: 1
-          }
-        },
-        enableMouseTracking: false,
-        animation: false
-      }
-    },
-    series: series.map(s => ({
-      ...s,
-      type: 'line' // 使用线图而不是区域图
-    })),
-    exporting: {
-      enabled: false
     }
+    
+    // 设置路径属性
+    path.setAttribute('d', pathData);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', channel.color);
+    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('vector-effect', 'non-scaling-stroke');
+    
+    // 添加到主绘图组
+    mainGroup.appendChild(path);
+  });
+  
+  // 添加鼠标事件处理
+  let isDragging = false;
+  let startX = 0;
+  let currentMin = initialBrushBegin;
+  let currentMax = initialBrushEnd;
+  
+  // 鼠标按下事件
+  svgElement.value.addEventListener('mousedown', (e) => {
+    // 计算相对于主绘图区的坐标
+    const rect = svgElement.value.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - margin.left;
+    
+    // 确保点击在绘图区域内
+    if (mouseX >= 0 && mouseX <= chartWidth) {
+      isDragging = true;
+      startX = mouseX;
+      
+      // 显示选择框
+      selectionRect.setAttribute('x', startX);
+      selectionRect.setAttribute('width', 0);
+      selectionRect.setAttribute('visibility', 'visible');
+    }
+  });
+  
+  // 鼠标移动事件
+  svgElement.value.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    
+    // 计算相对于主绘图区的坐标
+    const rect = svgElement.value.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - margin.left;
+    
+    // 限制在绘图区域内
+    const currentX = Math.max(0, Math.min(mouseX, chartWidth));
+    
+    // 更新选择框
+    if (currentX < startX) {
+      selectionRect.setAttribute('x', currentX);
+      selectionRect.setAttribute('width', startX - currentX);
+    } else {
+      selectionRect.setAttribute('x', startX);
+      selectionRect.setAttribute('width', currentX - startX);
+    }
+  });
+  
+  // 鼠标释放事件
+  window.addEventListener('mouseup', (e) => {
+    if (!isDragging) return;
+    isDragging = false;
+    
+    // 计算相对于主绘图区的坐标
+    const rect = svgElement.value.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - margin.left;
+    
+    // 限制在绘图区域内
+    const currentX = Math.max(0, Math.min(mouseX, chartWidth));
+    
+    // 隐藏选择框
+    selectionRect.setAttribute('visibility', 'hidden');
+    
+    // 如果选择范围太小，则忽略
+    if (Math.abs(currentX - startX) < 5) return;
+    
+    // 计算当前位置对应的数据值
+    const startValue = xMin + (startX / chartWidth) * (xMax - xMin);
+    const currentValue = xMin + (currentX / chartWidth) * (xMax - xMin);
+    
+    // 更新刷选范围
+    if (currentX < startX) {
+      currentMin = currentValue;
+      currentMax = startValue;
+    } else {
+      currentMin = startValue;
+      currentMax = currentValue;
+    }
+    
+    // 更新遮罩
+    updateBrush(currentMin, currentMax);
   });
   
   // 更新brush值到store
@@ -628,44 +686,79 @@ const renderChart = () => {
   extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
   
   // 设置初始遮罩
-  if (chartInstance.value) {
-    nextTick(() => {
-      try {
-        // 初始时确保选中区域为整个数据范围，但不缩放图表
-        const xAxis = chartInstance.value.xAxis[0];
-        
-        // 设置遮罩区域
-        xAxis.removePlotBand('mask-before');
-        xAxis.addPlotBand({
-          id: 'mask-before',
-          from: xMin,
-          to: initialBrushBegin,
-          color: maskFill
-        });
-        
-        xAxis.removePlotBand('mask-after');
-        xAxis.addPlotBand({
-          id: 'mask-after',
-          from: initialBrushEnd,
-          to: xMax,
-          color: maskFill
-        });
-        
-        // 刷新图表
-        chartInstance.value.redraw();
-      } catch (error) {
-        console.warn('设置初始遮罩时出错:', error);
-      }
+  updateBrush(initialBrushBegin, initialBrushEnd);
+  
+  isLoading.value = false;
+};
+
+// 更新刷选区域
+const updateBrush = (min, max) => {
+  if (!svgElement.value) return;
+  
+  try {
+    // 获取SVG尺寸
+    const svgWidth = svgElement.value.clientWidth;
+    const svgHeight = svgElement.value.clientHeight;
+    
+    // 设置图表边距
+    const margin = {
+      top: 5,
+      right: 5,
+      bottom: 20,
+      left: 5
+    };
+    
+    // 计算图表实际绘图区域
+    const chartWidth = svgWidth - margin.left - margin.right;
+    
+    // 获取X轴范围
+    const xMin = originalDomains.value.x[0];
+    const xMax = originalDomains.value.x[1];
+    
+    // 计算像素位置
+    const xScale = chartWidth / (xMax - xMin);
+    const minPx = (min - xMin) * xScale;
+    const maxPx = (max - xMin) * xScale;
+    
+    // 更新左侧遮罩
+    if (maskRectLeft.value) {
+      maskRectLeft.value.setAttribute('width', minPx);
+    }
+    
+    // 更新右侧遮罩
+    if (maskRectRight.value) {
+      maskRectRight.value.setAttribute('x', maxPx);
+      maskRectRight.value.setAttribute('width', chartWidth - maxPx);
+    }
+    
+    // 更新brush值
+    updatingBrush.value = true;
+    brush_begin.value = min.toFixed(4);
+    brush_end.value = max.toFixed(4);
+    store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
+    updatingBrush.value = false;
+    
+    // 更新极值
+    extremes.value = { min, max };
+    
+    // 更新所有通道的domain
+    selectedChannels.value.forEach(channel => {
+      const channelName = `${channel.channel_name}_${channel.shot_number}`;
+      store.dispatch('updateDomains', {
+        channelName,
+        xDomain: [min, max],
+        yDomain: domains.value.y[channelName]
+      });
     });
+  } catch (error) {
+    console.warn('更新遮罩区域时出错:', error);
   }
 };
 
 // 处理输入框
 const handleInputBlur = (type) => {
   if (updatingBrush.value) return;
-  if (!chartInstance.value) return;
 
-  const chart = chartInstance.value;
   const originalDomain = originalDomains.value.x;
 
   let start = parseFloat(brush_begin.value);
@@ -711,102 +804,19 @@ const handleInputBlur = (type) => {
   // 更新 store 中的值
   store.commit("updatebrush", { begin: brush_begin.value, end: brush_end.value });
 
-  try {
-    // 更新遮罩区域，但不缩放图表
-    const xAxis = chart.xAxis[0];
-    const xMin = originalDomain[0];
-    const xMax = originalDomain[1];
-    
-    // 移除并重新添加左侧遮罩
-    xAxis.removePlotBand('mask-before');
-    xAxis.addPlotBand({
-      id: 'mask-before',
-      from: xMin,
-      to: start,
-      color: 'rgba(64, 158, 255, 0.1)'
-    });
-    
-    // 移除并重新添加右侧遮罩
-    xAxis.removePlotBand('mask-after');
-    xAxis.addPlotBand({
-      id: 'mask-after',
-      from: end,
-      to: xMax,
-      color: 'rgba(64, 158, 255, 0.1)'
-    });
-    
-    // 更新极值
-    extremes.value = { min: start, max: end };
-    
-    // 更新所有通道的domain
-    updatingBrush.value = true;
-    selectedChannels.value.forEach(channel => {
-      const channelName = `${channel.channel_name}_${channel.shot_number}`;
-      store.dispatch('updateDomains', {
-        channelName,
-        xDomain: [start, end],
-        yDomain: domains.value.y[channelName]
-      });
-    });
-    updatingBrush.value = false;
-  } catch (error) {
-    console.warn('更新遮罩区域时出错:', error);
-  }
+  // 更新遮罩区域
+  updateBrush(start, end);
 };
 
 // 处理双击事件
 const handleDblClick = () => {
-  if (!chartInstance.value) return;
-  
   try {
     // 获取原始数据范围
     const xMin = originalDomains.value.x[0];
     const xMax = originalDomains.value.x[1];
     
-    // 更新刷选值为原始范围
-    updatingBrush.value = true;
-    brush_begin.value = xMin.toFixed(4);
-    brush_end.value = xMax.toFixed(4);
-    
-    // 更新store
-    store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-    
-    // 更新所有通道的domain
-    selectedChannels.value.forEach(channel => {
-      const channelName = `${channel.channel_name}_${channel.shot_number}`;
-      store.dispatch('updateDomains', {
-        channelName,
-        xDomain: [xMin, xMax],
-        yDomain: domains.value.y[channelName]
-      });
-    });
-    
     // 更新遮罩区域
-    const xAxis = chartInstance.value.xAxis[0];
-    
-    // 重置遮罩区域
-    xAxis.removePlotBand('mask-before');
-    xAxis.addPlotBand({
-      id: 'mask-before',
-      from: xMin,
-      to: xMin,
-      color: 'rgba(64, 158, 255, 0.1)'
-    });
-    
-    xAxis.removePlotBand('mask-after');
-    xAxis.addPlotBand({
-      id: 'mask-after',
-      from: xMax,
-      to: xMax,
-      color: 'rgba(64, 158, 255, 0.1)'
-    });
-    
-    // 更新极值
-    extremes.value = { min: xMin, max: xMax };
-    updatingBrush.value = false;
-    
-    // 刷新图表
-    chartInstance.value.redraw();
+    updateBrush(xMin, xMax);
   } catch (error) {
     console.warn('双击重置时出错:', error);
   }

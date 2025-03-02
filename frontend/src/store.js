@@ -19,6 +19,9 @@ const dataCache = cacheFactory.createCache("channelData", {
   recycleFreq: 60 * 1000, // 内存回收频率
 });
 
+// 添加一个用于跟踪进行中的请求的映射
+const pendingRequests = new Map();
+
 const store = createStore({
   state() {
     return {
@@ -54,8 +57,8 @@ const store = createStore({
       upper_bound: 0.1,
       scope_bound: 0,
       lower_bound: -2.4,
-      isBoxSelect: true,
-      previousBoxSelectState: true,
+      isBoxSelect: false,
+      previousBoxSelectState: false,
       rawData: [],
       displayedData: [],
       pageSize: 15,
@@ -512,27 +515,48 @@ const store = createStore({
         return cached.data;
       }
 
+      // 检查是否有相同的请求正在进行中
+      if (pendingRequests.has(channelKey)) {
+        console.log(`复用进行中的请求: ${channelKey}`);
+        return pendingRequests.get(channelKey);
+      }
+
       const params = {
         channel_key: channelKey,
         channel_type: channel.channel_type,
       };
 
-      const response = await axios.get(
-        `https://10.1.108.19:5000/api/channel-data/`,
-        { params }
-      );
-      const data = response.data;
+      // 创建请求的 Promise 并将其存储
+      const requestPromise = new Promise(async (resolve, reject) => {
+        try {
+          const response = await axios.get(
+            `https://10.1.108.19:5000/api/channel-data/`,
+            { params }
+          );
+          const data = response.data;
 
-      // 计算原始采样频率
-      const timeRange = Math.abs(
-        data.X_value[data.X_value.length - 1] - data.X_value[0]
-      );
-      data.originalFrequency = data.X_value.length / timeRange / 1000;
-      data.originalDataPoints = data.X_value.length;
+          // 计算原始采样频率
+          const timeRange = Math.abs(
+            data.X_value[data.X_value.length - 1] - data.X_value[0]
+          );
+          data.originalFrequency = data.X_value.length / timeRange / 1000;
+          data.originalDataPoints = data.X_value.length;
 
-      // 存入缓存
-      commit("updateChannelDataCache", { channelKey, data });
-      return data;
+          // 存入缓存
+          commit("updateChannelDataCache", { channelKey, data });
+          resolve(data);
+        } catch (error) {
+          reject(error);
+        } finally {
+          // 无论成功或失败，都从进行中的请求映射中移除
+          pendingRequests.delete(channelKey);
+        }
+      });
+
+      // 将请求存储到进行中的请求映射
+      pendingRequests.set(channelKey, requestPromise);
+      
+      return requestPromise;
     },
 
     // 添加获取所有错误数据的 action
@@ -576,8 +600,30 @@ const store = createStore({
             }
 
             const errorData = await response.json();
+            
+            // 处理错误数据中的错误范围
+            if (errorData && Array.isArray(errorData)) {
+              // 处理人工标注和机器识别的错误数据
+              errorData.forEach(errorTypeGroup => {
+                if (Array.isArray(errorTypeGroup)) {
+                  errorTypeGroup.forEach(error => {
+                    if (error && error.X_error && Array.isArray(error.X_error)) {
+                      // 处理每个错误范围
+                      error.X_error = error.X_error.map(range => {
+                        // 如果是包含多个连续值的数组，只保留第一个和最后一个值
+                        if (Array.isArray(range) && range.length > 2) {
+                          return [range[0], range[range.length - 1]];
+                        }
+                        // 如果已经是标准格式或其他格式，保持不变
+                        return range;
+                      });
+                    }
+                  });
+                }
+              });
+            }
 
-            // 将数据存入缓存
+            // 将处理后的数据存入缓存
             dataCache.put(errorCacheKey, {
               data: reactive(errorData),
               timestamp: Date.now(),

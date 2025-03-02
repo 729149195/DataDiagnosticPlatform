@@ -19,11 +19,11 @@
             :status="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '' : 'warning'"
             :color="loadingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? '#409EFF' : ''" />
         </div>
-        <svg :id="'chart-' + channel.channel_name + '_' + channel.shot_number"
+        <div :id="'chart-' + channel.channel_name + '_' + channel.shot_number"
           :ref="el => channelSvgElementsRefs[index] = el" :style="{
             opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
             transition: 'opacity 0.5s ease'
-          }"></svg>
+          }"></div>
         <div class="color-picker-container" :style="{
           opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
           visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
@@ -53,16 +53,20 @@
           <el-input v-model="currentAnomaly.anomalyDescription" :rows="4" type="textarea" />
         </el-form-item>
       </el-form>
-      <span slot="footer" class="dialog-footer">
+      <template #footer>
+        <span class="dialog-footer">
         <el-button @click="closeAnomalyForm">取消</el-button>
         <el-button type="primary" @click="saveAnomaly">保存</el-button>
+          <el-button type="danger" @click="deleteAnomaly">删除</el-button>
       </span>
+      </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup>
-import * as d3 from 'd3';
+import Highcharts from 'highcharts';
+import 'highcharts/modules/boost';
 import debounce from 'lodash/debounce';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
 import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw } from 'vue';
@@ -139,9 +143,8 @@ watch(() => store.state.anomalies, (newAnomalies) => {
       return !stillExists;
     });
 
-    // 删除对应的 SVG 元素
+    // 删除对应的组件
     deletedAnomalies.forEach(anomaly => {
-
       // 如果正在编辑被删除的异常，关闭编辑表单
       if (showAnomalyForm.value && currentAnomaly.id === anomaly.id) {
         showAnomalyForm.value = false;
@@ -149,36 +152,30 @@ watch(() => store.state.anomalies, (newAnomalies) => {
           delete currentAnomaly[key];
         });
       }
-      // 立即删除相关的 SVG 元素
-      nextTick(() => {
-        try {
-          // 使用正确的选择器格式
-          const selectors = [
-            `.anomaly-rect-${anomaly.id}`,
-            `.anomaly-group-${anomaly.id}`,
-            `.anomaly-labels-group-${anomaly.id}`,
-            `.anomaly-line-${anomaly.id}`,
-            `.left-handle-${anomaly.id}`,
-            `.right-handle-${anomaly.id}`,
-            `.anomaly-buttons-${anomaly.id}`,
-            `.left-label-${anomaly.id}`,
-            `.right-label-${anomaly.id}`
-          ];
-          // 对每个通道的图表进行处理
-          selectedChannels.value.forEach(channel => {
-            const chartId = `#chart-${channel.channel_name}_${channel.shot_number}`;
-
-            selectors.forEach(selector => {
-              const element = d3.select(chartId).select(selector);
-              if (element.node()) {
-                element.remove();
-              }
-            });
-          });
-        } catch (error) {
-          console.error('Error removing SVG elements:', error);
+      
+      // 从图表中移除异常相关元素
+      const chart = window.chartInstances?.[channelName];
+      if (chart) {
+        // 移除plotBand
+        chart.xAxis[0].removePlotBand(`band-${anomaly.id}`);
+        
+        // 移除异常线条
+        const anomalySeries = chart.get(`anomaly-${anomaly.id}`);
+        if (anomalySeries) {
+          anomalySeries.remove();
         }
-      });
+        
+        // 移除按钮
+        const deleteButton = document.querySelector(`.delete-button-${anomaly.id}`);
+        if (deleteButton) {
+          deleteButton.remove();
+        }
+        
+        const editButton = document.querySelector(`.edit-button-${anomaly.id}`);
+        if (editButton) {
+          editButton.remove();
+        }
+      }
     });
   });
 
@@ -206,18 +203,41 @@ const updateChannelColor = (channel) => {
   // 更新 store 中的颜色
   store.commit('updateChannelColor', { channel_key: channel.channel_key, color: channel.color });
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-  // 更新主图表中的线条颜色
-  const svg = d3.select(`#chart-${channelKey}`);
-  if (svg.node()) {
+  
+  // 获取Highcharts图表实例
+  const chart = window.chartInstances?.[channelKey];
+  if (chart) {
     // 更新原始线条颜色
-    svg.select('.original-line')
-      .attr('stroke', channel.color);
-    svg.select('.smoothed-line')
-      .attr('stroke', channel.color);
+    const originalSeries = chart.get('original');
+    if (originalSeries) {
+      originalSeries.update({
+        color: channel.color
+      }, false);
+    }
 
-    // 更新图例文本颜色
-    svg.select('.legend-group text')
-      .style('fill', channel.color);
+    // 更新平滑线条颜色
+    const smoothedSeries = chart.get('smoothed');
+    if (smoothedSeries) {
+      smoothedSeries.update({
+        color: channel.color
+      }, false);
+    }
+
+    // 更新图例文字颜色
+    chart.renderer.text(
+      `${channel.channel_name} | ${channel.shot_number} (${chart.series[0].name.split('(')[1]}`,
+      60,
+      15
+    )
+    .css({
+      color: channel.color,
+      fontSize: '1.0em',
+      fontWeight: 'bold'
+    })
+    .add();
+
+    // 重绘图表
+    chart.redraw();
   }
 };
 
@@ -450,19 +470,12 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
     if (forceRenderAll) {
       // 如果强制重新渲染，则渲染所有选定的通道
       channelsToRender = [...selectedChannels.value];
-      console.log(`强制重新渲染所有 ${channelsToRender.length} 个通道`);
     } else {
       // 否则只渲染新添加的通道
       channelsToRender = selectedChannels.value.filter(channel => {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         return !renderedChannels.value.has(channelKey);
       });
-
-      if (channelsToRender.length === 0) {
-        console.log('No new channels to render');
-        return;
-      }
-      console.log(`渲染 ${channelsToRender.length} 个新通道...`);
     }
 
     // 初始化要渲染的通道的加载状态
@@ -523,7 +536,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
   // 从renderedChannels中移除这些通道
   removedChannelKeys.forEach(key => {
     renderedChannels.value.delete(key);
-    console.log(`通道 ${key} 已从renderedChannels中移除`);
   });
 
   // 获取新添加的通道键
@@ -531,8 +543,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 
   // 只对新增通道或颜色变更的通道进行处理，每个通道独立处理
   if (addedChannelKeys.length > 0) {
-    console.log(`检测到 ${addedChannelKeys.length} 个新通道，立即开始并行渲染`);
-
     // 找出所有新增的通道
     const newAddedChannels = newChannels.filter(ch => {
       const key = `${ch.channel_name}_${ch.shot_number}`;
@@ -578,8 +588,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
     });
 
     if (colorChangedChannels.length > 0) {
-      console.log(`检测到 ${colorChangedChannels.length} 个通道颜色变更，仅更新颜色`);
-
       // 只更新颜色变更的通道
       colorChangedChannels.forEach(channel => {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -596,8 +604,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
   }
 }, { deep: true });
 
-// 优化采样和平滑度的监听器
-const debouncedRenderCharts = debounce(renderCharts, 300);
 
 watch([sampling, smoothnessValue], ([newSampling, newSmoothness], [oldSampling, oldSmoothness]) => {
   if (newSampling !== oldSampling) {
@@ -605,8 +611,6 @@ watch([sampling, smoothnessValue], ([newSampling, newSmoothness], [oldSampling, 
   }
 
   // 不再清空已渲染通道的跟踪记录，而是并行更新每个通道
-  console.log(`更新所有通道的采样率(${newSampling})和平滑度(${newSmoothness})`);
-
   // 并行处理所有通道的更新
   selectedChannels.value.forEach(channel => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -697,159 +701,6 @@ onMounted(async () => {
   }
 });
 
-const drawHighlightRects = (channelName, results) => {
-  const svg = d3.select(`#chart-${channelName}`);
-  if (!svg.node()) return;
-
-  const margin = { top: 20, right: 30, bottom: 50, left: 65 };
-  const width = svg.node().getBoundingClientRect().width - margin.left - margin.right;
-  const height = 230 - margin.top - margin.bottom;
-
-  // 获取当前图表的x比例尺
-  const x = d3.scaleLinear()
-    .domain(domains.value.x[channelName] || [-2, 6])
-    .range([0, width]);
-
-  // 获取当前通道的数据并进行采样和平处理
-  const channelData = channelDataCache.value[channelName];
-  if (!channelData) return;
-
-  // 进行采样
-  const samplingInterval = Math.floor(1 / sampling.value);
-  const sampledData = {
-    X_value: channelData.X_value.filter((_, i) => i % samplingInterval === 0),
-    Y_value: channelData.Y_value.filter((_, i) => i % samplingInterval === 0)
-  };
-
-  // 应用滑理
-  let smoothedYValue = sampledData.Y_value;
-  if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-    smoothedYValue = interpolateData(sampledData.Y_value, smoothnessValue.value);
-  }
-
-  // 使用与绘制曲线相同的 Y 轴范围
-  const yExtent = d3.extent(smoothedYValue);
-  const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
-  const yMin = yExtent[0] - yRangePadding;
-  const yMax = yExtent[1] + yRangePadding;
-
-  // 创建与主图表相同的y比例尺
-  const y = d3.scaleLinear()
-    .domain([yMin, yMax])
-    .range([height, 0]);
-
-  // 移除之前的高亮区域
-  svg.select(`.highlight-group-${channelName}`).remove();
-
-  // 创建新的高亮区域
-  const highlightGroup = svg.select('g')
-    .append('g')
-    .attr('class', `highlight-group-${channelName}`);
-
-  // 获取时间边界值约束
-  const timeBegin = store.state.time_begin;
-  const timeEnd = store.state.time_end;
-  const timeDuring = store.state.time_during;
-  const upperBound = store.state.upper_bound;
-  const lowerBound = store.state.lower_bound;
-  const scopeBound = store.state.scope_bound;
-
-  // 为每个匹配结果创建高亮矩形
-  results.forEach(result => {
-    if (result.confidence > 0.75) {
-      const [startX, endX] = result.range;
-
-      // 1. 时间范围过滤
-      if (startX < timeBegin || endX > timeEnd) {
-        return;
-      }
-
-      // 2. 持续时间过滤
-      const duration = endX - startX;
-      if (duration < timeDuring) {
-        return;
-      }
-
-      // 使用平滑后的数据获取区间内的值
-      const startIndex = sampledData.X_value.findIndex(x => x >= startX);
-      const endIndex = sampledData.X_value.findIndex(x => x > endX);
-      const rangeData = {
-        X: sampledData.X_value.slice(startIndex, endIndex),
-        Y: smoothedYValue.slice(startIndex, endIndex)
-      };
-
-      if (rangeData.Y.length === 0) return;
-
-      const minY = Math.min(...rangeData.Y);
-      const maxY = Math.max(...rangeData.Y);
-
-      // Y值范围和幅度过滤保持不变
-      if (minY < lowerBound || maxY > upperBound) return;
-      const yRange = Math.abs(maxY - minY);
-      if (yRange < scopeBound) return;
-
-      // 修改 padding 为范围的 5%
-      const padding = yRange * 0.05 + 0.2;
-      const rectY = y(maxY + padding);
-      const rectHeight = y(minY - padding) - y(maxY + padding);
-
-      highlightGroup.append('rect')
-        .attr('x', x(startX))
-        .attr('y', rectY)
-        .attr('width', x(endX) - x(startX))
-        .attr('height', rectHeight)
-        .attr('fill', 'rgba(255, 165, 0, 0.2)')
-        .attr('stroke', 'rgba(255, 140, 0, 0.8)')
-        .attr('stroke-width', 2)
-        .attr('opacity', result.confidence)
-        .style('filter', 'drop-shadow(2px 2px 2px rgba(0,0,0,0.2))')
-        .on('mouseover', function (event) {
-          const tooltip = d3.select('body')
-            .append('div')
-            .attr('class', 'custom-tooltip')
-            .style('position', 'absolute')
-            .style('background-color', 'rgba(50, 50, 50, 0.9)')
-            .style('color', 'white')
-            .style('padding', '8px 12px')
-            .style('border-radius', '4px')
-            .style('font-size', '12px')
-            .style('box-shadow', '0 2px 12px 0 rgba(0,0,0,0.3)')
-            .style('z-index', 9999)
-            .style('pointer-events', 'none')
-            .style('transition', 'opacity 0.3s');
-
-          tooltip.html(
-            `<div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
-                            <span style="color: #67C23A;">置信度:</span> ${(result.confidence * 100).toFixed(2)}%
-                        </div>
-                        <div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
-                            <span style="color: #E6A23C;">持续时间:</span> ${duration.toFixed(3)}
-                        </div>
-                        <div style="border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; margin-bottom: 4px;">
-                            <span style="color: #409EFF;">Y值范围:</span> ${minY.toFixed(3)} - ${maxY.toFixed(3)}
-                        </div>
-                        <div>
-                            <span style="color: #F56C6C;">Y值幅度:</span> ${yRange.toFixed(3)}
-                        </div>`
-          );
-
-          // 设提示框位置
-          const tooltipWidth = tooltip.node().getBoundingClientRect().width;
-          const tooltipHeight = tooltip.node().getBoundingClientRect().height;
-          const mouseX = event.pageX;
-          const mouseY = event.pageY;
-
-          tooltip
-            .style('left', `${mouseX - tooltipWidth / 2}px`)
-            .style('top', `${mouseY - tooltipHeight - 10}px`);
-        })
-        .on('mouseout', function () {
-          d3.selectAll('.custom-tooltip').remove();
-        });
-    }
-  });
-};
-
 // 添加解码函数
 const decodeChineseText = (text) => {
   if (!text) return '';
@@ -889,24 +740,49 @@ const saveAnomaly = () => {
     store.dispatch('updateAnomaly', payload);
 
     // 立即更新视觉状态
-    const svg = d3.select(`#chart-${payload.channelName}`);
-    const anomalyGroup = svg.select(`.anomaly-group-${currentAnomaly.id}`);
-
-    // 更新矩形颜色并禁用拖拽
-    anomalyGroup.select(`.anomaly-rect-${currentAnomaly.id}`)
-      .attr('fill', 'red')
-      .attr('fill-opacity', 0.1)
-      .attr('stroke', 'red')
-      .attr('cursor', 'not-allowed')
-      .attr('pointer-events', 'none');
-
-    // 更新线条颜色
-    anomalyGroup.select(`.anomaly-line-${currentAnomaly.id}`)
-      .attr('stroke', 'red');
-
-    // 移除拖动手柄
-    anomalyGroup.selectAll(`.left-handle-${currentAnomaly.id}, .right-handle-${currentAnomaly.id}`)
-      .remove();
+    const chart = window.chartInstances?.[payload.channelName];
+    if (chart) {
+      // 更新异常区域颜色
+      const plotBand = chart.xAxis[0].plotLinesAndBands.find(band => band.id === `band-${currentAnomaly.id}`);
+      if (plotBand) {
+        // 移除事件监听器，禁用拖拽
+        plotBand.options.events = {};
+        
+        // 更新颜色为红色
+        chart.xAxis[0].removePlotBand(`band-${currentAnomaly.id}`);
+        chart.xAxis[0].addPlotBand({
+          id: `band-${currentAnomaly.id}`,
+          from: currentAnomaly.startX,
+          to: currentAnomaly.endX,
+          color: 'rgba(255, 0, 0, 0.1)',
+          borderColor: 'red',
+          borderWidth: 1,
+          zIndex: 1,
+          label: {
+            y: -5,
+            style: {
+              color: '#606060',
+              fontWeight: 'bold',
+              fontSize: '10px'
+            },
+            formatter: function() {
+              return `${currentAnomaly.startX.toFixed(3)} - ${currentAnomaly.endX.toFixed(3)}`;
+            }
+          }
+        });
+      }
+      
+      // 更新异常线条
+      const anomalySeries = chart.get(`anomaly-${currentAnomaly.id}`);
+      if (anomalySeries) {
+        anomalySeries.update({
+          color: 'red'
+        }, false);
+      }
+      
+      // 重绘图表
+      chart.redraw();
+    }
 
     // 关闭编辑框
     showAnomalyForm.value = false;
@@ -926,6 +802,28 @@ const closeAnomalyForm = () => {
   Object.keys(currentAnomaly).forEach((key) => {
     delete currentAnomaly[key];
   });
+};
+
+// 添加deleteAnomaly函数
+const deleteAnomaly = () => {
+  if (currentAnomaly && currentAnomaly.id) {
+    // 从store中删除异常
+    store.dispatch('deleteAnomaly', {
+      channelName: currentAnomaly.channelName,
+      anomalyId: currentAnomaly.id
+    });
+    
+    // 关闭编辑表单
+    showAnomalyForm.value = false;
+    
+    // 显示成功消息
+    ElMessage.success('异常标注已删除');
+    
+    // 清空当前异常数据
+    Object.keys(currentAnomaly).forEach((key) => {
+      delete currentAnomaly[key];
+    });
+  }
 };
 
 // 添加进度百分比计算函数
@@ -948,18 +846,48 @@ const getProgressPercentage = (channelKey) => {
 
 // 添加对isBoxSelect的监听
 watch(isBoxSelect, (newValue) => {
-  // 只更新所有图表中brush的显示状态
-  selectedChannels.value.forEach(channel => {
-    const channelName = `${channel.channel_name}_${channel.shot_number}`;
-    const svg = d3.select(`#chart-${channelName}`);
-
-    // 更新selection-brush的显示状态
-    svg.select('.selection-brush')
-      .style('display', newValue ? null : 'none');
-
-    // 更新zoom-brush的显示状态
-    svg.select('.zoom-brush')
-      .style('display', newValue ? 'none' : null);
+  // 更新所有图表的设置
+  Object.values(window.chartInstances || {}).forEach(chart => {
+    if (chart) {
+      // 更新图表的缩放类型
+      chart.update({
+        chart: {
+          zoomType: newValue ? 'x' : 'xy'
+        }
+      }, false);
+      
+      // 更新plotBands的交互
+      chart.xAxis[0].plotLinesAndBands.forEach(band => {
+        if (band.id && band.id.startsWith('band-')) {
+          const anomalyId = band.id.replace('band-', '');
+          const anomaly = chart.series.find(s => s.options.id === `anomaly-${anomalyId}`);
+          
+          if (anomaly && !anomaly.options.custom?.isStored) {
+            band.options.events = newValue ? {
+              click: function() {
+                const channelName = chart.series[0].name.split(' | ')[0];
+                const shotNumber = chart.series[0].name.split(' | ')[1].split(' ')[0];
+                const fullChannelName = `${channelName}_${shotNumber}`;
+                
+                const storedAnomalies = store.getters.getAnomaliesByChannel(fullChannelName);
+                const storedAnomaly = storedAnomalies.find(a => a.id === anomalyId);
+                
+                if (storedAnomaly) {
+                  Object.assign(currentAnomaly, {
+                    ...storedAnomaly,
+                    channelName: fullChannelName
+                  });
+                }
+                
+                showAnomalyForm.value = true;
+              }
+            } : {};
+          }
+        }
+      });
+      
+      chart.redraw();
+    }
   });
 });
 
@@ -1032,830 +960,850 @@ const drawChart = async (
 
       performance.mark(`Draw Chart ${channelName}-start`);
 
-      const container = d3.select('.chart-container');
-      const containerWidth = container.node().getBoundingClientRect().width;
+      // 获取容器宽度
+      const container = document.querySelector('.chart-container');
+      const containerWidth = container.getBoundingClientRect().width;
 
-      const svg = d3.select(`#chart-${channelName}`);
-      // 修改边距，增加底部空间
-      const margin = { top: 15, right: 20, bottom: 50, left: 60 };
+      // 构建图表配置
+      const chartContainer = document.getElementById(`chart-${channelName}`);
+      if (!chartContainer) {
+        reject(new Error(`Chart container for ${channelName} not found`));
+        return;
+      }
 
-      const width = containerWidth - margin.left - margin.right;
-      const height = 230 - margin.top - margin.bottom;
+      // 准备数据
+      let originalData = [];
+      for (let i = 0; i < data.X_value.length; i++) {
+        originalData.push([data.X_value[i], data.Y_value[i]]);
+      }
 
-      svg.selectAll('*').remove();
+      // 计算平滑后的数据
+      let smoothedData = [];
+      if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
+        const smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
+        for (let i = 0; i < data.X_value.length; i++) {
+          smoothedData.push([data.X_value[i], smoothedYValue[i]]);
+        }
+      }
 
-      svg
-        .attr(
-          'viewBox',
-          `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`
-        )
-        .attr('preserveAspectRatio', 'xMidYMid meet')
-        .attr('width', '100%')
-        .style('overflow', 'visible'); // 添加这行，允许内容超出 SVG 边界
-
-      const yExtent = d3.extent(data.Y_value);
+      // 获取Y轴范围，保持与原实现一致
+      const yExtent = [
+        Math.min(...data.Y_value),
+        Math.max(...data.Y_value)
+      ];
       const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
       const yMin = yExtent[0] - yRangePadding;
       const yMax = yExtent[1] + yRangePadding;
 
-      const x = d3
-        .scaleLinear()
-        // 添加默认domain值，使用数据本身的X范围
-        .domain(domains.value.x[channelName] || d3.extent(data.X_value))
-        .range([0, width]);
+      // 设置X轴和Y轴范围
+      const xDomain = domains.value.x[channelName] || [Math.min(...data.X_value), Math.max(...data.X_value)];
+      const yDomain = domains.value.y[channelName] || [yMin, yMax];
 
-      const y = d3.scaleLinear()
-        // 确保domain始终有效
-        .domain(domains.value.y[channelName] || [yMin, yMax])
-        .range([height, 0]);
-
-      let smoothedYValue = data.Y_value;
-      if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-        smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
-      }
-
-      const line = d3
-        .line()
-        .x((d, i) => x(data.X_value[i]))
-        .y((d, i) => y(d))
-        .curve(d3.curveMonotoneX);
-
-      const g = svg
-        .append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-
-      g.append('defs')
-        .append('clipPath')
-        .attr('id', `clip-${channelName}`)
-        .append('rect')
-        .attr('width', width)
-        .attr('height', height);
-
-      const clipGroup = g
-        .append('g')
-        .attr('clip-path', `url(#clip-${channelName})`);
-
-      // 修改横坐标标签
-      g.append('g')
-        .attr('class', 'x-axis')
-        .attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x))
-        .selectAll("text")
-        .style("font-size", "1.1em")
-        .style("font-weight", "bold");
-
-      // 添加统一的横坐标标签
-      // g.append('text')
-      //   .attr('class', 'x-label')
-      //   .attr('x', width / 2)
-      //   .attr('y', height + 30)
-      //   .attr('text-anchor', 'middle')
-      //   .style('font-size', '1.1em')
-      //   .style('font-weight', 'bold')
-      //   .text('Time(s)');  // 移除了 (s)
-
-      // 修改Y轴刻度
-      g.append('g')
-        .attr('class', 'y-axis')
-        .call(d3.axisLeft(y).ticks(8))  // 设置Y轴刻度数量为4
-        .style("font-size", "1em")
-        .style("font-weight", "bold");
-
-      // 修改网格线
-      g.append('g')
-        .attr('class', 'grid')
-        .call(
-          d3
-            .axisLeft(y)
-            .ticks(8)  // 保持与Y轴刻度数量一致
-            .tickSize(-width)
-            .tickFormat('')
-        )
-        .selectAll('line')
-        .style('stroke', '#ccc')
-        .style('stroke-dasharray', '3,3');
-
-      g.append('g')
-        .attr('class', 'grid')
-        .attr('transform', `translate(0,${height})`)
-        .call(
-          d3
-            .axisBottom(x)
-            .tickSize(-height)
-            .tickFormat('')
-        )
-        .selectAll('line')
-        .style('stroke', '#ccc')
-        .style('stroke-dasharray', '3,3');
-
-      // 添加Y轴单位标签
-      svg
-        .append('text')
-        .attr('transform', `translate(${margin.left - 40}, ${margin.top + height / 2}) rotate(-90)`)
-        .attr('text-anchor', 'middle')
-        .style('font-size', '1.05em')
-        .style('font-weight', 'bold')
-        .attr('alignment-baseline', 'middle')
-        .attr('fill', '#000')
-        .text(yUnit);
-
-      // 修改通道信息显示位置和样式，将其移动到右上角并与颜色选择器组合
-      const legendGroup = g.append('g')
-        .attr('class', 'legend-group')
-        .attr('transform', `translate(${width - 280}, -10)`);  // 调整位置
-
-      // 添加通道信息文本
-      legendGroup.append('text')
-        .attr('x', -60)
-        .attr('y', 30)
-        .attr('text-anchor', 'start')
-        .style('font-size', '1.0em')
-        .style('font-weight', 'bold')
-        .style('fill', color || 'steelblue')  // 添加这行，使用与图表相同的颜色
-        .text(`${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`);
-
-      // 绘制每个通道的主线
-      clipGroup
-        .append('path')
-        .datum(data.Y_value)
-        .attr('class', 'original-line')
-        .attr('fill', 'none')
-        .attr('stroke', color)  // 直接使用传入的颜色
-        .attr('stroke-width', 1.5)
-        .attr('opacity', smoothnessValue.value > 0 ? 0.3 : 1)
-        .attr('d', line);
+      // 高亮异常数据点函数
+      const getAnomalyData = (anomaly) => {
+        // 找到对应区间的数据点
+        const startIndex = data.X_value.findIndex(x => x >= anomaly.startX);
+        const endIndex = data.X_value.findIndex(x => x >= anomaly.endX);
+        const anomalyData = [];
+        
+        for (let i = startIndex; i <= (endIndex !== -1 ? endIndex : data.X_value.length - 1); i++) {
+          anomalyData.push([data.X_value[i], data.Y_value[i]]);
+        }
+        
+        return anomalyData;
+      };
 
       // 处理错误数据
-      if (errorsData) {
-
-        // 遍历所有错误数据组
-        errorsData.forEach(errorGroup => {
-          // 解构每组中的人工标注和机器识别的错误数据
-          const [manualErrors, machineErrors] = [errorGroup[0], errorGroup[1]];
-
-          // 辅助函数：根据时间范围获取对应的数据点
-          const getDataPointsInRange = (xRange) => {
+      const errorSeries = [];
+      if (errorsData && Array.isArray(errorsData)) {
+        errorsData.forEach((errorGroup, groupIndex) => {
+          if (Array.isArray(errorGroup)) {
+            // 分别处理人工和机器错误
+            errorGroup.forEach((errors, personIndex) => {
+              const isPerson = personIndex === 0; // 0是人工，1是机器
+              
+              if (errors && Array.isArray(errors)) {
+                errors.forEach((error, errorIndex) => {
+                  if (error.X_error && Array.isArray(error.X_error)) {
+                    error.X_error.forEach((xRange, rangeIndex) => {
+                      // 找到时间范围内的数据点
+                      const dataPoints = [];
             const startTime = xRange[0];
             const endTime = xRange[1];
-            const points = [];
 
-            // 找到对应时间范围内的数据点
             data.X_value.forEach((x, i) => {
               if (x >= startTime && x <= endTime) {
-                points.push({
-                  x: x,
-                  y: data.Y_value[i]
-                });
-              }
-            });
-
-            return points;
-          };
-
-          // 处理人工标注的错误
-          if (manualErrors && manualErrors.length > 0) {
-            manualErrors.forEach(error => {
-              if (error.X_error && error.X_error.length > 0) {
-                error.X_error.forEach(xRange => {
-                  const errorPoints = getDataPointsInRange(xRange);
-                  if (errorPoints.length > 0) {
-                    // 创建错误标记
-                    clipGroup
-                      .append('path')
-                      .datum(errorPoints)
-                      .attr('class', 'error-line')
-                      .attr('fill', 'none')
-                      .attr('stroke', error.color || 'rgba(220, 20, 60, 0.3)')
-                      .attr('stroke-width', 10)
-                      .attr('stroke-linecap', 'round')
-                      .attr('stroke-linejoin', 'round')
-                      .attr('opacity', 0.8)
-                      .attr('d', d3.line()
-                        .x(d => x(d.x))
-                        .y(d => y(d.y))
-                        .curve(d3.curveMonotoneX)
-                      )
-                      .style('vector-effect', 'non-scaling-stroke');
+                          dataPoints.push([x, data.Y_value[i]]);
+                        }
+                      });
+                      
+                      if (dataPoints.length > 0) {
+                        errorSeries.push({
+                          name: `${isPerson ? '人工' : '机器'}错误 ${errorIndex+1}-${rangeIndex+1}`,
+                          data: dataPoints,
+                          color: error.color || (isPerson ? 'rgba(220, 20, 60, 0.8)' : 'rgba(220, 20, 60, 0.6)'),
+                          lineWidth: 10,
+                          states: { hover: { lineWidth: 10 } }, linkedTo: ':previous', marker: { enabled: false }, dashStyle: isPerson ? 'Solid' : 'Dash', enableMouseTracking: false, showInLegend: false, boostThreshold: 1 });
                   }
                 });
               }
             });
           }
-
-          // 处理机器识别的错误
-          if (machineErrors && machineErrors.length > 0) {
-            machineErrors.forEach(error => {
-              if (error.X_error && error.X_error.length > 0) {
-                error.X_error.forEach(xRange => {
-                  const errorPoints = getDataPointsInRange(xRange);
-                  if (errorPoints.length > 0) {
-                    // 创建错误标记
-                    clipGroup
-                      .append('path')
-                      .datum(errorPoints)
-                      .attr('class', 'error-line')
-                      .attr('fill', 'none')
-                      .attr('stroke', error.color || 'rgba(220, 20, 60, 0.3)')
-                      .attr('stroke-width', 10)
-                      .attr('stroke-linecap', 'round')
-                      .attr('stroke-linejoin', 'round')
-                      .attr('opacity', 0.8)
-                      .attr('stroke-dasharray', '5, 5')
-                      .attr('d', d3.line()
-                        .x(d => x(d.x))
-                        .y(d => y(d.y))
-                        .curve(d3.curveMonotoneX)
-                      )
-                      .style('vector-effect', 'non-scaling-stroke');
+            });
                   }
                 });
               }
+
+      // 获取通道对应的已标注异常
+      const channelAnomalies = store.getters.getAnomaliesByChannel(channelName);
+      const anomalySeries = [];
+      
+      if (channelAnomalies && channelAnomalies.length > 0) {
+        channelAnomalies.forEach(anomaly => {
+          const anomalyData = getAnomalyData(anomaly);
+          if (anomalyData.length > 0) {
+            anomalySeries.push({
+              id: `anomaly-${anomaly.id}`,
+              name: anomaly.anomalyCategory || '未命名异常',
+              data: anomalyData,
+              color: anomaly.isStored ? 'red' : 'orange',
+              lineWidth: 3,
+              linkedTo: ':previous',
+              enableMouseTracking: true,
+              showInLegend: false,
+              zIndex: 10,
+              boostThreshold: 1,
+              custom: { anomalyId: anomaly.id, isStored: anomaly.isStored }
             });
           }
         });
       }
 
-      // 移除旧的错误数据处理代码，因为已经在上面处理过了
-      if (errorsData && Array.isArray(errorsData)) {
-        errorsData.forEach((errorData) => {
-          if (errorData && errorData.X_value_error && Array.isArray(errorData.X_value_error)) {
-            errorData.X_value_error.forEach((X_value_error, index) => {
-              if (errorData.Y_value_error && Array.isArray(errorData.Y_value_error)) {
-                const Y_value_error = errorData.Y_value_error[index];
-                if (Y_value_error && Array.isArray(Y_value_error)) {
-                  const errorLine = d3
-                    .line()
-                    .x((d, i) => x(X_value_error[i]))
-                    .y((d, i) => y(d))
-                    .curve(d3.curveMonotoneX);
-
-                  const yOffset = errorData.person === 'machine' ? 6 : -6;
-                  const isMachine = errorData.person === 'machine';
-
-                  clipGroup
-                    .append('path')
-                    .datum(Y_value_error)
-                    .attr('class', `error-line-${index}-${channelName}`)
-                    .attr('fill', 'none')
-                    .attr('stroke', errorData.color || 'rgba(0,0,0,0)')
-                    .attr('stroke-width', 2)
-                    .attr('opacity', 0.8)
-                    .attr('transform', `translate(0,${yOffset})`)
-                    .attr('d', errorLine)
-                    .attr('stroke-dasharray', isMachine ? '5, 5' : null);
+      // 创建高亮矩形函数
+      const getPlotBands = () => {
+        const plotBands = [];
+        
+        // 异常区域绘制为plotBands
+        if (channelAnomalies && channelAnomalies.length > 0) {
+          channelAnomalies.forEach(anomaly => {
+            plotBands.push({
+              id: `band-${anomaly.id}`,
+              from: anomaly.startX,
+              to: anomaly.endX,
+              color: anomaly.isStored ? 'rgba(255, 0, 0, 0.1)' : 'rgba(255, 165, 0, 0.1)',
+              borderColor: anomaly.isStored ? 'red' : 'orange',
+              borderWidth: 1,
+              zIndex: 5,
+              label: {
+                text: `${anomaly.startX.toFixed(3)}`, 
+                align: 'left',
+                verticalAlign: 'top',
+                y: -25,
+                style: {
+                  color: '#606060',
+                  fontWeight: 'bold',
+                  fontSize: '10px'
+                }
+              },
+              events: {
+                click: function() {
+                  // 重绘图表以显示新添加的元素
+                  chart.redraw();
+                  
+                  // 立即打开编辑表单
+                  Object.assign(currentAnomaly, {
+                    ...anomaly,
+                    channelName: channelName
+                  });
+                  
+                  // 确保表单显示
+                  showAnomalyForm.value = true;
                 }
               }
             });
+            
+            // 添加第二个标签显示结束值
+            plotBands.push({
+              id: `band-end-${anomaly.id}`,
+              from: anomaly.endX,
+              to: anomaly.endX,
+              color: 'transparent',
+              zIndex: 5,
+              label: {
+                text: `${anomaly.endX.toFixed(3)}`,
+                align: 'right',
+                verticalAlign: 'top',
+                y: -25,
+                x: -5,
+                style: {
+                  color: '#606060',
+                  fontWeight: 'bold',
+                  fontSize: '10px'
+                }
+              }
+            });
+          });
+        }
+        
+        // 同时添加匹配结果高亮
+        const channelMatchedResults = matchedResults.value.filter(
+          r => r.channelName === channelName.split('_')[0] &&
+            r.shotNumber === channelName.split('_')[1]
+        );
+        
+        if (channelMatchedResults.length > 0) {
+          channelMatchedResults.forEach((result, index) => {
+            if (result.confidence > 0.75) {
+              const [startX, endX] = result.range;
+              
+              // 应用过滤条件
+              const timeBegin = store.state.time_begin;
+              const timeEnd = store.state.time_end;
+              const timeDuring = store.state.time_during;
+              const upperBound = store.state.upper_bound;
+              const lowerBound = store.state.lower_bound;
+              const scopeBound = store.state.scope_bound;
+              
+              // 时间范围过滤
+              if (startX < timeBegin || endX > timeEnd) {
+                return;
+              }
+              
+              // 持续时间过滤
+              const duration = endX - startX;
+              if (duration < timeDuring) {
+                return;
+              }
+              
+              // 获取区间内的数据点
+              const startIndex = data.X_value.findIndex(x => x >= startX);
+              const endIndex = data.X_value.findIndex(x => x > endX);
+              
+              const rangeData = {
+                X: data.X_value.slice(startIndex, endIndex),
+                Y: data.Y_value.slice(startIndex, endIndex)
+              };
+              
+              if (rangeData.Y.length === 0) return;
+              
+              const minY = Math.min(...rangeData.Y);
+              const maxY = Math.max(...rangeData.Y);
+              
+              // Y值范围和幅度过滤
+              if (minY < lowerBound || maxY > upperBound) return;
+              const yRange = Math.abs(maxY - minY);
+              if (yRange < scopeBound) return;
+              
+              // 添加匹配结果高亮
+              plotBands.push({
+                id: `match-${index}`,
+                from: startX,
+                to: endX,
+                color: 'rgba(255, 165, 0, 0.2)',
+                borderColor: 'rgba(255, 140, 0, 0.8)',
+                borderWidth: 2,
+                zIndex: 0,
+                events: {
+                  mouseOver: function() {
+                    const tooltip = document.createElement('div');
+                    tooltip.className = 'custom-tooltip';
+                    tooltip.style.position = 'absolute';
+                    tooltip.style.backgroundColor = 'rgba(255, 255, 255, 0.8)';
+                    tooltip.style.color = '#333';
+                    tooltip.style.padding = '2px 5px';
+                    tooltip.style.borderRadius = '4px';
+                    tooltip.style.fontSize = '12px';
+                    tooltip.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+                    tooltip.style.zIndex = '9999';
+                    tooltip.style.pointerEvents = 'none';
+                    tooltip.style.border = '1px solid #ccc';
+                    
+                    tooltip.textContent = `( ${startX.toFixed(4)}, ${endX.toFixed(4)} )`;
+                    
+                    document.body.appendChild(tooltip);
+                    
+                    // 设置提示框位置
+                    const event = window.event;
+                    const tooltipWidth = tooltip.getBoundingClientRect().width;
+                    const tooltipHeight = tooltip.getBoundingClientRect().height;
+                    const mouseX = event.pageX;
+                    const mouseY = event.pageY;
+                    
+                    tooltip.style.left = `${mouseX - tooltipWidth / 2}px`;
+                    tooltip.style.top = `${mouseY - tooltipHeight - 10}px`;
+                    
+                    this.tooltip = tooltip;
+                  },
+                  mouseOut: function() {
+                    if (this.tooltip) {
+                      document.body.removeChild(this.tooltip);
+                      this.tooltip = null;
+                    }
+                  }
+                }
+              });
+            }
+          });
+        }
+        
+        return plotBands;
+      };
+
+      // 创建图表
+      const chart = Highcharts.chart(`chart-${channelName}`, {
+        chart: {
+          height: 230,
+          zoomType: isBoxSelect.value ? 'x' : 'xy',
+          animation: false,
+          events: {
+            selection: function(event) {
+              if (event.resetSelection) {
+                // 重置选区
+                return;
+              }
+
+              // 确保在框选模式下只处理框选，不处理缩放
+              if (isBoxSelect.value) {
+                // 处理框选
+                if (event.xAxis) {
+                  const [x0, x1] = [event.xAxis[0].min, event.xAxis[0].max];
+                  
+                  // 格式化当前时间
+                  const now = new Date();
+                  const formattedTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+                  
+                  const anomaly = {
+                    id: `${store.state.person}_${Date.now()}`,
+                    person: store.state.person,
+                    channelName: channelName,
+                    startX: x0,
+                    endX: x1,
+                    anomalyCategory: '',
+                    anomalyDiagnosisName: '',
+                    anomalyDescription: '',
+                    annotationTime: formattedTime,
+                    isStored: false
+                  };
+                  
+                  // 添加到store
+                  store.dispatch('addAnomaly', {
+                    channelName: channelName,
+                    anomaly: anomaly
+                  });
+                  
+                  // 立即添加plotBand
+                  chart.xAxis[0].addPlotBand({
+                    id: `band-${anomaly.id}`,
+                    from: anomaly.startX,
+                    to: anomaly.endX,
+                    color: 'rgba(255, 165, 0, 0.1)',
+                    borderColor: 'orange',
+                    borderWidth: 1,
+                    zIndex: 5,
+                    label: {
+                      text: `${anomaly.startX.toFixed(3)}`, 
+                      align: 'left',
+                      verticalAlign: 'top',
+                      y: -25,
+                      style: {
+                        color: '#606060',
+                        fontWeight: 'bold',
+                        fontSize: '10px'
+                      }
+                    },
+                    events: {
+                      click: function() {
+                        const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+                        const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+                        
+                        if (storedAnomaly) {
+                          Object.assign(currentAnomaly, {
+                            ...storedAnomaly,
+                            channelName: channelName
+                          });
+                        } else {
+                          Object.assign(currentAnomaly, {
+                        ...anomaly,
+                            channelName: channelName
+                          });
+                        }
+                        
+                        showAnomalyForm.value = true;
+                      }
+                    }
+                  });
+                  
+                  // 添加结束标签
+                  chart.xAxis[0].addPlotBand({
+                    id: `band-end-${anomaly.id}`,
+                    from: anomaly.endX,
+                    to: anomaly.endX,
+                    color: 'transparent',
+                    zIndex: 5,
+                    label: {
+                      text: `${anomaly.endX.toFixed(3)}`,
+                      align: 'right',
+                      verticalAlign: 'top',
+                      y: -25,
+                      x: -5,
+                      style: {
+                        color: '#606060',
+                        fontWeight: 'bold',
+                        fontSize: '10px'
+                      }
+                    }
+                  });
+                  
+                  // 立即添加异常数据系列
+                  const anomalyData = [];
+                  const startIndex = data.X_value.findIndex(x => x >= anomaly.startX);
+                  const endIndex = data.X_value.findIndex(x => x >= anomaly.endX);
+                  
+                  for (let i = startIndex; i <= (endIndex !== -1 ? endIndex : data.X_value.length - 1); i++) {
+                    anomalyData.push([data.X_value[i], data.Y_value[i]]);
+                  }
+                  
+                  if (anomalyData.length > 0) {
+                    chart.addSeries({
+                      id: `anomaly-${anomaly.id}`,
+                      name: anomaly.anomalyCategory || '未命名异常',
+                      data: anomalyData,
+                      color: 'orange',
+                      lineWidth: 3,
+                      linkedTo: ':previous',
+                      enableMouseTracking: true,
+                      showInLegend: false,
+                      zIndex: 10,
+                      boostThreshold: 1,
+                      custom: { anomalyId: anomaly.id, isStored: anomaly.isStored }
+                    }, false);
+                  }
+                  
+                  // 立即添加编辑和删除按钮
+                  const startX = chart.xAxis[0].toPixels(anomaly.startX);
+                  const endX = chart.xAxis[0].toPixels(anomaly.endX);
+                  const y = chart.yAxis[0].toPixels(yDomain[0]);
+                  
+                  // 添加删除按钮 - 放在下方
+                  const deleteButton = chart.renderer.button(
+                    '×',
+                    endX - 25,
+                    y - 3,
+                    function() {
+                      // 删除异常
+                      store.dispatch('deleteAnomaly', {
+                        channelName: anomaly.channelName || channelName,
+                        anomalyId: anomaly.id,
+                      });
+                      
+                      // 移除按钮和绘图元素
+                      this.destroy();
+                      const editBtn = document.querySelector(`.edit-button-${anomaly.id}`);
+                      if (editBtn) {
+                        editBtn.remove();
+                      }
+                      chart.xAxis[0].removePlotBand(`band-${anomaly.id}`);
+                      chart.xAxis[0].removePlotBand(`band-end-${anomaly.id}`);
+                      const anomalySeries = chart.get(`anomaly-${anomaly.id}`);
+                      if (anomalySeries) {
+                        anomalySeries.remove();
+                      }
+                    },
+                    {
+                      fill: '#f56c6c',
+                      style: {
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '10px',
+                        textAlign: 'center',
+                        lineHeight: '6px',
+                        paddingTop: '0px',
+                        paddingLeft: '0px'
+                      },
+                      r: 5,
+                      width: 6,
+                      height: 6,
+                      zIndex: 10
+                    }
+                  )
+                  .attr({
+                    'class': `delete-button-${anomaly.id}`,
+                    'zIndex': 10
+                  })
+                  .css({
+                    cursor: 'pointer'
+                  })
+                  .add();
+                  
+                  // 添加编辑按钮 - 放在上方
+                  const editButton = chart.renderer.button(
+                    '✎',
+                    endX - 25,
+                    y - 28,
+                    function() {
+                      const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+                      const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+                      
+                      if (storedAnomaly) {
+                        Object.assign(currentAnomaly, {
+                          ...storedAnomaly,
+                          channelName: channelName
+                        });
+                      } else {
+                        Object.assign(currentAnomaly, {
+                          ...anomaly,
+                          channelName: channelName
+                        });
+                      }
+                      
+                      showAnomalyForm.value = true;
+                    },
+                    {
+                      fill: '#409eff',
+                      style: {
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '10px',
+                        textAlign: 'center',
+                        lineHeight: '6px',
+                        paddingTop: '0px',
+                        paddingLeft: '0px'
+                      },
+                      r: 5,
+                      width: 6,
+                      height: 6,
+                      zIndex: 10
+                    }
+                  )
+                  .attr({
+                    'class': `edit-button-${anomaly.id}`,
+                    'zIndex': 10
+                  })
+                  .css({
+                    cursor: 'pointer'
+                  })
+                  .add();
+                  
+                  // 确保按钮在最顶层
+                  deleteButton.toFront();
+                  editButton.toFront();
+                  
+                  // 重绘图表以显示新添加的元素
+                  chart.redraw();
+                  
+                  // 立即打开编辑表单
+                  Object.assign(currentAnomaly, {
+                    ...anomaly,
+                    channelName: channelName
+                  });
+                  
+                  // 确保表单显示
+                  showAnomalyForm.value = true;
+                }
+                return false; // 阻止默认缩放行为
+              }
+              else if (!isBoxSelect.value) {
+                // 处理缩放
+                if (event.xAxis) {
+                  const [xMin, xMax] = [event.xAxis[0].min, event.xAxis[0].max];
+                  const [yMin, yMax] = [event.yAxis[0].min, event.yAxis[0].max];
+
+                  // 保存原始范围（如果还没有保存）
+                  if (!originalDomains.value[channelName]) {
+                    originalDomains.value[channelName] = {
+                      x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
+                      y: [yMin, yMax]
+                    };
+                  }
+                  
+                  // 更新store中的范围
+                  store.dispatch('updateDomains', {
+                    channelName,
+                    xDomain: [xMin, xMax],
+                    yDomain: [yMin, yMax]
+                  });
+
+                  // 重新绘制图表
+                  nextTick(() => {
+                    const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
+                    if (targetChannel) {
+                      const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
+                      if (data) {
+                        drawChannelChart(targetChannel, data);
+                      }
+                    }
+                  });
+                }
+                return false; // 阻止默认缩放行为
+              }
+            }
           }
-        });
-      }
-
-      if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-        clipGroup
-          .append('path')
-          .datum(smoothedYValue)
-          .attr('class', 'smoothed-line')
-          .attr('fill', 'none')
-          .attr('stroke', color)  // 直接使用传入的颜色
-          .attr('stroke-width', 1.5)
-          .attr('d', line);
-      }
-
-      const selectionBrush = d3
-        .brushX()
-        .extent([
-          [0, 0],
-          [width, height],
-        ])
-        .on('end', selectionBrushed);
-
-      const zoomBrush = d3
-        .brush()
-        .extent([
-          [0, 0],
-          [width, height],
-        ])
-        .on('end', zoomBrushed);
-
-      // 创建两个不同的brush组
-      const selectionBrushG = g.append('g')
-        .attr('class', 'selection-brush')
-        .style('display', isBoxSelect.value ? null : 'none')
-        .call(selectionBrush);
-
-      const zoomBrushG = g.append('g')
-        .attr('class', 'zoom-brush')
-        .style('display', isBoxSelect.value ? 'none' : null)
-        .call(zoomBrush);
-
-      // 创建anomaliesGroup
-      const anomaliesGroup = g.append('g').attr('class', 'anomalies-group');
-
-      // 加载已有的异常标注
-      const channelAnomalies = store.getters.getAnomaliesByChannel(channelName);
-      channelAnomalies.forEach((anomaly) => {
-        drawAnomalyElements(anomaly, anomaliesGroup, true);
+        },
+        title: {
+          text: '',
+          style: {
+            display: 'none'
+          }
+        },
+        credits: {
+          enabled: false
+        },
+        boost: {
+          useGPUTranslations: true,
+          usePreallocated: true,
+          seriesThreshold: 1
+        },
+        xAxis: {
+          min: xDomain[0],
+          max: xDomain[1],
+          plotBands: getPlotBands(),
+          title: {
+            text: 'Time(s)',
+            style: {
+              fontSize: '1.1em',
+              fontWeight: 'bold'
+            }
+          },
+          labels: {
+            style: {
+              fontSize: '1.1em',
+              fontWeight: 'bold'
+            }
+          },
+          gridLineWidth: 1,
+          gridLineDashStyle: 'Dash',
+          gridLineColor: '#ccc'
+        },
+        yAxis: {
+          min: yDomain[0],
+          max: yDomain[1],
+          title: {
+            text: yUnit,
+            style: {
+              fontSize: '1.05em',
+              fontWeight: 'bold'
+            }
+          },
+          labels: {
+            style: {
+              fontSize: '1em',
+              fontWeight: 'bold'
+            }
+          },
+          gridLineWidth: 1,
+          gridLineDashStyle: 'Dash',
+          gridLineColor: '#ccc'
+        },
+        legend: {
+          enabled: false
+        },
+        tooltip: {
+          enabled: true,
+          formatter: function() {
+            return `(${this.x.toFixed(3)}, ${this.y.toFixed(3)})`;
+          },
+          positioner: function(labelWidth, labelHeight, point) {
+            return {
+              x: point.plotX + this.chart.plotLeft - labelWidth / 2,
+              y: point.plotY + this.chart.plotTop - labelHeight - 10
+            };
+          },
+          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+          borderWidth: 1,
+          borderColor: '#ccc',
+          shadow: false,
+          style: {
+            fontSize: '10px',
+            padding: '2px 5px'
+          }
+        },
+        plotOptions: {
+          series: {
+            animation: false,
+            turboThreshold: 0,
+            states: {
+              hover: {
+                enabled: true,
+                lineWidth: 2
+              }
+            },
+            point: {
+              events: {}
+            }
+          }
+        },
+        series: [
+          // 原始数据线
+          {
+            name: `${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+            id: 'original',
+            type: 'line',
+            data: originalData,
+            color: color,
+            lineWidth: 1.5,
+            opacity: smoothnessValue.value > 0 ? 0.3 : 1,
+            marker: { enabled: false },
+            boostThreshold: 1,
+            enableMouseTracking: true,
+          },
+          // 平滑数据线
+          ...(smoothnessValue.value > 0 ? [{
+            name: '平滑线',
+            id: 'smoothed',
+            type: 'line',
+            data: smoothedData,
+            color: color,
+            lineWidth: 1.5,
+            marker: { enabled: false },
+            boostThreshold: 1,
+            enableMouseTracking: true,
+          }] : []),
+          // 错误数据线
+          ...errorSeries,
+          // 异常标注线
+          ...anomalySeries
+        ]
       });
 
-      function selectionBrushed(event) {
-        if (!event.sourceEvent) return;
-        if (!event.selection) return;
-        if (!isBoxSelect.value) return;
-
-        const [x0, x1] = event.selection;
-        const [startX, endX] = [x.invert(x0), x.invert(x1)];
-
-        // 格式化当前时间
-        const now = new Date();
-        const formattedTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-
-        const anomaly = {
-          id: `${store.state.person}_${Date.now()}`, // 添加时间戳确保ID唯一
-          person: store.state.person,
-          channelName: channelName,
-          startX: startX,
-          endX: endX,
-          anomalyCategory: '',
-          anomalyDiagnosisName: '',
-          anomalyDescription: '',
-          annotationTime: formattedTime,
-          isStored: false  // 添加 isStored 字段,初始为 false
-        };
-
-        d3.select(this).call(selectionBrush.move, null);
-
-        // 添加到store
-        store.dispatch('addAnomaly', {
-          channelName: channelName,
-          anomaly: anomaly
-        });
-
-        // 绘制新标注
-        drawAnomalyElements(anomaly, anomaliesGroup, false);
-      }
-
-      function zoomBrushed(event) {
-        if (!event.sourceEvent) return;
-        if (isBoxSelect.value) return;
-
-        // 检查是否有选择
-        if (!event.selection) {
-          // 如果没有选择，可能是单击事件，可以选择恢复到原始视图
-          if (originalDomains.value[channelName]) {
-            // 恢复到原始视图
-            store.dispatch('updateDomains', {
-              channelName,
-              xDomain: originalDomains.value[channelName].x,
-              yDomain: originalDomains.value[channelName].y
-            });
-
-            // 重新绘制图表
-            const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-            if (targetChannel) {
-              const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
-              if (data) {
-                drawChannelChart(targetChannel, data);
+      // 设置自定义按钮
+      channelAnomalies.forEach(anomaly => {
+        // 添加编辑和删除按钮
+        if (chart && chart.renderer) {
+          const startX = chart.xAxis[0].toPixels(anomaly.startX);
+          const endX = chart.xAxis[0].toPixels(anomaly.endX);
+          const y = chart.yAxis[0].toPixels(yDomain[0]);
+          
+          // 添加删除按钮 - 放在下方
+          const deleteButton = chart.renderer.button(
+            '×',
+            endX - 25,
+            y - 3,
+            function() {
+              // 删除异常
+              store.dispatch('deleteAnomaly', {
+                channelName: anomaly.channelName || channelName,
+                anomalyId: anomaly.id,
+              });
+              
+              // 移除按钮和绘图元素
+              this.destroy();
+              const editBtn = document.querySelector(`.edit-button-${anomaly.id}`);
+              if (editBtn) {
+                editBtn.remove();
               }
+              chart.xAxis[0].removePlotBand(`band-${anomaly.id}`);
+              chart.xAxis[0].removePlotBand(`band-end-${anomaly.id}`);
+              const anomalySeries = chart.get(`anomaly-${anomaly.id}`);
+              if (anomalySeries) {
+                anomalySeries.remove();
+              }
+            },
+            {
+              fill: '#f56c6c',
+              style: {
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '10px',
+                textAlign: 'center',
+                lineHeight: '6px',
+                paddingTop: '0px',
+                paddingLeft: '0px'
+              },
+              r: 5,
+              width: 6,
+              height: 6,
+              zIndex: 10
             }
-          }
-          return;
-        }
-
-        // 获取选择的范围
-        const [[x0, y0], [x1, y1]] = event.selection;
-
-        // 保存原始范围（如果还没有保存）
-        if (!originalDomains.value[channelName]) {
-          originalDomains.value[channelName] = {
-            x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-            y: y.domain()
-          };
-        }
-
-        // 更新显示范围
-        const newXDomain = [x.invert(x0), x.invert(x1)];
-        const newYDomain = [y.invert(y1), y.invert(y0)];
-
-        // 更新 store 中的范围
-        store.dispatch('updateDomains', {
-          channelName,
-          xDomain: newXDomain,
-          yDomain: newYDomain
-        });
-
-        // 清除选择
-        d3.select(this).call(zoomBrush.move, null);
-
-        // 重新绘制图表 - 确保立即执行
-        nextTick(() => {
-          const targetChannel = selectedChannels.value.find(ch => `${ch.channel_name}_${ch.shot_number}` === channelName);
-          if (targetChannel) {
-            const data = channelDataCache.value[`${targetChannel.channel_name}_${targetChannel.shot_number}`];
-            if (data) {
-              drawChannelChart(targetChannel, data);
-
-              // 重新绘制异常标记
-              if (anomalies.value[channelName] && anomalies.value[channelName].length > 0) {
-                anomalies.value[channelName].forEach(anomaly => {
-                  drawAnomalyElements(anomaly, anomaliesGroup, false);
+          )
+          .attr({
+            'class': `delete-button-${anomaly.id}`,
+            'zIndex': 10
+          })
+          .css({
+            cursor: 'pointer'
+          })
+          .add();
+          
+          // 添加编辑按钮 - 放在上方
+          const editButton = chart.renderer.button(
+            '✎',
+            endX - 25,
+            y - 28,
+            function() {
+              const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+              const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+              
+              if (storedAnomaly) {
+                Object.assign(currentAnomaly, {
+                  ...storedAnomaly,
+                  channelName: channelName
+                });
+              } else {
+                Object.assign(currentAnomaly, {
+                  ...anomaly,
+                  channelName: channelName
                 });
               }
+              
+              showAnomalyForm.value = true;
+            },
+            {
+              fill: '#409eff',
+              style: {
+                color: 'white',
+                fontWeight: 'bold',
+                fontSize: '10px',
+                textAlign: 'center',
+                lineHeight: '6px',
+                paddingTop: '0px',
+                paddingLeft: '0px'
+              },
+              r: 5,
+              width: 6,
+              height: 6,
+              zIndex: 10
             }
-          }
-        });
-      }
-
-      function drawAnomalyElements(anomaly, anomaliesGroup, isStored = false) {
-        const anomalyGroup = anomaliesGroup
-          .append('g')
-          .attr('class', `anomaly-group-${anomaly.id}`); // 使用唯一ID
-
-        const anomalyLabelsGroup = g
-          .append('g')
-          .attr('class', `anomaly-labels-group-${anomaly.id}`); // 使用唯一ID
-
-        anomalyLabelsGroup
-          .append('text')
-          .attr('class', `left-label-${anomaly.id}`)
-          .attr('x', x(anomaly.startX))
-          .attr('y', -5)
-          .style('font-size', '1em')
-          .style('font-weight', 'bold')
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'black')
-          .text(anomaly.startX.toFixed(3));
-
-        anomalyLabelsGroup
-          .append('text')
-          .attr('class', `right-label-${anomaly.id}`)
-          .attr('x', x(anomaly.endX))
-          .attr('y', -5)
-          .style('font-size', '1em')
-          .style('font-weight', 'bold')
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'black')
-          .text(anomaly.endX.toFixed(3));
-
-        if (!isStored) {
-          const anomalyRect = anomalyGroup
-            .append('rect')
-            .attr('class', `anomaly-rect-${anomaly.id}`)
-            .attr('x', x(anomaly.startX))
-            .attr('y', 0)
-            .attr('width', x(anomaly.endX) - x(anomaly.startX))
-            .attr('height', height)
-            .attr('fill', 'orange')
-            .attr('fill-opacity', 0.1)
-            .attr('stroke', 'orange')
-            .attr('stroke-width', 1)
-            .attr('cursor', isBoxSelect.value ? 'move' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-            .call(
-              d3.drag()
-                .on('start', function (event) {
-                  if (!isBoxSelect.value) return;
-                  anomaly.initialX = event.x;
-                })
-                .on('drag', function (event) {
-                  if (!isBoxSelect.value) return;
-                  const dx = x.invert(event.x) - x.invert(anomaly.initialX);
-                  anomaly.initialX = event.x;
-
-                  let newStartX = anomaly.startX + dx;
-                  let newEndX = anomaly.endX + dx;
-
-                  const domain = x.domain();
-                  if (newStartX < domain[0]) {
-                    newStartX = domain[0];
-                    newEndX = newStartX + (anomaly.endX - anomaly.startX);
-                  } else if (newEndX > domain[1]) {
-                    newEndX = domain[1];
-                    newStartX = newEndX - (anomaly.endX - anomaly.startX);
-                  }
-
-                  anomaly.startX = newStartX;
-                  anomaly.endX = newEndX;
-
-                  updateAnomalyElements(anomaly, isStored);
-                })
-                .on('end', function () {
-                  if (!isBoxSelect.value) return;
-                  const index = store.getters.getAnomaliesByChannel(channelName).findIndex(
-                    (a) => a.id === anomaly.id
-                  );
-                  if (index !== -1) {
-                    store.dispatch('updateAnomaly', {
-                      channelName: channelName,
-                      anomaly: {
-                        ...anomaly,
-                        startX: anomaly.startX,
-                        endX: anomaly.endX
-                      }
-                    });
-                  }
-                })
-            );
-
-          // 修改左侧拖动手柄
-          anomalyGroup
-            .append('rect')
-            .attr('class', `left-handle-${anomaly.id}`)
-            .attr('x', x(anomaly.startX) - 5)
-            .attr('y', 0)
-            .attr('width', 10)
-            .attr('height', height)
-            .attr('fill', 'transparent')
-            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-            .call(
-              d3.drag()
-                .on('drag', function (event) {
-                  if (!isBoxSelect.value) return;
-                  const newX = x.invert(event.x);
-                  if (newX < anomaly.endX && newX >= x.domain()[0]) {
-                    anomaly.startX = newX;
-                    updateAnomalyElements(anomaly, isStored);
-                  }
-                })
-                .on('end', function () {
-                  if (!isBoxSelect.value) return;
-                  const index = store.getters.getAnomaliesByChannel(channelName).findIndex(
-                    (a) => a.id === anomaly.id
-                  );
-                  if (index !== -1) {
-                    store.dispatch('updateAnomaly', {
-                      channelName: channelName,
-                      anomaly: {
-                        ...anomaly,
-                        startX: anomaly.startX,
-                        endX: anomaly.endX
-                      }
-                    });
-                  }
-                })
-            );
-
-          // 修改右侧拖动手柄
-          anomalyGroup
-            .append('rect')
-            .attr('class', `right-handle-${anomaly.id}`)
-            .attr('x', x(anomaly.endX) - 5)
-            .attr('y', 0)
-            .attr('width', 10)
-            .attr('height', height)
-            .attr('fill', 'transparent')
-            .attr('cursor', isBoxSelect.value ? 'ew-resize' : 'not-allowed')
-            .attr('pointer-events', isBoxSelect.value ? 'all' : 'none')
-            .call(
-              d3.drag()
-                .on('drag', function (event) {
-                  if (!isBoxSelect.value) return;
-                  const newX = x.invert(event.x);
-                  if (newX > anomaly.startX && newX <= x.domain()[1]) {
-                    anomaly.endX = newX;
-                    updateAnomalyElements(anomaly, isStored);
-                  }
-                })
-                .on('end', function () {
-                  if (!isBoxSelect.value) return;
-                  const index = store.getters.getAnomaliesByChannel(channelName).findIndex(
-                    (a) => a.id === anomaly.id
-                  );
-                  if (index !== -1) {
-                    store.dispatch('updateAnomaly', {
-                      channelName: channelName,
-                      anomaly: {
-                        ...anomaly,
-                        startX: anomaly.startX,
-                        endX: anomaly.endX
-                      }
-                    });
-                  }
-                })
-            );
-        } else {
-          // 已保存的异常标注显示红色矩形
-          anomalyGroup
-            .append('rect')
-            .attr('class', `anomaly-rect-${anomaly.id}`)
-            .attr('x', x(anomaly.startX))
-            .attr('y', 0)
-            .attr('width', x(anomaly.endX) - x(anomaly.startX))
-            .attr('height', height)
-            .attr('fill', 'red')
-            .attr('fill-opacity', 0.1)
-            .attr('stroke', 'red')
-            .attr('stroke-width', 1)
-            .style('pointer-events', 'none');
-        }
-
-        // 修改按钮组实现
-        const buttonGroup = anomalyGroup
-          .append('g')
-          .attr('class', `anomaly-buttons-${anomaly.id}`)
-          .attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
-
-        // 删除按钮
-        const deleteButton = buttonGroup
-          .append('g')
-          .attr('class', 'delete-button')
-          .style('cursor', 'pointer');
-
-        const deleteRect = deleteButton
-          .append('rect')
-          .attr('width', 16)
-          .attr('height', 16)
-          .attr('fill', '#f56c6c')
-          .attr('rx', 3)
-          .style('pointer-events', 'all');
-
-        deleteButton
-          .append('text')
-          .attr('x', 8)
-          .attr('y', 12)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '12px')
-          .attr('font-weight', 'bold')
-          .style('pointer-events', 'none')
-          .text('×');
-
-        // 编辑按钮
-        const editButton = buttonGroup
-          .append('g')
-          .attr('class', 'edit-button')
-          .attr('transform', 'translate(20, 0)')
-          .style('cursor', 'pointer');
-
-        const editRect = editButton
-          .append('rect')
-          .attr('width', 16)
-          .attr('height', 16)
-          .attr('fill', '#409eff')
-          .attr('rx', 3)
-          .style('pointer-events', 'all');
-
-        editButton
-          .append('text')
-          .attr('x', 8)
-          .attr('y', 12)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '12px')
-          .attr('font-weight', 'bold')
-          .style('pointer-events', 'none')
-          .text('✒️');
-
-        // 添加点击事件到矩形上
-        deleteRect.on('click', () => {
-          if (isStored) {
-            store.dispatch('deleteAnomaly', {
-              channelName: anomaly.channelName,
-              anomalyId: anomaly.id,
-            });
-          } else {
-            store.dispatch('deleteAnomaly', {
-              channelName: anomaly.channelName,
-              anomalyId: anomaly.id,
-            });
-          }
-          removeAnomalyElements(anomaly.id, channelName);
-        });
-
-        editRect.on('click', () => {
-          // 从store中获取最新的异常数据
-          const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
-          const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
-
-          if (storedAnomaly) {
-            // 使用store中的数据更新currentAnomaly
-            Object.assign(currentAnomaly, {
-              ...storedAnomaly,
-              channelName: channelName
-            });
-          } else {
-            // 如果在store中找不到,使用当前anomaly数据
-            Object.assign(currentAnomaly, {
-              ...anomaly,
-              channelName: channelName
-            });
-          }
-
-          showAnomalyForm.value = true;
-        });
-
-        const startIndex = data.X_value.findIndex(
-          (xVal) => xVal >= anomaly.startX
-        );
-        const endIndex = data.X_value.findIndex(
-          (xVal) => xVal >= anomaly.endX
-        );
-        const anomalyXValues = data.X_value.slice(
-          startIndex,
-          endIndex + 1
-        );
-        const anomalyYValues = data.Y_value.slice(
-          startIndex,
-          endIndex + 1
-        );
-
-        anomalyGroup
-          .append('path')
-          .datum(anomalyYValues)
-          .attr('class', `anomaly-line-${anomaly.id}`)
-          .attr('fill', 'none')
-          .attr('stroke', isStored ? 'red' : 'orange')
-          .attr('stroke-width', 3)
-          .attr(
-            'd',
-            d3
-              .line()
-              .x((d, i) => x(anomalyXValues[i]))
-              .y((d, i) => y(d))
-          );
-
-        if (isStored) {
-          anomalyGroup
-            .select(`.anomaly-rect-${anomaly.id}`)
-            .style('pointer-events', 'none');
-          anomalyGroup
-            .selectAll(
-              `.left-handle-${anomaly.id}, .right-handle-${anomaly.id}`
-            )
-            .remove();
-        }
-      }
-
-      function updateAnomalyElements(anomaly, isStored = false) {
-        const anomalyGroup = d3.select(`#chart-${anomaly.channelName}`)
-          .select('.anomalies-group')
-          .select(`.anomaly-group-${anomaly.id}`); // 使用唯一ID
-
-        // 更新矩形位置和大小
-        anomalyGroup
-          .select(`.anomaly-rect-${anomaly.id}`)
-          .attr('x', x(anomaly.startX))
-          .attr('width', x(anomaly.endX) - x(anomaly.startX))
-          .attr('fill', isStored ? 'red' : 'orange')
-          .attr('stroke', isStored ? 'red' : 'orange');
-
-        // 更新左侧手柄位置
-        anomalyGroup
-          .select(`.left-handle-${anomaly.id}`)
-          .attr('x', x(anomaly.startX) - 5);
-
-        // 更新右侧手柄位置
-        anomalyGroup
-          .select(`.right-handle-${anomaly.id}`)
-          .attr('x', x(anomaly.endX) - 5);
-
-        // 更新按钮组位置
-        const buttonGroup = anomalyGroup.select(`.anomaly-buttons-${anomaly.id}`);
-        buttonGroup.attr('transform', `translate(${x(anomaly.endX) - 40}, ${height - 20})`);
-
-        // 更新标签位置和文本
-        g.select(`.anomaly-labels-group-${anomaly.id} .left-label-${anomaly.id}`)
-          .attr('x', x(anomaly.startX))
-          .text(anomaly.startX.toFixed(3));
-
-        g.select(`.anomaly-labels-group-${anomaly.id} .right-label-${anomaly.id}`)
-          .attr('x', x(anomaly.endX))
-          .text(anomaly.endX.toFixed(3));
-
-        // 更新高亮曲线
-        const startIndex = data.X_value.findIndex(xVal => xVal >= anomaly.startX);
-        const endIndex = data.X_value.findIndex(xVal => xVal >= anomaly.endX);
-        const anomalyXValues = data.X_value.slice(startIndex, endIndex + 1);
-        const anomalyYValues = data.Y_value.slice(startIndex, endIndex + 1);
-
-        anomalyGroup
-          .select(`.anomaly-line-${anomaly.id}`)
-          .datum(anomalyYValues)
-          .attr('d', d3.line()
-            .x((d, i) => x(anomalyXValues[i]))
-            .y((d, i) => y(d))
           )
-          .attr('stroke', isStored ? 'red' : 'orange');
-      }
+          .attr({
+            'class': `edit-button-${anomaly.id}`,
+            'zIndex': 10
+          })
+          .css({
+            cursor: 'pointer'
+          })
+          .add();
+          
+          // 确保按钮在最顶层
+          deleteButton.toFront();
+          editButton.toFront();
+          
+          // 重绘图表以显示新添加的元素
+          chart.redraw();
+          
+          // 立即打开编辑表单
+          Object.assign(currentAnomaly, {
+            ...anomaly,
+            channelName: channelName
+          });
+          
+          // 确保表单显示
+          showAnomalyForm.value = true;
+        }
+      });
 
-      function removeAnomalyElements(anomalyId, channelName) {
-        // 从store中删除异常数据
-        store.dispatch('deleteAnomaly', {
-          channelName: channelName,
-          anomalyId: anomalyId
-        });
-
-        // 移除相关的DOM元素
-        d3.selectAll([
-          `.anomaly-group-${anomalyId}`,
-          `.anomaly-labels-group-${anomalyId}`,
-          `.anomaly-buttons-${anomalyId}`
-        ].join(',')).remove();
-
-        // 恢复刷选功能
-        const g = d3.select(`#chart-${channelName}`).select('g');
-        g.select('.selection-brush .overlay').style('pointer-events', 'all');
-        g.select('.selection-brush .selection').style('display', null);
+      // 添加图例文字
+      if (chart && chart.renderer) {
+        chart.renderer.text(
+          `${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+          110,
+          30
+        )
+        .css({
+          color: color,
+          fontSize: '1.0em',
+          fontWeight: 'bold'
+        })
+        .add();
       }
 
       performance.mark(`Draw Chart ${channelName}-end`);
@@ -1863,15 +1811,9 @@ const drawChart = async (
         `Draw Chart ${channelName}-start`,
         `Draw Chart ${channelName}-end`);
 
-      // 在图表绘制完成后，检查是否有匹配结果需要高亮
-      const channelMatchedResults = matchedResults.value.filter(
-        r => r.channelName === channelName.split('_')[0] &&
-          r.shotNumber === channelName.split('_')[1]
-      );
-
-      if (channelMatchedResults.length > 0) {
-        drawHighlightRects(channelName, channelMatchedResults);
-      }
+      // 存储图表实例
+      window.chartInstances = window.chartInstances || {};
+      window.chartInstances[channelName] = chart;
 
       resolve();
     } catch (error) {
