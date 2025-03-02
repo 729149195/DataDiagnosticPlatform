@@ -131,7 +131,7 @@ const store = createStore({
           state.anomalies[channelName][index] = anomaly;
         }
       }
-      console.log(state.anomalies);
+      // console.log(state.anomalies);
     },
     updateChannelColor(state, { channel_key, color }) {
       const selectedChannel = state.selectedChannels.find(
@@ -517,7 +517,7 @@ const store = createStore({
 
       // 检查是否有相同的请求正在进行中
       if (pendingRequests.has(channelKey)) {
-        console.log(`复用进行中的请求: ${channelKey}`);
+        // console.log(`复用进行中的请求: ${channelKey}`);
         return pendingRequests.get(channelKey);
       }
 

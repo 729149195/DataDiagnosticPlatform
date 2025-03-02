@@ -90,8 +90,26 @@ watch(
 )
 
 const handleChange = (newColor) => {
+  // 先更新颜色值
   emit('update:color', newColor)
-  emit('change', newColor)
+  
+  // 使用setTimeout确保DOM更新后再触发change事件
+  setTimeout(() => {
+    emit('change', newColor)
+    
+    // 手动关闭颜色选择器弹窗
+    const colorPicker = document.querySelector(`.custom-color-picker-${uniqueId.value}`)
+    if (colorPicker && colorPicker.parentNode) {
+      // 查找关闭按钮并触发点击
+      const closeBtn = colorPicker.querySelector('.el-color-dropdown__btn')
+      if (closeBtn) {
+        closeBtn.click()
+      } else {
+        // 如果找不到关闭按钮，尝试从DOM中移除弹窗
+        colorPicker.parentNode.removeChild(colorPicker)
+      }
+    }
+  }, 0)
 }
 </script>
 
