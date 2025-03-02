@@ -746,10 +746,6 @@ watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
 
 // 添加一个函数用于更新异常按钮位置
 const updateAnomalyButtons = (chart, channelName) => {
-  // 暂时禁用异常按钮更新功能
-  return;
-  
-  /* 禁用原始功能
   if (!chart || !chart.renderer) return;
   
   // 获取该通道的异常列表
@@ -801,11 +797,14 @@ const updateAnomalyButtons = (chart, channelName) => {
         chart.xAxis[0].removePlotBand(`band-${anomaly.id}`);
         chart.xAxis[0].removePlotBand(`band-end-${anomaly.id}`);
         
-        // 注释掉的部分
-        // const anomalySeries = chart.get(`anomaly-${anomaly.id}`);
-        // if (anomalySeries) {
-        //   anomalySeries.remove();
-        // }
+        // 不再需要移除异常线条，因为我们不再使用series显示异常
+        /*
+        // 移除异常线条
+        const anomalySeries = chart.get(`anomaly-${anomaly.id}`);
+        if (anomalySeries) {
+          anomalySeries.remove();
+        }
+        */
       },
       {
         fill: '#f56c6c',
@@ -818,7 +817,7 @@ const updateAnomalyButtons = (chart, channelName) => {
           paddingTop: '0px',
           paddingLeft: '0px'
         },
-        r: 4,
+        r: 5,
         width: buttonWidth,
         height: 6,
         zIndex: 10
@@ -867,7 +866,7 @@ const updateAnomalyButtons = (chart, channelName) => {
           paddingTop: '0px',
           paddingLeft: '0px'
         },
-        r: 4,
+        r: 5,
         width: buttonWidth,
         height: 6,
         zIndex: 10
@@ -881,8 +880,11 @@ const updateAnomalyButtons = (chart, channelName) => {
       cursor: 'pointer'
     })
     .add();
+    
+    // 确保按钮在最顶层
+    deleteButton.toFront();
+    editButton.toFront();
   });
-  */
 };
 
 // 在组件挂载时添加监听器
@@ -941,6 +943,43 @@ const saveAnomaly = () => {
 
     // 更新store中的异常数据
     store.dispatch('updateAnomaly', payload);
+
+    // 立即更新视觉状态
+    const chart = window.chartInstances?.[payload.channelName];
+    if (chart) {
+      // 更新异常区域颜色
+      const plotBand = chart.xAxis[0].plotLinesAndBands.find(band => band.id === `band-${currentAnomaly.id}`);
+      if (plotBand) {
+        // 移除事件监听器，禁用拖拽
+        plotBand.options.events = {};
+        
+        // 更新颜色为红色
+        chart.xAxis[0].removePlotBand(`band-${currentAnomaly.id}`);
+        chart.xAxis[0].addPlotBand({
+          id: `band-${currentAnomaly.id}`,
+          from: currentAnomaly.startX,
+          to: currentAnomaly.endX,
+          color: 'rgba(255, 0, 0, 0.2)',
+          borderColor: 'red',
+          borderWidth: 1,
+          zIndex: 5,
+          label: {
+            text: `${currentAnomaly.startX.toFixed(3)}`, 
+            align: 'left',
+            verticalAlign: 'top',
+            y: -25,
+            style: {
+              color: '#606060',
+              fontWeight: 'bold',
+              fontSize: '10px'
+            }
+          }
+        });
+      }
+      
+      // 重绘图表
+      chart.redraw();
+    }
 
     // 关闭编辑框
     showAnomalyForm.value = false;
@@ -1271,10 +1310,78 @@ const drawChart = (
 
       // 获取通道对应的已标注异常
       const channelAnomalies = store.getters.getAnomaliesByChannel(channelName);
+      const anomalySeries = [];
       
-      // 代替绘制异常的函数，返回空数组
+      // 注意：我们不再使用series来显示异常，而是完全依赖plotBands
+      
+      // 创建高亮矩形函数
       const getPlotBands = () => {
-        return [];
+        const plotBands = [];
+        
+        // 异常区域绘制为plotBands
+        if (channelAnomalies && channelAnomalies.length > 0) {
+          channelAnomalies.forEach(anomaly => {
+            // 为每个异常添加背景区域
+            plotBands.push({
+              id: `band-${anomaly.id}`,
+              from: anomaly.startX,
+              to: anomaly.endX,
+              color: anomaly.isStored ? 'rgba(255, 0, 0, 0.2)' : 'rgba(255, 165, 0, 0.2)',
+              borderColor: anomaly.isStored ? 'red' : 'orange',
+              borderWidth: 1,
+              zIndex: 5,
+              label: {
+                text: `${anomaly.startX.toFixed(3)}`, 
+                align: 'left',
+                verticalAlign: 'top',
+                y: -25,
+                style: {
+                  color: '#606060',
+                  fontWeight: 'bold',
+                  fontSize: '10px'
+                }
+              },
+              events: {
+                click: function() {
+                  // 重绘图表以显示新添加的元素
+                  chart.redraw();
+                  
+                  // 立即打开编辑表单
+                  Object.assign(currentAnomaly, {
+                    ...anomaly,
+                    channelName: channelName
+                  });
+                  
+                  // 确保表单显示
+                  showAnomalyForm.value = true;
+                }
+              }
+            });
+            
+            // 添加第二个标签显示结束值
+            plotBands.push({
+              id: `band-end-${anomaly.id}`,
+              from: anomaly.endX,
+              to: anomaly.endX,
+              color: 'transparent',
+              zIndex: 5,
+              label: {
+                text: `${anomaly.endX.toFixed(3)}`,
+                align: 'right',
+                verticalAlign: 'top',
+                y: -25,
+                x: -5,
+                style: {
+                  color: '#606060',
+                  fontWeight: 'bold',
+                  fontSize: '10px'
+                }
+              }
+            });
+          });
+        }
+        
+        return plotBands;
       };
 
       // 创建图表
@@ -1789,12 +1896,11 @@ const drawChart = (
           }] : []),
           // 错误数据线
           ...errorSeries,
-          // 完全删除异常标注线
+          // 不再显示异常标注线
+          // ...anomalySeries
         ]
       });
 
-      // 不再绘制异常按钮和标记
-      /*
       // 设置自定义按钮
       channelAnomalies.forEach(anomaly => {
         // 添加编辑和删除按钮
@@ -1838,7 +1944,7 @@ const drawChart = (
               if (anomalySeries) {
                 anomalySeries.remove();
               }
-              *//*
+              */
             },
             {
               fill: '#f56c6c',
@@ -1900,7 +2006,7 @@ const drawChart = (
                 paddingTop: '0px',
                 paddingLeft: '0px'
               },
-              r: 4,
+              r: 5,
               width: buttonWidth,
               height: 6,
               zIndex: 10
@@ -1914,9 +2020,12 @@ const drawChart = (
             cursor: 'pointer'
           })
           .add();
+          
+          // 确保按钮在最顶层
+          deleteButton.toFront();
+          editButton.toFront();
         }
       });
-      */
 
       // 添加图例文字
       if (chart && chart.renderer) {
