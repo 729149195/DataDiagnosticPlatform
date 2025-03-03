@@ -3,15 +3,27 @@
     <div class="two">
       <div>
         <span>炮号：</span>
-        <el-autocomplete
-            :model-value="gunNumberInput"
-            :fetch-suggestions="querySearchGunNumbers"
-            placeholder="请输入炮号，例如 1-5,7,9-12"
-            @select="handleGunNumberSelect"
-            @input="handleInput"
-            @clear="handleGunNumberClear"
-            clearable
-        ></el-autocomplete>
+        <div class="gun-number-container">
+          <el-autocomplete
+              :model-value="gunNumberInput"
+              :fetch-suggestions="querySearchGunNumbers"
+              placeholder="请输入炮号，例如 1-5,7,9-12"
+              @select="handleGunNumberSelect"
+              @input="handleInput"
+              @clear="handleGunNumberClear"
+              clearable
+              class="gun-number-input"
+          ></el-autocomplete>
+          <el-button 
+            v-if="gunNumberSearchResults.length > 0"
+            @click="selectAllGunNumberResults" 
+            size="small" 
+            type="primary"
+            class="select-all-btn"
+          >
+            全选搜索结果
+          </el-button>
+        </div>
       </div>
       <div>
         <span>通道名：</span>
@@ -24,9 +36,17 @@
             placeholder="请输入通道名"
             @clear="handleChannelNameClear"
             clearable
+            :filter-method="filterChannelNameMethod"
+            reserve-keyword
         >
           <el-option
-              v-for="item in channelNameOptions"
+              v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0"
+              key="select-search-results"
+              label="选择所有搜索结果"
+              value="select-search-results"
+          />
+          <el-option
+              v-for="item in filteredChannelNameOptionsList"
               :key="item.value"
               :label="item.value"
               :value="item.value"
@@ -42,9 +62,17 @@
             placeholder="请输入异常名"
             @clear="handleErrorsNameClear"
             clearable
+            :filter-method="filterErrorsNameMethod"
+            reserve-keyword
         >
           <el-option
-              v-for="item in errorsNameOptions"
+              v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0"
+              key="select-search-results"
+              label="选择所有搜索结果"
+              value="select-search-results"
+          />
+          <el-option
+              v-for="item in filteredErrorsNameOptionsList"
               :key="item.value"
               :label="item.value"
               :value="item.value"
@@ -75,6 +103,7 @@ const gunNumberOptions = ref([]);
 const gunNumberInput = ref(''); // 炮号输入字符串
 const selectedGunNumbers = ref([]); // 用户选中的炮号键
 const gunNumberData = ref({}); // 保存炮号键与值的映射
+const gunNumberSearchResults = ref([]); // 保存当前搜索结果
 
 // 通道类别相关数据
 const channelTypeOptions = ref([]);
@@ -100,6 +129,16 @@ const errorsNamesAllSelected = ref(false);
 const channelTypeInput = ref('');
 const channelNameInput = ref('');
 const errorNameInput = ref('');
+
+// 添加通道名搜索相关变量
+const filteredChannelNameKeyword = ref('');
+const filteredChannelNameResultOptions = ref([]);
+const filteredChannelNameOptionsList = ref([]);
+
+// 添加异常名搜索相关变量
+const filteredErrorsNameKeyword = ref('');
+const filteredErrorsNameResultOptions = ref([]);
+const filteredErrorsNameOptionsList = ref([]);
 
 // 通用函数，用于设置选项和默认选中值
 const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
@@ -229,6 +268,9 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
         .slice(0, 10) // 限制最多10个建议
         .map(item => ({value: item.value}));
   }
+
+  // 保存当前搜索结果
+  gunNumberSearchResults.value = suggestions;
 
   cb(suggestions);
 }, 300); // 延迟300ms触发
@@ -435,13 +477,47 @@ watch(selectedChannelTypes, (newTypes) => {
   selectederrorsNames.value = selectederrorsNames.value.filter(name => {
     return filteredErrorsNameOptions.value.some(option => option.value === name);
   });
+  
+  // 更新通道名选项列表
+  filteredChannelNameOptionsList.value = filteredChannelNameOptions.value;
+  
+  // 更新异常名选项列表
+  filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
 });
 
-watch(selectedChannelNames, (newNames) => {
+watch(selectedChannelNames, (newVal) => {
+  // 处理"选择所有搜索结果"选项
+  if (newVal.includes('select-search-results')) {
+    // 如果选中了"选择所有搜索结果"，则选中当前搜索结果中的所有选项
+    const searchResultValues = filteredChannelNameResultOptions.value.map(item => item.value);
+    // 删除"select-search-results"并添加所有搜索结果
+    selectedChannelNames.value = Array.from(new Set([
+      ...selectedChannelNames.value.filter(item => item !== 'select-search-results'),
+      ...searchResultValues
+    ]));
+  }
+  // 处理"全选"选项
+  else if (newVal.includes('select-all')) {
+    // 如果选中了全选，则选中所有选项（除了全选选项本身）
+    selectedChannelNames.value = filteredChannelNameOptions.value.map(option => option.value);
+  }
+  
   // 清理无效的异常名选择
   selectederrorsNames.value = selectederrorsNames.value.filter(name => {
     return filteredErrorsNameOptions.value.some(option => option.value === name);
   });
+  
+  // 通道名变更时，更新异常名的选项列表
+  filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
+  
+  // 如果当前有异常名搜索关键词，重新应用过滤
+  if (filteredErrorsNameKeyword.value) {
+    const filterOptions = filteredErrorsNameOptions.value.filter(
+      item => item.value.toLowerCase().includes(filteredErrorsNameKeyword.value.toLowerCase())
+    );
+    filteredErrorsNameResultOptions.value = filterOptions;
+    filteredErrorsNameOptionsList.value = filterOptions;
+  }
 });
 
 // 修改计算属性，添加全选选项
@@ -486,15 +562,19 @@ watch(selectedChannelTypes, (newVal) => {
   }
 });
 
-watch(selectedChannelNames, (newVal) => {
-  if (newVal.includes('select-all')) {
-    // 如果选中了全选，则选中所有选项（除了全选选项本身）
-    selectedChannelNames.value = filteredChannelNameOptions.value.map(option => option.value);
-  }
-});
-
 watch(selectederrorsNames, (newVal) => {
-  if (newVal.includes('select-all')) {
+  // 处理"选择所有搜索结果"选项
+  if (newVal.includes('select-search-results')) {
+    // 如果选中了"选择所有搜索结果"，则选中当前搜索结果中的所有选项
+    const searchResultValues = filteredErrorsNameResultOptions.value.map(item => item.value);
+    // 删除"select-search-results"并添加所有搜索结果
+    selectederrorsNames.value = Array.from(new Set([
+      ...selectederrorsNames.value.filter(item => item !== 'select-search-results'),
+      ...searchResultValues
+    ]));
+  }
+  // 处理"全选"选项
+  else if (newVal.includes('select-all')) {
     // 如果选中了全选，则选中所有选项（除了全选选项本身）
     selectederrorsNames.value = filteredErrorsNameOptions.value.map(option => option.value);
   }
@@ -504,6 +584,7 @@ watch(selectederrorsNames, (newVal) => {
 const handleGunNumberClear = () => {
   gunNumberInput.value = '';
   selectedGunNumbers.value = [];
+  gunNumberSearchResults.value = []; // 清除搜索结果
 };
 
 const handleChannelTypeClear = () => {
@@ -620,11 +701,87 @@ watch(errorNameInput, (newVal) => {
   }
 });
 
+// 通道名筛选方法
+const filterChannelNameMethod = (val) => {
+  if (val) {
+    filteredChannelNameKeyword.value = val;
+    // 使用过滤后的选项进行搜索
+    const filterOptions = filteredChannelNameOptions.value.filter(
+      item => item.value.toLowerCase().includes(val.toLowerCase())
+    );
+    filteredChannelNameResultOptions.value = filterOptions;
+    // 显示过滤后的选项和全选按钮
+    filteredChannelNameOptionsList.value = filterOptions;
+  } else {
+    filteredChannelNameKeyword.value = '';
+    filteredChannelNameResultOptions.value = [];
+    // 不搜索时显示所有选项
+    filteredChannelNameOptionsList.value = filteredChannelNameOptions.value;
+  }
+  return true; // 返回true表示已自定义了过滤逻辑，避免内部再次过滤
+};
+
+// 监听filteredChannelNameOptions，更新显示的选项列表
+watch(filteredChannelNameOptions, (newOptions) => {
+  // 如果当前没有搜索关键词，则更新显示的选项列表
+  if (!filteredChannelNameKeyword.value) {
+    filteredChannelNameOptionsList.value = newOptions;
+  }
+});
+
+// 异常名筛选方法
+const filterErrorsNameMethod = (val) => {
+  if (val) {
+    filteredErrorsNameKeyword.value = val;
+    // 使用过滤后的选项进行搜索（基于选中的通道名过滤后的选项）
+    const filterOptions = filteredErrorsNameOptions.value.filter(
+      item => item.value.toLowerCase().includes(val.toLowerCase())
+    );
+    filteredErrorsNameResultOptions.value = filterOptions;
+    // 显示过滤后的选项和全选按钮
+    filteredErrorsNameOptionsList.value = filterOptions;
+  } else {
+    filteredErrorsNameKeyword.value = '';
+    filteredErrorsNameResultOptions.value = [];
+    // 不搜索时显示基于通道名过滤后的选项
+    filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
+  }
+  return true; // 返回true表示已自定义了过滤逻辑，避免内部再次过滤
+};
+
+// 监听filteredErrorsNameOptions，更新显示的选项列表
+watch(filteredErrorsNameOptions, (newOptions) => {
+  // 如果当前没有搜索关键词，则更新显示的选项列表
+  if (!filteredErrorsNameKeyword.value) {
+    filteredErrorsNameOptionsList.value = newOptions;
+  }
+});
+
+// 全选炮号搜索结果
+const selectAllGunNumberResults = () => {
+  if (gunNumberSearchResults.value.length > 0) {
+    const resultValues = gunNumberSearchResults.value.map(item => item.value);
+    
+    // 将结果格式化为用户输入形式
+    gunNumberInput.value = resultValues.join(', ');
+    
+    // 解析输入并更新选中的炮号
+    parseGunNumberInput();
+    
+    // 清空搜索结果，隐藏全选按钮
+    gunNumberSearchResults.value = [];
+    
+    ElMessage.success(`已选择 ${resultValues.length} 个炮号`);
+  }
+};
+
 onMounted(async () => {
   await fetData();
   // 初始化时所有选择都为空
   selectedChannelNames.value = [];
   selectederrorsNames.value = [];
+  filteredChannelNameOptionsList.value = filteredChannelNameOptions.value;
+  filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
   store.dispatch('fetchStructTree');
 });
 </script>
@@ -633,6 +790,22 @@ onMounted(async () => {
 .buttons {
   margin-top: 10px;
   width: 100%;
+}
+
+.gun-number-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.gun-number-input {
+  margin-right: 10px;
+}
+
+.select-all-btn {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .select-container {

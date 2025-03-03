@@ -23,14 +23,14 @@
                   <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
                   <div class="type-header">
                     <!-- Use the reusable ChannelColorPicker component -->
-                    <ChannelColorPicker 
+                    <!-- <ChannelColorPicker 
                       :color="item.color" 
                       :predefineColors="predefineColors" 
                       @change="setChannelColor(item)" 
                       @update:color="item.color = $event"
                       :channelName="item.channel_type"
                       class="category-color-picker"
-                    />
+                    /> -->
                     <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                       class="checkbox-margin"></el-checkbox>
                   </div>
@@ -43,7 +43,7 @@
                     <span>{{ channel.channel_name }}</span>
                     <div class="name-right">
                       <!-- Use the reusable ChannelColorPicker component -->
-                      <ChannelColorPicker 
+                      <!-- <ChannelColorPicker 
                         :color="channel.color" 
                         :predefineColors="predefineColors" 
                         @change="setSingleChannelColor(channel)" 
@@ -51,7 +51,7 @@
                         :shotNumber="channel.shot_number"
                         :channelName="channel.channel_name"
                         class="channel-color-picker" 
-                      />
+                      /> -->
                       <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
                         class="checkbox-margin"></el-checkbox>
                     </div>

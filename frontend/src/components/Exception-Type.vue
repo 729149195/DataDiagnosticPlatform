@@ -68,7 +68,7 @@
                     <span :title="error.error_name">
                       {{ formatError(error.error_name) }}
                     </span>
-                    <ErrorColorPicker
+                    <!-- <ErrorColorPicker
                       :color="error.color"
                       :predefine="predefineColors"
                       :error-name="error.error_name"
@@ -76,7 +76,7 @@
                       :channel-name="channel.channel_name"
                       @change="setErrorColor(channel, error)"
                       @update:color="error.color = $event"
-                    />
+                    /> -->
                   </div>
                 </td>
 
