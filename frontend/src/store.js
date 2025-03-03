@@ -555,7 +555,7 @@ const store = createStore({
 
       // 将请求存储到进行中的请求映射
       pendingRequests.set(channelKey, requestPromise);
-      
+
       return requestPromise;
     },
 
@@ -600,16 +600,20 @@ const store = createStore({
             }
 
             const errorData = await response.json();
-            
+
             // 处理错误数据中的错误范围
             if (errorData && Array.isArray(errorData)) {
               // 处理人工标注和机器识别的错误数据
-              errorData.forEach(errorTypeGroup => {
+              errorData.forEach((errorTypeGroup) => {
                 if (Array.isArray(errorTypeGroup)) {
-                  errorTypeGroup.forEach(error => {
-                    if (error && error.X_error && Array.isArray(error.X_error)) {
+                  errorTypeGroup.forEach((error) => {
+                    if (
+                      error &&
+                      error.X_error &&
+                      Array.isArray(error.X_error)
+                    ) {
                       // 处理每个错误范围
-                      error.X_error = error.X_error.map(range => {
+                      error.X_error = error.X_error.map((range) => {
                         // 如果是包含多个连续值的数组，只保留第一个和最后一个值
                         if (Array.isArray(range) && range.length > 2) {
                           return [range[0], range[range.length - 1]];
