@@ -64,6 +64,7 @@
 <script setup>
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
+import 'highcharts/modules/accessibility';
 import debounce from 'lodash/debounce';
 import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw } from 'vue';
 import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'element-plus';
@@ -980,7 +981,9 @@ const drawChart = (
           resetZoomButton: {
             enabled: false,
             theme: {
-              display: 'none'
+              style: {
+                display: 'none'
+              }
             },
             position: {
               x: -9999,

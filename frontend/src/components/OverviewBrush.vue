@@ -28,6 +28,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import * as Highcharts from 'highcharts';
 import 'highcharts/modules/boost';  // 使用官方的boost模块
+import 'highcharts/modules/accessibility';  // 添加无障碍模块
 import debounce from 'lodash/debounce';
 import { ElMessage } from 'element-plus';
 import { Loading } from '@element-plus/icons-vue';

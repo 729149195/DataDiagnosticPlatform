@@ -36,6 +36,7 @@
 
 <script setup>
 import Highcharts from 'highcharts';
+import 'highcharts/modules/accessibility';
 import debounce from 'lodash/debounce';
 import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted } from 'vue';
 import { ElMessage, ElEmpty, ElProgress } from 'element-plus';
