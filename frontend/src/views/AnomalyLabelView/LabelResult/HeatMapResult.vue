@@ -35,8 +35,7 @@
               <span>热力图数据加载中</span>
               <span class="progress-percentage">{{ loadingPercentage }}%</span>
             </div>
-            <el-progress :percentage="loadingPercentage" :stroke-width="10"
-              :status="loadingPercentage === 100 ? 'success' : ''" />
+            <el-progress :percentage="loadingPercentage" :stroke-width="10" :status="loadingPercentage === 100 ? 'success' : ''" />
           </div>
           <div class="heatmap-container" :style="{ opacity: loading ? 0 : 1, transition: 'opacity 0.3s ease' }">
             <svg id="heatmap" ref="HeatMapRef" preserveAspectRatio="xMidYMid slice"></svg>
@@ -44,51 +43,102 @@
         </div>
       </el-scrollbar>
     </div>
-    <el-dialog v-model="showAnomalyDialog" title="异常信息" :modal="true" :close-on-click-modal="false"
-      @close="handleDialogClose" :destroy-on-close="true" class="anomaly-dialog">
+    <el-dialog v-model="showAnomalyDialog" :modal="true" :close-on-click-modal="false" @close="handleDialogClose" :destroy-on-close="true" class="anomaly-dialog">
+      <template #header>
+        <div class="dialog-header">
+          <div class="dialog-title">
+            <span>异常信息详情</span>
+          </div>
+        </div>
+      </template>
       <div class="search-container">
-        <el-input
-          v-model="searchQuery"
-          placeholder="模糊匹配搜索异常信息..."
-          clearable
-          style="width: 100"
-        >
+        <el-input v-model="searchQuery" placeholder="输入任一连续关键词搜索异常信息..." clearable>
           <template #prefix>
-            <el-icon><Search /></el-icon>
+            <el-icon class="search-icon">
+              <Search />
+            </el-icon>
           </template>
         </el-input>
       </div>
       <div class="anomaly-container">
         <div v-for="(group, groupIndex) in sortedAnomalies" :key="groupIndex" class="anomaly-group">
-          <h3 class="group-title">{{ group.type }}</h3>
+          <div class="group-title">{{ group.type }}</div>
           <el-scrollbar height="45vh" :always="false">
             <div class="anomaly-content">
               <template v-if="group.anomalies.length > 0">
-                <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item"
-                  :class="{ 'highlight': isHighlighted(anomaly) }">
-                  <el-card shadow="hover" :body-style="{ padding: '0px' }">
-                    <div class="anomaly-bookmark">
-                      <div class="bookmark-actions">
-                        <el-icon 
-                          v-if="anomaly.id"
-                          class="action-icon edit-icon" 
-                          @click="editAnomaly(anomaly, group.type)"
-                        >
-                          <Edit />
-                        </el-icon>
-                        <el-icon 
-                          class="action-icon delete-icon"
-                          @click="anomaly.id ? deleteAnomalyFromList(anomaly, group.type) : deleteErrorData(anomaly, group.type)"
-                        >
-                          <Delete />
-                        </el-icon>
+                <div v-for="(anomaly, index) in group.anomalies" :key="index" class="anomaly-item" :class="{ 'highlight': isHighlighted(anomaly) }">
+                  <el-card shadow="hover" :body-style="{ padding: '12px' }">
+                    <!-- 修改操作按钮位置为绝对定位在右上角 -->
+                    <div class="card-actions">
+                      <el-icon v-if="anomaly.id || anomaly.ID" class="action-icon edit-icon" @click="editAnomaly(anomaly, group.type)">
+                        <Edit />
+                      </el-icon>
+                      <el-icon class="action-icon delete-icon" @click="(anomaly.id || anomaly.ID) ? deleteAnomalyFromList(anomaly, group.type) : deleteErrorData(anomaly, group.type)">
+                        <Delete />
+                      </el-icon>
+                    </div>
+                    
+                    <div class="statistic-layout">
+                      <!-- 第一行：责任人和通道名称 -->
+                      <div class="statistic-row">
+                        <div class="statistic-item">
+                          <div class="statistic-title">责任人</div>
+                          <div class="statistic-value">
+                            <el-tag size="small" :type="anomaly['责任人'] === storePerson.value ? 'success' : 'info'" effect="light">
+                              {{ formatValue(anomaly['责任人'], '责任人') }}
+                            </el-tag>
+                            <!-- 标注时间作为小注释 -->
+                            <div v-if="anomaly['标注时间']" class="statistic-note">
+                              {{ formatValue(anomaly['标注时间'], '标注时间') }}
+                            </div>
+                          </div>
+                        </div>
+                        <div class="statistic-item">
+                          <div class="statistic-title">通道名称</div>
+                          <div class="statistic-value code-style">
+                            {{ formatValue(anomaly['通道名称'], '通道名称') }}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <!-- 第二行：异常类别和诊断名 -->
+                      <div class="statistic-row">
+                        <div class="statistic-item">
+                          <div class="statistic-title">异常类别</div>
+                          <div class="statistic-value">
+                            <span class="wrap-tag">
+                              {{ formatValue(anomaly['异常类别'] || anomaly['错误类型'], '异常类别') }}
+                            </span>
+                          </div>
+                        </div>
+                        <div class="statistic-item">
+                          <div class="statistic-title">诊断名</div>
+                          <div class="statistic-value code-style">
+                            {{ formatValue(anomaly['诊断名称'] || anomaly['异常诊断名称'], '诊断名称') }}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div class="statistic-row">
+                        <div class="statistic-item full-width">
+                          <div class="statistic-title">异常描述</div>
+                          <div class="statistic-value description">
+                            <span v-if="formatValue(anomaly['异常描述'] || anomaly['错误描述'], '异常描述') === '无' || formatValue(anomaly['异常描述'] || anomaly['错误描述'], '异常描述') === ''" class="empty-value">
+                              暂无描述
+                            </span>
+                            <span v-else>
+                              {{ formatValue(anomaly['异常描述'] || anomaly['错误描述'], '异常描述') }}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                       <!-- 修改时间范围行，使标题和值在同一行 -->
+                       <div class="statistic-row time-row">
+                        <div class="time-title">异常时间范围:</div>
+                        <div class="time-value">{{ formatValue(anomaly['时间范围'], '时间范围') }} s</div>
                       </div>
                     </div>
-                    <el-descriptions :column="1" border class="anomaly-descriptions">
-                      <el-descriptions-item v-for="(value, key) in anomaly" :key="key" :label="formatKey(key)">
-                        {{ formatValue(value, key) }}
-                      </el-descriptions-item>
-                    </el-descriptions>
                   </el-card>
                 </div>
               </template>
@@ -133,10 +183,10 @@
 import * as d3 from 'd3';
 import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive } from 'vue';
 import { useStore } from 'vuex';
-import { ElDialog, ElDescriptions, ElDescriptionsItem, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
+import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
-import { Search, Delete, Edit } from '@element-plus/icons-vue';
+import { Search, Delete, Edit, InfoFilled } from '@element-plus/icons-vue';
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
@@ -229,19 +279,80 @@ const processObject = (obj) => {
     const newObj = {};
     for (const key in obj) {
       if (obj.hasOwnProperty(key)) {
-        // 跳过 X_error 和 Y_error 字段
-        if (key !== 'X_error' && key !== 'Y_error') {
-          let value = obj[key];
-          // 对字符串类型的值进行解码
-          if (typeof value === 'string') {
-            value = decodeChineseText(value);
-          }
-          newObj[key] = processObject(value);
-        } else {
-          newObj[key] = obj[key];
+        let value = obj[key];
+
+        // 对字符串类型的值进行解码
+        if (typeof value === 'string') {
+          value = decodeChineseText(value);
         }
+
+        // 处理所有字段，包括X_error和Y_error
+        newObj[key] = processObject(value);
       }
     }
+    
+    // 特殊处理某些字段，确保它们能正确显示
+    if (obj.anomalyCategory) {
+      newObj['异常类别'] = obj.anomalyCategory;
+    }
+    
+    if (obj.anomalyDiagnosisName) {
+      newObj['诊断名称'] = obj.anomalyDiagnosisName;
+    }
+    
+    if (obj.anomalyDescription) {
+      newObj['异常描述'] = obj.anomalyDescription;
+    }
+    
+    if (obj.channelName) {
+      newObj['通道名称'] = obj.channelName;
+    }
+    
+    if (obj.diagnostic_name) {
+      newObj['诊断名称'] = obj.diagnostic_name;
+    }
+    
+    // 处理时间范围
+    if (obj.startX !== undefined && obj.endX !== undefined) {
+      newObj['时间范围'] = `[ ${parseFloat(obj.startX).toFixed(4)} —— ${parseFloat(obj.endX).toFixed(4)} ]`;
+    }
+    
+    // 处理X_error字段，转换为时间范围
+    if (obj.X_error && Array.isArray(obj.X_error) && obj.X_error.length > 0) {
+      const timeRanges = obj.X_error.map(range => {
+        if (Array.isArray(range) && range.length >= 2) {
+          return `[ ${parseFloat(range[0]).toFixed(4)} —— ${parseFloat(range[1]).toFixed(4)} ]`;
+        }
+        return null;
+      }).filter(Boolean);
+
+      if (timeRanges.length > 0) {
+        newObj['时间范围'] = timeRanges.join(', ');
+      }
+    }
+    
+    // 处理标注时间
+    if (obj.annotationTime) {
+      // 格式化时间为可读格式
+      const date = new Date(obj.annotationTime);
+      newObj['标注时间'] = date.toLocaleString();
+    } else if (obj.timestamp && obj.person !== 'machine') {
+      // 如果有timestamp字段，也可以用它
+      const date = new Date(obj.timestamp);
+      newObj['标注时间'] = date.toLocaleString();
+    }
+    
+    // 处理诊断时间
+    if (obj.diagnostic_time) {
+      // 格式化时间为可读格式
+      const date = new Date(obj.diagnostic_time);
+      newObj['诊断时间'] = date.toLocaleString();
+    } else if (obj.timestamp && obj.person === 'machine') {
+      // 如果有timestamp字段，也可以用它
+      const date = new Date(obj.timestamp);
+      newObj['诊断时间'] = date.toLocaleString();
+    }
+    
     return newObj;
   }
 
@@ -473,7 +584,7 @@ const syncUpload = async () => {
 
     // 同步成功后清空 store 中的 anomalies
     await store.commit('clearAnomalies');
-    
+
     // 刷新数据
     await store.dispatch('refreshStructTreeData');
     ElMessage.success('同步成功');
@@ -516,7 +627,8 @@ function formatKey(key) {
     shot_number: '炮号',
     startTime: '开始时间',
     endTime: '结束时间',
-    annotationTime: '标注时间'
+    annotationTime: '标注时间',
+    '时间范围': '时间范围'
   };
 
   return keyMapping[key] || key;
@@ -684,21 +796,6 @@ function needsRerender(channel, newCache, newAnomalies) {
   return JSON.stringify(currentState) !== JSON.stringify(newState);
 }
 
-// 更新已渲染通道的状态
-// function updateRenderedState(channel, newCache, newAnomalies) {
-//   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-//   // 添加空值检查
-//   if (!newCache || !newCache[channelKey]) {
-//     console.warn(`Cache data not found for channel ${channelKey}`);
-//     return;
-//   }
-  
-//   renderedChannelsState.value.set(channelKey, {
-//     errors: channel.errors,
-//     cacheData: newCache[channelKey],
-//     anomalies: newAnomalies ? newAnomalies[channelKey] : null
-//   });
-// }
 
 watch(
   [() => channelDataCache.value, selectedChannels],
@@ -752,11 +849,6 @@ watch(
           // 传入所有通道进行完整渲染
           await renderHeatmap(newChannels, false);
 
-          // // 更新渲染状态
-          // newChannels.forEach(channel => {
-          //   updateRenderedState(channel, newCache, newAnomalies);
-          // });
-
           resolve();
         } catch (error) {
           console.error('Error in debounced renderHeatmap:', error);
@@ -783,6 +875,7 @@ onUnmounted(() => {
 
 // 添加数据处理函数
 const processDataTo1KHz = (data) => {
+
   if (!data || !data.X_value || !data.Y_value) {
     return data;
   }
@@ -906,10 +999,10 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     // 如果没有找到有效数据,使用默认
     if (globalXMin === Infinity || globalXMax === -Infinity) {
       globalXMin = -2;
-      globalXMax = 6;
+      globalXMax = 5;
     }
 
-    // 方案1：全移除边距
+    // 全移除边距
     const Domain = [brushRange.value.begin, brushRange.value.end];
 
     const step = (Domain[1] - Domain[0]) / 16; // 或者其他合适的步长计算方式
@@ -1121,29 +1214,31 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
           .attr('rx', 2)
           .attr('ry', 2)
           .attr('fill', (d) => {
-            if (d.length > 0) {
-              // 存在错误或异常
-              if (channel.errors.length > 1) {
-                return '#999999'; // 多个错误，使用灰色
-              } else {
-                const nonAnomalyIdx = d.find(
-                  (idx) => !isAnomaly(idx, channelKey)
-                );
-                const errorData = errorResults.find(
-                  (result) =>
-                    result &&
-                    result.errorIdx === nonAnomalyIdx &&
-                    result.channelKey === channelKey
-                );
-                if (errorData && errorData.errorData.person === 'machine') {
-                  return errorColors[nonAnomalyIdx];
-                } else {
-                  return '#f5f5f5';
-                }
-              }
-            } else {
+            if (d.length === 0) {
               return '#f5f5f5'; // 正常数据颜色
             }
+
+            // 如果有多个异常，使用灰色填充
+            if (d.length > 1) {
+              return '#999999';
+            }
+
+            // 只有一个异常的情况
+            const errorIdx = d[0];
+            const errorData = errorResults.find(
+              (result) => result && result.errorIdx === errorIdx && result.channelKey === channelKey
+            );
+
+            // 如果是机器识别的异常，使用对应的颜色
+            if (errorData && !errorData.isAnomaly && Array.isArray(errorData.errorData)) {
+              const [, machineErrors] = errorData.errorData;
+              if (machineErrors && machineErrors.length > 0) {
+                return errorColors[errorIdx];
+              }
+            }
+
+            // 其他情况使用默认颜色
+            return '#f5f5f5';
           })
           .attr('cursor', 'pointer')
           .on('click', function (event, dRect) {
@@ -1161,15 +1256,40 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
               )
               .filter((e) => e);
 
-            // 提取并过滤所有错误信息
+            // 提取并格式化所有错误信息
             const processErrorData = (errorData) => {
-              // 过滤掉X_error和Y_error字段
-              const { X_error, Y_error, ...filteredData } = errorData;
-
-              // 格式化每个字段
+              // 创建一个新的处理后的数据对象
               const processedData = {};
-              Object.keys(filteredData).forEach((key) => {
-                let value = filteredData[key];
+              
+              // 深拷贝数据以避免引用问题
+              const errorDataCopy = JSON.parse(JSON.stringify(errorData));
+
+              // 处理X_error和Y_error字段，转换为时间范围
+              if (errorDataCopy.X_error && Array.isArray(errorDataCopy.X_error) && errorDataCopy.X_error.length > 0) {
+                // 提取所有时间范围
+                const timeRanges = errorDataCopy.X_error.map(range => {
+                  if (Array.isArray(range) && range.length >= 2) {
+                    return `[ ${parseFloat(range[0]).toFixed(4)} —— ${parseFloat(range[1]).toFixed(4)} ]`;
+                  }
+                  return null;
+                }).filter(Boolean);
+
+                if (timeRanges.length > 0) {
+                  processedData['时间范围'] = timeRanges.join(', ');
+                }
+              }
+
+              // 对于前端标注的异常，使用startX和endX
+              if (errorDataCopy.startX !== undefined && errorDataCopy.endX !== undefined) {
+                processedData['时间范围'] = `[ ${parseFloat(errorDataCopy.startX).toFixed(4)} —— ${parseFloat(errorDataCopy.endX).toFixed(4)} ]`;
+              }
+
+              // 处理其他字段
+              Object.keys(errorDataCopy).forEach((key) => {
+                // 跳过X_error和Y_error，因为已经单独处理
+                if (key === 'X_error' || key === 'Y_error') return;
+
+                let value = errorDataCopy[key];
 
                 // 处理特殊的中文字符编码
                 if (typeof value === 'string') {
@@ -1178,19 +1298,60 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
                 const formattedValue = formatValue(value, key);
                 if (formattedValue !== undefined && formattedValue !== null && formattedValue !== '') {
-                  processedData[key] = formattedValue;
-                } else {
-                  processedData[key] = '无';
+                  // 使用格式化的键名
+                  const formattedKey = formatKey(key);
+                  processedData[formattedKey] = formattedValue;
                 }
               });
 
               // 处理时间字段
-              if (processedData.person === 'machine' && processedData.diagnostic_time) {
-                processedData.diagnostic_time = formatValue(processedData.diagnostic_time, 'diagnostic_time');
+              if (processedData['责任人'] === 'machine' && processedData['诊断时间']) {
+                processedData['诊断时间'] = formatValue(processedData['诊断时间'], 'diagnostic_time');
               }
 
-              if (processedData.person !== 'machine' && processedData.annotationTime) {
-                processedData.annotationTime = formatValue(processedData.annotationTime, 'annotationTime');
+              if (processedData['责任人'] !== 'machine' && processedData['标注时间']) {
+                processedData['标注时间'] = formatValue(processedData['标注时间'], 'annotationTime');
+              }
+              
+              // 确保异常类别和诊断名称正确显示
+              if (errorDataCopy.anomalyCategory) {
+                processedData['异常类别'] = errorDataCopy.anomalyCategory;
+              }
+              
+              if (errorDataCopy.anomalyDiagnosisName) {
+                processedData['诊断名称'] = errorDataCopy.anomalyDiagnosisName;
+              }
+              
+              // 确保异常描述正确显示
+              if (errorDataCopy.anomalyDescription) {
+                processedData['异常描述'] = errorDataCopy.anomalyDescription;
+              }
+              
+              // 确保通道名称正确显示
+              if (errorDataCopy.channelName) {
+                processedData['通道名称'] = errorDataCopy.channelName;
+              }
+              
+              // 确保标注时间正确显示
+              if (errorDataCopy.annotationTime) {
+                // 格式化时间为可读格式
+                const date = new Date(errorDataCopy.annotationTime);
+                processedData['标注时间'] = date.toLocaleString();
+              } else if (errorDataCopy.timestamp && processedData['责任人'] !== 'machine') {
+                // 如果有timestamp字段，也可以用它
+                const date = new Date(errorDataCopy.timestamp);
+                processedData['标注时间'] = date.toLocaleString();
+              }
+              
+              // 确保诊断时间正确显示
+              if (errorDataCopy.diagnostic_time) {
+                // 格式化时间为可读格式
+                const date = new Date(errorDataCopy.diagnostic_time);
+                processedData['诊断时间'] = date.toLocaleString();
+              } else if (errorDataCopy.timestamp && processedData['责任人'] === 'machine') {
+                // 如果有timestamp字段，也可以用它
+                const date = new Date(errorDataCopy.timestamp);
+                processedData['诊断时间'] = date.toLocaleString();
               }
 
               return processedData;
@@ -1199,6 +1360,8 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             // 分离人工标注和机器识别的异常
             const manualAnomalies = [];
             const machineAnomalies = [];
+            // 使用Map来存储唯一的机器识别异常，避免重复
+            const machineAnomalyMap = new Map();
 
             errorsInRect.forEach((error) => {
               // 检查是否是前端标注的异常数据
@@ -1216,7 +1379,9 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
               } else {
                 // 处理来自后端的异常数据
                 try {
-                  const [manualErrors, machineErrors] = error.errorData;
+                  // 创建一个深拷贝
+                  const errorDataCopy = JSON.parse(JSON.stringify(error.errorData));
+                  const [manualErrors, machineErrors] = errorDataCopy;
 
                   // 处理人工标注的异常
                   if (manualErrors && manualErrors.length > 0) {
@@ -1235,9 +1400,19 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                     machineErrors.forEach(machineError => {
                       if (machineError && Object.keys(machineError).length > 0) {
                         // 对机器识别的结果进行处理
-                        const processedData = processObject(machineError);
+                        const processedData = processErrorData(machineError);
+                        
+                        // 确保通道名称正确显示
+                        if (!processedData['通道名称']) {
+                          processedData['通道名称'] = error.channelKey;
+                        }
+                        
                         if (Object.keys(processedData).length > 0) {
-                          machineAnomalies.push(processedData);
+                          // 使用时间范围作为唯一标识符
+                          const key = processedData['时间范围'] || JSON.stringify(machineError);
+                          if (!machineAnomalyMap.has(key)) {
+                            machineAnomalyMap.set(key, processedData);
+                          }
                         }
                       }
                     });
@@ -1248,7 +1423,11 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                   const processedData = processErrorData(error.errorData);
                   if (Object.keys(processedData).length > 0) {
                     if (error.errorData.person === 'machine') {
-                      machineAnomalies.push(processedData);
+                      // 使用时间范围作为唯一标识符
+                      const key = processedData['时间范围'] || JSON.stringify(error.errorData);
+                      if (!machineAnomalyMap.has(key)) {
+                        machineAnomalyMap.set(key, processedData);
+                      }
                     } else {
                       manualAnomalies.push(processedData);
                     }
@@ -1263,10 +1442,8 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 index === self.findIndex((t) => JSON.stringify(t) === JSON.stringify(item))
             );
 
-            const uniqueMachineAnomalies = machineAnomalies.filter(
-              (item, index, self) =>
-                index === self.findIndex((t) => JSON.stringify(t) === JSON.stringify(item))
-            );
+            // 将Map中的值转换为数组
+            const uniqueMachineAnomalies = Array.from(machineAnomalyMap.values());
 
             // 组合最终显示的数据
             const combinedAnomalies = [
@@ -1302,33 +1479,26 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
           .attr('ry', 2)
           .attr('fill', 'none')
           .attr('stroke', (d) => {
-            if (d.length > 0) {
-              const nonAnomalyIdx = d.find(idx => {
+            if (d.length === 0) return 'none';
+
+            // 检查是否有多个异常
+            if (d.length > 1) {
+              // 检查是否同时存在自己和他人的标注
+              const hasMultiplePersons = d.some(idx => {
                 const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                return result && !result.isAnomaly;
+                if (!result || result.isAnomaly) return false;
+
+                if (Array.isArray(result.errorData)) {
+                  const [manualErrors] = result.errorData;
+                  return manualErrors && manualErrors.some(error => error.person === storePerson.value) &&
+                    manualErrors.some(error => error.person !== storePerson.value);
+                }
+                return false;
               });
 
-              if (nonAnomalyIdx) {
-                const errorData = errorResults.find(
-                  result => result &&
-                    result.errorIdx === nonAnomalyIdx &&
-                    result.channelKey === channelKey
-                );
-                if (errorData && Array.isArray(errorData.errorData)) {
-                  const [manualErrors] = errorData.errorData;
-                  if (manualErrors && manualErrors.length > 0 && storePerson.value) {
-                    // 检查是否同时存在自己和他人的标注
-                    const hasSelfAnnotation = manualErrors.some(error => error.person === storePerson.value);
-                    const hasOthersAnnotation = manualErrors.some(error => error.person !== storePerson.value);
-
-                    // 只有同时存在两种标注时才显示内部虚线框
-                    if (hasSelfAnnotation && hasOthersAnnotation) {
-                      return 'red';
-                    }
-                  }
-                }
-              }
+              return hasMultiplePersons ? 'red' : 'none';
             }
+
             return 'none';
           })
           .attr('stroke-width', 2)
@@ -1349,86 +1519,73 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
           .attr('ry', 3)
           .attr('fill', 'none')
           .attr('stroke', (d) => {
-            if (d.length > 0) {
-              // 检查是否包含异常
-              const hasAnomaly = d.some(idx => {
-                const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                return result && result.isAnomaly;
-              });
+            if (d.length === 0) return 'none';
 
-              if (hasAnomaly) {
-                return 'orange';
-              }
+            // 检查是否包含前端标注的异常
+            const hasAnomaly = d.some(idx => {
+              const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
+              return result && result.isAnomaly;
+            });
 
-              const nonAnomalyIdx = d.find(idx => {
-                const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                return result && !result.isAnomaly;
-              });
-
-              if (nonAnomalyIdx) {
-                const errorData = errorResults.find(
-                  result => result &&
-                    result.errorIdx === nonAnomalyIdx &&
-                    result.channelKey === channelKey
-                );
-                if (errorData && Array.isArray(errorData.errorData)) {
-                  const [manualErrors] = errorData.errorData;
-                  if (manualErrors && manualErrors.length > 0) {
-                    return 'red';  // 无论是否匹配都使用红色
-                  }
-                }
-              }
+            if (hasAnomaly) {
+              return 'orange'; // 前端标注的异常使用橙色边框
             }
+
+            // 检查是否包含后端返回的人工标注异常
+            const hasManualError = d.some(idx => {
+              const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
+              if (!result || result.isAnomaly) return false;
+
+              if (Array.isArray(result.errorData)) {
+                const [manualErrors] = result.errorData;
+                return manualErrors && manualErrors.length > 0;
+              }
+              return false;
+            });
+
+            if (hasManualError) {
+              return 'red'; // 人工标注的异常使用红色边框
+            }
+
             return 'none';
           })
           .attr('stroke-width', (d) => d.length > 0 ? 3 : 0)
           .attr('stroke-dasharray', (d) => {
-            if (d.length > 0) {
-              // 检查是否包含异常
-              const hasAnomaly = d.some(idx => {
-                const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                return result && result.isAnomaly;
-              });
+            if (d.length === 0) return '0';
 
-              if (hasAnomaly) {
-                return '0';
-              }
+            // 检查是否包含前端标注的异常
+            const hasAnomaly = d.some(idx => {
+              const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
+              return result && result.isAnomaly;
+            });
 
-              const nonAnomalyIdx = d.find(idx => {
-                const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
-                return result && !result.isAnomaly;
-              });
+            if (hasAnomaly) {
+              return '0'; // 前端标注的异常使用实线
+            }
 
-              if (nonAnomalyIdx) {
-                const errorData = errorResults.find(
-                  result => result &&
-                    result.errorIdx === nonAnomalyIdx &&
-                    result.channelKey === channelKey
-                );
-                if (errorData && Array.isArray(errorData.errorData)) {
-                  const [manualErrors] = errorData.errorData;
-                  if (manualErrors && manualErrors.length > 0) {
-                    // 如果store中的person为空，使用虚线
-                    if (!storePerson.value) {
-                      return '4 2';
-                    }
-                    // 检查是否同时存在自己和他人的标注
-                    const hasSelfAnnotation = manualErrors.some(error => error.person === storePerson.value);
-                    const hasOthersAnnotation = manualErrors.some(error => error.person !== storePerson.value);
+            // 检查人工标注的异常
+            for (const idx of d) {
+              const result = errorResults.find(r => r.errorIdx === idx && r.channelKey === channelKey);
+              if (!result || result.isAnomaly) continue;
 
-                    // 如果只有一种标注，返回对应的样式
-                    if (hasSelfAnnotation && !hasOthersAnnotation) {
-                      return '0';  // 只有自己的标注，使用实线
-                    } else if (!hasSelfAnnotation && hasOthersAnnotation) {
-                      return '4 2';  // 只有他人的标注，使用虚线
-                    }
-                    // 如果同时存在两种标注，外框使用实线
-                    return '0';
-                  }
+              if (Array.isArray(result.errorData)) {
+                const [manualErrors] = result.errorData;
+                if (!manualErrors || manualErrors.length === 0) continue;
+
+                // 如果store中的person为空，使用虚线
+                if (!storePerson.value) {
+                  return '4 2';
                 }
+
+                // 检查是否包含当前用户的标注
+                const hasSelfAnnotation = manualErrors.some(error => error.person === storePerson.value);
+
+                // 如果包含当前用户的标注，使用实线，否则使用虚线
+                return hasSelfAnnotation ? '0' : '4 2';
               }
             }
-            return '0';
+
+            return '0'; // 默认使用实线
           });
       });
 
@@ -1482,15 +1639,15 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
         continue;
       }
 
-      // 处理错误数据到1KHz
-      const processedErrorData = processDataTo1KHz({
-        X_value: idxList,
-        Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
-      });
+      // idxList 已经是处理好的数组，只包含错误区间的头尾两个值
+      const startX = idxList[0];
+      const endX = idxList[1];
 
-      const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
-      const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
+      // 计算对应的矩形索引范围
+      const left = Math.floor((startX - Domain[0]) / step);
+      const right = Math.floor((endX - Domain[0]) / step);
 
+      // 将错误索引添加到对应的矩形中
       for (let i = left; i <= right; i++) {
         if (i >= 0 && i < rectNum) {
           visData[channelKey][i].push(errorIdx);
@@ -1511,15 +1668,15 @@ function processErrorData(errorData, channelKey, errorIdx, visData, rectNum, Dom
         continue;
       }
 
-      // 处理错误数据到1KHz
-      const processedErrorData = processDataTo1KHz({
-        X_value: idxList,
-        Y_value: new Array(idxList.length).fill(0) // Y值在这里不重要，我们只需要X值
-      });
+      // idxList 已经是处理好的数组，只包含错误区间的头尾两个值
+      const startX = idxList[0];
+      const endX = idxList[1];
 
-      const left = Math.floor((processedErrorData.X_value[0] - Domain[0]) / step);
-      const right = Math.floor((processedErrorData.X_value[processedErrorData.X_value.length - 1] - Domain[0]) / step);
+      // 计算对应的矩形索引范围
+      const left = Math.floor((startX - Domain[0]) / step);
+      const right = Math.floor((endX - Domain[0]) / step);
 
+      // 将错误索引添加到对应的矩形中
       for (let i = left; i <= right; i++) {
         if (i >= 0 && i < rectNum) {
           visData[channelKey][i].push(errorIdx);
@@ -1564,13 +1721,13 @@ const sortedAnomalies = computed(() => {
 
     // 对异常数据进行搜索和排序
     const sortedAnomalies = [...group.anomalies].sort((a, b) => {
-      const aMatch = Object.values(a).some(val => 
+      const aMatch = Object.values(a).some(val =>
         String(val).toLowerCase().includes(query)
       );
-      const bMatch = Object.values(b).some(val => 
+      const bMatch = Object.values(b).some(val =>
         String(val).toLowerCase().includes(query)
       );
-      
+
       if (aMatch && !bMatch) return -1;
       if (!aMatch && bMatch) return 1;
       return 0;
@@ -1587,8 +1744,8 @@ const sortedAnomalies = computed(() => {
 const isHighlighted = (anomaly) => {
   const query = searchQuery.value.toLowerCase().trim();
   if (!query) return false;
-  
-  return Object.values(anomaly).some(val => 
+
+  return Object.values(anomaly).some(val =>
     String(val).toLowerCase().includes(query)
   );
 };
@@ -1619,16 +1776,38 @@ const saveAnomaly = () => {
     Object.keys(currentAnomaly).forEach((key) => {
       delete currentAnomaly[key];
     });
+    
+    // 如果异常列表对话框正在显示，立即更新其内容
+    if (showAnomalyDialog.value) {
+      // 延迟一点执行更新，确保store中的数据已更新
+      setTimeout(() => {
+        updateAnomalyDialogContent();
+      }, 100);
+    }
+    
+    // 重新渲染热力图，确保显示最新数据
+    if (selectedChannels.value.length > 0) {
+      renderHeatmap(selectedChannels.value, true);
+    }
   }
 };
 
 // 添加 deleteAnomaly 函数
 const deleteAnomaly = () => {
-  if (currentAnomaly && currentAnomaly.channelName && currentAnomaly.id) {
+  if (currentAnomaly) {
+    const anomalyId = currentAnomaly.id || currentAnomaly.ID;
+    const channelName = currentAnomaly.channelName || currentAnomaly.通道名称;
+    
+    if (!anomalyId || !channelName) {
+      console.error('删除失败: 缺少必要的字段', currentAnomaly);
+      ElMessage.error('删除失败: 缺少必要的字段');
+      return;
+    }
+    
     // 从 store 中删除异常数据
     store.dispatch('deleteAnomaly', {
-      channelName: currentAnomaly.channelName,
-      anomalyId: currentAnomaly.id
+      channelName: channelName,
+      anomalyId: anomalyId
     });
 
     // 关闭编辑框
@@ -1640,6 +1819,19 @@ const deleteAnomaly = () => {
     Object.keys(currentAnomaly).forEach((key) => {
       delete currentAnomaly[key];
     });
+    
+    // 如果异常列表对话框正在显示，立即更新其内容
+    if (showAnomalyDialog.value) {
+      // 延迟一点执行更新，确保store中的数据已更新
+      setTimeout(() => {
+        updateAnomalyDialogContent();
+      }, 100);
+    }
+    
+    // 重新渲染热力图，确保显示最新数据
+    if (selectedChannels.value.length > 0) {
+      renderHeatmap(selectedChannels.value, true);
+    }
   }
 };
 
@@ -1661,7 +1853,7 @@ watch(() => store.state.anomalies, (newAnomalies) => {
     // 从store中获取最新数据
     const storedAnomalies = store.getters.getAnomaliesByChannel(currentAnomaly.channelName);
     const storedAnomaly = storedAnomalies.find(a => a.id === currentAnomaly.id);
-    
+
     if (storedAnomaly) {
       // 更新currentAnomaly为最新数据
       Object.assign(currentAnomaly, storedAnomaly);
@@ -1674,66 +1866,8 @@ watch(() => store.state.anomalies, (newAnomalies) => {
     }
   }
 
-  // 如果异常列表对话框正在显示，更新其内容
-  if (showAnomalyDialog.value && anomalyDialogData.value.length > 0) {
-    // 获取当前显示的通道信息
-    const currentChannelData = anomalyDialogData.value[0].anomalies[0];
-    if (currentChannelData && currentChannelData.channelName) {
-      // 重新构建显示数据
-      const manualAnomalies = [];
-      const machineAnomalies = [];
-
-      // 从 store 获取最新的异常数据
-      const storedAnomalies = store.getters.getAnomaliesByChannel(currentChannelData.channelName);
-      if (storedAnomalies) {
-        storedAnomalies.forEach(anomaly => {
-          const processedData = processObject(anomaly);
-          if (Object.keys(processedData).length > 0) {
-            manualAnomalies.push(processedData);
-          }
-        });
-      }
-
-      // 从 errorResults 中获取机器识别的异常
-      const channelErrors = errorResults.filter(
-        result => result.channelKey === currentChannelData.channelName && !result.isAnomaly
-      );
-
-      channelErrors.forEach(error => {
-        if (Array.isArray(error.errorData)) {
-          const [, machineErrors] = error.errorData;
-          if (machineErrors && machineErrors.length > 0) {
-            machineErrors.forEach(machineError => {
-              if (machineError && Object.keys(machineError).length > 0) {
-                const processedData = processObject(machineError);
-                if (Object.keys(processedData).length > 0) {
-                  machineAnomalies.push(processedData);
-                }
-              }
-            });
-          }
-        }
-      });
-
-      // 更新对话框数据
-      anomalyDialogData.value = [
-        {
-          type: '人工标注异常',
-          anomalies: manualAnomalies
-        },
-        {
-          type: '机器识别异常',
-          anomalies: machineAnomalies
-        }
-      ];
-
-      // 检查是否两种类型的异常都为空
-      if (manualAnomalies.length === 0 && machineAnomalies.length === 0) {
-        // 如果都为空，关闭对话框
-        showAnomalyDialog.value = false;
-      }
-    }
-  }
+  // 更新对话框内容
+  updateAnomalyDialogContent();
 }, { deep: true });
 
 // 添加编辑异常函数
@@ -1745,10 +1879,20 @@ const editAnomaly = (anomaly, type) => {
       return;
     }
 
-    // 从store中获取最新的异常数据
-    const storedAnomalies = store.getters.getAnomaliesByChannel(anomaly.channelName);
-    const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+    // 获取 ID 和通道名称
+    const anomalyId = anomaly.id || anomaly.ID;
+    const channelName = anomaly.channelName || anomaly.通道名称;
     
+    if (!anomalyId || !channelName) {
+      console.error('编辑失败: 缺少必要的字段', anomaly);
+      ElMessage.error('编辑失败: 缺少必要的字段');
+      return;
+    }
+
+    // 从store中获取最新的异常数据
+    const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+    const storedAnomaly = storedAnomalies.find(a => a.id === anomalyId || a.ID === anomalyId);
+
     if (storedAnomaly) {
       // 使用store中的数据更新currentAnomaly
       Object.assign(currentAnomaly, storedAnomaly);
@@ -1778,11 +1922,24 @@ const deleteAnomalyFromList = (anomaly, type) => {
       }
     )
       .then(() => {
+        // 检查是否有 ID 字段
+        const anomalyId = anomaly.id || anomaly.ID;
+        const channelName = anomaly.channelName || anomaly.通道名称;
+        
+        if (!anomalyId || !channelName) {
+          console.error('删除失败: 缺少必要的字段', anomaly);
+          ElMessage.error('删除失败: 缺少必要的字段');
+          return;
+        }
+        
         store.dispatch('deleteAnomaly', {
-          channelName: anomaly.channelName,
-          anomalyId: anomaly.id
+          channelName: channelName,
+          anomalyId: anomalyId
         });
         ElMessage.success('异常标注已删除');
+        
+        // 立即更新对话框内容
+        updateAnomalyDialogContent();
       })
       .catch(() => {
         // 用户取消删除操作
@@ -1831,20 +1988,37 @@ const deleteErrorData = (errorData, type) => {
       });
 
       try {
+        // 打印错误数据，帮助调试
+        console.log('要删除的异常数据:', errorData);
+        
+        // 处理字段名称映射，确保使用正确的字段名
+        const requestData = {
+          diagnostic_name: errorData.diagnostic_name || errorData.诊断名称,
+          channel_number: errorData.channel_number || errorData.通道编号,
+          shot_number: errorData.shot_number || errorData.炮号,
+          error_type: errorData.error_type || errorData.错误类型
+        };
+        
+        console.log('处理后的请求数据:', requestData);
+
+        // 检查是否所有必要字段都存在
+        if (!requestData.diagnostic_name || !requestData.channel_number ||
+            !requestData.shot_number || !requestData.error_type) {
+          console.error('删除失败: 缺少必要的字段', errorData);
+          throw new Error('删除失败: 缺少必要的字段');
+        }
+
         const response = await fetch('https://10.1.108.19:5000/api/delete-error-data/', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            diagnostic_name: errorData.diagnostic_name,
-            channel_number: errorData.channel_number,
-            shot_number: errorData.shot_number,
-            error_type: errorData.error_type
-          })
+          body: JSON.stringify(requestData)
         });
 
         if (!response.ok) {
+          const errorText = await response.text();
+          console.error('服务器返回错误:', errorText);
           throw new Error('删除失败');
         }
 
@@ -1854,17 +2028,189 @@ const deleteErrorData = (errorData, type) => {
 
         // 关闭对话框
         showAnomalyDialog.value = false;
+        
+        // 立即更新对话框内容
+        updateAnomalyDialogContent();
       } catch (error) {
         console.error('删除失败:', error);
         ElMessage.error('删除失败: ' + error.message);
       } finally {
-        // 无论成功还是失败，都关闭加载状态
         loadingInstance.close();
       }
     })
     .catch(() => {
       // 用户取消删除操作
     });
+};
+
+// 添加一个新的函数用于更新对话框内容
+const updateAnomalyDialogContent = () => {
+  // 如果异常列表对话框正在显示，更新其内容
+  if (showAnomalyDialog.value && anomalyDialogData.value.length > 0) {
+    // 获取当前显示的通道信息
+    const currentChannelData = anomalyDialogData.value[0].anomalies[0];
+    if (currentChannelData && (currentChannelData.channelName || currentChannelData.通道名称)) {
+      // 获取通道名称
+      const channelName = currentChannelData.channelName || currentChannelData.通道名称;
+      
+      // 重新构建显示数据
+      const manualAnomalies = [];
+      const machineAnomalies = [];
+
+      // 从 store 获取最新的异常数据
+      const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+      if (storedAnomalies && storedAnomalies.length > 0) {
+        storedAnomalies.forEach(anomaly => {
+          // 深拷贝异常数据，避免引用问题
+          const anomalyCopy = JSON.parse(JSON.stringify(anomaly));
+          const processedData = processObject(anomalyCopy);
+          
+          // 确保时间范围格式正确
+          if (anomalyCopy.startX !== undefined && anomalyCopy.endX !== undefined) {
+            processedData['时间范围'] = `[ ${parseFloat(anomalyCopy.startX).toFixed(4)} —— ${parseFloat(anomalyCopy.endX).toFixed(4)} ]`;
+          }
+          
+          // 确保异常类别和诊断名称正确显示
+          if (anomalyCopy.anomalyCategory) {
+            processedData['异常类别'] = anomalyCopy.anomalyCategory;
+          }
+          
+          if (anomalyCopy.anomalyDiagnosisName) {
+            processedData['诊断名称'] = anomalyCopy.anomalyDiagnosisName;
+          }
+          
+          // 确保异常描述正确显示
+          if (anomalyCopy.anomalyDescription) {
+            processedData['异常描述'] = anomalyCopy.anomalyDescription;
+          }
+          
+          // 确保通道名称正确显示
+          if (anomalyCopy.channelName) {
+            processedData['通道名称'] = anomalyCopy.channelName;
+          }
+          
+          // 确保责任人正确显示
+          if (anomalyCopy.person) {
+            processedData['责任人'] = anomalyCopy.person;
+          }
+          
+          // 确保标注时间正确显示
+          if (anomalyCopy.annotationTime) {
+            // 格式化时间为可读格式
+            const date = new Date(anomalyCopy.annotationTime);
+            processedData['标注时间'] = date.toLocaleString();
+          } else if (anomalyCopy.timestamp) {
+            // 如果有timestamp字段，也可以用它
+            const date = new Date(anomalyCopy.timestamp);
+            processedData['标注时间'] = date.toLocaleString();
+          }
+          
+          if (Object.keys(processedData).length > 0) {
+            manualAnomalies.push(processedData);
+          }
+        });
+      }
+
+      // 从 errorResults 中获取机器识别的异常
+      // 使用一个Map来存储唯一的机器识别异常，避免重复
+      const machineAnomalyMap = new Map();
+      
+      const channelErrors = errorResults.filter(
+        result => result.channelKey === channelName && !result.isAnomaly
+      );
+
+      channelErrors.forEach(error => {
+        if (Array.isArray(error.errorData)) {
+          // 创建深拷贝以避免引用问题
+          const errorDataCopy = JSON.parse(JSON.stringify(error.errorData));
+          const [, machineErrors] = errorDataCopy;
+          
+          if (machineErrors && machineErrors.length > 0) {
+            machineErrors.forEach(machineError => {
+              if (machineError && Object.keys(machineError).length > 0) {
+                // 深拷贝机器异常数据，避免引用问题
+                const machineErrorCopy = JSON.parse(JSON.stringify(machineError));
+                const processedData = processObject(machineErrorCopy);
+                
+                // 确保时间范围格式正确
+                if (machineErrorCopy.X_error && Array.isArray(machineErrorCopy.X_error) && machineErrorCopy.X_error.length > 0) {
+                  const timeRanges = machineErrorCopy.X_error.map(range => {
+                    if (Array.isArray(range) && range.length >= 2) {
+                      return `[ ${parseFloat(range[0]).toFixed(4)} —— ${parseFloat(range[1]).toFixed(4)} ]`;
+                    }
+                    return null;
+                  }).filter(Boolean);
+
+                  if (timeRanges.length > 0) {
+                    processedData['时间范围'] = timeRanges.join(', ');
+                  }
+                }
+                
+                // 确保责任人正确显示
+                if (machineErrorCopy.person) {
+                  processedData['责任人'] = machineErrorCopy.person;
+                } else {
+                  processedData['责任人'] = 'machine';
+                }
+                
+                // 确保诊断名称正确显示
+                if (machineErrorCopy.diagnostic_name) {
+                  processedData['诊断名称'] = machineErrorCopy.diagnostic_name;
+                }
+                
+                // 确保通道名称正确显示
+                if (machineErrorCopy.channelName) {
+                  processedData['通道名称'] = machineErrorCopy.channelName;
+                } else {
+                  processedData['通道名称'] = channelName;
+                }
+                
+                // 确保诊断时间正确显示
+                if (machineErrorCopy.diagnostic_time) {
+                  // 格式化时间为可读格式
+                  const date = new Date(machineErrorCopy.diagnostic_time);
+                  processedData['诊断时间'] = date.toLocaleString();
+                } else if (machineErrorCopy.timestamp) {
+                  // 如果有timestamp字段，也可以用它
+                  const date = new Date(machineErrorCopy.timestamp);
+                  processedData['诊断时间'] = date.toLocaleString();
+                }
+                
+                if (Object.keys(processedData).length > 0) {
+                  // 使用时间范围作为唯一标识符
+                  const key = processedData['时间范围'] || JSON.stringify(machineErrorCopy);
+                  if (!machineAnomalyMap.has(key)) {
+                    machineAnomalyMap.set(key, processedData);
+                  }
+                }
+              }
+            });
+          }
+        }
+      });
+      
+      // 将Map中的值转换为数组
+      const uniqueMachineAnomalies = Array.from(machineAnomalyMap.values());
+
+      // 更新对话框数据
+      anomalyDialogData.value = [
+        {
+          type: '人工标注异常',
+          anomalies: manualAnomalies
+        },
+        {
+          type: '机器识别异常',
+          anomalies: uniqueMachineAnomalies
+        }
+      ];
+
+      // 检查是否两种类型的异常都为空
+      if (manualAnomalies.length === 0 && uniqueMachineAnomalies.length === 0) {
+        // 如果都为空，关闭对话框
+        showAnomalyDialog.value = false;
+      }
+    }
+  }
 };
 </script>
 
@@ -1896,62 +2242,51 @@ const deleteErrorData = (errorData, type) => {
 }
 
 .anomaly-dialog {
-  width: 90% !important;
-  max-width: 1400px;
+  width: 80% !important;
+  max-width: 900px;
 
   :deep(.el-dialog__header) {
-    padding: 16px 24px;
+    padding: 12px 16px;
     margin: 0;
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid #eaeaea;
+    background-color: #f9fafc;
   }
 
   :deep(.el-dialog__title) {
-    font-size: 20px;
-    color: #202124;
-    font-weight: 500;
+    font-size: 16px;
+    color: #303133;
+    font-weight: 600;
+    letter-spacing: 0.5px;
   }
 
   :deep(.el-dialog__body) {
-    padding: 16px 24px;
+    padding: 16px;
+    background-color: #ffffff;
+  }
+
+  :deep(.el-dialog__headerbtn) {
+    top: 12px;
+    right: 12px;
+  }
+
+  :deep(.el-dialog__wrapper) {
+    backdrop-filter: blur(8px);
+  }
+
+  :deep(.el-overlay-dialog) {
+    background-color: rgba(0, 0, 0, 0.5);
   }
 }
 
 .search-container {
-  padding: 0 0 16px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #eaeaea;
   margin-bottom: 16px;
-
-  .el-input {
-    width: 320px;
-
-    :deep(.el-input__wrapper) {
-      box-shadow: none;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      transition: all 0.3s ease;
-
-      &:hover {
-        border-color: #bdbdbd;
-      }
-
-      &.is-focus {
-        border-color: #1a73e8;
-        box-shadow: 0 1px 2px 0 rgba(26,115,232,0.3);
-      }
-    }
-
-    :deep(.el-input__inner) {
-      &::placeholder {
-        color: #5f6368;
-      }
-    }
-  }
 }
 
 .anomaly-container {
   display: flex;
-  margin-top: 10px;
-  gap: 20px;
+  gap: 10px;
   min-height: 45vh;
 }
 
@@ -1965,14 +2300,15 @@ const deleteErrorData = (errorData, type) => {
 }
 
 .group-title {
-  margin: 0 0 12px 0;
-  padding: 8px 16px;
-  background-color: #f8f9fa;
-  border-left: 4px solid #1a73e8;
+  margin: 0 0 16px 0;
+  padding: 12px 16px;
+  background-color: #f9fafc;
+  border-left: 4px solid #409EFF;
   font-size: 16px;
   font-weight: 500;
-  color: #202124;
+  color: #303133;
   border-radius: 0 8px 8px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
 }
 
 .anomaly-content {
@@ -1980,8 +2316,8 @@ const deleteErrorData = (errorData, type) => {
 }
 
 .anomaly-item {
-  margin-bottom: 12px;
-  transition: all 0.2s ease;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
   position: relative;
 
   &:last-child {
@@ -1989,84 +2325,52 @@ const deleteErrorData = (errorData, type) => {
   }
 
   &.highlight {
-    transform: translateY(-1px);
+    transform: translateY(-2px);
 
     :deep(.el-card) {
-      border-color: #1a73e8;
-      box-shadow: 0 2px 6px 2px rgba(26,115,232,0.15);
-    }
-
-    :deep(.el-descriptions__body) {
-      background-color: #f3f8fe;
+      border-color: #409EFF;
+      box-shadow: 0 8px 20px rgba(64, 158, 255, 0.15);
     }
   }
 
   :deep(.el-card) {
-    border-radius: 8px;
-    transition: all 0.2s ease;
-    border: 1px solid #e0e0e0;
-    box-shadow: 0 1px 2px 0 rgba(60,64,67,0.1);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    border: none;
+    box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.08);
     overflow: visible;
-    padding-bottom: 8px; // 为底部图标留出空间
+    position: relative;
 
     &:hover {
-      box-shadow: 0 2px 8px 0 rgba(60,64,67,0.15);
-      
-      .anomaly-bookmark {
-        transform: translateY(-2px); // 悬停时向上移动
-      }
+      box-shadow: 0 8px 16px 0 rgba(0, 0, 0, 0.12);
+      transform: translateY(-2px);
+    }
+
+    .el-card__body {
+      padding: 16px !important;
     }
   }
 }
 
 .anomaly-bookmark {
+  display: none;
+}
+
+.card-actions {
   position: absolute;
-  top: auto; // 取消顶部定位
-  bottom: -6px; // 改为底部定位
-  right: -6px; // 调整右侧位置
-  opacity: 1;
-  transition: all 0.2s ease;
-  z-index: 1;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
 }
 
-.bookmark-actions {
-  display: flex;
-  gap: 4px; // 减小图标间距
-  background: white;
-  padding: 4px; // 减小内边距
-  border-radius: 4px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.action-icon {
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px; // 减小宽度
-  height: 24px; // 减小高度
-  
-  &.edit-icon {
-    color: #409EFF;
-    
-    &:hover {
-      background-color: rgba(64,158,255,0.1);
-      transform: scale(1.1);
-    }
-  }
-  
-  &.delete-icon {
-    color: #F56C6C;
-    
-    &:hover {
-      background-color: rgba(245,108,108,0.1);
-      transform: scale(1.1);
-    }
-  }
+.wrap-tag {
+  white-space: normal;
+  height: auto;
+  line-height: 1.5;
+  padding: 4px 6px;
+  word-break: break-word;
 }
 
 .anomaly-descriptions {
@@ -2074,23 +2378,26 @@ const deleteErrorData = (errorData, type) => {
 
   :deep(.el-descriptions__body) {
     background-color: #fff;
+    border-radius: 8px;
   }
 
   :deep(.el-descriptions__label) {
     width: 120px;
     min-width: 120px;
     max-width: 120px;
-    padding: 8px 12px !important;
-    background-color: #fafafa;
+    padding: 12px 16px !important;
+    background-color: #f9fafc;
     font-size: 14px;
     color: #606266;
-    font-weight: normal;
+    font-weight: 500;
+    border-right: 1px solid #ebeef5;
   }
 
   :deep(.el-descriptions__content) {
-    padding: 8px 12px !important;
+    padding: 12px 16px !important;
     font-size: 14px;
     color: #303133;
+    line-height: 1.5;
   }
 
   :deep(.el-descriptions__cell) {
@@ -2101,19 +2408,82 @@ const deleteErrorData = (errorData, type) => {
     border-collapse: collapse;
     margin: 0;
     border: none;
+    width: 100%;
   }
 
   :deep(.el-descriptions__row) {
-    border-bottom: 1px solid #f0f0f0;
-    
+    border-bottom: 1px solid #ebeef5;
+
     &:last-child {
       border-bottom: none;
+    }
+
+    &:first-child {
+      :deep(.el-descriptions__label) {
+        border-top-left-radius: 8px;
+      }
+
+      :deep(.el-descriptions__content) {
+        border-top-right-radius: 8px;
+      }
+    }
+
+    &:last-child {
+      :deep(.el-descriptions__label) {
+        border-bottom-left-radius: 8px;
+      }
+
+      :deep(.el-descriptions__content) {
+        border-bottom-right-radius: 8px;
+      }
     }
   }
 }
 
+.empty-message {
+  padding: 30px;
+  text-align: center;
+  color: #909399;
+  font-size: 15px;
+  background-color: #f9fafc;
+  border-radius: 12px;
+  border: 1px dashed #e0e0e0;
+  margin: 10px 0;
+}
+
+// 修改滚动条样式
+.el-scrollbar {
+  :deep(.el-scrollbar__bar) {
+    &.is-horizontal {
+      height: 6px;
+    }
+
+    &.is-vertical {
+      width: 6px;
+    }
+
+    .el-scrollbar__thumb {
+      background-color: rgba(144, 147, 153, 0.3);
+      border-radius: 3px;
+
+      &:hover {
+        background-color: rgba(144, 147, 153, 0.5);
+      }
+    }
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .title {
-  color: #999;
+  color: #333;
+  font-weight: bold;
+  font-size: 12pt;
+  margin-left: 5px;
 }
 
 .channelName {
@@ -2230,16 +2600,17 @@ const deleteErrorData = (errorData, type) => {
     &.is-horizontal {
       height: 8px;
     }
+
     &.is-vertical {
       width: 8px;
     }
 
     .el-scrollbar__thumb {
-      background-color: rgba(95,99,104,0.3);
+      background-color: rgba(95, 99, 104, 0.3);
       border-radius: 4px;
 
       &:hover {
-        background-color: rgba(95,99,104,0.5);
+        background-color: rgba(95, 99, 104, 0.5);
       }
     }
   }
@@ -2266,5 +2637,266 @@ const deleteErrorData = (errorData, type) => {
 :deep(.el-button--small) {
   padding: 6px 12px;
   font-size: 12px;
+}
+
+.time-range-value {
+  font-weight: 600;
+  color: #409EFF;
+  background-color: rgba(64, 158, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  letter-spacing: 0.5px;
+  font-size: 12px;
+}
+
+.highlight-row {
+  :deep(.el-descriptions__label) {
+    background-color: #ecf5ff;
+    color: #409EFF;
+    font-weight: 600;
+  }
+
+  :deep(.el-descriptions__content) {
+    background-color: #f9fafc;
+  }
+}
+
+:deep(.el-tag) {
+  border-radius: 4px;
+  padding: 0 6px;
+  height: 20px;
+  line-height: 18px;
+  font-size: 12px;
+  font-weight: 500;
+
+  &.el-tag--success {
+    background-color: #f0f9eb;
+    border-color: #e1f3d8;
+    color: #67c23a;
+  }
+
+  &.el-tag--info {
+    background-color: #f4f4f5;
+    border-color: #e9e9eb;
+    color: #909399;
+  }
+
+  &.el-tag--warning {
+    background-color: #fdf6ec;
+    border-color: #faecd8;
+    color: #e6a23c;
+  }
+}
+
+// 添加以下样式:
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+
+  .title-icon {
+    margin-right: 10px;
+    font-size: 22px;
+    color: #409EFF;
+  }
+}
+
+.search-icon {
+  color: #909399;
+  font-size: 18px;
+}
+
+.anomaly-info-container {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+}
+
+.anomaly-info-item {
+  display: table-row;
+
+  &.highlight-item {
+    .info-label {
+      background-color: #ecf5ff;
+      color: #409EFF;
+      font-weight: 600;
+    }
+
+    .info-value {
+      background-color: #f9fafc;
+    }
+  }
+}
+
+.info-label {
+  display: table-cell;
+  font-weight: 600;
+  color: #606266;
+  font-size: 12px;
+  width: 80px;
+  padding: 6px 8px;
+  position: relative;
+  background-color: #f5f7fa;
+  border-radius: 4px 0 0 4px;
+  vertical-align: middle;
+}
+
+.info-value {
+  display: table-cell;
+  font-size: 12px;
+  color: #303133;
+  word-break: break-word;
+  padding: 6px 10px;
+  background-color: #ffffff;
+  border-radius: 0 4px 4px 0;
+  border: 1px solid #ebeef5;
+  border-left: none;
+  vertical-align: middle;
+
+  &.code-style {
+    font-family: 'Consolas', 'Monaco', monospace;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+  }
+
+  &.error-type {
+    color: #e6a23c;
+    font-weight: 500;
+  }
+
+  &.person {
+    font-weight: 500;
+  }
+}
+
+.empty-value {
+  color: #909399;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.statistic-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.statistic-row {
+  display: flex;
+  gap: 16px;
+  
+  &.time-row {
+    display: flex;
+    align-items: center;
+    background-color: rgba(64, 158, 255, 0.05);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-top: -4px;
+    margin-bottom: -4px;
+  }
+}
+
+.time-title {
+  font-size: 14px;
+  color: #606266;
+  font-weight: 500;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.time-value {
+  font-size: 14px;
+  color: #409EFF;
+  font-weight: 500;
+  flex: 1;
+}
+
+.statistic-item {
+  flex: 1;
+  min-width: 0;
+  
+  &.full-width {
+    width: 100%;
+  }
+}
+
+.statistic-title {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+
+.statistic-value {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+  word-break: break-word;
+  
+  &.code-style {
+    font-family: 'Consolas', 'Monaco', monospace;
+    letter-spacing: 0.5px;
+  }
+  
+  &.description {
+    font-size: 13px;
+    font-weight: normal;
+    line-height: 1.5;
+    background-color: #f9fafc;
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 3px solid #e6e6e6;
+  }
+}
+
+.statistic-note {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 3px;
+  font-weight: normal;
+}
+
+/* 修改操作图标样式 */
+.action-icon {
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+
+  &.edit-icon {
+    color: #409EFF;
+    background-color: rgba(64, 158, 255, 0.1);
+
+    &:hover {
+      background-color: rgba(64, 158, 255, 0.2);
+      transform: scale(1.1);
+    }
+  }
+
+  &.delete-icon {
+    color: #F56C6C;
+    background-color: rgba(245, 108, 108, 0.1);
+
+    &:hover {
+      background-color: rgba(245, 108, 108, 0.2);
+      transform: scale(1.1);
+    }
+  }
 }
 </style>

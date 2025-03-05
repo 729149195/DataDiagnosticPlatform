@@ -4,6 +4,7 @@ import { reactive, ref } from "vue";
 import colors from "./color.json"; // 导入 color.json 文件
 import axios from "axios";
 import { CacheFactory } from "cachefactory";
+import indexedDBService from "./services/indexedDBService"; // 导入IndexedDB服务
 
 // 定义一个映射，用于存储每个 channel_key 分配的颜色
 const channelColorMap = new Map();
@@ -14,13 +15,61 @@ const cacheFactory = new CacheFactory();
 const dataCache = cacheFactory.createCache("channelData", {
   maxEntries: 200, // 最大缓存条目数
   maxAge: 60 * 60 * 1000, // 30分钟
-  deleteOnExpire: "aggressive",
+  deleteOnExpire: "passive", // 改为被动模式，由我们自己控制过期
   storageMode: "memory", // 纯内存存储
   recycleFreq: 60 * 1000, // 内存回收频率
+  onExpire: (key, value, reason) => {
+    // 在store初始化完成后，我们会替换这个函数
+    // 默认实现，防止初始化阶段出错
+    return false; // 返回false表示允许过期
+  }
 });
 
 // 添加一个用于跟踪进行中的请求的映射
 const pendingRequests = new Map();
+
+// 添加一个函数来检查通道是否在selectedChannels中
+function isChannelSelected(channelKey, selectedChannels) {
+  if (!selectedChannels || !channelKey) return false;
+  
+  // 从channelKey中提取channel_name和shot_number
+  // 格式通常是 `${channel.channel_name}_${channel.shot_number}`
+  return selectedChannels.some(channel => {
+    const currentChannelKey = `${channel.channel_name}_${channel.shot_number}`;
+    return currentChannelKey === channelKey;
+  });
+}
+
+// 从IndexedDB加载缓存数据到内存缓存
+async function loadCacheFromIndexedDB() {
+  if (!indexedDBService.isSupported) {
+    console.log('当前浏览器不支持IndexedDB，跳过加载缓存数据');
+    return;
+  }
+  
+  try {
+    console.log('正在从IndexedDB加载缓存数据...');
+    const keys = await indexedDBService.getAllKeys();
+    
+    for (const key of keys) {
+      const cacheItem = await indexedDBService.getChannelData(key);
+      if (cacheItem && cacheItem.data) {
+        // 将数据放入内存缓存
+        dataCache.put(key, {
+          data: reactive(cacheItem.data),
+          timestamp: cacheItem.timestamp
+        });
+      }
+    }
+    
+    console.log(`从IndexedDB加载了 ${keys.length} 条缓存数据`);
+  } catch (error) {
+    console.error('从IndexedDB加载缓存数据失败:', error);
+  }
+}
+
+// 页面加载时从IndexedDB加载缓存
+loadCacheFromIndexedDB();
 
 const store = createStore({
   state() {
@@ -114,6 +163,11 @@ const store = createStore({
     },
     setSelectedChannels(state, channels) {
       state.selectedChannels = channels;
+      
+      // 触发缓存重新评估
+      dataCache.keys().forEach(key => {
+        dataCache.touch(key);
+      });
     },
     addAnomaly(state, { channelName, anomaly }) {
       if (!state.anomalies[channelName]) {
@@ -217,6 +271,11 @@ const store = createStore({
           color: error.color,
         })),
       }));
+      
+      // 触发缓存重新评估
+      dataCache.keys().forEach(key => {
+        dataCache.touch(key);
+      });
     },
 
     updateSelectedChannelsAfterProcessing(state) {
@@ -259,6 +318,11 @@ const store = createStore({
           }
         });
       }
+      
+      // 触发缓存重新评估
+      dataCache.keys().forEach(key => {
+        dataCache.touch(key);
+      });
     },
     updateCalculateResult(state, CalculateResult) {
       state.CalculateResult = CalculateResult;
@@ -367,13 +431,30 @@ const store = createStore({
         ...data,
       };
 
+      const timestamp = Date.now();
+      
+      // 更新内存缓存
       dataCache.put(channelKey, {
         data: reactive(safeData),
-        timestamp: Date.now(),
+        timestamp: timestamp,
       });
+      
+      // 同时保存到IndexedDB
+      // 注意：这里不需要传递reactive包装的数据，因为IndexedDB服务会自己处理序列化
+      indexedDBService.saveChannelData(channelKey, safeData, timestamp)
+        .catch(error => {
+          console.error(`保存通道数据到IndexedDB失败 (${channelKey}):`, error);
+        });
     },
     clearChannelDataCache(state) {
+      // 清空内存缓存
       dataCache.removeAll();
+      
+      // 同时清空IndexedDB缓存
+      indexedDBService.clearAllChannelData()
+        .catch(error => {
+          console.error('清空IndexedDB缓存失败:', error);
+        });
     },
     clearAnomalies(state) {
       state.anomalies = {}; // 清空 anomalies 对象
@@ -509,10 +590,39 @@ const store = createStore({
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-      // 使用缓存工厂检查数据
+      // 使用缓存工厂检查内存数据
       const cached = dataCache.get(channelKey);
       if (!forceRefresh && cached && Date.now() - cached.timestamp < 300000) {
         return cached.data;
+      }
+
+      // 如果内存中没有缓存，尝试从IndexedDB获取
+      if (!forceRefresh && !cached) {
+        try {
+          const dbCached = await indexedDBService.getChannelData(channelKey);
+          if (dbCached && dbCached.data && Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) { // 7天内的数据
+            console.log(`从IndexedDB加载通道数据: ${channelKey}`);
+            
+            // 确保数据结构完整
+            const safeData = {
+              X_value: dbCached.data.X_value || [],
+              Y_value: dbCached.data.Y_value || [],
+              originalFrequency: dbCached.data.originalFrequency,
+              originalDataPoints: dbCached.data.originalDataPoints,
+              ...dbCached.data
+            };
+            
+            // 将数据放入内存缓存
+            const reactiveData = reactive(safeData);
+            dataCache.put(channelKey, {
+              data: reactiveData,
+              timestamp: dbCached.timestamp
+            });
+            return reactiveData;
+          }
+        } catch (error) {
+          console.error(`从IndexedDB获取通道数据失败 (${channelKey}):`, error);
+        }
       }
 
       // 检查是否有相同的请求正在进行中
@@ -560,7 +670,7 @@ const store = createStore({
     },
 
     // 添加获取所有错误数据的 action
-    async fetchAllErrorData({ state }, channel) {
+    async fetchAllErrorData({ state, commit }, channel) {
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         const errorResults = [];
@@ -573,10 +683,29 @@ const store = createStore({
           // 构建缓存键
           const errorCacheKey = `${channelKey}-error-${error.error_name}-${errorIndex}-heatmap`;
 
-          // 检查缓存中是否已有数据（使用新的缓存工厂）
+          // 检查内存缓存中是否已有数据
           if (dataCache.get(errorCacheKey)) {
             errorResults.push(dataCache.get(errorCacheKey).data);
             continue;
+          }
+
+          // 如果内存中没有缓存，尝试从IndexedDB获取
+          try {
+            const dbCached = await indexedDBService.getChannelData(errorCacheKey);
+            if (dbCached && dbCached.data) {
+              console.log(`从IndexedDB加载错误数据: ${errorCacheKey}`);
+              
+              // 将数据放入内存缓存
+              const reactiveData = reactive(dbCached.data);
+              dataCache.put(errorCacheKey, {
+                data: reactiveData,
+                timestamp: dbCached.timestamp
+              });
+              errorResults.push(reactiveData);
+              continue;
+            }
+          } catch (error) {
+            console.error(`从IndexedDB获取错误数据失败 (${errorCacheKey}):`, error);
           }
 
           try {
@@ -628,11 +757,22 @@ const store = createStore({
             }
 
             // 将处理后的数据存入缓存
+            const timestamp = Date.now();
+            const reactiveErrorData = reactive(errorData);
+            
+            // 更新内存缓存
             dataCache.put(errorCacheKey, {
-              data: reactive(errorData),
-              timestamp: Date.now(),
+              data: reactiveErrorData,
+              timestamp: timestamp,
             });
-            errorResults.push(errorData);
+            
+            // 同时保存到IndexedDB
+            indexedDBService.saveChannelData(errorCacheKey, errorData, timestamp)
+              .catch(error => {
+                console.error(`保存错误数据到IndexedDB失败 (${errorCacheKey}):`, error);
+              });
+              
+            errorResults.push(reactiveErrorData);
           } catch (err) {
             console.warn(
               `Failed to fetch error data for ${error.error_name}:`,
@@ -649,8 +789,50 @@ const store = createStore({
         throw error;
       }
     },
+    // 管理缓存存储
+    async manageCacheStorage({ state, commit }) {
+      try {
+        // 获取IndexedDB存储使用情况
+        const usage = await indexedDBService.getStorageUsage();
+        console.log('IndexedDB存储使用情况:', usage);
+        
+        // 如果存储超过100MB，清理过期数据
+        if (usage.size > 100 * 1024 * 1024) {
+          console.log('IndexedDB存储超过100MB，开始清理过期数据...');
+          const cleanedCount = await indexedDBService.cleanupExpiredData(3 * 24 * 60 * 60 * 1000); // 3天
+          console.log(`清理了 ${cleanedCount} 条过期数据`);
+        }
+        
+        return usage;
+      } catch (error) {
+        console.error('管理缓存存储失败:', error);
+        return { count: 0, size: 0 };
+      }
+    },
   },
 });
+
+// 在store创建后，替换dataCache的onExpire函数
+dataCache.setOptions({
+  onExpire: (key, value, reason) => {
+    // 检查通道是否在selectedChannels中
+    const isSelected = isChannelSelected(key, store.state.selectedChannels);
+    
+    // 如果通道在selectedChannels中，则不允许过期（返回false）
+    // 如果通道不在selectedChannels中，则允许从内存中过期（返回true）
+    // 注意：这里只影响内存缓存，不会删除IndexedDB中的数据
+    return !isSelected;
+  }
+});
+
+// 定期检查和管理缓存存储（每小时一次）
+setTimeout(() => {
+  store.dispatch('manageCacheStorage');
+}, 5000); // 页面加载5秒后进行第一次检查
+
+setInterval(() => {
+  store.dispatch('manageCacheStorage');
+}, 60 * 60 * 1000); // 之后每小时检查一次
 
 // 添加新的合并函数
 function mergeChannelTypeData(existingData, newData) {

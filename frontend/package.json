@@ -11,10 +11,12 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.7.7",
+    "cachefactory": "^3.0.0",
     "d3": "^7.9.0",
     "downsample-lttb": "^0.0.1",
     "element-plus": "^2.8.3",
     "fabric": "^6.5.1",
+    "highcharts": "^12.1.2",
     "highcharts-accessibility": "^0.1.7",
     "highcharts-more": "^0.1.7",
     "html2canvas": "^1.4.1",
