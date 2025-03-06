@@ -99,12 +99,12 @@
                 </span>
                 <span>平滑度 <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0"
                     @change="updateSmoothness" /></span>
-                <el-switch v-model="test_channel_number"
+                <el-switch v-model="SingleChannelMultiRow_channel_number"
                   style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
                   inactive-text="多通道单行" />
 
                 <el-switch v-model="boxSelect" style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1"
-                  active-text="框选标注/编辑" inactive-text="局部缩放" :disabled="!test_channel_number" />
+                  active-text="框选标注/编辑" inactive-text="局部缩放" :disabled="!SingleChannelMultiRow_channel_number" />
 
                 <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage">
                 <span style="display: flex; align-items: center;">
@@ -125,10 +125,10 @@
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
                 <el-scrollbar :height="isSecondSectionCollapsed ? '83vh' : '58vh'" :always="false">
-                  <div v-if="test_channel_number === true">
+                  <div v-if="SingleChannelMultiRow_channel_number === true">
                     <SingleChannelMultiRow v-show="selectedChannels.length > 0"/>
                   </div>
-                  <div v-if="test_channel_number === false">
+                  <div v-if="SingleChannelMultiRow_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
@@ -141,7 +141,6 @@
                 <el-icon class="arc-toggle-icon">
                   <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
                 </el-icon>
-                <!-- <span class="arc-toggle-text">{{ isSecondSectionCollapsed ? '展开查询和识别结果' : '收起' }}</span> -->
               </div>
             </div>
 
@@ -214,8 +213,7 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
-import { FolderChecked, Upload, User, SwitchButton, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
-import html2canvas from 'html2canvas';
+import { FolderChecked, Upload, User, SwitchButton } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 // 颜色配置及通道选取组件
 import ChannelType from '@/components/Channel-Type.vue';
@@ -299,7 +297,7 @@ const updateSmoothness = (value) => {
 }
 
 const color_table_value = ref(true)
-const test_channel_number = ref(true)
+const SingleChannelMultiRow_channel_number = ref(true)
 const unit_sampling = ref(10)
 const selectedButton = ref('anay');
 
@@ -310,7 +308,7 @@ const selectedChannels = computed(() => store.state.selectedChannels);
 
 const boxSelect = computed({
   get: () => {
-    if (!test_channel_number.value) {
+    if (!SingleChannelMultiRow_channel_number.value) {
       return false;
     }
     if (authority.value === '0') {
@@ -328,7 +326,7 @@ const boxSelect = computed({
       store.dispatch('updateIsBoxSelect', false);
       return;
     }
-    if (test_channel_number.value) {
+    if (SingleChannelMultiRow_channel_number.value) {
       store.dispatch('updateIsBoxSelect', value);
     }
   }
@@ -397,7 +395,7 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
 };
 
 const exportChannelSVG = async () => {
-  if (test_channel_number.value) {
+  if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行的情况
     for (let [index, svgElement] of channelSvgElementsRefs.value.entries()) {
       if (svgElement) {
@@ -488,7 +486,7 @@ const exportChannelSVG = async () => {
 };
 
 const exportChannelData = async () => {
-  if (test_channel_number.value) {
+  if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行的情况
     for (let [index, svgElement] of channelSvgElementsRefs.value.entries()) {
       let channel = selectedChannels.value[index];
@@ -560,15 +558,15 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     // 确保在更新 selectedChannels 之前重置进度状态
     await nextTick();
     if (MultiChannelRef.value &&
-      !test_channel_number.value &&
+      !SingleChannelMultiRow_channel_number.value &&
       MultiChannelRef.value.resetProgress) {
       MultiChannelRef.value.resetProgress();
     }
   }
 }, { deep: true });
 
-// 添加对 test_channel_number 的监听
-watch(test_channel_number, (newValue) => {
+// 添加对 SingleChannelMultiRow_channel_number 的监听
+watch(SingleChannelMultiRow_channel_number, (newValue) => {
   if (!newValue) {
     // 切换到多通道单行时，保存当前的 boxSelect 状态并设置为 false
     const currentBoxSelectState = store.state.isBoxSelect;
