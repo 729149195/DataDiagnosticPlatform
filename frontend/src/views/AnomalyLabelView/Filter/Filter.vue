@@ -11,18 +11,11 @@
               @select="handleGunNumberSelect"
               @input="handleInput"
               @clear="handleGunNumberClear"
+              @focus="handleGunNumberFocus"
+              @blur="handleGunNumberBlur"
               clearable
               class="gun-number-input"
           ></el-autocomplete>
-          <el-button 
-            v-if="gunNumberSearchResults.length > 0"
-            @click="selectAllGunNumberResults" 
-            size="small" 
-            type="primary"
-            class="select-all-btn"
-          >
-            全选搜索结果
-          </el-button>
         </div>
       </div>
       <div>
@@ -194,6 +187,8 @@ const parseGunNumberInput = () => {
 
   const numbers = [];
   const parts = input.split(',');
+  const invalidNumbers = [];
+  const invalidRanges = [];
 
   for (const part of parts) {
     const trimmedPart = part.trim();
@@ -204,35 +199,88 @@ const parseGunNumberInput = () => {
       const start = parseInt(rangeMatch[1], 10);
       const end = parseInt(rangeMatch[2], 10);
       if (start <= end) {
+        let validInRange = false;
         for (let i = start; i <= end; i++) {
           if (gunNumberOptions.value.find(option => option.value === i.toString())) {
             numbers.push(i.toString());
+            validInRange = true;
           } else {
-            // ElMessage.warning(`无效的炮号: ${i}`);
+            invalidNumbers.push(i);
           }
         }
+        // 如果范围内没有一个有效的炮号，则记录为无效范围
+        if (!validInRange) {
+          invalidRanges.push(trimmedPart);
+        }
       } else {
-        // ElMessage.warning(`无效的范围: ${trimmedPart}`);
+        invalidRanges.push(trimmedPart);
       }
     } else {
       const num = trimmedPart;
-      if (num) {
+      if (num && /^\d+$/.test(num)) {
         // 验证是否为有效的炮号
         if (gunNumberOptions.value.find(option => option.value === num)) {
           numbers.push(num);
         } else {
-          // ElMessage.warning(`无效的炮号: ${num}`);
+          invalidNumbers.push(num);
         }
+      } else if (num) {
+        // 非数字输入
+        invalidNumbers.push(num);
       }
     }
   }
 
   // 去重
   selectedGunNumbers.value = Array.from(new Set(numbers));
+
+  // 显示警告信息（如果有无效输入）
+  if (invalidRanges.length > 0 || invalidNumbers.length > 0) {
+    let warningMsg = '';
+    
+    if (invalidRanges.length > 0) {
+      warningMsg += `无效的范围: ${invalidRanges.join(', ')}`;
+    }
+    
+    if (invalidNumbers.length > 0) {
+      if (warningMsg) warningMsg += '; ';
+      // 限制显示的无效炮号数量，避免消息过长
+      const displayInvalidNumbers = invalidNumbers.length > 10 
+        ? invalidNumbers.slice(0, 10).join(', ') + `...等${invalidNumbers.length}个`
+        : invalidNumbers.join(', ');
+      warningMsg += `无效的炮号: ${displayInvalidNumbers}`;
+    }
+    
+    if (warningMsg) {
+      ElMessage.warning(warningMsg);
+    }
+  }
 };
 
 // 处理自动补全建议
 const querySearchGunNumbers = debounce((queryString, cb) => {
+  // 如果输入为空，显示初始建议
+  if (!queryString.trim()) {
+    // 获取前20个炮号作为建议
+    const initialSuggestions = gunNumberOptions.value
+      .slice(0, 20)
+      .map(item => ({ value: item.value }));
+    
+    // 保存当前搜索结果
+    gunNumberSearchResults.value = initialSuggestions;
+    
+    // 如果有很多炮号，添加一个提示选项
+    if (gunNumberOptions.value.length > 20) {
+      initialSuggestions.push({
+        value: `输入数字或范围查看更多，共 ${gunNumberOptions.value.length} 个炮号`,
+        disabled: true
+      });
+    }
+    
+    cb(initialSuggestions);
+    return;
+  }
+
   const parts = queryString.split(',');
   const lastPart = parts.pop().trim();
 
@@ -256,7 +304,8 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
       } else {
         // 用户输入范围的起始部分，如 '1-'
         suggestions = gunNumberOptions.value
-            .filter(item => parseInt(item.value, 10) >= start)
+            .filter(item => parseInt(item.value, 10) > start) // 确保建议的值大于起始值
+            .sort((a, b) => parseInt(a.value, 10) - parseInt(b.value, 10)) // 按数值排序
             .slice(0, 10) // 限制最多10个建议
             .map(item => ({value: item.value}));
       }
@@ -271,6 +320,14 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
 
   // 保存当前搜索结果
   gunNumberSearchResults.value = suggestions;
+  
+  // 如果有搜索结果，添加"全选搜索结果"选项到第一位
+  if (suggestions.length > 1) {
+    suggestions.unshift({
+      value: `全选 ${suggestions.length} 个搜索结果`,
+      isSelectAll: true
+    });
+  }
 
   cb(suggestions);
 }, 300); // 延迟300ms触发
@@ -281,9 +338,23 @@ const previousInput = ref('');
 const handleInput = (value) => {
   previousInput.value = gunNumberInput.value;
   gunNumberInput.value = value;
+  // 不再在输入时立即解析，而是仅更新输入值
+};
+
+// 添加失去焦点事件处理
+const handleGunNumberBlur = () => {
+  // 当输入框失去焦点时，解析输入并更新选中的炮号
+  parseGunNumberInput();
 };
 
 const handleGunNumberSelect = (item) => {
+  // 检查是否选择了"全选搜索结果"选项
+  if (item.isSelectAll) {
+    // 执行全选搜索结果的逻辑
+    selectAllGunNumberResults();
+    return;
+  }
+  
   // 由于选择建议项时，输入框的值会被自动替换，所以需要使用之前的输入值
   const inputBeforeSelection = previousInput.value;
   const parts = inputBeforeSelection.split(',');
@@ -307,12 +378,10 @@ const handleGunNumberSelect = (item) => {
 
   // 重新组合输入字符串，添加逗号和空格以便用户继续输入
   gunNumberInput.value = parts.join(', ') + ', ';
-};
-
-// 监听输入变化，实时解析输入
-watch(gunNumberInput, (newVal) => {
+  
+  // 选择后立即解析输入，因为这是用户的明确选择
   parseGunNumberInput();
-});
+};
 
 // 计算属性：获取选中炮号及其对应的值
 const selectedGunNumbersWithValues = computed(() => {
@@ -580,7 +649,7 @@ watch(selectederrorsNames, (newVal) => {
   }
 });
 
-// 添加清空处理函数
+// 修改清除函数，确保清除时也更新选中的炮号
 const handleGunNumberClear = () => {
   gunNumberInput.value = '';
   selectedGunNumbers.value = [];
@@ -759,19 +828,77 @@ watch(filteredErrorsNameOptions, (newOptions) => {
 
 // 全选炮号搜索结果
 const selectAllGunNumberResults = () => {
-  if (gunNumberSearchResults.value.length > 0) {
-    const resultValues = gunNumberSearchResults.value.map(item => item.value);
+  // 过滤掉特殊选项（如全选选项和提示选项）
+  const validResults = gunNumberSearchResults.value.filter(item => !item.isSelectAll && !item.disabled);
+  
+  if (validResults.length > 0) {
+    const resultValues = validResults.map(item => item.value);
     
-    // 将结果格式化为用户输入形式
-    gunNumberInput.value = resultValues.join(', ');
+    // 检查当前输入是否为范围格式
+    const currentInput = gunNumberInput.value.trim();
+    const parts = currentInput.split(',');
+    const lastPart = parts[parts.length - 1].trim();
+    const isRangeInput = lastPart.includes('-');
+    
+    if (isRangeInput && resultValues.length > 1) {
+      // 如果是范围输入，并且有多个结果，则使用范围格式
+      const rangeMatch = lastPart.match(/^(\d+)-(\d*)$/);
+      if (rangeMatch) {
+        const start = rangeMatch[1];
+        // 找到结果中的最小值和最大值
+        const min = Math.min(...resultValues.map(v => parseInt(v, 10)));
+        const max = Math.max(...resultValues.map(v => parseInt(v, 10)));
+        
+        // 替换最后一部分为完整范围
+        parts.pop();
+        parts.push(`${start}-${max}`);
+        
+        // 更新输入
+        gunNumberInput.value = parts.join(', ');
+      }
+    } else {
+      // 否则使用逗号分隔的列表
+      // 将结果格式化为用户输入形式
+      gunNumberInput.value = resultValues.join(', ');
+    }
     
     // 解析输入并更新选中的炮号
     parseGunNumberInput();
     
-    // 清空搜索结果，隐藏全选按钮
+    // 清空搜索结果
     gunNumberSearchResults.value = [];
     
     ElMessage.success(`已选择 ${resultValues.length} 个炮号`);
+  }
+};
+
+// 处理炮号输入框获取焦点事件
+const handleGunNumberFocus = () => {
+  // 当输入框为空时，显示所有可用的炮号选项（限制数量以避免过多）
+  if (!gunNumberInput.value.trim()) {
+    // 获取前20个炮号作为建议
+    const initialSuggestions = gunNumberOptions.value
+      .slice(0, 20)
+      .map(item => ({ value: item.value }));
+    
+    // 如果有多个选项，添加全选选项
+    if (initialSuggestions.length > 1) {
+      initialSuggestions.unshift({
+        value: `全选 ${initialSuggestions.length} 个炮号`,
+        isSelectAll: true
+      });
+    }
+    
+    // 保存当前搜索结果
+    gunNumberSearchResults.value = initialSuggestions;
+    
+    // 如果有很多炮号，添加一个提示选项
+    if (gunNumberOptions.value.length > 20) {
+      gunNumberSearchResults.value.push({
+        value: `输入数字或范围查看更多，共 ${gunNumberOptions.value.length} 个炮号`,
+        disabled: true
+      });
+    }
   }
 };
 
