@@ -212,8 +212,9 @@ const processChannelData = async (data, channel) => {
     const channelData = {
       X_value: [...data.X_value],
       Y_value: [...data.Y_value],
-      originalFrequency: data.originalFrequency,
-      originalDataPoints: data.X_value.length
+      originalFrequency: data.originalFrequency || 1.0,
+      originalDataPoints: data.originalDataPoints || data.X_value.length,
+      channel_number: data.channel_number || channel.channel_name
     };
     renderingStates[channelKey] = 25;
     // 并行获取错误数据 - 不阻塞其他处理
@@ -235,10 +236,10 @@ const processChannelData = async (data, channel) => {
         smoothnessValue.value,
         channelKey,
         channel.color,
-        data.X_unit,
-        data.Y_unit,
-        data.channel_type,
-        data.channel_number,
+        data.X_unit || 's',
+        data.Y_unit || '',
+        data.channel_type || channel.channel_type,
+        channelData.channel_number,
         channel.shot_number
       ),
       errorDataPromise
@@ -1574,7 +1575,7 @@ const drawChart = (
       // 添加图例文字
       if (chart && chart.renderer) {
         chart.renderer.text(
-          `${channelNumber} | ${shotNumber} (${data.originalFrequency.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+          `${channelNumber || channelName.split('_')[0]} | ${shotNumber} (${(data.originalFrequency || 1.0).toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
           105,
           30
         )

@@ -428,6 +428,9 @@ const store = createStore({
       const safeData = {
         X_value: data?.X_value || [],
         Y_value: data?.Y_value || [],
+        originalFrequency: data?.originalFrequency || 1.0,
+        originalDataPoints: data?.originalDataPoints || data?.X_value?.length || 0,
+        channel_number: data?.channel_number || channelKey.split('_')[0],
         ...data,
       };
 
@@ -607,8 +610,12 @@ const store = createStore({
             const safeData = {
               X_value: dbCached.data.X_value || [],
               Y_value: dbCached.data.Y_value || [],
-              originalFrequency: dbCached.data.originalFrequency,
-              originalDataPoints: dbCached.data.originalDataPoints,
+              originalFrequency: dbCached.data.originalFrequency || 1.0,
+              originalDataPoints: dbCached.data.originalDataPoints || dbCached.data.X_value?.length || 0,
+              channel_number: dbCached.data.channel_number || channel.channel_name,
+              channel_type: dbCached.data.channel_type || channel.channel_type,
+              X_unit: dbCached.data.X_unit || 's',
+              Y_unit: dbCached.data.Y_unit || '',
               ...dbCached.data
             };
             
@@ -651,6 +658,9 @@ const store = createStore({
           );
           data.originalFrequency = data.X_value.length / timeRange / 1000;
           data.originalDataPoints = data.X_value.length;
+          
+          // 确保channel_number字段存在
+          data.channel_number = data.channel_number || channel.channel_name;
 
           // 存入缓存
           commit("updateChannelDataCache", { channelKey, data });
