@@ -12,8 +12,7 @@
         transition: 'opacity 0.5s ease-in-out'
       }">
         <div class="progress-circle-wrapper">
-          <el-progress type="circle" :percentage="getProgressPercentage" :stroke-width="6" 
-            :status="loadingState.isLoading ? 'warning' : ''" :color="!loadingState.isLoading ? '#409EFF' : ''">
+          <el-progress type="circle" :percentage="getProgressPercentage" :stroke-width="6" :status="loadingState.isLoading ? 'warning' : ''" :color="!loadingState.isLoading ? '#409EFF' : ''">
             <template #default>
               <div class="progress-info">
                 <div class="progress-text">{{ !loadingState.isLoading ? '图表渲染中' : '数据加载中' }}</div>
@@ -24,13 +23,42 @@
         </div>
       </div>
       <div class="chart-wrapper" :style="{
-          opacity: renderingState.completed ? 1 : 0.3,
-          transition: 'opacity 0.3s ease-in-out',
-          position: 'relative'
-        }">
+        opacity: renderingState.completed ? 1 : 0.3,
+        transition: 'opacity 0.3s ease-in-out',
+        position: 'relative'
+      }">
         <div id="combined-chart" ref="chartContainer" style="width: 100%; height: 100%;"></div>
       </div>
     </div>
+    <el-dialog v-if="showAnomalyForm" v-model="showAnomalyForm" title="编辑/修改异常信息">
+      <el-form :model="currentAnomaly" label-width="auto">
+        <el-form-item label="选择通道" required>
+          <el-select v-model="selectedChannelForAnnotation" placeholder="选择要标注的通道" style="width: 100%;">
+            <el-option v-for="channel in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`" :label="`${channel.channel_name} | ${channel.shot_number}`" :value="`${channel.channel_name}_${channel.shot_number}`">
+            </el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="异常类别">
+          <el-input v-model="currentAnomaly.anomalyCategory" />
+        </el-form-item>
+        <el-form-item label="异常诊断名称">
+          <el-input v-model="currentAnomaly.anomalyDiagnosisName" />
+        </el-form-item>
+        <el-form-item label="时间轴范围">
+          <el-input :value="timeAxisRange" disabled />
+        </el-form-item>
+        <el-form-item label="异常描述">
+          <el-input v-model="currentAnomaly.anomalyDescription" :rows="4" type="textarea" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="closeAnomalyForm">取消</el-button>
+          <el-button type="primary" @click="saveAnomaly">保存</el-button>
+          <el-button type="danger" @click="deleteAnomaly" v-if="currentAnomaly.id">删除</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -38,8 +66,8 @@
 import Highcharts from 'highcharts';
 import 'highcharts/modules/accessibility';
 import debounce from 'lodash/debounce';
-import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted } from 'vue';
-import { ElMessage, ElEmpty, ElProgress } from 'element-plus';
+import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted, toRaw } from 'vue';
+import { ElMessage, ElEmpty, ElProgress, ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElSelect, ElOption } from 'element-plus';
 import { useStore } from 'vuex';
 import LegendComponent from '@/components/LegendComponent.vue';
 import chartWorkerManager from '@/workers/chartWorkerManager';
@@ -59,7 +87,7 @@ const interpolateData = (data, factor) => {
 
     const result = [...data]; // 创建数据副本
     const windowSize = Math.ceil(data.length * factor * 0.1); // 根据平滑因子计算窗口大小
-    
+
     if (windowSize < 2) {
       return result; // 窗口过小，不执行平滑
     }
@@ -68,11 +96,11 @@ const interpolateData = (data, factor) => {
     for (let i = 0; i < data.length; i++) {
       let sum = 0;
       let count = 0;
-      
+
       // 计算当前点周围的窗口范围
       const start = Math.max(0, i - windowSize);
       const end = Math.min(data.length - 1, i + windowSize);
-      
+
       // 对窗口内的所有点求和
       for (let j = start; j <= end; j++) {
         // 只考虑有效数值
@@ -81,13 +109,13 @@ const interpolateData = (data, factor) => {
           count++;
         }
       }
-      
+
       // 计算平均值
       if (count > 0) {
         result[i] = sum / count;
       }
     }
-    
+
     return result;
   } catch (error) {
     console.error('数据平滑处理出错:', error);
@@ -116,7 +144,7 @@ const resetProgress = () => {
     clearInterval(loadingState.progressInterval);
     loadingState.progressInterval = null;
   }
-  
+
   loadingState.progress = 0;
   loadingState.error = null;
   renderingState.completed = false;
@@ -137,6 +165,7 @@ const mainChartDimensions = ref({
 // Vuex store
 const store = useStore();
 const selectedChannels = computed(() => store.state.selectedChannels);
+const channelDataCache = computed(() => store.state.channelDataCache); // 添加channelDataCache
 
 const sampling = computed(() => store.state.sampling);
 const smoothnessValue = computed(() => store.state.smoothness);
@@ -201,10 +230,10 @@ const drawHighlightRects = (channelName, matchedResults) => {
       console.warn('未找到图表实例，无法绘制高亮区域');
       return;
     }
-    
+
     // 先清除之前为该通道绘制的所有高亮区域
     const existingRects = chart.annotations || [];
-    const channelRects = existingRects.filter(rect => 
+    const channelRects = existingRects.filter(rect =>
       rect && rect.options && rect.options.id && rect.options.id.startsWith(`highlight-${channelName}-`)
     );
     channelRects.forEach(rect => {
@@ -216,85 +245,85 @@ const drawHighlightRects = (channelName, matchedResults) => {
         }
       }
     });
-    
+
     // 清除之前的匹配高亮系列
     chart.series.forEach(series => {
       if (series && series.name && series.name.startsWith(`highlight-${channelName}-`)) {
         series.remove(false); // 不立即重绘
       }
     });
-    
+
     // 确保xDomains.value.global是有效的范围
     if (!xDomains.value.global || !Array.isArray(xDomains.value.global) || xDomains.value.global.length !== 2) {
       console.warn('无效的X轴范围，无法绘制高亮区域');
       return;
     }
-    
+
     // 获取当前图表的显示范围
     const xMin = chart.xAxis[0].min || xDomains.value.global[0];
     const xMax = chart.xAxis[0].max || xDomains.value.global[1];
-    
+
     // 获取Y轴范围
     const yMin = chart.yAxis[0].min;
     const yMax = chart.yAxis[0].max;
-    
+
     // 计算当前可见区域的宽度
     const visibleWidth = xMax - xMin;
-    
+
     // 过滤出当前通道的匹配结果
     const channelResults = matchedResults.filter(r => r.channel_name === channelName);
-    
+
     // 为每个匹配的区域添加高亮
     channelResults.forEach((result, resultIndex) => {
       if (!result.tbegin || !result.tend) {
         return; // 跳过无效区域
       }
-      
+
       const tbegin = parseFloat(result.tbegin);
       const tend = parseFloat(result.tend);
-      
+
       // 跳过完全在可见区域外的区域
       if (tend < xMin || tbegin > xMax) {
         return;
       }
-      
+
       // 确保区域在可见范围内
       const visibleBegin = Math.max(tbegin, xMin);
       const visibleEnd = Math.min(tend, xMax);
-      
+
       // 计算区域宽度占比
       const widthRatio = (visibleEnd - visibleBegin) / visibleWidth;
-      
+
       // 只绘制足够宽的区域，避免过小的区域影响性能
       if (widthRatio < 0.001 && (visibleEnd - visibleBegin) < 0.01) {
         return; // 跳过太小的区域
       }
-      
+
       // 决定区域颜色 - 使用预定义颜色或默认颜色
       const colorMap = {
         'matched': 'rgba(255, 215, 0, 0.9)', // 金色，匹配区域
         'manual': 'rgba(220, 20, 60, 0.9)',  // 红色，人工标注
         'machine': 'rgba(0, 128, 0, 0.9)'    // 绿色，机器识别
       };
-      
+
       // 根据标签类型决定颜色
       const colorKey = result.match_type || (result.is_manual ? 'manual' : 'machine');
       const highlightColor = colorMap[colorKey] || 'rgba(0, 0, 255, 0.9)'; // 默认蓝色
-      
+
       // 创建唯一ID
       const seriesId = `highlight-${channelName}-${resultIndex}-${Date.now()}`;
-      
+
       // 找到相应通道的数据系列
-      const channelSeries = chart.series.find(s => s.name === `${channelName}_${result.shot_number}` || 
-                                            s.name === `${channelName}_${result.shot_number}_smoothed`);
-      
+      const channelSeries = chart.series.find(s => s.name === `${channelName}_${result.shot_number}` ||
+        s.name === `${channelName}_${result.shot_number}_smoothed`);
+
       if (channelSeries) {
         // 获取区域内的数据点
         const pointsInRange = [];
-        // 找到区域内数据点
+        // 找到区间内数据点
         const allX = channelsData.value.find(d => d.channelName === channelName)?.X_value || [];
         const allY = channelsData.value.find(d => d.channelName === channelName)?.Y_value || [];
-        
+
         if (allX.length > 0 && allY.length > 0) {
           // 找到区间内的所有点
           for (let i = 0; i < allX.length; i++) {
@@ -302,17 +331,17 @@ const drawHighlightRects = (channelName, matchedResults) => {
               pointsInRange.push([allX[i], allY[i]]);
             }
           }
-          
+
           // 如果没有足够点，添加区间端点
           if (pointsInRange.length < 2) {
             // 添加区间端点
             const yValueBegin = allY[allX.findIndex(x => x >= visibleBegin)] || 0;
             const yValueEnd = allY[allX.findIndex(x => x >= visibleEnd)] || 0;
-            
+
             pointsInRange.push([visibleBegin, yValueBegin]);
             pointsInRange.push([visibleEnd, yValueEnd]);
           }
-          
+
           // 添加高亮系列 - 使用细线高亮贴合原始信号
           if (pointsInRange.length > 0) {
             chart.addSeries({
@@ -333,12 +362,12 @@ const drawHighlightRects = (channelName, matchedResults) => {
               enableMouseTracking: false
             }, false);  // 不立即重绘
           }
-          
+
           // 添加标签
           if (result.label_name) {
             const labelX = visibleBegin + (visibleEnd - visibleBegin) / 2;
             const labelY = Math.max(...pointsInRange.map(p => p[1])) + 0.05;
-            
+
             chart.addAnnotation({
               id: `label-${seriesId}`,
               labels: [{
@@ -359,7 +388,7 @@ const drawHighlightRects = (channelName, matchedResults) => {
               }],
               zIndex: 999,
               events: {
-                click: function(e) {
+                click: function (e) {
                   // 记录点击的区域
                   selectedAnomaly.value = result;
                 }
@@ -371,7 +400,7 @@ const drawHighlightRects = (channelName, matchedResults) => {
         console.warn(`找不到对应的通道系列: ${channelName}_${result.shot_number}`);
       }
     });
-    
+
     // 一次性重绘图表
     chart.redraw();
   } catch (error) {
@@ -405,13 +434,13 @@ const renderCharts = debounce(async () => {
     renderingState.isRendering = false;
     renderingState.completed = false;
     processedDataCache.value.clear();
-    
+
     // 清除可能存在的旧图表
     const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (existingChart) {
       existingChart.destroy();
     }
-    
+
     // 确保有选中的通道
     if (!selectedChannels.value || selectedChannels.value.length === 0) {
       console.warn('No channels selected');
@@ -419,7 +448,7 @@ const renderCharts = debounce(async () => {
       renderingState.completed = true;
       return;
     }
-    
+
     // 创建进度更新定时器，模拟平滑进度
     loadingState.progressInterval = setInterval(() => {
       if (loadingState.isLoading && loadingState.progress < 50) {
@@ -432,18 +461,18 @@ const renderCharts = debounce(async () => {
         loadingState.progress = Math.min(loadingState.progress + renderingIncrement, 95);
       }
     }, 100);
-    
+
     // 并行处理所有通道数据
     const processingPromises = selectedChannels.value.map(async (channel) => {
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        
+
         // 获取通道数据
         const data = await store.dispatch('fetchChannelData', { channel });
         if (!data) {
           throw new Error(`Failed to fetch data for channel ${channelKey}`);
         }
-        
+
         // 处理通道数据
         const processedData = await processChannelDataAsync(data, channel);
         processedDataCache.value.set(channelKey, processedData);
@@ -453,26 +482,26 @@ const renderCharts = debounce(async () => {
         throw error;
       }
     });
-    
+
     // 等待所有数据处理完成
     await Promise.allSettled(processingPromises);
-    
+
     // 更新加载进度到50%（数据处理阶段完成）
     loadingState.progress = 50;
-    
+
     // 准备渲染图表 - 不使用 await，避免可能的递归调用
     prepareAndRenderChart().catch(error => {
       console.error('Error in prepareAndRenderChart:', error);
       ElMessage.error(`准备渲染图表时出错: ${error.message}`);
       loadingState.isLoading = false;
       loadingState.error = error.message;
-      
+
       // 清除进度更新定时器
       if (loadingState.progressInterval) {
         clearInterval(loadingState.progressInterval);
         loadingState.progressInterval = null;
       }
-      
+
       // 平滑过渡到100%
       const finalizeProgress = () => {
         const currentProgress = loadingState.progress;
@@ -483,25 +512,25 @@ const renderCharts = debounce(async () => {
           }
         }
       };
-      
+
       finalizeProgress();
     });
-    
+
     // 不再立即设置加载完成，让prepareAndRenderChart函数负责更新这些状态
-    
+
   } catch (error) {
     console.error('Error rendering charts:', error);
     ElMessage.error(`加载图表时出错: ${error.message}`);
     loadingState.isLoading = false;
     loadingState.error = error.message;
     renderingState.completed = true;
-    
+
     // 清除进度更新定时器
     if (loadingState.progressInterval) {
       clearInterval(loadingState.progressInterval);
       loadingState.progressInterval = null;
     }
-    
+
     // 平滑过渡到100%
     const finalizeProgress = () => {
       const currentProgress = loadingState.progress;
@@ -512,7 +541,7 @@ const renderCharts = debounce(async () => {
         }
       }
     };
-    
+
     finalizeProgress();
   }
 }, 300);
@@ -522,9 +551,9 @@ const processChannelDataAsync = async (data, channel) => {
   if (!data || !data.X_value || !data.Y_value) {
     throw new Error(`Invalid data for channel ${channel.channel_name}`);
   }
-  
+
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-  
+
   // 准备数据
   const channelData = {
     X_value: [...data.X_value],
@@ -532,7 +561,7 @@ const processChannelDataAsync = async (data, channel) => {
     originalFrequency: data.originalFrequency,
     originalDataPoints: data.X_value.length
   };
-  
+
   // 获取错误数据
   let errorDataResults = [];
   if (channel.errors && channel.errors.length > 0) {
@@ -543,7 +572,7 @@ const processChannelDataAsync = async (data, channel) => {
       console.warn('Failed to fetch error data:', err);
     }
   }
-  
+
   // 使用 chartWorkerManager 处理数据
   const processedData = await chartWorkerManager.processData(
     channelData,
@@ -557,47 +586,47 @@ const processChannelDataAsync = async (data, channel) => {
     data.channel_number,
     channel.shot_number
   );
-  
+
   if (!processedData) {
     throw new Error(`Failed to process data for channel ${channelKey}`);
   }
-  
+
   // 归一化 Y 值
   const yValues = processedData.processedData.Y_value;
   const yAbsMax = Math.max(...yValues.map(d => Math.abs(d)));
   const normalizedY = yAbsMax === 0 ?
     processedData.processedData.Y_value.map(() => 0) :
     processedData.processedData.Y_value.map(y => y / yAbsMax);
-  
+
   let finalY = normalizedY;
   let xValues = processedData.processedData.X_value;
-  
+
   // 对于数字信号，确保值只有0和1，避免中间值
   if (data.channel_type === 'DIGITAL') {
     finalY = normalizedY.map(y => y > 0.5 ? 1 : 0);
-    
+
     // 为数字信号添加额外的点，确保方波形状
     const enhancedX = [];
     const enhancedY = [];
-    
+
     for (let i = 0; i < xValues.length; i++) {
       if (i > 0) {
         // 如果当前点与前一点的值不同，添加一个过渡点
-        if (finalY[i] !== finalY[i-1]) {
+        if (finalY[i] !== finalY[i - 1]) {
           // 在两点之间添加一个极小偏移的点，确保垂直线段
           const transitionX = xValues[i] - 0.0000001;
           enhancedX.push(transitionX);
-          enhancedY.push(finalY[i-1]); // 使用前一点的值
+          enhancedY.push(finalY[i - 1]); // 使用前一点的值
         }
       }
       enhancedX.push(xValues[i]);
       enhancedY.push(finalY[i]);
     }
-    
+
     xValues = enhancedX;
     finalY = enhancedY;
   }
-  
+
   // 返回处理后的数据
   return {
     channelName: channel.channel_name,
@@ -621,20 +650,20 @@ const prepareAndRenderChart = async () => {
     renderingState.isRendering = true;
     // 更新加载状态，表示进入图表渲染阶段
     loadingState.isLoading = false;
-    
+
     // 确保进度至少为50%，表示数据加载阶段已完成
     if (loadingState.progress < 50) {
       loadingState.progress = 50;
     }
-    
+
     // 清空数据数组，避免重复添加
     channelsData.value = [];
     exposeData.value = [];
-    
+
     // 准备图表数据
     for (const [channelKey, processedData] of processedDataCache.value.entries()) {
       channelsData.value.push(processedData);
-      
+
       // 更新导出数据
       exposeData.value.push({
         channel_type: processedData.channelType,
@@ -647,7 +676,7 @@ const prepareAndRenderChart = async () => {
         shot_number: processedData.shotNumber
       });
     }
-    
+
     // 计算全局X轴范围
     if (!xDomains.value.global && channelsData.value.length > 0) {
       const allX = channelsData.value.flatMap(d => d.X_value);
@@ -655,10 +684,10 @@ const prepareAndRenderChart = async () => {
         xDomains.value.global = [Math.min(...allX), Math.max(...allX)];
       }
     }
-    
+
     // 等待数据更新到 DOM
     await nextTick();
-    
+
     // 直接调用 drawCombinedChart 函数，不要使用 await
     // 这里不需要 await，因为 drawCombinedChart 内部已经处理了异步操作
     drawCombinedChart();
@@ -669,13 +698,13 @@ const prepareAndRenderChart = async () => {
     renderingState.completed = true;
     // 确保在出错时也更新加载状态
     loadingState.isLoading = false;
-    
+
     // 清除进度更新定时器
     if (loadingState.progressInterval) {
       clearInterval(loadingState.progressInterval);
       loadingState.progressInterval = null;
     }
-    
+
     // 平滑过渡到100%
     const finalizeProgress = () => {
       const currentProgress = loadingState.progress;
@@ -686,7 +715,7 @@ const prepareAndRenderChart = async () => {
         }
       }
     };
-    
+
     finalizeProgress();
   }
 };
@@ -696,17 +725,17 @@ const calculateChartHeight = () => {
   // 获取容器元素
   const container = document.querySelector('.chart-container');
   if (!container) return;
-  
+
   // 获取容器的实际高度
   const containerHeight = container.clientHeight;
-  
+
   // 设置图表高度为容器高度减去120px，再减去上下边距
   const newHeight = Math.max(300, containerHeight) - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
-  
+
   // 仅当高度有明显变化时才更新
   if (Math.abs(newHeight - mainChartDimensions.value.height) > 5) {
     mainChartDimensions.value.height = newHeight;
-    
+
     // 更新已存在的图表高度
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
@@ -720,15 +749,15 @@ const calculateChartHeight = () => {
 const handleResize = debounce(() => {
   // 重新计算图表高度
   calculateChartHeight();
-  
+
   const container = document.querySelector('.chart-container');
   if (container) {
     const containerWidth = container.offsetWidth;
     const newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 70; // 增加额外宽度
-    
+
     // 更新宽度
     mainChartDimensions.value.width = newWidth;
-    
+
     // 更新已存在的图表
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
@@ -750,13 +779,13 @@ onMounted(async () => {
     const container = document.querySelector('.chart-container');
     if (container) {
       const containerWidth = container.offsetWidth;
-      
+
       // 计算适当的图表高度
       calculateChartHeight();
-      
+
       mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10; // 增加额外宽度
     }
-    
+
     if (selectedChannels.value.length > 0) {
       renderCharts();
     }
@@ -764,35 +793,76 @@ onMounted(async () => {
 
   // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);
-  
+
   // 初始化ResizeObserver，使用更积极的触发策略
   resizeObserver.value = new ResizeObserver(entries => {
     // 立即触发resize处理
     handleResize();
   });
-  
+
   // 监听容器大小变化
   const container = document.querySelector('.chart-container');
   if (container) {
     resizeObserver.value.observe(container);
   }
+
+  // 初始化异常数据
+  previousAnomalies.value = JSON.parse(JSON.stringify(toRaw(store.state.anomalies)));
+
+  // 添加键盘事件监听，用于取消框选
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isBoxSelect.value) {
+      // 取消当前的框选操作
+      const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+      if (chart && chart.pointer) {
+        chart.pointer.drop();
+      }
+    }
+  });
 });
 
 // 在组件卸载时移除监听器
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
-  
+
   // 断开ResizeObserver连接
   if (resizeObserver.value) {
     resizeObserver.value.disconnect();
   }
-  
+
+  // 移除键盘事件监听
+  window.removeEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isBoxSelect.value) {
+      const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+      if (chart && chart.pointer) {
+        chart.pointer.drop();
+      }
+    }
+  });
+
   // 终止Worker
   chartWorkerManager.terminate();
 });
 
-// 修改 selectedChannels 的监听器
-watch(selectedChannels, async (newChannels, oldChannels) => {
+// 监听selectedChannels变化，当通道列表变化时，可能需要重新选择标注通道
+watch(selectedChannels, (newChannels, oldChannels) => {
+  // 如果当前选择的标注通道不在新的通道列表中，清空选择
+  if (selectedChannelForAnnotation.value) {
+    const channelExists = newChannels.some(channel =>
+      `${channel.channel_name}_${channel.shot_number}` === selectedChannelForAnnotation.value
+    );
+
+    if (!channelExists) {
+      selectedChannelForAnnotation.value = '';
+
+      // 如果当前是框选模式，提示用户重新选择通道
+      if (isBoxSelect.value) {
+        ElMessage.warning('您选择的标注通道已被移除，请重新选择');
+        showChannelSelectDialog.value = true;
+      }
+    }
+  }
+
   // 检查是否只是颜色发生变化
   const isOnlyColorChange = newChannels.length === oldChannels.length &&
     newChannels.every(newCh => {
@@ -821,8 +891,9 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     // 如果不是仅颜色变化，则执行完整的重新渲染
     channelsData.value = [];
     exposeData.value = [];
-    await nextTick();
-    renderCharts();
+    nextTick().then(() => {
+      renderCharts();
+    });
   }
 }, { deep: true });
 
@@ -855,7 +926,7 @@ const updateChartRangeDebounced = debounce(() => {
   if (isNaN(beginValue) || isNaN(endValue) || beginValue >= endValue) {
     console.warn('无效的 brush 范围:', beginValue, endValue);
     return;
-  }  
+  }
   try {
     xDomains.value.global = [beginValue, endValue];
     if (originalDomains.value.global) {
@@ -866,22 +937,22 @@ const updateChartRangeDebounced = debounce(() => {
         y: [-1, 1]
       };
     }
-    
+
     // 销毁现有图表
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
       // 先记住当前的Y轴范围
       const yMin = chart.yAxis[0].min;
       const yMax = chart.yAxis[0].max;
-      
+
       // 保存Y轴范围
       if (originalDomains.value.global) {
         originalDomains.value.global.y = [yMin, yMax];
       }
-      
+
       // 完全销毁图表
       chart.destroy();
-      
+
       // 重新绘制图表（确保使用新的范围）
       nextTick(() => {
         // 直接调用 drawCombinedChart，不要使用 await
@@ -910,20 +981,555 @@ const getProgressPercentage = computed(() => {
 // 在 script setup 部分添加原始域存储
 const originalDomains = ref({}); // 存储原始的显示范围
 
-// 添加新的 drawCombinedChart 函数
+// 添加异常标注相关的状态
+const currentAnomaly = reactive({});
+const showAnomalyForm = ref(false);
+const selectedChannelForAnnotation = ref('');
+const showChannelSelectDialog = ref(false);
+const isBoxSelect = computed(() => store.state.isBoxSelect);
+const previousAnomalies = ref({});
+
+// 添加时间轴范围计算属性
+const timeAxisRange = computed(() => {
+  if (
+    currentAnomaly &&
+    currentAnomaly.startX !== undefined &&
+    currentAnomaly.endX !== undefined
+  ) {
+    return `${currentAnomaly.startX.toFixed(3)} - ${currentAnomaly.endX.toFixed(3)}`;
+  }
+  return '';
+});
+
+// 添加解码函数
+const decodeChineseText = (text) => {
+  if (!text) return '';
+  if (typeof text === 'string' && /^[\u4e00-\u9fa5]+$/.test(text)) { return text; }
+  if (typeof text === 'string' && /[\u0080-\uffff]/.test(text)) {
+    try {
+      const decodedText = decodeURIComponent(escape(text));
+      return decodedText;
+    } catch (e) {
+      console.warn('Failed to decode text:', text, e);
+      return text;
+    }
+  }
+  return text;
+};
+
+// 添加关闭异常表单的函数
+const closeAnomalyForm = () => {
+  showAnomalyForm.value = false;
+};
+
+// 添加保存异常的函数
+const saveAnomaly = () => {
+  if (!selectedChannelForAnnotation.value) {
+    ElMessage.error('请选择一个通道后再保存异常标注');
+    return;
+  }
+
+  if (currentAnomaly) {
+    // 获取选择的通道
+    const channelParts = selectedChannelForAnnotation.value.split('_');
+    const channelName = channelParts[0];
+    const shotNumber = channelParts[1];
+    const fullChannelName = selectedChannelForAnnotation.value;
+
+    // 先移除临时选框
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      chart.xAxis[0].removePlotBand(`temp-band-${currentAnomaly.id}`);
+
+      // 移除临时选区的按钮
+      if (currentAnomaly.id && currentAnomaly.id.startsWith('temp_')) {
+        const deleteButton = document.querySelector(`.delete-button-${currentAnomaly.id}`);
+        if (deleteButton) {
+          deleteButton.remove();
+        }
+
+        const editButton = document.querySelector(`.edit-button-${currentAnomaly.id}`);
+        if (editButton) {
+          editButton.remove();
+        }
+      }
+    }
+
+    // 格式化当前时间
+    const now = new Date();
+    const formattedTime = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+    // 保存旧ID，用于后续检查是否是新创建
+    const isNewAnomaly = !currentAnomaly.id || currentAnomaly.id.startsWith('temp_');
+    const oldId = currentAnomaly.id;
+
+    // 如果是新创建的异常，需要添加ID和时间
+    if (isNewAnomaly) {
+      currentAnomaly.id = `${store.state.person}_${Date.now()}`;
+      currentAnomaly.person = store.state.person;
+      currentAnomaly.annotationTime = formattedTime;
+    }
+
+    const payload = {
+      channelName: fullChannelName,
+      anomaly: {
+        ...currentAnomaly,
+        channelName: fullChannelName, // 确保异常对象也有channelName
+        anomalyCategory: decodeChineseText(currentAnomaly.anomalyCategory),
+        anomalyDiagnosisName: decodeChineseText(currentAnomaly.anomalyDiagnosisName),
+        anomalyDescription: decodeChineseText(currentAnomaly.anomalyDescription),
+        isStored: true
+      },
+    };
+
+    // 如果是新创建的异常，添加到store
+    if (isNewAnomaly) {
+      store.dispatch('addAnomaly', payload);
+    } else {
+      // 否则更新异常
+      store.dispatch('updateAnomaly', payload);
+    }
+
+    // 立即在图表上添加或更新异常显示
+    addAnomalyToChart(fullChannelName, payload.anomaly);
+
+    // 关闭编辑框
+    showAnomalyForm.value = false;
+    ElMessage.success('异常标注信息已保存');
+    Object.keys(currentAnomaly).forEach((key) => {
+      delete currentAnomaly[key];
+    });
+  }
+};
+
+// 添加删除异常的函数
+const deleteAnomaly = () => {
+  if (currentAnomaly && currentAnomaly.id) {
+    // 先移除图表上的选框
+    removeAnomalyFromChart(currentAnomaly.channelName, currentAnomaly.id);
+
+    // 然后从store中删除
+    store.dispatch('deleteAnomaly', {
+      channelName: currentAnomaly.channelName,
+      anomalyId: currentAnomaly.id
+    });
+
+    showAnomalyForm.value = false;
+    ElMessage.success('异常标注已删除');
+    Object.keys(currentAnomaly).forEach((key) => {
+      delete currentAnomaly[key];
+    });
+  }
+};
+
+// 更新异常在图表中的显示
+const updateAnomalyDisplay = (channelName, anomalyId) => {
+  const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+  if (!chart) return;
+
+  // 获取异常数据
+  const anomalies = store.getters.getAnomaliesByChannel(channelName);
+  const anomaly = anomalies.find(a => a.id === anomalyId);
+  if (!anomaly) return;
+
+  // 移除旧的高亮
+  removeAnomalyFromChart(channelName, anomalyId);
+
+  // 添加新的高亮
+  addAnomalyToChart(channelName, anomaly);
+};
+
+// 从图表中移除异常显示
+const removeAnomalyFromChart = (channelName, anomalyId) => {
+  const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+  if (!chart) return;
+
+  // 移除高亮线条
+  const highlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${anomalyId}`);
+  if (highlightSeries) {
+    highlightSeries.remove(false);
+  }
+
+  // 移除plotBand
+  chart.xAxis[0].removePlotBand(`band-${anomalyId}`);
+  chart.xAxis[0].removePlotBand(`band-end-${anomalyId}`);
+
+  // 移除按钮
+  const deleteButton = document.querySelector(`.delete-button-${anomalyId}`);
+  if (deleteButton) {
+    deleteButton.remove();
+  }
+
+  const editButton = document.querySelector(`.edit-button-${anomalyId}`);
+  if (editButton) {
+    editButton.remove();
+  }
+
+  chart.redraw();
+};
+
+// 向图表添加异常显示
+const addAnomalyToChart = (channelName, anomaly) => {
+  try {
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (!chart) return;
+
+    // 添加plotBand
+    chart.xAxis[0].addPlotBand({
+      id: `band-${anomaly.id}`,
+      from: anomaly.startX,
+      to: anomaly.endX,
+      color: anomaly.isStored ? 'rgba(255, 0, 0, 0.2)' : 'rgba(255, 165, 0, 0.2)',
+      borderColor: anomaly.isStored ? 'red' : 'orange',
+      borderWidth: 1,
+      zIndex: 5,
+      label: {
+        text: `${anomaly.startX.toFixed(3)}`,
+        align: 'left',
+        verticalAlign: 'top',
+        y: -25,
+        style: {
+          color: '#606060',
+          fontWeight: 'bold',
+          fontSize: '10px'
+        }
+      },
+      events: {
+        click: function () {
+          const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+          const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+
+          if (storedAnomaly) {
+            Object.assign(currentAnomaly, {
+              ...storedAnomaly,
+              channelName: channelName
+            });
+            selectedChannelForAnnotation.value = channelName;
+            showAnomalyForm.value = true;
+          }
+        }
+      }
+    });
+
+    // 添加结束标签
+    chart.xAxis[0].addPlotBand({
+      id: `band-end-${anomaly.id}`,
+      from: anomaly.endX,
+      to: anomaly.endX,
+      color: 'transparent',
+      zIndex: 5,
+      label: {
+        text: `${anomaly.endX.toFixed(3)}`,
+        align: 'right',
+        verticalAlign: 'top',
+        y: -25,
+        x: -5,
+        style: {
+          color: '#606060',
+          fontWeight: 'bold',
+          fontSize: '10px'
+        }
+      }
+    });
+
+    // 添加高亮线条
+    const data = channelDataCache.value[channelName];
+    let pointsInRange = []; // 定义pointsInRange变量
+
+    if (data && data.X_value && data.Y_value) {
+      const startX = anomaly.startX;
+      const endX = anomaly.endX;
+
+      // 找到区间内的所有点
+      for (let i = 0; i < data.X_value.length; i++) {
+        if (data.X_value[i] >= startX && data.X_value[i] <= endX) {
+          pointsInRange.push([data.X_value[i], data.Y_value[i]]);
+        }
+      }
+
+      // 如果没有足够点，添加区间端点
+      if (pointsInRange.length < 2) {
+        // 找到最接近区间边界的点
+        let startIdx = -1;
+        let endIdx = -1;
+        let minStartDiff = Infinity;
+        let minEndDiff = Infinity;
+
+        for (let i = 0; i < data.X_value.length; i++) {
+          const startDiff = Math.abs(data.X_value[i] - startX);
+          const endDiff = Math.abs(data.X_value[i] - endX);
+
+          if (startDiff < minStartDiff) {
+            minStartDiff = startDiff;
+            startIdx = i;
+          }
+
+          if (endDiff < minEndDiff) {
+            minEndDiff = endDiff;
+            endIdx = i;
+          }
+        }
+
+        if (startIdx !== -1) {
+          pointsInRange.push([startX, data.Y_value[startIdx]]);
+        }
+
+        if (endIdx !== -1) {
+          pointsInRange.push([endX, data.Y_value[endIdx]]);
+        }
+      }
+
+      // 确保点按X轴排序
+      pointsInRange.sort((a, b) => a[0] - b[0]);
+
+      // 添加高亮线条
+      if (pointsInRange.length > 0) {
+        // 查找对应通道的系列
+        const channelSeries = chart.series.find(s =>
+          s.name === `${channelName}` ||
+          s.name === `${channelName}_smoothed`
+        );
+
+        const color = channelSeries ? channelSeries.color : (anomaly.isStored ? 'rgba(255, 0, 0, 0.8)' : 'rgba(255, 165, 0, 0.8)');
+
+        chart.addSeries({
+          id: `anomaly-highlight-${anomaly.id}`,
+          name: `异常区域-${anomaly.id}`,
+          data: pointsInRange,
+          color: color,
+          lineWidth: 2,
+          zIndex: 10,
+          marker: {
+            enabled: false
+          },
+          states: {
+            hover: {
+              lineWidthPlus: 0
+            }
+          },
+          enableMouseTracking: false,
+          showInLegend: false
+        }, false); // 不立即重绘
+      }
+    }
+
+    // 计算按钮位置 - 修改为基于异常区域的位置
+    const anomalyEndX = chart.xAxis[0].toPixels(anomaly.endX);
+    const buttonWidth = 12; // 增加按钮尺寸
+    const buttonHeight = 12; // 增加按钮尺寸
+    const buttonX = anomalyEndX - buttonWidth - 5;
+
+    // 计算Y轴位置 - 使用异常区域的Y值
+    let buttonY;
+
+    // 找到异常区域内的最大Y值和最小Y值
+    if (pointsInRange && pointsInRange.length > 0) {
+      const yValues = pointsInRange.map(p => p[1]);
+      const maxY = Math.max(...yValues);
+
+      // 将按钮放在异常区域的上方
+      const yPixelMax = chart.yAxis[0].toPixels(maxY);
+
+      // 放在异常区域上方15个像素的位置
+      buttonY = yPixelMax - buttonHeight - 15;
+
+      // 确保按钮不会超出图表顶部
+      buttonY = Math.max(buttonY, 10);
+    } else {
+      // 如果没有找到点，放在图表中间位置
+      buttonY = chart.chartHeight / 10; // 放在上部1/3处
+    }
+
+    // 删除按钮
+    const deleteButton = chart.renderer.button(
+      '×',
+      buttonX - 2,
+      buttonY - buttonWidth * 2.8,
+      function () {
+        // 删除异常
+        store.dispatch('deleteAnomaly', {
+          channelName: anomaly.channelName || channelName,
+          anomalyId: anomaly.id,
+        });
+        this.destroy();
+        const editBtn = document.querySelector(`.edit-button-${anomaly.id}`);
+        if (editBtn) {
+          editBtn.remove();
+        }
+        // 移除plotBands和高亮线条
+        removeAnomalyFromChart(channelName, anomaly.id);
+      },
+      {
+        fill: '#f56c6c',
+        style: {
+          color: 'white',
+          fontWeight: 'bold',
+          fontSize: '16px', // 增加字体大小
+          textAlign: 'center',
+          lineHeight: '24px', // 调整行高
+          paddingTop: '0px',
+          paddingLeft: '0px'
+        },
+        r: 6, // 增加圆角
+        width: buttonWidth,
+        height: buttonHeight,
+        zIndex: 999
+      }
+    )
+      .attr({
+        'class': `delete-button-${anomaly.id}`,
+        'zIndex': 999
+      })
+      .css({
+        cursor: 'pointer',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)' // 添加阴影
+      })
+      .add();
+
+    // 编辑按钮
+    const editButton = chart.renderer.button(
+      '✎',
+      buttonX - 2,
+      buttonY,
+      function () {
+        const storedAnomalies = store.getters.getAnomaliesByChannel(channelName);
+        const storedAnomaly = storedAnomalies.find(a => a.id === anomaly.id);
+
+        if (storedAnomaly) {
+          Object.assign(currentAnomaly, {
+            ...storedAnomaly,
+            channelName: channelName
+          });
+          selectedChannelForAnnotation.value = channelName;
+          showAnomalyForm.value = true;
+        }
+      },
+      {
+        fill: '#409eff',
+        style: {
+          color: 'white',
+          fontWeight: 'bold',
+          fontSize: '16px', // 增加字体大小
+          textAlign: 'center',
+          lineHeight: '24px', // 调整行高
+          paddingTop: '0px',
+          paddingLeft: '0px'
+        },
+        r: 6, // 增加圆角
+        width: buttonWidth,
+        height: buttonHeight,
+        zIndex: 999
+      }
+    )
+      .attr({
+        'class': `edit-button-${anomaly.id}`,
+        'zIndex': 999
+      })
+      .css({
+        cursor: 'pointer',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)' // 添加阴影
+      })
+      .add();
+
+    chart.redraw();
+  } catch (error) {
+    console.error('添加异常到图表时出错:', error);
+  }
+};
+
+// 监听异常数据变化
+watch(() => store.state.anomalies, (newAnomalies) => {
+  // 获取原始对象
+  const rawNewAnomalies = toRaw(newAnomalies);
+  const rawPreviousAnomalies = toRaw(previousAnomalies.value);
+
+  // 遍历所有通道
+  Object.keys(rawPreviousAnomalies).forEach(channelName => {
+    const previousChannelAnomalies = rawPreviousAnomalies[channelName] || [];
+    const newChannelAnomalies = rawNewAnomalies[channelName] || [];
+
+    // 找出被删除的异常
+    const deletedAnomalies = previousChannelAnomalies.filter(prevAnomaly => {
+      const stillExists = newChannelAnomalies.some(newAnomaly =>
+        newAnomaly.id === prevAnomaly.id
+      );
+      return !stillExists;
+    });
+
+    // 删除对应的组件
+    deletedAnomalies.forEach(anomaly => {
+      // 如果正在编辑被删除的异常，关闭编辑表单
+      if (showAnomalyForm.value && currentAnomaly.id === anomaly.id) {
+        showAnomalyForm.value = false;
+        Object.keys(currentAnomaly).forEach(key => {
+          delete currentAnomaly[key];
+        });
+      }
+
+      // 从图表中移除异常相关元素
+      removeAnomalyFromChart(channelName, anomaly.id);
+    });
+  });
+
+  // 更新上一次的状态
+  previousAnomalies.value = JSON.parse(JSON.stringify(rawNewAnomalies));
+
+  // 如果当前正在编辑的异常还存在，更新其数据
+  if (showAnomalyForm.value && currentAnomaly.id) {
+    const storedAnomalies = store.getters.getAnomaliesByChannel(currentAnomaly.channelName);
+    const storedAnomaly = storedAnomalies?.find(a => a.id === currentAnomaly.id);
+
+    if (storedAnomaly) {
+      Object.assign(currentAnomaly, storedAnomaly);
+    } else {
+      // 如果找不到正在编辑的异常，说明它已被删除，关闭编辑表单
+      showAnomalyForm.value = false;
+      Object.keys(currentAnomaly).forEach(key => {
+        delete currentAnomaly[key];
+      });
+    }
+  }
+}, { deep: true });
+
+// 监听isBoxSelect变化
+watch(isBoxSelect, (newValue) => {
+  const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+  if (chart) {
+    // 更新图表的缩放类型
+    chart.update({
+      chart: {
+        zoomType: newValue ? 'x' : 'xy'
+      }
+    }, false);
+
+    // 如果开启框选模式，但没有选择通道，显示提示
+    if (newValue && selectedChannels.value.length === 0) {
+      ElMessage.warning('请先选择至少一个通道');
+      // 自动关闭框选模式
+      store.dispatch('updateIsBoxSelect', false);
+    } else if (newValue) {
+      // 已开启框选模式，显示提示
+      ElMessage.info('已开启框选模式，请在图表上框选区域进行标注');
+    }
+
+    chart.redraw();
+  }
+});
+
+// 修改drawCombinedChart函数，添加框选异常标注功能
 const drawCombinedChart = () => {
   try {
     renderingState.isRendering = true;
-    
+
     if (channelsData.value.length === 0) {
       renderingState.completed = true;
-      
+
       // 清除进度更新定时器
       if (loadingState.progressInterval) {
         clearInterval(loadingState.progressInterval);
         loadingState.progressInterval = null;
       }
-      
+
       // 平滑过渡到100%
       const finalizeProgress = () => {
         const currentProgress = loadingState.progress;
@@ -934,7 +1540,7 @@ const drawCombinedChart = () => {
           }
         }
       };
-      
+
       finalizeProgress();
       return; // 数据为空，不绘制图表
     }
@@ -944,13 +1550,13 @@ const drawCombinedChart = () => {
     if (allX.length === 0) {
       console.warn('没有有效的X轴数据点');
       renderingState.completed = true;
-      
+
       // 清除进度更新定时器
       if (loadingState.progressInterval) {
         clearInterval(loadingState.progressInterval);
         loadingState.progressInterval = null;
       }
-      
+
       // 平滑过渡到100%
       const finalizeProgress = () => {
         const currentProgress = loadingState.progress;
@@ -961,16 +1567,16 @@ const drawCombinedChart = () => {
           }
         }
       };
-      
+
       finalizeProgress();
       return;
     }
-    
+
     const xExtent = xDomains.value.global || [Math.min(...allX), Math.max(...allX)];
-    
+
     // 检查xExtent是否有效
-    if (!Array.isArray(xExtent) || xExtent.length !== 2 || 
-        isNaN(xExtent[0]) || isNaN(xExtent[1]) || xExtent[0] >= xExtent[1]) {
+    if (!Array.isArray(xExtent) || xExtent.length !== 2 ||
+      isNaN(xExtent[0]) || isNaN(xExtent[1]) || xExtent[0] >= xExtent[1]) {
       console.warn('无效的X轴范围:', xExtent);
       renderingState.completed = true;
       return;
@@ -998,7 +1604,7 @@ const drawCombinedChart = () => {
 
     // 准备 Highcharts 的数据系列
     const series = [];
-    
+
     // 为每个通道创建数据系列
     channelsData.value.forEach((data) => {
       // 确保X和Y数组长度一致
@@ -1006,10 +1612,10 @@ const drawCombinedChart = () => {
         console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.X_value?.length}, Y=${data.Y_value?.length}`);
         return;
       }
-      
+
       // 创建完整的数据点数组
       const pointsData = data.X_value.map((x, i) => ([x, data.Y_value[i]]));
-      
+
       // 创建主线数据
       const mainLineSeries = {
         name: `${data.channelName}_${data.channelshotnumber}`,
@@ -1040,7 +1646,7 @@ const drawCombinedChart = () => {
           console.error(`平滑处理数据出错: ${error.message}`);
           smoothedYValue = [...data.Y_value]; // 出错时使用原始数据
         }
-        
+
         // 确保平滑后的Y值数组长度与X值数组一致
         if (smoothedYValue.length !== data.X_value.length) {
           console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.X_value.length})`);
@@ -1053,9 +1659,9 @@ const drawCombinedChart = () => {
             }
           }
         }
-        
+
         const smoothedPointsData = data.X_value.map((x, i) => ([x, smoothedYValue[i]]));
-        
+
         const smoothedLineSeries = {
           name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
           data: smoothedPointsData,
@@ -1083,7 +1689,7 @@ const drawCombinedChart = () => {
           if (!errorData || !Array.isArray(errorData) || errorData.length < 2) {
             return; // 跳过无效的错误数据
           }
-          
+
           // 解构人工标注和机器识别的错误数据
           const [manualErrors, machineErrors] = errorData;
 
@@ -1092,7 +1698,7 @@ const drawCombinedChart = () => {
             if (!Array.isArray(xRange) || xRange.length !== 2) {
               return [];
             }
-            
+
             const startTime = xRange[0];
             const endTime = xRange[1];
             const points = [];
@@ -1119,7 +1725,7 @@ const drawCombinedChart = () => {
                       name: `${data.channelName}_manual_error_${errorIndex}_${rangeIndex}`,
                       data: errorPoints,
                       color: error.color || 'rgba(220, 20, 60, 0.3)',
-                      lineWidth: 10, 
+                      lineWidth: 10,
                       zIndex: 999,
                       marker: {
                         enabled: false
@@ -1150,7 +1756,7 @@ const drawCombinedChart = () => {
                       name: `${data.channelName}_machine_error_${errorIndex}_${rangeIndex}`,
                       data: errorPoints,
                       color: error.color || 'rgba(220, 20, 60, 0.3)',
-                      lineWidth: 10, 
+                      lineWidth: 10,
                       zIndex: 999,
                       marker: {
                         enabled: false
@@ -1189,7 +1795,7 @@ const drawCombinedChart = () => {
     Highcharts.chart('combined-chart', {
       chart: {
         type: 'line',
-        zoomType: 'xy',
+        zoomType: isBoxSelect.value ? 'x' : 'xy',
         panning: true,
         panKey: 'shift',
         animation: false,
@@ -1199,7 +1805,7 @@ const drawCombinedChart = () => {
         marginRight: 10,
         spacingRight: 0,
         events: {
-          selection: function(event) {
+          selection: function (event) {
             if (event.resetSelection) {
               // 点击空白处，恢复到总览条的范围
               if (brush_begin.value && brush_end.value) {
@@ -1210,7 +1816,7 @@ const drawCombinedChart = () => {
                   x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
                   y: [-1, 1]
                 };
-                
+
                 // 直接设置坐标轴范围，而不是重新调用 drawCombinedChart
                 this.xAxis[0].setExtremes(
                   parseFloat(brush_begin.value),
@@ -1218,7 +1824,7 @@ const drawCombinedChart = () => {
                   false
                 );
                 this.yAxis[0].setExtremes(-1, 1, true);
-                
+
                 // 重新绘制高亮区域
                 selectedChannels.value.forEach((channel) => {
                   const channelMatchedResults = matchedResults.value.filter(
@@ -1230,58 +1836,215 @@ const drawCombinedChart = () => {
                 });
               }
             } else if (event.xAxis) {
-              // 获取选择的范围
-              const newXDomain = [event.xAxis[0].min, event.xAxis[0].max];
-              const newYDomain = [event.yAxis[0].max, event.yAxis[0].min]; // 注意 y 轴是反转的
+              // 如果是框选模式
+              if (isBoxSelect.value) {
+                // 处理框选标注
+                const [x0, x1] = [event.xAxis[0].min, event.xAxis[0].max];
 
-              // 更新全局域
-              xDomains.value.global = newXDomain;
-              // 更新存储的 Y 轴范围
-              originalDomains.value.global = {
-                x: newXDomain,
-                y: newYDomain
-              };
+                // 确保x0 < x1
+                const startX = Math.min(x0, x1);
+                const endX = Math.max(x0, x1);
 
-              // 更新视图范围但不重绘整个图表
-              this.xAxis[0].setExtremes(newXDomain[0], newXDomain[1], false);
-              this.yAxis[0].setExtremes(newYDomain[1], newYDomain[0], true);
-
-              // 重新绘制高亮区域
-              selectedChannels.value.forEach((channel) => {
-                const channelMatchedResults = matchedResults.value.filter(
-                  (r) => r.channel_name === channel.channel_name
-                );
-                if (channelMatchedResults.length > 0) {
-                  drawHighlightRects(channel.channel_name, channelMatchedResults);
+                // 如果选择范围太小，则忽略
+                if (Math.abs(endX - startX) < 0.001) {
+                  return false;
                 }
-              });
+
+                // 创建临时异常对象，但不添加到store
+                const tempAnomaly = {
+                  id: `temp_${Date.now()}`,
+                  startX: startX,
+                  endX: endX,
+                  anomalyCategory: '',
+                  anomalyDiagnosisName: '',
+                  anomalyDescription: '',
+                  isStored: false
+                };
+
+                // 清空当前异常对象并设置新的临时值
+                Object.keys(currentAnomaly).forEach(key => {
+                  delete currentAnomaly[key];
+                });
+
+                // 设置临时异常对象
+                Object.assign(currentAnomaly, tempAnomaly);
+
+                // 清空通道选择
+                selectedChannelForAnnotation.value = '';
+
+                // 立即在图表上显示临时选框（黄色）
+                // 但不指定特定通道，只添加plotBand
+                const chart = this;
+                chart.xAxis[0].addPlotBand({
+                  id: `temp-band-${tempAnomaly.id}`,
+                  from: tempAnomaly.startX,
+                  to: tempAnomaly.endX,
+                  color: 'rgba(255, 165, 0, 0.2)',
+                  borderColor: 'orange',
+                  borderWidth: 1,
+                  zIndex: 5,
+                  label: {
+                    text: `(${tempAnomaly.startX.toFixed(3)} - ${tempAnomaly.endX.toFixed(3)})`,
+                    align: 'center',
+                    verticalAlign: 'top',
+                    y: -15,
+                    style: {
+                      color: '#ff8c00',
+                      fontWeight: 'bold',
+                      fontSize: '12px'
+                    }
+                  }
+                });
+
+                // 计算按钮位置
+                const anomalyEndX = chart.xAxis[0].toPixels(tempAnomaly.endX);
+                const buttonWidth = 12; // 增加按钮尺寸
+                const buttonHeight = 12; // 增加按钮尺寸
+                const buttonX = anomalyEndX - buttonWidth - 5;
+                const buttonY = chart.chartHeight / 10; // 放在上部1/3处
+
+                // 添加临时选区的删除按钮
+                const deleteButton = chart.renderer.button(
+                  '×',
+                  buttonX - 2,
+                  buttonY - buttonWidth * 2.8,
+                  function () {
+                    // 移除临时选区
+                    chart.xAxis[0].removePlotBand(`temp-band-${tempAnomaly.id}`);
+                    // 关闭异常表单
+                    showAnomalyForm.value = false;
+                    // 清空当前异常对象
+                    Object.keys(currentAnomaly).forEach(key => {
+                      delete currentAnomaly[key];
+                    });
+                    // 移除按钮
+                    this.destroy();
+                    const editBtn = document.querySelector(`.edit-button-${tempAnomaly.id}`);
+                    if (editBtn) {
+                      editBtn.remove();
+                    }
+                  },
+                  {
+                    fill: '#f56c6c',
+                    style: {
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '16px',
+                      textAlign: 'center',
+                      lineHeight: '24px',
+                      paddingTop: '0px',
+                      paddingLeft: '0px'
+                    },
+                    r: 6,
+                    width: buttonWidth,
+                    height: buttonHeight,
+                    zIndex: 999
+                  }
+                )
+                  .attr({
+                    'class': `delete-button-${tempAnomaly.id}`,
+                    'zIndex': 999
+                  })
+                  .css({
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                  })
+                  .add();
+
+                // 添加临时选区的编辑按钮
+                const editButton = chart.renderer.button(
+                  '✎',
+                  buttonX - 2,
+                  buttonY,
+                  function () {
+                    // 打开异常表单进行编辑
+                    showAnomalyForm.value = true;
+                  },
+                  {
+                    fill: '#409eff',
+                    style: {
+                      color: 'white',
+                      fontWeight: 'bold',
+                      fontSize: '16px',
+                      textAlign: 'center',
+                      lineHeight: '24px',
+                      paddingTop: '0px',
+                      paddingLeft: '0px'
+                    },
+                    r: 6,
+                    width: buttonWidth,
+                    height: buttonHeight,
+                    zIndex: 999
+                  }
+                )
+                  .attr({
+                    'class': `edit-button-${tempAnomaly.id}`,
+                    'zIndex': 999
+                  })
+                  .css({
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                  })
+                  .add();
+
+                // 打开异常表单，让用户选择通道
+                showAnomalyForm.value = true;
+
+                return false; // 阻止默认缩放行为
+              } else if (!isBoxSelect.value) {
+                // 获取选择的范围
+                const newXDomain = [event.xAxis[0].min, event.xAxis[0].max];
+                const newYDomain = [event.yAxis[0].max, event.yAxis[0].min]; // 注意 y 轴是反转的
+
+                // 更新全局域
+                xDomains.value.global = newXDomain;
+                // 更新存储的 Y 轴范围
+                originalDomains.value.global = {
+                  x: newXDomain,
+                  y: newYDomain
+                };
+
+                // 更新视图范围但不重绘整个图表
+                this.xAxis[0].setExtremes(newXDomain[0], newXDomain[1], false);
+                this.yAxis[0].setExtremes(newYDomain[1], newYDomain[0], true);
+
+                // 重新绘制高亮区域
+                selectedChannels.value.forEach((channel) => {
+                  const channelMatchedResults = matchedResults.value.filter(
+                    (r) => r.channel_name === channel.channel_name
+                  );
+                  if (channelMatchedResults.length > 0) {
+                    drawHighlightRects(channel.channel_name, channelMatchedResults);
+                  }
+                });
+              }
             }
             return false; // 阻止默认缩放行为
           },
           // 添加双击事件处理
-          click: function(event) {
+          click: function (event) {
             // 检查是否是双击（计算两次点击之间的时间间隔）
             const now = new Date().getTime();
             const lastClick = this.lastClickTime || 0;
             this.lastClickTime = now;
-            
+
             if (now - lastClick < 300) { // 如果两次点击间隔小于300毫秒，认为是双击
               if (brush_begin.value && brush_end.value) {
                 // 恢复到总览条的范围
                 const beginValue = parseFloat(brush_begin.value);
                 const endValue = parseFloat(brush_end.value);
-                
+
                 // 设置坐标轴范围
                 this.xAxis[0].setExtremes(beginValue, endValue);
                 this.yAxis[0].setExtremes(-1, 1);
-                
+
                 // 更新内部状态
                 xDomains.value.global = [beginValue, endValue];
                 originalDomains.value.global = {
                   x: [beginValue, endValue],
                   y: [-1, 1]
                 };
-                
+
                 // 重新绘制高亮区域
                 selectedChannels.value.forEach((channel) => {
                   const channelMatchedResults = matchedResults.value.filter(
@@ -1324,7 +2087,7 @@ const drawCombinedChart = () => {
             fontWeight: 'medium'
           },
           y: 25,
-          formatter: function() {
+          formatter: function () {
             // 格式化X轴标签，避免过多小数位
             return this.value.toFixed(2);
           }
@@ -1352,7 +2115,7 @@ const drawCombinedChart = () => {
             fontSize: '1em',
             fontWeight: 'medium'
           },
-          formatter: function() {
+          formatter: function () {
             // 限制小数位数为3位，避免布局问题
             return (this.value >= -2 && this.value <= 2) ? this.value.toFixed(3) : '';
           }
@@ -1422,8 +2185,17 @@ const drawCombinedChart = () => {
       if (channelMatchedResults.length > 0) {
         drawHighlightRects(channel.channel_name, channelMatchedResults);
       }
+
+      // 绘制已有的异常标注
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      const channelAnomalies = store.getters.getAnomaliesByChannel(channelKey);
+      if (channelAnomalies && channelAnomalies.length > 0) {
+        channelAnomalies.forEach(anomaly => {
+          addAnomalyToChart(channelKey, anomaly);
+        });
+      }
     });
-    
+
     // 确保图表高度正确
     nextTick(() => {
       const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
@@ -1434,17 +2206,17 @@ const drawCombinedChart = () => {
           mainChartDimensions.value.height
         );
       }
-      
+
       // 标记渲染完成
       renderingState.completed = true;
       renderingState.isRendering = false;
-      
+
       // 清除进度更新定时器
       if (loadingState.progressInterval) {
         clearInterval(loadingState.progressInterval);
         loadingState.progressInterval = null;
       }
-      
+
       // 平滑过渡到100%
       const finalizeProgress = () => {
         const currentProgress = loadingState.progress;
@@ -1455,23 +2227,23 @@ const drawCombinedChart = () => {
           }
         }
       };
-      
+
       finalizeProgress();
     });
   } catch (error) {
     console.error('Error drawing combined chart:', error);
     ElMessage.error(`绘制图表时出错: ${error.message}`);
-    
+
     // 确保在出错时也标记为完成
     renderingState.completed = true;
     renderingState.isRendering = false;
-    
+
     // 清除进度更新定时器
     if (loadingState.progressInterval) {
       clearInterval(loadingState.progressInterval);
       loadingState.progressInterval = null;
     }
-    
+
     // 平滑过渡到100%
     const finalizeProgress = () => {
       const currentProgress = loadingState.progress;
@@ -1482,8 +2254,20 @@ const drawCombinedChart = () => {
         }
       }
     };
-    
+
     finalizeProgress();
+  }
+};
+
+// 添加确认通道选择的方法
+const confirmChannelSelection = () => {
+  if (selectedChannelForAnnotation.value) {
+    showChannelSelectDialog.value = false;
+    const channelName = selectedChannelForAnnotation.value.split('_')[0];
+    const shotNumber = selectedChannelForAnnotation.value.split('_')[1];
+    ElMessage.success(`已选择通道: ${channelName} | ${shotNumber}`);
+  } else {
+    ElMessage.warning('请选择一个通道');
   }
 };
 </script>
@@ -1499,7 +2283,8 @@ const drawCombinedChart = () => {
   width: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start; /* 改为从顶部开始 */
+  justify-content: flex-start;
+  /* 改为从顶部开始 */
   user-select: none;
   -webkit-user-select: none;
   -moz-user-select: none;
@@ -1519,7 +2304,8 @@ const drawCombinedChart = () => {
   height: calc(100% - 40px);
   position: relative;
   overflow: hidden;
-  margin-top: 5px; /* 减少顶部空白 */
+  margin-top: 5px;
+  /* 减少顶部空白 */
 }
 
 #combined-chart {
@@ -1649,5 +2435,26 @@ const drawCombinedChart = () => {
   -webkit-user-select: text;
   -moz-user-select: text;
   -ms-user-select: text;
+}
+
+.annotation-controls {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 8px;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+}
+
+.el-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 </style>

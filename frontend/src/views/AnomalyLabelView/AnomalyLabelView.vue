@@ -104,7 +104,7 @@
                   inactive-text="多通道单行" />
 
                 <el-switch v-model="boxSelect" style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1"
-                  active-text="框选标注/编辑" inactive-text="局部缩放" :disabled="!SingleChannelMultiRow_channel_number" />
+                  active-text="框选标注/编辑" inactive-text="局部缩放"/>
 
                 <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage">
                 <span style="display: flex; align-items: center;">
@@ -308,9 +308,6 @@ const selectedChannels = computed(() => store.state.selectedChannels);
 
 const boxSelect = computed({
   get: () => {
-    if (!SingleChannelMultiRow_channel_number.value) {
-      return false;
-    }
     if (authority.value === '0') {
       store.dispatch('updateIsBoxSelect', false);
       return false;
@@ -326,9 +323,7 @@ const boxSelect = computed({
       store.dispatch('updateIsBoxSelect', false);
       return;
     }
-    if (SingleChannelMultiRow_channel_number.value) {
-      store.dispatch('updateIsBoxSelect', value);
-    }
+    store.dispatch('updateIsBoxSelect', value);
   }
 });
 
@@ -564,21 +559,6 @@ watch(selectedChannels, async (newChannels, oldChannels) => {
     }
   }
 }, { deep: true });
-
-// 添加对 SingleChannelMultiRow_channel_number 的监听
-watch(SingleChannelMultiRow_channel_number, (newValue) => {
-  if (!newValue) {
-    // 切换到多通道单行时，保存当前的 boxSelect 状态并设置为 false
-    const currentBoxSelectState = store.state.isBoxSelect;
-    store.dispatch('updateIsBoxSelect', false);
-    // 将状态保存到 store 中（需要在 store 中添加新的状态）
-    store.dispatch('updatePreviousBoxSelectState', currentBoxSelectState);
-  } else {
-    // 切换回单通道多行时，恢复之前的 boxSelect 状态
-    const previousState = store.state.previousBoxSelectState;
-    store.dispatch('updateIsBoxSelect', previousState);
-  }
-});
 
 const handleExportCommand = (command) => {
   if (command === 'exportSvg') {
