@@ -246,14 +246,14 @@ const processChannelData = async (data, channel) => {
     ]);
 
     if (processedData) {
-      // 更新 channelDataCache
-      store.commit('updateChannelDataCache', {
-        channelKey: channelKey,
-        data: {
-          ...processedData.processedData,
-          errorsData: errorDataResults
-        }
-      });
+      // // 更新 channelDataCache
+      // store.commit('updateChannelDataCache', {
+      //   channelKey: channelKey,
+      //   data: {
+      //     ...processedData.processedData,
+      //     errorsData: errorDataResults
+      //   }
+      // });
 
       renderingStates[channelKey] = 75; // 更新渲染状态
 

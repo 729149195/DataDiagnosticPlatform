@@ -34,10 +34,10 @@ const fetchChannelData = async (channel) => {
         let channelData = channelDataCache.value[channelKey];
         if (!channelData) {
             const data = await store.dispatch('fetchChannelData', { channel });
-            store.commit('updateChannelDataCache', {
-                channelKey: channelKey,
-                data: data
-            });
+            // store.commit('updateChannelDataCache', {
+            //     channelKey: channelKey,
+            //     data: data
+            // });
             channelData = data; // 获取最新数据
         }
 
