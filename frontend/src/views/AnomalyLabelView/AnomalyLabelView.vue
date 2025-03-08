@@ -118,7 +118,7 @@
                 <el-switch v-model="boxSelect" style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1"
                   active-text="框选标注/编辑" inactive-text="局部缩放"/>
 
-                <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage">
+                <!-- <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage"> -->
                 <span style="display: flex; align-items: center;">
                   <el-dropdown trigger="click" @command="handleExportCommand">
                     <el-button type="primary">

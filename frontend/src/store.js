@@ -14,7 +14,7 @@ let colorIndex = 0;
 const cacheFactory = new CacheFactory();
 const dataCache = cacheFactory.createCache("channelData", {
   maxEntries: 200, // 最大缓存条目数
-  maxAge: 60 * 60 * 1000, // 30分钟
+  maxAge: 30 * 60 * 1000, // 30分钟
   deleteOnExpire: "passive", // 改为被动模式，由我们自己控制过期
   storageMode: "memory", // 纯内存存储
   recycleFreq: 60 * 1000, // 内存回收频率
@@ -52,15 +52,20 @@ async function loadCacheFromIndexedDB() {
     for (const key of keys) {
       const cacheItem = await indexedDBService.getChannelData(key);
       if (cacheItem && cacheItem.data) {
-        // 将数据放入内存缓存
-        dataCache.put(key, {
-          data: reactive(cacheItem.data),
-          timestamp: cacheItem.timestamp
-        });
+        // 检查数据是否在有效期内（7天）
+        if (Date.now() - cacheItem.timestamp < 7 * 24 * 60 * 60 * 1000) {
+          // 将数据放入内存缓存，使用当前时间戳
+          dataCache.put(key, {
+            data: reactive(cacheItem.data),
+            timestamp: Date.now() // 使用当前时间戳，而不是原始时间戳
+          });
+        } else {
+          console.log(`跳过过期的缓存数据: ${key}`);
+        }
       }
     }
     
-    console.log(`从IndexedDB加载了 ${keys.length} 条缓存数据`);
+    console.log(`从IndexedDB加载了 ${dataCache.keys().length} 条缓存数据`);
   } catch (error) {
     console.error('从IndexedDB加载缓存数据失败:', error);
   }
@@ -601,39 +606,53 @@ const store = createStore({
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-      // 使用缓存工厂检查内存数据
-      const cached = dataCache.get(channelKey);
-      if (!forceRefresh && cached && Date.now() - cached.timestamp < 300000) {
-        return cached.data;
-      }
+      // 如果强制刷新，跳过所有缓存检查
+      if (forceRefresh) {
+        console.log(`强制刷新通道数据: ${channelKey}`);
+      } else {
+        // 首先检查内存缓存
+        const cached = dataCache.get(channelKey);
+        if (cached) {
+          // 内存缓存存在，检查是否在有效期内（30分钟）
+          if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
+            console.log(`使用内存缓存数据: ${channelKey}`);
+            return cached.data;
+          } else {
+            console.log(`内存缓存已过期: ${channelKey}，检查IndexedDB`);
+          }
+        }
 
-      // 如果内存中没有缓存，尝试从IndexedDB获取
-      if (!forceRefresh && !cached) {
+        // 内存缓存不存在或已过期，尝试从IndexedDB获取
         try {
           const dbCached = await indexedDBService.getChannelData(channelKey);
-          if (dbCached && dbCached.data && Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) { // 7天内的数据
-            console.log(`从IndexedDB加载通道数据: ${channelKey}`);
-            
-            // 确保数据结构完整
-            const safeData = {
-              X_value: dbCached.data.X_value || [],
-              Y_value: dbCached.data.Y_value || [],
-              originalFrequency: dbCached.data.originalFrequency || 1.0,
-              originalDataPoints: dbCached.data.originalDataPoints || dbCached.data.X_value?.length || 0,
-              channel_number: dbCached.data.channel_number || channel.channel_name,
-              channel_type: dbCached.data.channel_type || channel.channel_type,
-              X_unit: dbCached.data.X_unit || 's',
-              Y_unit: dbCached.data.Y_unit || '',
-              ...dbCached.data
-            };
-            
-            // 将数据放入内存缓存
-            const reactiveData = reactive(safeData);
-            dataCache.put(channelKey, {
-              data: reactiveData,
-              timestamp: dbCached.timestamp
-            });
-            return reactiveData;
+          if (dbCached && dbCached.data) {
+            // 检查IndexedDB缓存是否在有效期内（7天）
+            if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
+              console.log(`从IndexedDB加载通道数据: ${channelKey}`);
+              
+              // 确保数据结构完整
+              const safeData = {
+                X_value: dbCached.data.X_value || [],
+                Y_value: dbCached.data.Y_value || [],
+                originalFrequency: dbCached.data.originalFrequency || 1.0,
+                originalDataPoints: dbCached.data.originalDataPoints || dbCached.data.X_value?.length || 0,
+                channel_number: dbCached.data.channel_number || channel.channel_name,
+                channel_type: dbCached.data.channel_type || channel.channel_type,
+                X_unit: dbCached.data.X_unit || 's',
+                Y_unit: dbCached.data.Y_unit || '',
+                ...dbCached.data
+              };
+              
+              // 将数据放入内存缓存，更新时间戳为当前时间
+              const reactiveData = reactive(safeData);
+              dataCache.put(channelKey, {
+                data: reactiveData,
+                timestamp: Date.now() // 更新时间戳为当前时间
+              });
+              return reactiveData;
+            } else {
+              console.log(`IndexedDB缓存已过期: ${channelKey}，从服务器获取`);
+            }
           }
         } catch (error) {
           console.error(`从IndexedDB获取通道数据失败 (${channelKey}):`, error);
@@ -642,10 +661,11 @@ const store = createStore({
 
       // 检查是否有相同的请求正在进行中
       if (pendingRequests.has(channelKey)) {
-        // console.log(`复用进行中的请求: ${channelKey}`);
+        console.log(`复用进行中的请求: ${channelKey}`);
         return pendingRequests.get(channelKey);
       }
 
+      console.log(`从服务器获取通道数据: ${channelKey}`);
       const params = {
         channel_key: channelKey,
         channel_type: channel.channel_type,
@@ -702,31 +722,44 @@ const store = createStore({
           const errorCacheKey = `error-${channelKey}-${error.error_name}-${errorIndex}`;
 
           // 检查内存缓存中是否已有数据
-          if (dataCache.get(errorCacheKey)) {
-            errorResults.push(dataCache.get(errorCacheKey).data);
-            continue;
+          const cached = dataCache.get(errorCacheKey);
+          if (cached) {
+            // 检查内存缓存是否在有效期内（30分钟）
+            if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
+              console.log(`使用内存缓存的错误数据: ${errorCacheKey}`);
+              errorResults.push(cached.data);
+              continue;
+            } else {
+              console.log(`内存缓存的错误数据已过期: ${errorCacheKey}，检查IndexedDB`);
+            }
           }
 
-          // 如果内存中没有缓存，尝试从IndexedDB获取
+          // 如果内存中没有缓存或已过期，尝试从IndexedDB获取
           try {
             const dbCached = await indexedDBService.getChannelData(errorCacheKey);
             if (dbCached && dbCached.data) {
-              console.log(`从IndexedDB加载错误数据: ${errorCacheKey}`);
-              
-              // 将数据放入内存缓存
-              const reactiveData = reactive(dbCached.data);
-              dataCache.put(errorCacheKey, {
-                data: reactiveData,
-                timestamp: dbCached.timestamp
-              });
-              errorResults.push(reactiveData);
-              continue;
+              // 检查IndexedDB缓存是否在有效期内（7天）
+              if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
+                console.log(`从IndexedDB加载错误数据: ${errorCacheKey}`);
+                
+                // 将数据放入内存缓存，更新时间戳为当前时间
+                const reactiveData = reactive(dbCached.data);
+                dataCache.put(errorCacheKey, {
+                  data: reactiveData,
+                  timestamp: Date.now() // 更新时间戳为当前时间
+                });
+                errorResults.push(reactiveData);
+                continue;
+              } else {
+                console.log(`IndexedDB缓存的错误数据已过期: ${errorCacheKey}，从服务器获取`);
+              }
             }
           } catch (error) {
             console.error(`从IndexedDB获取错误数据失败 (${errorCacheKey}):`, error);
           }
 
           try {
+            console.log(`从服务器获取错误数据: ${errorCacheKey}`);
             // 构建请求参数
             const params = {
               channel_key: channelKey,
