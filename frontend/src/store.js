@@ -427,40 +427,57 @@ const store = createStore({
       }
     },
     updateChannelDataCache(state, { channelKey, data }) {
-      // 直接使用原始数据，不做任何修改
+      // 使用Object.assign进行浅拷贝，比创建新对象更高效
+      // 只设置必要的默认值，减少属性访问和条件判断
+      const enhancedData = Object.assign({
+        X_value: data.X_value || [],
+        Y_value: data.Y_value || [],
+        originalFrequency: data.originalFrequency || 1.0,
+        originalDataPoints: data.originalDataPoints || 0,
+        channel_number: data.channel_number || channelKey.split('_')[0],
+        X_unit: data.X_unit || 's',
+        Y_unit: data.Y_unit || '',
+      }, data);
+      
       const timestamp = Date.now();
       
       // 更新内存缓存
       dataCache.put(channelKey, {
-        data: reactive(data),
+        data: reactive(enhancedData),
         timestamp: timestamp,
       });
       
-      // 同时保存到IndexedDB，保存原始数据
-      indexedDBService.saveChannelData(channelKey, data, timestamp)
-        .catch(error => {
-          console.error(`保存通道数据到IndexedDB失败 (${channelKey}):`, error);
-        });
+      // 异步保存到IndexedDB，不阻塞UI线程
+      setTimeout(() => {
+        indexedDBService.saveChannelData(channelKey, enhancedData, timestamp)
+          .catch(error => {
+            console.error(`保存通道数据到IndexedDB失败 (${channelKey}):`, error);
+          });
+      }, 0);
     },
     clearChannelDataCache(state) {
       // 清空内存缓存
       dataCache.removeAll();
       
-      // 同时清空IndexedDB缓存
-      indexedDBService.clearAllChannelData()
-        .catch(error => {
-          console.error('清空IndexedDB缓存失败:', error);
-        });
+      // 异步清空IndexedDB缓存，不阻塞UI线程
+      setTimeout(() => {
+        indexedDBService.clearAllChannelData()
+          .catch(error => {
+            console.error('清空IndexedDB缓存失败:', error);
+          });
+      }, 0);
     },
     removeChannelDataCache(state, channelKey) {
       // 从内存缓存中移除
       dataCache.remove(channelKey);
       
-      // 同时从IndexedDB中移除
-      indexedDBService.deleteChannelData(channelKey)
-        .catch(error => {
-          console.error(`从IndexedDB中删除缓存失败 (${channelKey}):`, error);
-        });
+      // 异步从IndexedDB中移除，不阻塞UI线程
+      setTimeout(() => {
+        indexedDBService.deleteChannelData(channelKey)
+          .catch(error => {
+            console.error(`从IndexedDB中删除缓存失败 (${channelKey}):`, error);
+          });
+      }, 0);
     },
     clearAnomalies(state) {
       state.anomalies = {}; // 清空 anomalies 对象
@@ -600,7 +617,7 @@ const store = createStore({
       if (forceRefresh) {
         console.log(`强制刷新通道数据: ${channelKey}`);
       } else {
-        // 首先检查内存缓存
+        // 首先检查内存缓存 - 内存缓存是最快的
         const cached = dataCache.get(channelKey);
         if (cached) {
           // 内存缓存存在，检查是否在有效期内（30分钟）
@@ -620,15 +637,21 @@ const store = createStore({
             if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
               console.log(`从IndexedDB加载通道数据: ${channelKey}`);
               
-              // 直接使用缓存的原始数据，不做任何修改
-              const originalData = dbCached.data;
+              // 直接使用缓存数据，不做额外处理
+              const cachedData = dbCached.data;
               
               // 将数据放入内存缓存，更新时间戳为当前时间
-              const reactiveData = reactive(originalData);
-              dataCache.put(channelKey, {
-                data: reactiveData,
-                timestamp: Date.now() // 更新时间戳为当前时间
-              });
+              // 使用reactive包装，但不做额外处理
+              const reactiveData = reactive(cachedData);
+              
+              // 异步更新内存缓存，不阻塞主流程
+              setTimeout(() => {
+                dataCache.put(channelKey, {
+                  data: reactiveData,
+                  timestamp: Date.now()
+                });
+              }, 0);
+              
               return reactiveData;
             } else {
               console.log(`IndexedDB缓存已过期: ${channelKey}，从服务器获取`);
@@ -658,12 +681,44 @@ const store = createStore({
             `https://10.1.108.19:5000/api/channel-data/`,
             { params }
           );
-          // 获取原始数据，不做任何修改
+          // 获取原始数据
           const originalData = response.data;
           
-          // 存入缓存的是原始数据
-          commit("updateChannelDataCache", { channelKey, data: originalData });
-          resolve(originalData);
+          // 使用Object.assign进行浅拷贝，比展开运算符更高效
+          const enhancedData = Object.assign({}, originalData);
+          
+          // 只计算必要的字段，减少计算开销
+          // 计算原始数据点数量 - 直接获取长度，避免条件判断
+          enhancedData.originalDataPoints = enhancedData.X_value ? enhancedData.X_value.length : 0;
+          
+          // 计算原始采样频率 - 只在数据点足够时计算
+          if (enhancedData.X_value && enhancedData.X_value.length > 1) {
+            // 直接使用数组索引，避免使用数组方法
+            const firstPoint = enhancedData.X_value[0];
+            const lastPoint = enhancedData.X_value[enhancedData.X_value.length - 1];
+            const timeRange = Math.abs(lastPoint - firstPoint);
+            
+            // 只有在timeRange有效时才计算频率
+            if (timeRange > 0) {
+              enhancedData.originalFrequency = enhancedData.originalDataPoints / timeRange / 1000;
+            } else {
+              enhancedData.originalFrequency = 1.0;
+            }
+          } else {
+            enhancedData.originalFrequency = 1.0;
+          }
+          
+          // 只在必要时设置channel_number
+          if (!enhancedData.channel_number) {
+            enhancedData.channel_number = channel.channel_name;
+          }
+          
+          // 异步存储到缓存，不阻塞主流程
+          setTimeout(() => {
+            commit("updateChannelDataCache", { channelKey, data: enhancedData });
+          }, 0);
+          
+          resolve(enhancedData);
         } catch (error) {
           reject(error);
         } finally {

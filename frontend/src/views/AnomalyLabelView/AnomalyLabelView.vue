@@ -272,22 +272,9 @@
               <div v-else>
                 <el-descriptions :column="2" border>
                   <el-descriptions-item label="通道名称">{{ props.row.details.channel_number || '未知' }}</el-descriptions-item>
-                  <el-descriptions-item label="通道类型">{{ props.row.details.channel_type || '未知' }}</el-descriptions-item>
-                  <el-descriptions-item label="X轴单位">{{ props.row.details.X_unit || '未知' }}</el-descriptions-item>
-                  <el-descriptions-item label="Y轴单位">{{ props.row.details.Y_unit || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="X轴单位 / Y轴单位">{{ props.row.details.X_unit || '未知' }} / {{ props.row.details.Y_unit || '未知' }}</el-descriptions-item>
                   <el-descriptions-item label="原始频率">{{ props.row.details.originalFrequency || '未知' }} KHz</el-descriptions-item>
                   <el-descriptions-item label="数据点数量">{{ props.row.details.originalDataPoints || '未知' }}</el-descriptions-item>
-                  <el-descriptions-item label="其他属性" :span="2">
-                    <el-tag 
-                      v-for="(value, key) in getOtherProperties(props.row.details)" 
-                      :key="key"
-                      class="detail-tag"
-                      type="info"
-                    >
-                      {{ key }}: {{ formatValue(value) }}
-                    </el-tag>
-                    <span v-if="Object.keys(getOtherProperties(props.row.details)).length === 0">无</span>
-                  </el-descriptions-item>
                 </el-descriptions>
               </div>
             </div>
