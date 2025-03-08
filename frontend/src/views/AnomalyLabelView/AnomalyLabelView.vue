@@ -224,7 +224,7 @@
   <el-dialog
     v-model="cacheInfoDialogVisible"
     title="缓存信息"
-    width="70%"
+    width="80%"
     :close-on-click-modal="false"
     :close-on-press-escape="true"
     destroy-on-close
@@ -233,17 +233,88 @@
       <el-empty description="暂无缓存数据" />
     </div>
     <div v-else>
-      <el-table :data="cacheKeys" style="width: 100%" max-height="500px" border>
-        <el-table-column type="index" label="序号" width="80" />
-        <el-table-column prop="key" label="缓存键" min-width="200" show-overflow-tooltip />
+      <el-table 
+        :data="cacheKeys" 
+        style="width: 100%" 
+        max-height="500px" 
+        border
+        @selection-change="handleSelectionChange"
+      >
+        <el-table-column type="selection" width="55" />
+        <el-table-column type="expand">
+          <template #default="props">
+            <div class="cache-detail">
+              <!-- 异常标注数据显示 -->
+              <div v-if="props.row.isErrorData">
+                <el-descriptions :column="2" border>
+                  <el-descriptions-item label="异常类型">{{ props.row.details.error_type || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="通道名称">{{ props.row.details.channel_name || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="实验编号">{{ props.row.details.shot_number || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="标注数量">{{ props.row.details.anomalies?.length || 0 }}</el-descriptions-item>
+                  <el-descriptions-item label="标注详情" :span="2">
+                    <el-collapse v-if="props.row.details.anomalies && props.row.details.anomalies.length > 0">
+                      <el-collapse-item v-for="(anomaly, index) in props.row.details.anomalies" :key="index" :title="`标注 #${index + 1}`">
+                        <el-descriptions :column="2" size="small" border>
+                          <el-descriptions-item label="开始时间">{{ anomaly.begin || '未知' }}</el-descriptions-item>
+                          <el-descriptions-item label="结束时间">{{ anomaly.end || '未知' }}</el-descriptions-item>
+                          <el-descriptions-item label="标注类型">{{ anomaly.type || '未知' }}</el-descriptions-item>
+                          <el-descriptions-item label="标注ID">{{ anomaly.id || '未知' }}</el-descriptions-item>
+                          <el-descriptions-item label="备注" :span="2">{{ anomaly.comment || '无' }}</el-descriptions-item>
+                        </el-descriptions>
+                      </el-collapse-item>
+                    </el-collapse>
+                    <span v-else>无标注数据</span>
+                  </el-descriptions-item>
+                </el-descriptions>
+              </div>
+              
+              <!-- 通道数据显示 -->
+              <div v-else>
+                <el-descriptions :column="2" border>
+                  <el-descriptions-item label="通道名称">{{ props.row.details.channel_number || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="通道类型">{{ props.row.details.channel_type || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="X轴单位">{{ props.row.details.X_unit || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="Y轴单位">{{ props.row.details.Y_unit || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="原始频率">{{ props.row.details.originalFrequency || '未知' }} KHz</el-descriptions-item>
+                  <el-descriptions-item label="数据点数量">{{ props.row.details.originalDataPoints || '未知' }}</el-descriptions-item>
+                  <el-descriptions-item label="其他属性" :span="2">
+                    <el-tag 
+                      v-for="(value, key) in getOtherProperties(props.row.details)" 
+                      :key="key"
+                      class="detail-tag"
+                      type="info"
+                    >
+                      {{ key }}: {{ formatValue(value) }}
+                    </el-tag>
+                    <span v-if="Object.keys(getOtherProperties(props.row.details)).length === 0">无</span>
+                  </el-descriptions-item>
+                </el-descriptions>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column type="index" label="序号" width="60" />
+        <el-table-column prop="key" label="缓存键" min-width="180" show-overflow-tooltip />
+        <el-table-column label="数据类型" width="100">
+          <template #default="scope">
+            <el-tag :type="scope.row.isErrorData ? 'danger' : 'success'" effect="plain">
+              {{ scope.row.isErrorData ? '异常标注' : '通道数据' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="timestamp" label="缓存时间" width="180">
           <template #default="scope">
             {{ new Date(scope.row.timestamp).toLocaleString() }}
           </template>
         </el-table-column>
-        <el-table-column prop="size" label="数据大小" width="120">
+        <el-table-column prop="size" label="数据大小" width="100">
           <template #default="scope">
             {{ formatSize(scope.row.size) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="dataPoints" label="数据点数" width="100">
+          <template #default="scope">
+            {{ scope.row.isErrorData ? '-' : (scope.row.dataPoints || '未知') }}
           </template>
         </el-table-column>
         <el-table-column label="操作" width="120">
@@ -257,10 +328,16 @@
     </div>
     <template #footer>
       <span class="dialog-footer">
-        <el-button @click="cacheInfoDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="refreshCacheInfo">
-          刷新
-        </el-button>
+        <span class="cache-summary">总缓存数: {{ cacheKeys.length }} | 总大小: {{ formatSize(getTotalCacheSize()) }}</span>
+        <div>
+          <el-button @click="cacheInfoDialogVisible = false">关闭</el-button>
+          <el-button type="warning" @click="deleteSelectedCache" :disabled="!hasSelectedCache">
+            删除选中
+          </el-button>
+          <el-button type="primary" @click="refreshCacheInfo">
+            刷新
+          </el-button>
+        </div>
       </span>
     </template>
   </el-dialog>
@@ -677,6 +754,64 @@ const clearCache = async () => {
 // 缓存信息相关
 const cacheInfoDialogVisible = ref(false);
 const cacheKeys = ref([]);
+const selectedCacheKeys = ref([]);
+
+// 是否有选中的缓存
+const hasSelectedCache = computed(() => {
+  return selectedCacheKeys.value.length > 0;
+});
+
+// 删除选中的缓存
+const deleteSelectedCache = async () => {
+  if (selectedCacheKeys.value.length === 0) {
+    return;
+  }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedCacheKeys.value.length} 项缓存吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+    
+    // 逐个删除选中的缓存
+    for (const row of selectedCacheKeys.value) {
+      await indexedDBService.deleteChannelData(row.key);
+      // 从Vuex中移除该缓存
+      store.commit('removeChannelDataCache', row.key);
+    }
+    
+    ElMessage({
+      message: `已删除 ${selectedCacheKeys.value.length} 项缓存`,
+      type: 'success'
+    });
+    
+    // 清空选中项
+    selectedCacheKeys.value = [];
+    
+    // 刷新缓存列表
+    await getCacheInfo();
+  } catch (error) {
+    if (error === 'cancel' || error.toString().includes('cancel')) {
+      return;
+    }
+    
+    console.error('删除缓存失败:', error);
+    ElMessage({
+      message: '删除缓存失败，请重试',
+      type: 'error'
+    });
+  }
+};
+
+// 表格选择变化事件
+const handleSelectionChange = (selection) => {
+  selectedCacheKeys.value = selection;
+};
 
 // 格式化数据大小
 const formatSize = (bytes) => {
@@ -699,22 +834,105 @@ const getCacheInfo = async () => {
         if (data) {
           // 计算数据大小（近似值）
           const size = JSON.stringify(data).length;
-          cacheKeys.value.push({
-            key,
-            timestamp: data.timestamp || Date.now(),
-            size
-          });
+          
+          // 判断是否为异常标注数据 - 根据截图中的实际格式再次优化判断逻辑
+          // 截图中的异常标注数据键名格式为：error-HXR001_4471-error_hxr_saturation_counts-0
+          // 注意：截图中显示的是"error-"开头，而不是"error_"
+          const isErrorData = key.startsWith('error-');
+          
+          console.log(`键: ${key}, 判断结果: ${isErrorData}`);
+          
+          if (isErrorData) {
+            // 异常标注数据
+            cacheKeys.value.push({
+              key,
+              timestamp: data.timestamp || Date.now(),
+              size,
+              isErrorData: true,
+              details: data.data || {}
+            });
+          } else {
+            // 通道数据
+            // 提取数据点数量
+            const dataPoints = data.data?.X_value?.length || 
+                              data.data?.originalDataPoints || 
+                              '未知';
+            
+            // 创建不包含X_value和Y_value的详细信息对象
+            const details = { ...data.data };
+            // 删除大型数组数据
+            delete details.X_value;
+            delete details.Y_value;
+            
+            cacheKeys.value.push({
+              key,
+              timestamp: data.timestamp || Date.now(),
+              size,
+              dataPoints,
+              isErrorData: false,
+              details
+            });
+          }
         }
       } catch (error) {
         console.error(`获取缓存数据失败: ${key}`, error);
       }
     }
+    
+    // 按数据类型和时间排序
+    cacheKeys.value.sort((a, b) => {
+      // 先按数据类型排序
+      if (a.isErrorData !== b.isErrorData) {
+        return a.isErrorData ? 1 : -1;
+      }
+      // 再按时间倒序排序
+      return b.timestamp - a.timestamp;
+    });
+    
+    // 调试输出
+    console.log('缓存数据:', cacheKeys.value.map(item => ({
+      key: item.key,
+      isErrorData: item.isErrorData
+    })));
   } catch (error) {
     console.error('获取缓存键失败:', error);
     ElMessage({
       message: '获取缓存信息失败，请重试',
       type: 'error'
     });
+  }
+};
+
+// 获取总缓存大小
+const getTotalCacheSize = () => {
+  return cacheKeys.value.reduce((total, item) => total + item.size, 0);
+};
+
+// 获取其他属性（排除常见属性）
+const getOtherProperties = (details) => {
+  const commonProps = ['channel_number', 'channel_type', 'X_unit', 'Y_unit', 
+                      'originalFrequency', 'originalDataPoints', 'X_value', 'Y_value'];
+  const result = {};
+  
+  for (const key in details) {
+    if (!commonProps.includes(key) && details[key] !== undefined && details[key] !== null) {
+      result[key] = details[key];
+    }
+  }
+  
+  return result;
+};
+
+// 格式化值显示
+const formatValue = (value) => {
+  if (typeof value === 'object') {
+    return '对象';
+  } else if (Array.isArray(value)) {
+    return `数组[${value.length}]`;
+  } else if (typeof value === 'boolean') {
+    return value ? '是' : '否';
+  } else {
+    return String(value);
   }
 };
 
@@ -1257,7 +1475,24 @@ const viewCacheInfo = async () => {
 
 .dialog-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   width: 100%;
+}
+
+.cache-summary {
+  color: #606266;
+  font-size: 14px;
+}
+
+.cache-detail {
+  padding: 10px;
+  background-color: #f8f8f8;
+  border-radius: 4px;
+}
+
+.detail-tag {
+  margin-right: 5px;
+  margin-bottom: 5px;
 }
 </style>
