@@ -19,8 +19,6 @@ const dataCache = cacheFactory.createCache("channelData", {
   storageMode: "memory", // 纯内存存储
   recycleFreq: 60 * 1000, // 内存回收频率
   onExpire: (key, value, reason) => {
-    // 在store初始化完成后，我们会替换这个函数
-    // 默认实现，防止初始化阶段出错
     return false; // 返回false表示允许过期
   }
 });

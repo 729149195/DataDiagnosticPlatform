@@ -237,7 +237,7 @@ const processChannelData = async (data, channel) => {
         channelKey,
         channel.color,
         data.X_unit || 's',
-        data.Y_unit || '',
+        data.Y_unit || 'Y',
         data.channel_type || channel.channel_type,
         channelData.channel_number,
         channel.shot_number
@@ -755,7 +755,7 @@ watch(isBoxSelect, (newValue) => {
   });
 });
 
-const drawChart = (data, errorsData, channelName, color, yUnit, channelNumber, shotNumber) => {
+const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelNumber, shotNumber) => {
   return new Promise((resolve, reject) => {
     try {
       // 添加防抖检查
