@@ -45,7 +45,7 @@
                                         {{ channel.shot_number }}
                                     </el-tag>
                                     <div class="show-more-container">
-                                        <el-button link @click="toggleShowAllErrors(channel)">
+                                        <el-button link @click.stop="toggleShowAllErrors(channel)">
                                             {{ channel.showAllErrors ? '收起' : '展开全部异常类别' }}
                                             <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0"
                                                 class="hidden-errors">
