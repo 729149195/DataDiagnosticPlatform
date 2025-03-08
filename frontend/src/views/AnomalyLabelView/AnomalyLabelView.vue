@@ -37,6 +37,18 @@
                   </div>
                 </div>
               </div>
+              <el-dropdown-item divided class="info" @click="viewCacheInfo">
+                <el-icon>
+                  <InfoFilled />
+                </el-icon>
+                <span>查看缓存信息</span>
+              </el-dropdown-item>
+              <el-dropdown-item divided class="warning" @click="clearCache">
+                <el-icon>
+                  <Delete />
+                </el-icon>
+                <span>清空缓存</span>
+              </el-dropdown-item>
               <el-dropdown-item divided class="danger" @click="logout">
                 <el-icon>
                   <SwitchButton />
@@ -207,14 +219,60 @@
       </el-container>
     </el-container>
   </div>
+  
+  <!-- 缓存信息对话框 -->
+  <el-dialog
+    v-model="cacheInfoDialogVisible"
+    title="缓存信息"
+    width="70%"
+    :close-on-click-modal="false"
+    :close-on-press-escape="true"
+    destroy-on-close
+  >
+    <div v-if="cacheKeys.length === 0" class="empty-cache">
+      <el-empty description="暂无缓存数据" />
+    </div>
+    <div v-else>
+      <el-table :data="cacheKeys" style="width: 100%" max-height="500px" border>
+        <el-table-column type="index" label="序号" width="80" />
+        <el-table-column prop="key" label="缓存键" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="timestamp" label="缓存时间" width="180">
+          <template #default="scope">
+            {{ new Date(scope.row.timestamp).toLocaleString() }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="size" label="数据大小" width="120">
+          <template #default="scope">
+            {{ formatSize(scope.row.size) }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="scope">
+            <el-button type="danger" size="small" @click="deleteChannelCache(scope.row.key)">
+              删除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="cacheInfoDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="refreshCacheInfo">
+          刷新
+        </el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
-import { FolderChecked, Upload, User, SwitchButton } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { FolderChecked, Upload, User, SwitchButton, Delete, InfoFilled } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import indexedDBService from '@/services/indexedDBService';
 // 颜色配置及通道选取组件
 import ChannelType from '@/components/Channel-Type.vue';
 import ExceptionType from '@/components/Exception-Type.vue';
@@ -579,6 +637,138 @@ const handleResultExportCommand = (command) => {
 const toggleCollapse = () => {
   isSecondSectionCollapsed.value = !isSecondSectionCollapsed.value
 }
+
+const clearCache = async () => {
+  try {
+    // 使用 ElMessageBox 显示确认对话框
+    await ElMessageBox.confirm(
+      '确定要清空所有缓存数据吗？此操作不可恢复。',
+      '清空缓存确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        draggable: true,
+      }
+    );
+    
+    // 用户点击确认后，执行清空操作
+    await indexedDBService.clearAllChannelData();
+    // 清空Vuex中的缓存
+    store.commit('clearChannelDataCache');
+    ElMessage({
+      message: '缓存数据已清空',
+      type: 'success'
+    });
+  } catch (error) {
+    // 如果是用户取消操作，不显示错误信息
+    if (error === 'cancel' || error.toString().includes('cancel')) {
+      return;
+    }
+    
+    console.error('清空缓存失败:', error);
+    ElMessage({
+      message: '清空缓存失败，请重试',
+      type: 'error'
+    });
+  }
+}
+
+// 缓存信息相关
+const cacheInfoDialogVisible = ref(false);
+const cacheKeys = ref([]);
+
+// 格式化数据大小
+const formatSize = (bytes) => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+// 获取缓存信息
+const getCacheInfo = async () => {
+  try {
+    const keys = await indexedDBService.getAllKeys();
+    cacheKeys.value = [];
+    
+    for (const key of keys) {
+      try {
+        const data = await indexedDBService.getChannelData(key);
+        if (data) {
+          // 计算数据大小（近似值）
+          const size = JSON.stringify(data).length;
+          cacheKeys.value.push({
+            key,
+            timestamp: data.timestamp || Date.now(),
+            size
+          });
+        }
+      } catch (error) {
+        console.error(`获取缓存数据失败: ${key}`, error);
+      }
+    }
+  } catch (error) {
+    console.error('获取缓存键失败:', error);
+    ElMessage({
+      message: '获取缓存信息失败，请重试',
+      type: 'error'
+    });
+  }
+};
+
+// 删除单个通道缓存
+const deleteChannelCache = async (key) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除缓存 "${key}" 吗？`,
+      '删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    );
+    
+    await indexedDBService.deleteChannelData(key);
+    // 从Vuex中移除该缓存
+    store.commit('removeChannelDataCache', key);
+    
+    ElMessage({
+      message: '缓存已删除',
+      type: 'success'
+    });
+    
+    // 刷新缓存列表
+    await getCacheInfo();
+  } catch (error) {
+    if (error === 'cancel' || error.toString().includes('cancel')) {
+      return;
+    }
+    
+    console.error('删除缓存失败:', error);
+    ElMessage({
+      message: '删除缓存失败，请重试',
+      type: 'error'
+    });
+  }
+};
+
+// 刷新缓存信息
+const refreshCacheInfo = async () => {
+  await getCacheInfo();
+  ElMessage({
+    message: '缓存信息已刷新',
+    type: 'success'
+  });
+};
+
+// 查看缓存信息
+const viewCacheInfo = async () => {
+  cacheInfoDialogVisible.value = true;
+  await getCacheInfo();
+};
 </script>
 
 
@@ -725,6 +915,32 @@ const toggleCollapse = () => {
 
   &:hover {
     background-color: rgba(255, 59, 48, 0.08);
+  }
+}
+
+.el-dropdown-menu :deep(.el-dropdown-menu__item.warning) {
+  color: #ff9500;
+  margin-top: 4px;
+
+  .el-icon {
+    color: #ff9500;
+  }
+
+  &:hover {
+    background-color: rgba(255, 149, 0, 0.08);
+  }
+}
+
+.el-dropdown-menu :deep(.el-dropdown-menu__item.info) {
+  color: #007aff;
+  margin-top: 4px;
+
+  .el-icon {
+    color: #007aff;
+  }
+
+  &:hover {
+    background-color: rgba(0, 122, 255, 0.08);
   }
 }
 
@@ -1030,5 +1246,18 @@ const toggleCollapse = () => {
     color: #606266;
     white-space: nowrap; /* 防止文本换行 */
   }
+}
+
+.empty-cache {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
 }
 </style>

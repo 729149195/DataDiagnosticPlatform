@@ -459,6 +459,16 @@ const store = createStore({
           console.error('清空IndexedDB缓存失败:', error);
         });
     },
+    removeChannelDataCache(state, channelKey) {
+      // 从内存缓存中移除
+      dataCache.remove(channelKey);
+      
+      // 同时从IndexedDB中移除
+      indexedDBService.deleteChannelData(channelKey)
+        .catch(error => {
+          console.error(`从IndexedDB中删除缓存失败 (${channelKey}):`, error);
+        });
+    },
     clearAnomalies(state) {
       state.anomalies = {}; // 清空 anomalies 对象
     },
@@ -691,7 +701,7 @@ const store = createStore({
           if (error.error_name === "NO ERROR") continue;
 
           // 构建缓存键
-          const errorCacheKey = `${channelKey}-error-${error.error_name}-${errorIndex}-heatmap`;
+          const errorCacheKey = `error-${channelKey}-${error.error_name}-${errorIndex}`;
 
           // 检查内存缓存中是否已有数据
           if (dataCache.get(errorCacheKey)) {
