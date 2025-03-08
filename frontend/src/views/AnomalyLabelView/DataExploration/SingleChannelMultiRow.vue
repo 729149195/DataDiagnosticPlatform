@@ -323,21 +323,6 @@ const fetchChannelData = async (channel) => {
   }
 };
 
-// 专门负责绘制图表的函数
-const drawChannelChart = async (channel, data) => {
-  try {
-    if (!data) return;
-    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    renderingStates[channelKey] = 0; // 重置渲染状态
-    await processChannelData(data, channel);
-  } catch (error) {
-    console.error('Error in drawChannelChart:', error);
-    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    renderingStates[channelKey] = 100;
-    ElMessage.error(`绘制通道 ${channelKey} 图表失败: ${error.message}`);
-  }
-};
-
 const renderCharts = debounce(async (forceRenderAll = false) => {
   try {
     performance.mark('Total Render Time-start');
@@ -463,10 +448,10 @@ watch(() => domains.value, (newDomains, oldDomains) => {
       if (yDomain && yDomainChanged) {
         // 只更新y轴，不影响x轴
         chart.yAxis[0].setExtremes(yDomain[0], yDomain[1], false);
-        
+
         // 更新异常高亮线条
         updateAnomalyHighlights(chart, channelKey);
-        
+
         chart.redraw();
       }
     }
@@ -489,10 +474,10 @@ watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
         channelName: channelKey,
         xDomain: [beginValue, endValue],
       });
-      
+
       // 更新异常高亮线条
       updateAnomalyHighlights(chart, channelKey);
-      
+
       chart.redraw();
     }
   });
@@ -569,27 +554,27 @@ const saveAnomaly = () => {
           }
         });
       }
-      
+
       // 更新高亮线条
       const highlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${currentAnomaly.id}`);
       if (highlightSeries) {
         highlightSeries.remove(false);
       }
-      
+
       // 获取异常区域内的数据点
       const data = channelDataCache.value[payload.channelName];
       if (data) {
         const pointsInRange = [];
         const startX = currentAnomaly.startX;
         const endX = currentAnomaly.endX;
-        
+
         // 找到区间内的所有点
         for (let i = 0; i < data.X_value.length; i++) {
           if (data.X_value[i] >= startX && data.X_value[i] <= endX) {
             pointsInRange.push([data.X_value[i], data.Y_value[i]]);
           }
         }
-        
+
         // 如果没有足够点，添加区间端点
         if (pointsInRange.length < 2) {
           // 找到最接近区间边界的点
@@ -597,34 +582,34 @@ const saveAnomaly = () => {
           let endIdx = -1;
           let minStartDiff = Infinity;
           let minEndDiff = Infinity;
-          
+
           for (let i = 0; i < data.X_value.length; i++) {
             const startDiff = Math.abs(data.X_value[i] - startX);
             const endDiff = Math.abs(data.X_value[i] - endX);
-            
+
             if (startDiff < minStartDiff) {
               minStartDiff = startDiff;
               startIdx = i;
             }
-            
+
             if (endDiff < minEndDiff) {
               minEndDiff = endDiff;
               endIdx = i;
             }
           }
-          
+
           if (startIdx !== -1) {
             pointsInRange.push([startX, data.Y_value[startIdx]]);
           }
-          
+
           if (endIdx !== -1) {
             pointsInRange.push([endX, data.Y_value[endIdx]]);
           }
         }
-        
+
         // 确保点按X轴排序
         pointsInRange.sort((a, b) => a[0] - b[0]);
-        
+
         // 添加高亮线条
         if (pointsInRange.length > 0) {
           chart.addSeries({
@@ -647,7 +632,7 @@ const saveAnomaly = () => {
           });
         }
       }
-      
+
       chart.redraw();
     }
     // 关闭编辑框
@@ -678,7 +663,7 @@ const deleteAnomaly = () => {
         highlightSeries.remove(false);
       }
     }
-    
+
     store.dispatch('deleteAnomaly', {
       channelName: currentAnomaly.channelName,
       anomalyId: currentAnomaly.id
@@ -770,17 +755,7 @@ watch(isBoxSelect, (newValue) => {
   });
 });
 
-const drawChart = (
-  data,
-  errorsData,
-  channelName,
-  color,
-  xUnit,
-  yUnit,
-  channelType,
-  channelNumber,
-  shotNumber
-) => {
+const drawChart = (data, errorsData, channelName, color, yUnit, channelNumber, shotNumber) => {
   return new Promise((resolve, reject) => {
     try {
       // 添加防抖检查
@@ -828,7 +803,7 @@ const drawChart = (
             // 分别处理人工和机器错误
             errorGroup.forEach((errors, personIndex) => {
               const isPerson = personIndex === 0; // 0是人工，1是机器
-              
+
               if (errors && Array.isArray(errors)) {
                 errors.forEach((error, errorIndex) => {
                   if (error.X_error && Array.isArray(error.X_error)) {
@@ -837,7 +812,7 @@ const drawChart = (
                       const endTime = xRange[1];
                       // 保存错误区间
                       errorRanges.push([startTime, endTime, isPerson]);
-                      
+
                       // Highcharts 支持的虚线样式: 'Solid', 'ShortDash', 'ShortDot', 'ShortDashDot', 
 
                       const leftBorderLine = {
@@ -854,11 +829,11 @@ const drawChart = (
                           }
                         }
                       };
-                      
+
                       const rightBorderLine = {
                         id: `error-line-end-${groupIndex}-${personIndex}-${errorIndex}-${rangeIndex}`,
                         value: endTime,
-                        color: 'rgba(255, 0, 0, 0.5)' ,
+                        color: 'rgba(255, 0, 0, 0.5)',
                         width: 1,
                         dashStyle: isPerson ? 'Solid' : 'ShortDot', // 使用 'Dot' 样式
                         zIndex: 1,
@@ -869,7 +844,7 @@ const drawChart = (
                           }
                         }
                       };
-                      
+
                       // 保存边界线配置，稍后添加到 plotLines
                       errorPlotLines.push(leftBorderLine, rightBorderLine);
                     });
@@ -962,7 +937,7 @@ const drawChart = (
               id: `error-band-${index}`,
               from: startTime,
               to: endTime,
-              color:  'rgba(255, 0, 0, 0.1)', // 人工用淡红色，机器用淡橙色
+              color: 'rgba(255, 0, 0, 0.1)', 
               zIndex: 1, // 确保在异常区域下方
             });
           });
@@ -1089,7 +1064,7 @@ const drawChart = (
                   const pointsInRange = [];
                   const startX = anomaly.startX;
                   const endX = anomaly.endX;
-                  
+
                   // 获取当前通道的数据
                   const channelData = channelDataCache.value[channelName];
                   if (channelData && channelData.X_value && channelData.Y_value) {
@@ -1099,7 +1074,7 @@ const drawChart = (
                         pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
                       }
                     }
-                    
+
                     // 如果没有足够点，添加区间端点
                     if (pointsInRange.length < 2) {
                       // 找到最接近区间边界的点
@@ -1107,34 +1082,34 @@ const drawChart = (
                       let endIdx = -1;
                       let minStartDiff = Infinity;
                       let minEndDiff = Infinity;
-                      
+
                       for (let i = 0; i < channelData.X_value.length; i++) {
                         const startDiff = Math.abs(channelData.X_value[i] - startX);
                         const endDiff = Math.abs(channelData.X_value[i] - endX);
-                        
+
                         if (startDiff < minStartDiff) {
                           minStartDiff = startDiff;
                           startIdx = i;
                         }
-                        
+
                         if (endDiff < minEndDiff) {
                           minEndDiff = endDiff;
                           endIdx = i;
                         }
                       }
-                      
+
                       if (startIdx !== -1) {
                         pointsInRange.push([startX, channelData.Y_value[startIdx]]);
                       }
-                      
+
                       if (endIdx !== -1) {
                         pointsInRange.push([endX, channelData.Y_value[endIdx]]);
                       }
                     }
-                    
+
                     // 确保点按X轴排序
                     pointsInRange.sort((a, b) => a[0] - b[0]);
-                    
+
                     // 添加高亮线条
                     if (pointsInRange.length > 0) {
                       chart.addSeries({
@@ -1594,14 +1569,14 @@ const drawChart = (
           const pointsInRange = [];
           const startX = anomaly.startX;
           const endX = anomaly.endX;
-          
+
           // 找到区间内的所有点
           for (let i = 0; i < data.X_value.length; i++) {
             if (data.X_value[i] >= startX && data.X_value[i] <= endX) {
               pointsInRange.push([data.X_value[i], data.Y_value[i]]);
             }
           }
-          
+
           // 如果没有足够点，添加区间端点
           if (pointsInRange.length < 2) {
             // 找到最接近区间边界的点
@@ -1609,34 +1584,34 @@ const drawChart = (
             let endIdx = -1;
             let minStartDiff = Infinity;
             let minEndDiff = Infinity;
-            
+
             for (let i = 0; i < data.X_value.length; i++) {
               const startDiff = Math.abs(data.X_value[i] - startX);
               const endDiff = Math.abs(data.X_value[i] - endX);
-              
+
               if (startDiff < minStartDiff) {
                 minStartDiff = startDiff;
                 startIdx = i;
               }
-              
+
               if (endDiff < minEndDiff) {
                 minEndDiff = endDiff;
                 endIdx = i;
               }
             }
-            
+
             if (startIdx !== -1) {
               pointsInRange.push([startX, data.Y_value[startIdx]]);
             }
-            
+
             if (endIdx !== -1) {
               pointsInRange.push([endX, data.Y_value[endIdx]]);
             }
           }
-          
+
           // 确保点按X轴排序
           pointsInRange.sort((a, b) => a[0] - b[0]);
-          
+
           // 添加高亮线条
           if (pointsInRange.length > 0) {
             chart.addSeries({
@@ -1692,42 +1667,42 @@ const drawChart = (
 // 添加更新异常高亮线条的函数
 const updateAnomalyHighlights = (chart, channelKey) => {
   if (!chart) return;
-  
+
   // 获取当前通道的异常
   const channelAnomalies = store.getters.getAnomaliesByChannel(channelKey);
   if (!channelAnomalies || channelAnomalies.length === 0) return;
-  
+
   // 获取当前通道的数据
   const channelData = channelDataCache.value[channelKey];
   if (!channelData || !channelData.X_value || !channelData.Y_value) return;
-  
+
   // 获取当前图表的显示范围
   const xMin = chart.xAxis[0].min;
   const xMax = chart.xAxis[0].max;
-  
+
   // 遍历所有异常
   channelAnomalies.forEach(anomaly => {
     // 检查异常是否在当前显示范围内
     if (anomaly.endX < xMin || anomaly.startX > xMax) return;
-    
+
     // 移除旧的高亮线条
     const oldHighlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${anomaly.id}`);
     if (oldHighlightSeries) {
       oldHighlightSeries.remove(false);
     }
-    
+
     // 获取异常区域内的数据点
     const pointsInRange = [];
     const startX = anomaly.startX;
     const endX = anomaly.endX;
-    
+
     // 找到区间内的所有点
     for (let i = 0; i < channelData.X_value.length; i++) {
       if (channelData.X_value[i] >= startX && channelData.X_value[i] <= endX) {
         pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
       }
     }
-    
+
     // 如果没有足够点，添加区间端点
     if (pointsInRange.length < 2) {
       // 找到最接近区间边界的点
@@ -1735,34 +1710,34 @@ const updateAnomalyHighlights = (chart, channelKey) => {
       let endIdx = -1;
       let minStartDiff = Infinity;
       let minEndDiff = Infinity;
-      
+
       for (let i = 0; i < channelData.X_value.length; i++) {
         const startDiff = Math.abs(channelData.X_value[i] - startX);
         const endDiff = Math.abs(channelData.X_value[i] - endX);
-        
+
         if (startDiff < minStartDiff) {
           minStartDiff = startDiff;
           startIdx = i;
         }
-        
+
         if (endDiff < minEndDiff) {
           minEndDiff = endDiff;
           endIdx = i;
         }
       }
-      
+
       if (startIdx !== -1) {
         pointsInRange.push([startX, channelData.Y_value[startIdx]]);
       }
-      
+
       if (endIdx !== -1) {
         pointsInRange.push([endX, channelData.Y_value[endIdx]]);
       }
     }
-    
+
     // 确保点按X轴排序
     pointsInRange.sort((a, b) => a[0] - b[0]);
-    
+
     // 添加高亮线条
     if (pointsInRange.length > 0) {
       chart.addSeries({
