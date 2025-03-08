@@ -427,27 +427,17 @@ const store = createStore({
       }
     },
     updateChannelDataCache(state, { channelKey, data }) {
-      // 确保数据结构完整
-      const safeData = {
-        X_value: data?.X_value || [],
-        Y_value: data?.Y_value || [],
-        originalFrequency: data?.originalFrequency || 1.0,
-        originalDataPoints: data?.originalDataPoints || data?.X_value?.length || 0,
-        channel_number: data?.channel_number || channelKey.split('_')[0],
-        ...data,
-      };
-
+      // 直接使用原始数据，不做任何修改
       const timestamp = Date.now();
       
       // 更新内存缓存
       dataCache.put(channelKey, {
-        data: reactive(safeData),
+        data: reactive(data),
         timestamp: timestamp,
       });
       
-      // 同时保存到IndexedDB
-      // 注意：这里不需要传递reactive包装的数据，因为IndexedDB服务会自己处理序列化
-      indexedDBService.saveChannelData(channelKey, safeData, timestamp)
+      // 同时保存到IndexedDB，保存原始数据
+      indexedDBService.saveChannelData(channelKey, data, timestamp)
         .catch(error => {
           console.error(`保存通道数据到IndexedDB失败 (${channelKey}):`, error);
         });
@@ -630,21 +620,11 @@ const store = createStore({
             if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
               console.log(`从IndexedDB加载通道数据: ${channelKey}`);
               
-              // 确保数据结构完整
-              const safeData = {
-                X_value: dbCached.data.X_value || [],
-                Y_value: dbCached.data.Y_value || [],
-                originalFrequency: dbCached.data.originalFrequency || 1.0,
-                originalDataPoints: dbCached.data.originalDataPoints || dbCached.data.X_value?.length || 0,
-                channel_number: dbCached.data.channel_number || channel.channel_name,
-                channel_type: dbCached.data.channel_type || channel.channel_type,
-                X_unit: dbCached.data.X_unit || 's',
-                Y_unit: dbCached.data.Y_unit || '',
-                ...dbCached.data
-              };
+              // 直接使用缓存的原始数据，不做任何修改
+              const originalData = dbCached.data;
               
               // 将数据放入内存缓存，更新时间戳为当前时间
-              const reactiveData = reactive(safeData);
+              const reactiveData = reactive(originalData);
               dataCache.put(channelKey, {
                 data: reactiveData,
                 timestamp: Date.now() // 更新时间戳为当前时间
@@ -678,21 +658,12 @@ const store = createStore({
             `https://10.1.108.19:5000/api/channel-data/`,
             { params }
           );
-          const data = response.data;
-
-          // 计算原始采样频率
-          const timeRange = Math.abs(
-            data.X_value[data.X_value.length - 1] - data.X_value[0]
-          );
-          data.originalFrequency = data.X_value.length / timeRange / 1000;
-          data.originalDataPoints = data.X_value.length;
+          // 获取原始数据，不做任何修改
+          const originalData = response.data;
           
-          // 确保channel_number字段存在
-          data.channel_number = data.channel_number || channel.channel_name;
-
-          // 存入缓存
-          commit("updateChannelDataCache", { channelKey, data });
-          resolve(data);
+          // 存入缓存的是原始数据
+          commit("updateChannelDataCache", { channelKey, data: originalData });
+          resolve(originalData);
         } catch (error) {
           reject(error);
         } finally {

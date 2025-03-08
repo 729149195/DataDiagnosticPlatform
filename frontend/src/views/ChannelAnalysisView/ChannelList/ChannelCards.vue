@@ -7,8 +7,6 @@
                     {{ channel.channel_name }}
                     
                 </div>
-                <!-- <el-color-picker v-model="channel.color" @change="setSingleChannelColor(channel)"
-                    class="channel-color-picker" show-alpha :predefine="predefineColors" size="small" /> -->
                     <el-tag link effect="plain" type="info" class="shot-number-tag">
                         {{ channel.shot_number }}
                     </el-tag>
@@ -66,30 +64,6 @@ const sanitizeChannelName = (name) => {
     return name.replace(/[^a-zA-Z0-9_]/g, '');
 };
 
-const setSingleChannelColor = (channel) => {
-    if (channel) {
-        updateSelectedChannels();
-        renderChannelChart(channel);
-    } else {
-        console.error('Invalid channel:', channel);
-    }
-};
-
-const updateSelectedChannels = () => {
-    const selected = selectedChannels.value.map((channel) => ({
-        channel_name: channel.channel_name,
-        shot_number: channel.shot_number,
-        color: channel.color,
-        channel_type: channel.channel_type,
-        errors: channel.errors.map((error) => ({
-            error_name: error.error_name,
-            color: error.color,
-        })),
-    }));
-
-    store.commit('updateSelectedChannels', selected);
-};
-
 const renderChannelChart = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -106,11 +80,6 @@ const renderChannelChart = async (channel) => {
                 console.error('Fetch data error:', error);
                 return;
             }
-            
-            store.commit('updateChannelDataCache', {
-                channelKey: channelKey,
-                data: channelData
-            });
         }
 
         if (!channelData?.X_value || !channelData?.Y_value) {
@@ -140,10 +109,6 @@ const renderChannelChart = async (channel) => {
             meta: { isThumbnail: true }
         };
         
-        store.commit('updateChannelDataCache', {
-            channelKey: channelKey,
-            data: processedArray
-        });
 
         if (processedArray.X_value?.length && processedArray.Y_value?.length) {
             renderChart(
