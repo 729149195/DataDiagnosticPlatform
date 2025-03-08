@@ -462,46 +462,54 @@ const renderCharts = debounce(async () => {
       }
     }, 100);
 
-    // 并行处理所有通道数据
-    const processingPromises = selectedChannels.value.map(async (channel) => {
+    // 顺序处理通道数据，而不是并行处理
+    const totalChannels = selectedChannels.value.length;
+    const progressStep = 50 / totalChannels; // 数据处理阶段占50%进度
+    
+    for (let i = 0; i < totalChannels; i++) {
+      const channel = selectedChannels.value[i];
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-
+        
         // 获取通道数据
         const data = await store.dispatch('fetchChannelData', { channel });
         if (!data) {
           throw new Error(`Failed to fetch data for channel ${channelKey}`);
         }
-
+        
         // 处理通道数据
         const processedData = await processChannelDataAsync(data, channel);
         processedDataCache.value.set(channelKey, processedData);
-        return processedData;
+        
+        // 更新进度
+        loadingState.progress = (i + 1) * progressStep;
+        
+        // 让UI线程有机会更新
+        await new Promise(resolve => setTimeout(resolve, 0));
       } catch (error) {
         console.error(`Error processing data for channel ${channel.channel_name}:`, error);
-        throw error;
+        // 继续处理其他通道，不要因为一个通道失败而中断整个过程
       }
-    });
-
-    // 等待所有数据处理完成
-    await Promise.allSettled(processingPromises);
+    }
 
     // 更新加载进度到50%（数据处理阶段完成）
     loadingState.progress = 50;
 
-    // 准备渲染图表 - 不使用 await，避免可能的递归调用
-    prepareAndRenderChart().catch(error => {
+    // 准备渲染图表
+    try {
+      await prepareAndRenderChart();
+    } catch (error) {
       console.error('Error in prepareAndRenderChart:', error);
       ElMessage.error(`准备渲染图表时出错: ${error.message}`);
       loadingState.isLoading = false;
       loadingState.error = error.message;
-
+      
       // 清除进度更新定时器
       if (loadingState.progressInterval) {
         clearInterval(loadingState.progressInterval);
         loadingState.progressInterval = null;
       }
-
+      
       // 平滑过渡到100%
       const finalizeProgress = () => {
         const currentProgress = loadingState.progress;
@@ -512,12 +520,9 @@ const renderCharts = debounce(async () => {
           }
         }
       };
-
+      
       finalizeProgress();
-    });
-
-    // 不再立即设置加载完成，让prepareAndRenderChart函数负责更新这些状态
-
+    }
   } catch (error) {
     console.error('Error rendering charts:', error);
     ElMessage.error(`加载图表时出错: ${error.message}`);
@@ -660,22 +665,45 @@ const prepareAndRenderChart = async () => {
     channelsData.value = [];
     exposeData.value = [];
 
-    // 准备图表数据
-    for (const [channelKey, processedData] of processedDataCache.value.entries()) {
-      channelsData.value.push(processedData);
+    // 创建一个函数来按顺序一个一个处理通道数据
+    const processChannelsSequentially = async () => {
+      // 将 Map 转换为数组以便按顺序处理
+      const channelEntries = Array.from(processedDataCache.value.entries());
+      
+      // 设置进度范围
+      const progressStart = 50;
+      const progressEnd = 95;
+      const progressStep = (progressEnd - progressStart) / (channelEntries.length || 1);
+      
+      // 按顺序处理每个通道
+      for (let i = 0; i < channelEntries.length; i++) {
+        const [channelKey, processedData] = channelEntries[i];
+        
+        // 将处理后的数据添加到数组中
+        channelsData.value.push(processedData);
 
-      // 更新导出数据
-      exposeData.value.push({
-        channel_type: processedData.channelType,
-        channel_name: processedData.channelName,
-        X_value: processedData.X_value,
-        X_unit: processedData.xUnit,
-        Y_value: processedData.Y_original,
-        Y_unit: processedData.yUnit,
-        errorsData: processedData.errorsData,
-        shot_number: processedData.shotNumber
-      });
-    }
+        // 更新导出数据
+        exposeData.value.push({
+          channel_type: processedData.channelType,
+          channel_name: processedData.channelName,
+          X_value: processedData.X_value,
+          X_unit: processedData.xUnit,
+          Y_value: processedData.Y_original,
+          Y_unit: processedData.yUnit,
+          errorsData: processedData.errorsData,
+          shot_number: processedData.shotNumber
+        });
+        
+        // 更新进度
+        loadingState.progress = progressStart + (i + 1) * progressStep;
+        
+        // 每处理完一个通道后，等待一小段时间，避免阻塞主线程
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    };
+
+    // 按顺序处理通道数据
+    await processChannelsSequentially();
 
     // 计算全局X轴范围
     if (!xDomains.value.global && channelsData.value.length > 0) {
@@ -1602,72 +1630,30 @@ const drawCombinedChart = () => {
     const yMin = yExtent[0];
     const yMax = yExtent[1];
 
-    // 准备 Highcharts 的数据系列
-    const series = [];
-
-    // 为每个通道创建数据系列
-    channelsData.value.forEach((data) => {
-      // 确保X和Y数组长度一致
-      if (!data.X_value || !data.Y_value || data.X_value.length !== data.Y_value.length) {
-        console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.X_value?.length}, Y=${data.Y_value?.length}`);
-        return;
-      }
-
-      // 创建完整的数据点数组
-      const pointsData = data.X_value.map((x, i) => ([x, data.Y_value[i]]));
-
-      // 创建主线数据
-      const mainLineSeries = {
-        name: `${data.channelName}_${data.channelshotnumber}`,
-        data: pointsData,
-        color: data.color,
-        lineWidth: 1.5,
-        opacity: smoothnessValue.value > 0 ? 0.3 : 1,
-        zIndex: 1,
-        marker: {
-          enabled: false
-        },
-        states: {
-          hover: {
-            lineWidthPlus: 0
-          }
-        },
-        connectNulls: true, // 连接空值点
-        step: data.channelType === 'DIGITAL' ? 'left' : false // 对数字信号使用阶梯状连接
-      };
-      series.push(mainLineSeries);
-
-      // 如果有平滑值，添加平滑线
-      if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-        let smoothedYValue = [];
-        try {
-          smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
-        } catch (error) {
-          console.error(`平滑处理数据出错: ${error.message}`);
-          smoothedYValue = [...data.Y_value]; // 出错时使用原始数据
+    // 创建一个批量准备数据系列的函数
+    const prepareSeries = () => {
+      // 准备 Highcharts 的数据系列
+      const series = [];
+      
+      // 为每个通道创建数据系列
+      channelsData.value.forEach((data) => {
+        // 确保X和Y数组长度一致
+        if (!data.X_value || !data.Y_value || data.X_value.length !== data.Y_value.length) {
+          console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.X_value?.length}, Y=${data.Y_value?.length}`);
+          return;
         }
 
-        // 确保平滑后的Y值数组长度与X值数组一致
-        if (smoothedYValue.length !== data.X_value.length) {
-          console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.X_value.length})`);
-          if (smoothedYValue.length > data.X_value.length) {
-            smoothedYValue = smoothedYValue.slice(0, data.X_value.length);
-          } else {
-            // 填充缺失值
-            while (smoothedYValue.length < data.X_value.length) {
-              smoothedYValue.push(smoothedYValue[smoothedYValue.length - 1] || 0);
-            }
-          }
-        }
+        // 创建完整的数据点数组
+        const pointsData = data.X_value.map((x, i) => ([x, data.Y_value[i]]));
 
-        const smoothedPointsData = data.X_value.map((x, i) => ([x, smoothedYValue[i]]));
-
-        const smoothedLineSeries = {
-          name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
-          data: smoothedPointsData,
+        // 创建主线数据
+        const mainLineSeries = {
+          name: `${data.channelName}_${data.channelshotnumber}`,
+          data: pointsData,
           color: data.color,
           lineWidth: 1.5,
-          zIndex: 2,
+          opacity: smoothnessValue.value > 0 ? 0.3 : 1,
+          zIndex: 1,
           marker: {
             enabled: false
           },
@@ -1677,106 +1663,160 @@ const drawCombinedChart = () => {
             }
           },
           connectNulls: true, // 连接空值点
-          enableMouseTracking: false,
-          step: data.channelType === 'DIGITAL' ? 'left' : false // 对数字信号使用阶梯状连接
+          step: data.channelType === 'DIGITAL' ? 'left' : false, // 对数字信号使用阶梯状连接
+          turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
         };
-        series.push(smoothedLineSeries);
-      }
+        series.push(mainLineSeries);
 
-      // 处理错误数据
-      if (data.errorsData && data.errorsData.length > 0) {
-        data.errorsData.forEach(errorData => {
-          if (!errorData || !Array.isArray(errorData) || errorData.length < 2) {
-            return; // 跳过无效的错误数据
+        // 如果有平滑值，添加平滑线
+        if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
+          let smoothedYValue = [];
+          try {
+            smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
+          } catch (error) {
+            console.error(`平滑处理数据出错: ${error.message}`);
+            smoothedYValue = [...data.Y_value]; // 出错时使用原始数据
           }
 
-          // 解构人工标注和机器识别的错误数据
-          const [manualErrors, machineErrors] = errorData;
+          // 确保平滑后的Y值数组长度与X值数组一致
+          if (smoothedYValue.length !== data.X_value.length) {
+            console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.X_value.length})`);
+            if (smoothedYValue.length > data.X_value.length) {
+              smoothedYValue = smoothedYValue.slice(0, data.X_value.length);
+            } else {
+              // 填充缺失值
+              while (smoothedYValue.length < data.X_value.length) {
+                smoothedYValue.push(smoothedYValue[smoothedYValue.length - 1] || 0);
+              }
+            }
+          }
 
-          // 辅助函数：根据时间范围获取对应的数据点
-          const getDataPointsInRange = (xRange) => {
-            if (!Array.isArray(xRange) || xRange.length !== 2) {
-              return [];
+          const smoothedPointsData = data.X_value.map((x, i) => ([x, smoothedYValue[i]]));
+
+          const smoothedLineSeries = {
+            name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
+            data: smoothedPointsData,
+            color: data.color,
+            lineWidth: 1.5,
+            zIndex: 2,
+            marker: {
+              enabled: false
+            },
+            states: {
+              hover: {
+                lineWidthPlus: 0
+              }
+            },
+            connectNulls: true, // 连接空值点
+            enableMouseTracking: false,
+            step: data.channelType === 'DIGITAL' ? 'left' : false, // 对数字信号使用阶梯状连接
+            turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
+          };
+          series.push(smoothedLineSeries);
+        }
+
+        // 处理错误数据 - 但不立即添加到series，而是返回它们
+        if (data.errorsData && data.errorsData.length > 0) {
+          data.errorsData.forEach(errorData => {
+            if (!errorData || !Array.isArray(errorData) || errorData.length < 2) {
+              return; // 跳过无效的错误数据
             }
 
-            const startTime = xRange[0];
-            const endTime = xRange[1];
-            const points = [];
+            // 解构人工标注和机器识别的错误数据
+            const [manualErrors, machineErrors] = errorData;
 
-            // 找到对应时间范围内的数据点
-            data.X_value.forEach((x, i) => {
-              if (x >= startTime && x <= endTime) {
-                points.push([x, data.Y_value[i]]);
+            // 辅助函数：根据时间范围获取对应的数据点
+            const getDataPointsInRange = (xRange) => {
+              if (!Array.isArray(xRange) || xRange.length !== 2) {
+                return [];
               }
-            });
 
-            return points;
-          };
+              const startTime = xRange[0];
+              const endTime = xRange[1];
+              const points = [];
 
-          // 处理人工标注的错误
-          if (manualErrors && Array.isArray(manualErrors) && manualErrors.length > 0) {
-            manualErrors.forEach((error, errorIndex) => {
-              if (error && error.X_error && Array.isArray(error.X_error) && error.X_error.length > 0) {
-                error.X_error.forEach((xRange, rangeIndex) => {
-                  const errorPoints = getDataPointsInRange(xRange);
-                  if (errorPoints.length > 0) {
-                    // 创建错误标记系列
-                    const errorSeries = {
-                      name: `${data.channelName}_manual_error_${errorIndex}_${rangeIndex}`,
-                      data: errorPoints,
-                      color: error.color || 'rgba(220, 20, 60, 0.3)',
-                      lineWidth: 10,
-                      zIndex: 999,
-                      marker: {
-                        enabled: false
-                      },
-                      states: {
-                        hover: {
-                          lineWidthPlus: 0
-                        }
-                      },
-                      enableMouseTracking: false
-                    };
-                    series.push(errorSeries);
-                  }
-                });
-              }
-            });
-          }
+              // 找到对应时间范围内的数据点
+              data.X_value.forEach((x, i) => {
+                if (x >= startTime && x <= endTime) {
+                  points.push([x, data.Y_value[i]]);
+                }
+              });
 
-          // 处理机器识别的错误
-          if (machineErrors && Array.isArray(machineErrors) && machineErrors.length > 0) {
-            machineErrors.forEach((error, errorIndex) => {
-              if (error && error.X_error && Array.isArray(error.X_error) && error.X_error.length > 0) {
-                error.X_error.forEach((xRange, rangeIndex) => {
-                  const errorPoints = getDataPointsInRange(xRange);
-                  if (errorPoints.length > 0) {
-                    // 创建错误标记系列
-                    const errorSeries = {
-                      name: `${data.channelName}_machine_error_${errorIndex}_${rangeIndex}`,
-                      data: errorPoints,
-                      color: error.color || 'rgba(220, 20, 60, 0.3)',
-                      lineWidth: 10,
-                      zIndex: 999,
-                      marker: {
-                        enabled: false
-                      },
-                      states: {
-                        hover: {
-                          lineWidthPlus: 0
-                        }
-                      },
-                      enableMouseTracking: false
-                    };
-                    series.push(errorSeries);
-                  }
-                });
-              }
-            });
-          }
-        });
-      }
-    });
+              return points;
+            };
+
+            // 处理人工标注的错误
+            if (manualErrors && Array.isArray(manualErrors) && manualErrors.length > 0) {
+              manualErrors.forEach((error, errorIndex) => {
+                if (error && error.X_error && Array.isArray(error.X_error) && error.X_error.length > 0) {
+                  error.X_error.forEach((xRange, rangeIndex) => {
+                    const errorPoints = getDataPointsInRange(xRange);
+                    if (errorPoints.length > 0) {
+                      // 创建错误标记系列
+                      const errorSeries = {
+                        name: `${data.channelName}_manual_error_${errorIndex}_${rangeIndex}`,
+                        data: errorPoints,
+                        color: error.color || 'rgba(220, 20, 60, 0.3)',
+                        lineWidth: 10,
+                        zIndex: 999,
+                        marker: {
+                          enabled: false
+                        },
+                        states: {
+                          hover: {
+                            lineWidthPlus: 0
+                          }
+                        },
+                        enableMouseTracking: false,
+                        turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
+                      };
+                      series.push(errorSeries);
+                    }
+                  });
+                }
+              });
+            }
+
+            // 处理机器识别的错误
+            if (machineErrors && Array.isArray(machineErrors) && machineErrors.length > 0) {
+              machineErrors.forEach((error, errorIndex) => {
+                if (error && error.X_error && Array.isArray(error.X_error) && error.X_error.length > 0) {
+                  error.X_error.forEach((xRange, rangeIndex) => {
+                    const errorPoints = getDataPointsInRange(xRange);
+                    if (errorPoints.length > 0) {
+                      // 创建错误标记系列
+                      const errorSeries = {
+                        name: `${data.channelName}_machine_error_${errorIndex}_${rangeIndex}`,
+                        data: errorPoints,
+                        color: error.color || 'rgba(220, 20, 60, 0.3)',
+                        lineWidth: 10,
+                        zIndex: 999,
+                        marker: {
+                          enabled: false
+                        },
+                        states: {
+                          hover: {
+                            lineWidthPlus: 0
+                          }
+                        },
+                        enableMouseTracking: false,
+                        turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
+                      };
+                      series.push(errorSeries);
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+      });
+      
+      return series;
+    };
+    
+    // 批量准备所有系列数据
+    const series = prepareSeries();
 
     // 确保有数据系列
     if (series.length === 0) {
