@@ -19,9 +19,10 @@
               <tr v-for="(error, eIndex) in channel.displayedErrors" :key="`error-${cIndex}-${eIndex}`">
                 <!-- Channel Type Cell -->
                 <td v-if="eIndex === 0 && cIndex === 0"
-                  :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)" class="channel-type">
-                  <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
-                  <div class="type-header">
+                  :rowspan="item.channels.reduce((total, c) => total + c.displayedErrors.length, 0)" class="channel-type"
+                  @click.stop="toggleChannelCheckboxes(item)">
+                  <span :title="item.channel_type" @click.stop="toggleChannelCheckboxes(item)">{{ formatChannelType(item.channel_type) }}</span>
+                  <div class="type-header" @click.stop="toggleChannelCheckboxes(item)">
                     <!-- Use the reusable ChannelColorPicker component -->
                     <!-- <ChannelColorPicker 
                       :color="item.color" 
@@ -32,13 +33,14 @@
                       class="category-color-picker"
                     /> -->
                     <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
-                      class="checkbox-margin"></el-checkbox>
+                      class="checkbox-margin" @click.stop></el-checkbox>
                   </div>
                 </td>
                 <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
                   'channel-name': true,
                   'channel-name-last': cIndex === item.channels.length - 1
-                }">
+                }"
+                @click.stop="toggleSingleChannel(channel, item)">
                   <div class="name-container">
                     <span>{{ channel.channel_name }}</span>
                     <div class="name-right">
@@ -74,7 +76,8 @@
                   'error-last':
                     eIndex === channel.displayedErrors.length - 1 &&
                     cIndex !== item.channels.length - 1
-                }">
+                }"
+                @click.stop="toggleSingleChannel(channel, item)">
                   <span :title="error.error_name">
                     {{ formatError(error.error_name) }}
                   </span>
@@ -350,7 +353,10 @@ const updateSelectedChannels = () => {
 
 const toggleChannelCheckboxes = (item) => {
     if (item && Array.isArray(item.channels)) {
-        // 获取通道类别复选框的状态
+        // 点击单元格时，先切换通道类别的选中状态
+        item.checked = !item.checked;
+        
+        // 获取通道类别复选框的新状态
         const newState = item.checked;
         
         // 更新所有通道的选中状态
@@ -404,6 +410,13 @@ const formatChannelType = (name) => {
   } catch (err) {
     console.warn('Error formatting channel type:', err);
     return name;
+  }
+};
+
+const toggleSingleChannel = (channel, item) => {
+  if (channel) {
+    channel.checked = !channel.checked;
+    updateChannelTypeCheckbox(item);
   }
 };
 </script>
@@ -495,6 +508,12 @@ const formatChannelType = (name) => {
   border-right: 1px solid #eee;
   word-wrap: break-word;
   white-space: normal;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.channel-table td:hover {
+  background-color: #f0f9ff;
 }
 
 .channel-type {
@@ -503,6 +522,19 @@ const formatChannelType = (name) => {
   text-align: left;
   font-family: inherit;
   background-color: #fafafa;
+  position: relative;
+  z-index: 1;
+}
+
+.channel-type::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  cursor: pointer;
 }
 
 .channel-name {

@@ -23,13 +23,15 @@
                   class="channel-type"
                   :rowspan="computeTotalDisplayedErrors(item)"
                   v-if="channelIndex === 0 && errorIndex === 0"
+                  @click.stop="toggleChannelCheckboxes(item)"
                 >
-                  <div class="type-header">
-                    <span :title="item.channel_type">{{ formatChannelType(item.channel_type) }}</span>
+                  <div class="type-header" @click.stop="toggleChannelCheckboxes(item)">
+                    <span :title="item.channel_type" @click.stop="toggleChannelCheckboxes(item)">{{ formatChannelType(item.channel_type) }}</span>
                     <el-checkbox
                       v-model="item.checked"
                       @change="toggleChannelCheckboxes(item)"
                       class="checkbox-margin"
+                      @click.stop
                     />
                   </div>
                 </td>
@@ -38,7 +40,8 @@
                 <td v-if="errorIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
                   'channel-name': true,
                   'channel-name-last': isLastChannel(item.channels, channel),
-                }">
+                }"
+                @click.stop="toggleSingleChannel(channel, item)">
                   <div class="name-container">
                     <span>{{ channel.channel_name }}</span>
                     <div class="name-right">
@@ -63,7 +66,8 @@
                 <td :class="{
                   'error-column': true,
                   'error-last': isLastError(channel, error) && !isLastChannel(item.channels, channel),
-                }">
+                }"
+                @click.stop="toggleSingleChannel(channel, item)">
                   <div class="error-container">
                     <span :title="error.error_name">
                       {{ formatError(error.error_name) }}
@@ -330,6 +334,10 @@ const setSingleChannelColor = (channel) => {
 // 切换所有通道的复选框
 const toggleChannelCheckboxes = (item) => {
     if (item && item.channels) {
+        // 点击单元格时，先切换通道类别的选中状态
+        item.checked = !item.checked;
+        
+        // 然后将此状态应用到所有通道
         item.channels.forEach((channel) => {
             channel.checked = item.checked;
         });
@@ -377,6 +385,14 @@ const toggleShowAllErrors = (channel) => {
 const setErrorColor = (channel, error) => {
   if (channel && error) {
     updateSelectedChannels();
+  }
+};
+
+// 切换单个通道的选中状态
+const toggleSingleChannel = (channel, item) => {
+  if (channel) {
+    channel.checked = !channel.checked;
+    updateChannelTypeCheckbox(item);
   }
 };
 </script>
@@ -468,6 +484,12 @@ const setErrorColor = (channel, error) => {
   border-right: 1px solid #eee;
   word-wrap: break-word;
   white-space: normal;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.channel-table td:hover {
+  background-color: #f0f9ff;
 }
 
 .channel-type {
@@ -477,6 +499,19 @@ const setErrorColor = (channel, error) => {
   font-family: inherit;
   background-color: #fafafa;
   padding: 12px;
+  position: relative;
+  z-index: 1;
+}
+
+.channel-type::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  cursor: pointer;
 }
 
 .channel-type span {
@@ -554,7 +589,7 @@ const setErrorColor = (channel, error) => {
   word-break: break-all;
   white-space: normal;
   min-width: 0;
-  max-width: calc(100% - 40px); /* 为颜色选择器预留空间 */
+  max-width: calc(100% - 40px);
 }
 
 .shot-number-tag {
