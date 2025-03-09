@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import * as Highcharts from 'highcharts';
 import 'highcharts/modules/boost';  // 使用官方的boost模块
@@ -463,6 +463,9 @@ const renderChart = (forceRender = false) => {
       usePreAllocated: true,
       seriesThreshold: 1 // 只要有一个系列就启用boost
     },
+    accessibility: {
+      enabled: false // 禁用无障碍功能，避免相关错误
+    },
     series: overviewData.value
   };
   
@@ -579,6 +582,14 @@ const handleDblClick = () => {
     console.warn('双击重置时出错:', error);
   }
 };
+
+// 在组件销毁时确保清理图表实例
+onBeforeUnmount(() => {
+  if (chartInstance.value) {
+    chartInstance.value.destroy();
+    chartInstance.value = null;
+  }
+});
 </script>
 
 <style scoped>

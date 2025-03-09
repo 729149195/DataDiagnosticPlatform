@@ -73,6 +73,15 @@ import LegendComponent from '@/components/LegendComponent.vue';
 import chartWorkerManager from '@/workers/chartWorkerManager';
 import { DataSmoother } from '@/views/AnomalyLabelView/Sketch/data-smoother.js';
 
+// 设置Highcharts全局配置
+Highcharts.setOptions({
+  // ... existing code ...
+  accessibility: {
+    enabled: false // 禁用无障碍功能，避免相关错误
+  }
+});
+// ... existing code ...
+
 // 平滑数据函数
 const interpolateData = (data, factor) => {
   if (!data || !Array.isArray(data) || data.length < 2) {
@@ -2233,6 +2242,9 @@ const drawCombinedChart = () => {
       series: series,
       exporting: {
         enabled: false
+      },
+      accessibility: {
+        enabled: false // 禁用无障碍功能，避免相关错误
       }
     });
 

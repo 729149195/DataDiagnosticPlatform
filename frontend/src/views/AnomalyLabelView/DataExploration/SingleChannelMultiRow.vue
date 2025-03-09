@@ -1307,7 +1307,10 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelNu
                 }
               }
             },
-          }
+          },
+          accessibility: {
+            enabled: false // 禁用无障碍功能，避免相关错误
+          },
         },
         title: {
           text: '',

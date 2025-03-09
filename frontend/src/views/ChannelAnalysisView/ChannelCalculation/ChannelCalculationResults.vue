@@ -310,6 +310,9 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
         credits: {
             enabled: false
         },
+        accessibility: {
+            enabled: false // 禁用无障碍功能，避免相关错误
+        },
         series: [{
             id: CHART_INSTANCE_ID, // 添加唯一ID，避免与其他图表冲突
             name: channel?.channel_name || '',
