@@ -788,8 +788,8 @@ const updateSmoothness = (value) => {
   padding: 3px 20px 5px 20px;
   background-color: #f2f6fc;
   border: 1px solid #dcdfe6;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
   border-top: none;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   cursor: pointer;

@@ -1859,6 +1859,7 @@ const drawCombinedChart = () => {
         marginTop: 30,
         marginRight: 10,
         spacingRight: 0,
+        spacing: [0, 0, 0, 0], // 设置为0，确保图表不会自动添加额外的空间
         reflow: true, // 确保图表会重新计算尺寸
         events: {
           selection: function (event) {
@@ -2135,8 +2136,10 @@ const drawCombinedChart = () => {
         gridLineColor: '#ccc',
         // 添加网格线设置，随缩放调整
         tickAmount: 10, // 指定标记数量，确保缩放时网格适应
-        startOnTick: false,
-        endOnTick: false,
+        startOnTick: false, // 确保不从刻度线开始
+        endOnTick: false, // 确保不在刻度线结束
+        minPadding: 0, // 不添加左侧内边距
+        maxPadding: 0, // 不添加右侧内边距
         labels: {
           style: {
             fontSize: '1.2em',
