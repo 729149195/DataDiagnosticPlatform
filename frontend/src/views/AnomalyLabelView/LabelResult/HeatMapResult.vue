@@ -136,7 +136,40 @@
                        <!-- 修改时间范围行，使标题和值在同一行 -->
                        <div class="statistic-row time-row">
                         <div class="time-title">异常时间范围:</div>
-                        <div class="time-value">{{ formatValue(anomaly['时间范围'], '时间范围') }} s</div>
+                        <div class="time-value">
+                          <!-- 处理对象类型的时间范围（可折叠的多个时间范围） -->
+                          <template v-if="typeof anomaly['时间范围'] === 'object' && anomaly['时间范围'].ranges">
+                            <div>
+                              <span v-if="anomaly['时间范围'].collapsed">
+                                {{ anomaly['时间范围'].ranges.slice(0, anomaly['时间范围'].displayCount).join(', ') }}
+                                <el-button 
+                                  type="text" 
+                                  size="small" 
+                                  @click="anomaly['时间范围'].collapsed = false"
+                                  style="padding: 0 4px; margin-left: 4px;"
+                                >
+                                  <el-icon><ArrowDown /></el-icon> 展开(共{{ anomaly['时间范围'].ranges.length }}个)
+                                </el-button>
+                              </span>
+                              <span v-else>
+                                {{ anomaly['时间范围'].ranges.join(', ') }}
+                                <el-button 
+                                  type="text" 
+                                  size="small" 
+                                  @click="anomaly['时间范围'].collapsed = true"
+                                  style="padding: 0 4px; margin-left: 4px;"
+                                >
+                                  <el-icon><ArrowUp /></el-icon> 折叠
+                                </el-button>
+                              </span>
+                            </div>
+                          </template>
+                          <!-- 处理字符串类型的时间范围 -->
+                          <template v-else>
+                            {{ formatValue(anomaly['时间范围'], '时间范围') }}
+                          </template>
+                          s
+                        </div>
                       </div>
                     </div>
                   </el-card>
@@ -186,7 +219,7 @@ import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
-import { Search, Delete, Edit, InfoFilled } from '@element-plus/icons-vue';
+import { Search, Delete, Edit, InfoFilled, ArrowDown, ArrowUp } from '@element-plus/icons-vue';
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
@@ -639,6 +672,25 @@ function formatValue(value, key) {
   // 过滤掉X_error和Y_error数据
   if (key === 'X_error' || key === 'Y_error') {
     return undefined;
+  }
+
+  // 处理对象类型的时间范围
+  if (key === '时间范围' && typeof value === 'object' && value.ranges) {
+    // 为了确保在JSON.stringify时能够正确处理，我们修改对象的toJSON方法
+    if (!value.toJSON) {
+      Object.defineProperty(value, 'toJSON', {
+        value: function() {
+          return this.ranges.join(', ');
+        },
+        enumerable: false
+      });
+    }
+    
+    if (value.collapsed) {
+      return value.ranges.slice(0, value.displayCount).join(', ');
+    } else {
+      return value.ranges.join(', ');
+    }
   }
 
   if (key === 'startX' || key === 'endX') {
@@ -1305,7 +1357,16 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 }).filter(Boolean);
 
                 if (timeRanges.length > 0) {
-                  processedData['时间范围'] = timeRanges.join(', ');
+                  // 如果时间范围超过3个，则只显示前3个，并添加折叠标记
+                  if (timeRanges.length > 3) {
+                    processedData['时间范围'] = {
+                      ranges: timeRanges,
+                      collapsed: true,
+                      displayCount: 3
+                    };
+                  } else {
+                    processedData['时间范围'] = timeRanges.join(', ');
+                  }
                 }
               }
 
@@ -1439,7 +1500,9 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                         
                         if (Object.keys(processedData).length > 0) {
                           // 使用时间范围作为唯一标识符
-                          const key = processedData['时间范围'] || JSON.stringify(machineError);
+                          const key = typeof processedData['时间范围'] === 'object' 
+                            ? JSON.stringify(processedData['时间范围'].ranges) 
+                            : (processedData['时间范围'] || JSON.stringify(error.errorData));
                           if (!machineAnomalyMap.has(key)) {
                             machineAnomalyMap.set(key, processedData);
                           }
@@ -2172,7 +2235,16 @@ const updateAnomalyDialogContent = () => {
                   }).filter(Boolean);
 
                   if (timeRanges.length > 0) {
-                    processedData['时间范围'] = timeRanges.join(', ');
+                    // 如果时间范围超过3个，则只显示前3个，并添加折叠标记
+                    if (timeRanges.length > 3) {
+                      processedData['时间范围'] = {
+                        ranges: timeRanges,
+                        collapsed: true,
+                        displayCount: 3
+                      };
+                    } else {
+                      processedData['时间范围'] = timeRanges.join(', ');
+                    }
                   }
                 }
                 
@@ -2208,7 +2280,9 @@ const updateAnomalyDialogContent = () => {
                 
                 if (Object.keys(processedData).length > 0) {
                   // 使用时间范围作为唯一标识符
-                  const key = processedData['时间范围'] || JSON.stringify(machineErrorCopy);
+                  const key = typeof processedData['时间范围'] === 'object' 
+                    ? JSON.stringify(processedData['时间范围'].ranges) 
+                    : (processedData['时间范围'] || JSON.stringify(error.errorData));
                   if (!machineAnomalyMap.has(key)) {
                     machineAnomalyMap.set(key, processedData);
                   }
