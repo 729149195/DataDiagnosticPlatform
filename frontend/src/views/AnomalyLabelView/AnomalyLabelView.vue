@@ -140,7 +140,7 @@
                   <div v-if="SingleChannelMultiRow_channel_number === true">
                     <SingleChannelMultiRow v-show="selectedChannels.length > 0"/>
                   </div>
-                  <div v-if="SingleChannelMultiRow_channel_number === false">
+                  <div v-show="SingleChannelMultiRow_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
