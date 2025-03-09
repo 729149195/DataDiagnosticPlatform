@@ -31,6 +31,7 @@
                       @update:color="item.color = $event"
                       :channelName="item.channel_type"
                       class="category-color-picker"
+                      @click.stop
                     />
                     <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
                       class="checkbox-margin" @click.stop></el-checkbox>
@@ -52,10 +53,11 @@
                         @update:color="channel.color = $event"
                         :shotNumber="channel.shot_number"
                         :channelName="channel.channel_name"
-                        class="channel-color-picker" 
+                        class="channel-color-picker"
+                        @click.stop
                       />
                       <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
-                        class="checkbox-margin"></el-checkbox>
+                        class="checkbox-margin" @click.stop></el-checkbox>
                     </div>
                   </div>
                   <el-tag type="info" effect="plain" class="shot-number-tag">

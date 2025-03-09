@@ -8,6 +8,7 @@
       show-alpha
       :predefine="predefineColors"
       :popper-class="`custom-color-picker-${uniqueId}`"
+      @active-change="handleActiveChange"
     />
   </div>
 </template>
@@ -45,6 +46,28 @@ const predefineColors = [
 const emit = defineEmits(['update:color', 'change'])
 const localColor = ref(props.color)
 const uniqueId = ref(Math.random().toString(36).substr(2, 9))
+const pickerInstance = ref(null)
+
+// 手动管理颜色选择器的激活状态，解决点击确定后无法再次打开的问题
+const handleActiveChange = (active) => {
+  console.log('颜色选择器状态变化:', active)
+  
+  // 当选择器关闭时，记录关闭状态并添加延迟以确保状态完全重置
+  if (!active) {
+    setTimeout(() => {
+      // 找到并重置颜色选择器组件的内部状态
+      const pickerEls = document.querySelectorAll('.el-color-picker')
+      pickerEls.forEach(el => {
+        // 确保下一次点击能打开选择器
+        if (el.__vueParentComponent?.ctx?.$attrs?.class?.includes(`color-picker`)) {
+          el.__vueParentComponent.ctx.handleClick = function() {
+            this.showPicker = true
+          }
+        }
+      })
+    }, 10)
+  }
+}
 
 // 确保在组件挂载时正确初始化颜色值
 onMounted(() => {
