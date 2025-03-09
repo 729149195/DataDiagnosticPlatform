@@ -1825,7 +1825,7 @@ const updateAnomalyHighlights = (chart, channelKey) => {
 const updateChannelColor = (channel) => {
   if (!channel || !channel.color) return;
   
-  console.log(`updateChannelColor: 更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${channel.color}`);
+  // console.log(`updateChannelColor: 更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${channel.color}`);
   
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   
@@ -1851,7 +1851,7 @@ const updateChannelColor = (channel) => {
 const updateChartColor = (channel, newColor) => {
   if (!channel || !newColor) return;
   
-  console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
+  // console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
   
   // 更新本地数据
   channel.color = newColor;
@@ -1931,9 +1931,9 @@ const adjustColorPickerPosition = (chart, channel) => {
         
         if (colorPickerContainer) {
           // 设置颜色选择器的位置，使其位于title的左侧
-          const rightPosition = chartRect.width - titleLeftPosition;
+          const rightPosition = chartRect.width - titleLeftPosition + 10;
           colorPickerContainer.style.right = `${rightPosition}px`;
-          console.log(`调整颜色选择器位置: ${rightPosition}px`);
+          // console.log(`调整颜色选择器位置: ${rightPosition}px`);
         }
       }
     } catch (error) {

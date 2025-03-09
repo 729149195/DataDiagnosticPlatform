@@ -1,7 +1,22 @@
 <template>
   <div class="chart-container">
     <div class="legend-container">
-      <LegendComponent :channelsData="channelsData" @update-color="updateChannelColor" />
+      <!-- 移除 LegendComponent，改为直接使用 ChannelColorPicker -->
+      <div class="legend" id="channelLegendContainer">
+        <div class="legend-item" v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`">
+          <ChannelColorPicker 
+            :color="channel.color" 
+            :predefineColors="predefineColors"
+            @change="updateChannelColor({ channelKey: `${channel.channel_name}_${channel.shot_number}`, color: $event })"
+            @update:color="updateChartColor(channel, $event)"
+            :channelName="channel.channel_name"
+            :shotNumber="channel.shot_number"
+          />
+          <span :style="{ color: channel.color }" class="legend-text" :data-channel="`${channel.channel_name}_${channel.shot_number}`">
+            {{ channel.shot_number }}_{{ channel.channel_name }}
+          </span>
+        </div>
+      </div>
     </div>
     <div v-if="selectedChannels.length === 0">
       <el-empty description="请选择通道" style="margin-top: 15vh;" />
@@ -69,9 +84,18 @@ import debounce from 'lodash/debounce';
 import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted, toRaw } from 'vue';
 import { ElMessage, ElEmpty, ElProgress, ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElSelect, ElOption } from 'element-plus';
 import { useStore } from 'vuex';
-import LegendComponent from '@/components/LegendComponent.vue';
 import chartWorkerManager from '@/workers/chartWorkerManager';
 import { DataSmoother } from '@/views/AnomalyLabelView/Sketch/data-smoother.js';
+import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
+
+// 添加预定义颜色数组
+const predefineColors = [
+  '#000000', '#4169E1', '#DC143C', '#228B22', '#FF8C00',
+  '#800080', '#FF1493', '#40E0D0', '#FFD700', '#8B4513',
+  '#2F4F4F', '#1E90FF', '#32CD32', '#FF6347', '#DA70D6',
+  '#191970', '#FA8072', '#6B8E23', '#6A5ACD', '#FF7F50',
+  '#4682B4',
+];
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
@@ -186,22 +210,49 @@ const updateChannelColor = ({ channelKey, color }) => {
     (ch) => `${ch.channel_name}_${ch.shot_number}` === channelKey
   );
   if (channel) {
+    // 更新本地数据
     channel.color = color;
+    
     // 更新 Vuex 存储
     store.commit('updateChannelColor', { channel_key: channelKey, color });
 
     // 获取当前图表实例
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
-      // 更新特定通道的线条颜色
+      // 更新特定通道的线条颜色，但不重绘整个图表
       chart.series.forEach(series => {
         if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
-          series.update({
-            color: color
-          }, false); // 不立即重绘
+          // 直接更新颜色属性，而不是调用 series.update
+          series.color = color;
+          
+          // 更新线条的颜色，但不触发重绘
+          if (series.graph) {
+            series.graph.attr({
+              stroke: color
+            });
+          }
+          
+          // 更新区域填充颜色（如果有）
+          if (series.area) {
+            series.area.attr({
+              fill: color
+            });
+          }
+          
+          // 更新标记点颜色（如果有）
+          if (series.markerGroup) {
+            series.markerGroup.attr({
+              fill: color,
+              stroke: color
+            });
+          }
+          
+          // 更新内部选项
+          series.options.color = color;
         }
       });
-      chart.redraw(); // 一次性重绘图表
+      
+      // 不调用 chart.redraw()，避免重绘整个图表
     }
 
     // 更新数据中的颜色
@@ -211,6 +262,73 @@ const updateChannelColor = ({ channelKey, color }) => {
     if (channelDataIndex !== -1) {
       channelsData.value[channelDataIndex].color = color;
     }
+  }
+};
+
+// 添加 updateChartColor 函数，直接更新图表颜色而不触发重绘
+const updateChartColor = (channel, newColor) => {
+  if (!channel || !newColor) return;
+  
+  console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
+  
+  // 更新本地数据
+  channel.color = newColor;
+  
+  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+  
+  // 获取当前图表实例
+  const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+  if (!chart) {
+    console.warn(`找不到图表实例`);
+    return;
+  }
+  
+  try {
+    // 更新特定通道的线条颜色
+    chart.series.forEach(series => {
+      if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
+        // 直接更新颜色属性
+        series.color = newColor;
+        
+        // 更新线条的颜色
+        if (series.graph) {
+          series.graph.attr({
+            stroke: newColor
+          });
+        }
+        
+        // 更新区域填充颜色（如果有）
+        if (series.area) {
+          series.area.attr({
+            fill: newColor
+          });
+        }
+        
+        // 更新标记点颜色（如果有）
+        if (series.markerGroup) {
+          series.markerGroup.attr({
+            fill: newColor,
+            stroke: newColor
+          });
+        }
+        
+        // 更新内部选项
+        series.options.color = newColor;
+      }
+    });
+    
+    // 更新图例文字颜色
+    const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
+    if (legendText) {
+      legendText.style.color = newColor;
+    }
+    
+    // 不调用 chart.redraw()，避免重绘整个图表
+    
+    // 确保 Vuex 存储中的颜色也被更新
+    store.commit('updateChannelColor', { channel_key: channelKey, color: newColor });
+  } catch (error) {
+    console.error(`更新通道 ${channelKey} 的颜色时出错:`, error);
   }
 };
 
@@ -927,18 +1045,63 @@ watch(selectedChannels, (newChannels, oldChannels) => {
     });
 
   if (isOnlyColorChange) {
-    // 只处理颜色变化的通道，复用 updateChannelColor 函数
-    newChannels.forEach(newCh => {
-      const oldCh = oldChannels.find(
-        old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
-      );
-      if (oldCh && oldCh.color !== newCh.color) {
-        updateChannelColor({
-          channelKey: `${newCh.channel_name}_${newCh.shot_number}`,
-          color: newCh.color
-        });
-      }
-    });
+    // 只处理颜色变化的通道，直接更新DOM元素颜色，不触发重绘
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      newChannels.forEach(newCh => {
+        const oldCh = oldChannels.find(
+          old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
+        );
+        if (oldCh && oldCh.color !== newCh.color) {
+          const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
+          const color = newCh.color;
+          
+          // 更新 Vuex 存储
+          store.commit('updateChannelColor', { channel_key: channelKey, color });
+          
+          // 直接更新图表中的颜色，不调用updateChannelColor函数
+          chart.series.forEach(series => {
+            if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
+              // 直接更新颜色属性
+              series.color = color;
+              
+              // 更新线条的颜色
+              if (series.graph) {
+                series.graph.attr({
+                  stroke: color
+                });
+              }
+              
+              // 更新区域填充颜色（如果有）
+              if (series.area) {
+                series.area.attr({
+                  fill: color
+                });
+              }
+              
+              // 更新标记点颜色（如果有）
+              if (series.markerGroup) {
+                series.markerGroup.attr({
+                  fill: color,
+                  stroke: color
+                });
+              }
+              
+              // 更新内部选项
+              series.options.color = color;
+            }
+          });
+          
+          // 更新数据中的颜色
+          const channelDataIndex = channelsData.value.findIndex(
+            d => `${d.channelName}_${d.channelshotnumber}` === channelKey
+          );
+          if (channelDataIndex !== -1) {
+            channelsData.value[channelDataIndex].color = color;
+          }
+        }
+      });
+    }
   } else {
     // 如果不是仅颜色变化，则执行完整的重新渲染
     channelsData.value = [];
@@ -1547,12 +1710,14 @@ watch(() => store.state.anomalies, (newAnomalies) => {
 watch(isBoxSelect, (newValue) => {
   const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (chart) {
-    // 更新图表的缩放类型
-    chart.update({
-      chart: {
-        zoomType: newValue ? 'x' : 'xy'
-      }
-    }, false);
+    // 更新图表的缩放类型，但不触发重绘
+    chart.options.chart.zoomType = newValue ? 'x' : 'xy';
+    
+    // 直接更新内部属性，而不是调用 chart.update
+    if (chart.pointer) {
+      chart.pointer.zoomX = newValue;
+      chart.pointer.zoomY = !newValue;
+    }
 
     // 如果开启框选模式，但没有选择通道，显示提示
     if (newValue && selectedChannels.value.length === 0) {
@@ -1563,8 +1728,8 @@ watch(isBoxSelect, (newValue) => {
       // 已开启框选模式，显示提示
       ElMessage.info('已开启框选模式，请在图表上框选区域进行标注');
     }
-
-    chart.redraw();
+    
+    // 不调用 chart.redraw()，避免重绘整个图表
   }
 });
 
@@ -2395,6 +2560,66 @@ const confirmChannelSelection = () => {
   z-index: 999;
   min-width: 100px;
   max-width: 200px;
+}
+
+/* 添加图例样式 */
+.legend {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 6px;
+  background-color: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  max-height: 200px;
+  overflow-y: auto;
+  transition: box-shadow 0.2s ease;
+}
+
+.legend:hover {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 2px 4px;
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+  cursor: default;
+  min-height: 20px;
+}
+
+.legend-item:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.legend-text {
+  font-size: 12px;
+  font-weight: normal;
+  white-space: nowrap;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+/* 自定义滚动条样式 */
+.legend::-webkit-scrollbar {
+  width: 4px;
+}
+
+.legend::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.legend::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+.legend::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.25);
 }
 
 .progress-container {
