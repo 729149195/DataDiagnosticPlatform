@@ -1,5 +1,5 @@
 // 新建缓存管理服务
-import { CacheFactory } from 'cachefactory/CacheFactory.js';
+import { CacheFactory } from 'cachefactory';
 
 export const cacheFactory = new CacheFactory();
 
