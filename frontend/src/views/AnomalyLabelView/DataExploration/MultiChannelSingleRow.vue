@@ -757,11 +757,12 @@ const calculateChartHeight = () => {
   // 获取容器的实际高度
   const containerHeight = container.clientHeight;
 
-  // 设置图表高度为容器高度减去120px，再减去上下边距
-  const newHeight = Math.max(300, containerHeight) - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
+  // 设置图表高度为容器高度减去上下边距，不再使用固定的减去值
+  // 移除了Math.max(300, containerHeight)中的300限制，允许高度随容器变化
+  const newHeight = containerHeight - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
 
-  // 仅当高度有明显变化时才更新
-  if (Math.abs(newHeight - mainChartDimensions.value.height) > 5) {
+  // 仅当高度有明显变化时才更新，降低阈值以提高响应性
+  if (Math.abs(newHeight - mainChartDimensions.value.height) > 2) {
     mainChartDimensions.value.height = newHeight;
 
     // 更新已存在的图表高度
@@ -789,19 +790,27 @@ const handleResize = debounce(() => {
     // 更新已存在的图表
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
-      chart.setSize(newWidth, null);
+      chart.setSize(newWidth, mainChartDimensions.value.height);
       chart.redraw();
     } else if (channelsData.value && channelsData.value.length > 0) {
       drawCombinedChart(); // 如果图表不存在，重新绘制
     }
   }
-}, 100); // 降低debounce时间从200到100ms
+}, 50); // 进一步降低debounce时间以提高响应速度
 
 // 创建一个ResizeObserver来监听容器大小变化
 const resizeObserver = ref(null);
 
 // onMounted 生命周期钩子
 onMounted(async () => {
+  // 设置Highcharts全局配置
+  Highcharts.setOptions({
+    chart: {
+      reflow: true, // 确保所有图表都会重新计算尺寸
+      animation: false // 禁用动画以提高性能
+    }
+  });
+
   // 延迟一下以确保DOM完全渲染
   setTimeout(() => {
     const container = document.querySelector('.chart-container');
@@ -832,6 +841,12 @@ onMounted(async () => {
   const container = document.querySelector('.chart-container');
   if (container) {
     resizeObserver.value.observe(container);
+  }
+  
+  // 监听chart-wrapper的大小变化
+  const chartWrapper = document.querySelector('.chart-wrapper');
+  if (chartWrapper) {
+    resizeObserver.value.observe(chartWrapper);
   }
 
   // 初始化异常数据
@@ -1844,6 +1859,7 @@ const drawCombinedChart = () => {
         marginTop: 30,
         marginRight: 10,
         spacingRight: 0,
+        reflow: true, // 确保图表会重新计算尺寸
         events: {
           selection: function (event) {
             if (event.resetSelection) {
@@ -2335,6 +2351,7 @@ const confirmChannelSelection = () => {
   left: 0;
   right: 0;
   bottom: 0;
+  overflow: hidden; /* 防止内容溢出 */
 }
 
 .chart-wrapper {
@@ -2346,12 +2363,14 @@ const confirmChannelSelection = () => {
   overflow: hidden;
   margin-top: 5px;
   /* 减少顶部空白 */
+  min-height: 300px; /* 设置最小高度 */
 }
 
 #combined-chart {
   width: 100%;
   height: 100%;
   position: relative;
+  min-height: 300px; /* 设置最小高度 */
 }
 
 .legend-container {
