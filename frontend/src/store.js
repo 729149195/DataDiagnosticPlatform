@@ -90,6 +90,7 @@ const store = createStore({
       ErrorLineXScopes: [],
       brush_begin: -2,
       brush_end: 5,
+      unit_sampling: 10,
 
       channelSvgElementsRefs: [],
       channelDataCache: reactive({
@@ -255,7 +256,8 @@ const store = createStore({
       state.clickedChannelNames = value;
     },
     addClickedShownChannelList(state, channel) {
-      state.clickedShownChannelList.push(channel);
+      // 清空数组，然后添加新的通道
+      state.clickedShownChannelList = [channel];
     },
     updatebrush(state, { begin, end }) {
       state.brush_begin = begin;

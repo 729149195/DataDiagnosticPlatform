@@ -12,8 +12,13 @@
                     </el-tag>
             </div>
             <el-divider />
-            <div :id="'chart-' + sanitizeChannelName(channel.channel_name + '_' + channel.shot_number)"
-                class="chart-container" @click="handleCardClick(channel)"></div>
+            <div class="chart-container-wrapper">
+                <div :id="'chart-' + sanitizeChannelName(channel.channel_name + '_' + channel.shot_number)"
+                    class="chart-container" @click="handleCardClick(channel)"></div>
+                <div v-if="loadingChannels[`${channel.channel_name}_${channel.shot_number}`]" class="loading-indicator">
+                    <el-icon class="loading-icon"><Loading /></el-icon>
+                </div>
+            </div>
         </el-card>
     </div>
 </template>
@@ -22,40 +27,21 @@
 import { computed, ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import debounce from 'lodash/debounce';
-import * as d3 from 'd3';
-import chartWorkerManager from '@/workers/chartWorkerManager';
+import Highcharts from 'highcharts';
+import 'highcharts/modules/boost';  // 引入Boost模块以提高大数据集的性能
+import { Loading } from '@element-plus/icons-vue';
 
 const store = useStore();
+// 存储创建的图表实例，用于清理
+const chartInstances = ref({});
+// 跟踪正在加载的通道
+const loadingChannels = ref({});
 
 const handleCardClick = (channel) => {
     const fullChannelIdentifier = `${channel.shot_number}_${channel.channel_name}`;
     store.commit('updateChannelName', fullChannelIdentifier);
     store.commit('addClickedShownChannelList', channel);
 };
-
-const predefineColors = ref([
-    'rgba(255, 215, 0, 0)',
-    '#4169E1',
-    '#DC143C',
-    '#228B22',
-    '#FF8C00',
-    '#800080',
-    '#FF1493',
-    '#40E0D0',
-    '#FFD700',
-    '#8B4513',
-    '#2F4F4F',
-    '#1E90FF',
-    '#32CD32',
-    '#FF6347',
-    '#DA70D6',
-    '#191970',
-    '#FA8072',
-    '#6B8E23',
-    '#6A5ACD',
-    '#FF7F50',
-    '#4682B4',
-]);
 
 const selectedChannels = computed(() => store.state.selectedChannels);
 const channelDataCache = computed(() => store.state.channelDataCache);
@@ -67,111 +53,184 @@ const sanitizeChannelName = (name) => {
 const renderChannelChart = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const containerId = 'chart-' + sanitizeChannelName(channel.channel_name + '_' + channel.shot_number);
         
+        // 设置加载状态
+        loadingChannels.value[channelKey] = true;
+        
+        // 清理之前的图表实例
+        if (chartInstances.value[containerId]) {
+            chartInstances.value[containerId].destroy();
+            delete chartInstances.value[containerId];
+        }
+        
+        // 确保DOM元素存在
+        const container = document.getElementById(containerId);
+        if (!container) {
+            console.error(`容器不存在: ${containerId}`);
+            loadingChannels.value[channelKey] = false;
+            return;
+        }
+        
+        // 清空容器内容
+        container.innerHTML = '';
+        
+        // 从缓存获取通道数据
         let channelData = channelDataCache.value[channelKey];
         if (!channelData) {
             try {
+                // 如果缓存中没有，从API获取
                 channelData = await store.dispatch('fetchChannelData', { channel });
                 if (!channelData?.X_value || !channelData?.Y_value) {
-                    console.error('Invalid data structure from API');
+                    console.error(`无效的API数据结构: ${channelKey}`);
+                    loadingChannels.value[channelKey] = false;
                     return;
                 }
             } catch (error) {
-                console.error('Fetch data error:', error);
+                console.error(`获取数据错误: ${channelKey}`, error);
+                loadingChannels.value[channelKey] = false;
                 return;
             }
         }
-
+        
         if (!channelData?.X_value || !channelData?.Y_value) {
-            console.warn('Invalid channel data structure');
+            console.warn(`无效的通道数据结构: ${channelKey}`);
+            loadingChannels.value[channelKey] = false;
             return;
         }
-
-        const workerData = {
-            X_value: Array.from(channelData.X_value),
-            Y_value: Array.from(channelData.Y_value)
-        };
-
-        const processedData = await chartWorkerManager.processData(
-            workerData,
-            0.1
-        );
-
-        if (!processedData?.processedData?.X_value) {
-            console.error('Processed data is invalid:', processedData);
-            return;
-        }
-
-        const processedArray = {
-            ...processedData.processedData,
-            X_value: Array.from(processedData.processedData.X_value),
-            Y_value: Array.from(processedData.processedData.Y_value),
-            meta: { isThumbnail: true }
+        
+        // 创建数据的深拷贝
+        const xValues = [...channelData.X_value];
+        const yValues = [...channelData.Y_value];
+        
+        // 对数据进行降采样，直接在这里处理，不使用worker
+        const sampledData = sampleDataForThumbnail(xValues, yValues);
+        
+        // 将X和Y值组合成Highcharts需要的格式
+        const seriesData = sampledData.xValues.map((x, i) => [x, sampledData.yValues[i]]);
+        
+        // 创建Highcharts配置
+        const options = {
+            chart: {
+                renderTo: containerId,
+                type: 'line',
+                height: 50,
+                margin: [0, 0, 0, 0], // 移除所有边距
+                backgroundColor: 'transparent',
+                animation: false,
+                spacing: [0, 0, 0, 0], // 移除内部间距
+                skipClone: true, // 优化性能
+                styledMode: false, // 禁用样式模式以提高性能
+                events: {
+                    // 图表渲染完成后的回调
+                    load: function() {
+                        // 移除加载状态
+                        loadingChannels.value[channelKey] = false;
+                    }
+                }
+            },
+            title: {
+                text: null // 不显示标题
+            },
+            xAxis: {
+                visible: false // 隐藏X轴
+            },
+            yAxis: {
+                visible: false // 隐藏Y轴
+            },
+            tooltip: {
+                enabled: false // 禁用工具提示
+            },
+            legend: {
+                enabled: false // 禁用图例
+            },
+            credits: {
+                enabled: false // 禁用版权信息
+            },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true,
+                seriesThreshold: 1 // 始终使用boost模式
+            },
+            plotOptions: {
+                series: {
+                    animation: false,
+                    enableMouseTracking: false, // 禁用鼠标跟踪
+                    marker: {
+                        enabled: false // 禁用数据点标记
+                    },
+                    states: {
+                        hover: {
+                            enabled: false // 禁用悬停状态
+                        }
+                    },
+                    turboThreshold: 0, // 取消默认的1000点限制
+                    findNearestPointBy: 'xy',
+                    boostThreshold: 1 // 始终使用boost模式
+                },
+                line: {
+                    lineWidth: 1.5
+                }
+            },
+            series: [{
+                id: `series-${channel.channel_name}-${channel.shot_number}`, // 添加唯一ID
+                name: channel.channel_name,
+                color: channel.color || 'steelblue',
+                data: seriesData,
+                lineWidth: 1.5
+            }]
         };
         
-
-        if (processedArray.X_value?.length && processedArray.Y_value?.length) {
-            renderChart(
-                processedArray.X_value,
-                processedArray.Y_value,
-                channel
-            );
-        } else {
-            console.warn('Empty processed data for channel:', channelKey);
-        }
+        // 创建图表并存储实例
+        chartInstances.value[containerId] = Highcharts.chart(options);
     } catch (error) {
-        console.error('Error rendering channel chart:', error);
+        console.error(`渲染通道图表错误: ${channel?.channel_name}`, error);
+        // 确保在出错时也移除加载状态
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        loadingChannels.value[channelKey] = false;
     }
 };
 
-const renderChart = (xValues, yValues, channel) => {
-    const containerId = 'chart-' + sanitizeChannelName(channel.channel_name + '_' + channel.shot_number);
-    const container = d3.select('#' + containerId);
-
-    container.selectAll('*').remove();
-
-    const containerWidth = container.node().clientWidth;
-    const containerHeight = 50;
-
-    const margin = { top: 5, right: 5, bottom: 5, left: 5 };
-    const width = containerWidth - margin.left - margin.right;
-    const height = containerHeight - margin.top - margin.bottom;
-
-    const svg = container
-        .append('svg')
-        .attr('width', containerWidth)
-        .attr('height', containerHeight)
-        .append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    const xScale = d3
-        .scaleLinear()
-        .domain(d3.extent(xValues))
-        .range([0, width]);
-
-    const yScale = d3
-        .scaleLinear()
-        .domain(d3.extent(yValues))
-        .range([height, 0]);
-
-    const line = d3
-        .line()
-        .x((d, i) => xScale(xValues[i]))
-        .y((d, i) => yScale(yValues[i]));
-
-    svg
-        .append('path')
-        .datum(yValues)
-        .attr('fill', 'none')
-        .attr('stroke', channel.color || 'steelblue')
-        .attr('stroke-width', 1.5)
-        .attr('d', line);
+// 添加一个简单的降采样函数，直接在组件中处理，不依赖worker
+const sampleDataForThumbnail = (xValues, yValues) => {
+    // 如果数据点少于500，直接返回原始数据
+    if (xValues.length <= 500) {
+        return { xValues, yValues };
+    }
+    
+    // 计算采样间隔
+    const interval = Math.ceil(xValues.length / 500);
+    
+    // 采样数据
+    const sampledX = [];
+    const sampledY = [];
+    
+    for (let i = 0; i < xValues.length; i += interval) {
+        sampledX.push(xValues[i]);
+        sampledY.push(yValues[i]);
+    }
+    
+    // 确保包含最后一个点
+    if (sampledX[sampledX.length - 1] !== xValues[xValues.length - 1]) {
+        sampledX.push(xValues[xValues.length - 1]);
+        sampledY.push(yValues[yValues.length - 1]);
+    }
+    
+    return { xValues: sampledX, yValues: sampledY };
 };
 
+// 修改渲染所有图表的方法，使用串行处理
 const renderCharts = debounce(async () => {
-    await Promise.all(
-        selectedChannels.value.map((channel) => renderChannelChart(channel))
-    );
+    // 初始化所有通道的加载状态
+    selectedChannels.value.forEach(channel => {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        loadingChannels.value[channelKey] = true;
+    });
+    
+    // 串行处理每个通道，避免竞争条件
+    for (const channel of selectedChannels.value) {
+        await renderChannelChart(channel);
+    }
 }, 150);
 
 watch(
@@ -194,11 +253,25 @@ watch(
 );
 
 onMounted(() => {
-    renderCharts();
+    console.log('ChannelCards组件已挂载，开始初始化图表');
+    // 确保DOM已经渲染完成
+    nextTick(() => {
+        renderCharts();
+    });
 });
 
 onBeforeUnmount(() => {
-    chartWorkerManager.terminate();
+    // 清理所有图表实例
+    Object.values(chartInstances.value).forEach(chart => {
+        if (chart && chart.destroy) {
+            try {
+                chart.destroy();
+            } catch (error) {
+                console.error('清理图表实例时出错:', error);
+            }
+        }
+    });
+    chartInstances.value = {};
 });
 </script>
 
@@ -211,6 +284,45 @@ onBeforeUnmount(() => {
 .channel-content {
     display: flex;
     justify-content: space-between;
+}
+
+.chart-container-wrapper {
+    position: relative;
+    width: 100%;
+    height: 50px;
+}
+
+.chart-container {
+    width: 100%;
+    height: 100%;
+}
+
+.loading-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: rgba(255, 255, 255, 0.7);
+    z-index: 10;
+}
+
+.loading-icon {
+    font-size: 20px;
+    color: #409EFF;
+    animation: rotating 2s linear infinite;
+}
+
+@keyframes rotating {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .cards {
@@ -226,11 +338,6 @@ onBeforeUnmount(() => {
         --el-card-padding: 8px;
         cursor: pointer;
     }
-}
-
-.chart-container {
-    width: 100%;
-    height: 50px;
 }
 
 :deep(.is-icon-arrow-down) {
