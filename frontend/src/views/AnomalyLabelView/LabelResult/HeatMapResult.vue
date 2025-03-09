@@ -1218,8 +1218,38 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
               return '#f5f5f5'; // 正常数据颜色
             }
 
-            // 如果有多个异常，使用灰色填充
+            // 如果有多个异常，需要检查是否为同一类型的异常
             if (d.length > 1) {
+              // 获取该区域内所有异常的类型
+              const errorTypes = new Set();
+              
+              for (const errorIdx of d) {
+                const errorData = errorResults.find(
+                  (result) => result && result.errorIdx === errorIdx && result.channelKey === channelKey
+                );
+                
+                if (errorData) {
+                  // 对于机器识别的异常，使用错误名称作为类型标识
+                  if (!errorData.isAnomaly && Array.isArray(errorData.errorData)) {
+                    const [, machineErrors] = errorData.errorData;
+                    if (machineErrors && machineErrors.length > 0) {
+                      // 使用错误名称作为类型标识
+                      const errorName = machineErrors[0].error_name || 'unknown';
+                      errorTypes.add(errorName);
+                    }
+                  } else if (errorData.isAnomaly) {
+                    // 对于用户标注的异常，使用固定的类型标识
+                    errorTypes.add('user_anomaly');
+                  }
+                }
+              }
+              
+              // 如果只有一种类型的异常，使用第一个异常的颜色
+              if (errorTypes.size === 1) {
+                return errorColors[d[0]];
+              }
+              
+              // 如果有多种类型的异常，使用灰色
               return '#999999';
             }
 
