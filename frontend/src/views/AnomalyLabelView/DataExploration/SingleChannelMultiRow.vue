@@ -273,6 +273,14 @@ const processChannelData = async (data, channel) => {
       );
 
       renderingStates[channelKey] = 100;
+      
+      // 在渲染完成后，确保再次调整颜色选择器位置
+      const chart = window.chartInstances?.[channelKey];
+      if (chart) {
+        // 使用两次调用，确保有足够时间让DOM更新
+        adjustColorPickerPosition(chart, channel);
+        setTimeout(() => adjustColorPickerPosition(chart, channel), 100);
+      }
     }
 
   } catch (error) {
@@ -377,6 +385,17 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       'Total Render Time-end');
 
     window.dataLoaded = true;
+    
+    // 渲染完成后，延迟200ms再次调整所有颜色选择器的位置
+    setTimeout(() => {
+      selectedChannels.value.forEach(channel => {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const chart = window.chartInstances?.[channelKey];
+        if (chart) {
+          adjustColorPickerPosition(chart, channel);
+        }
+      });
+    }, 200);
   } catch (error) {
     console.error('Error in renderCharts:', error);
     ElMessage.error(`渲染图表错误: ${error.message}`);
@@ -531,7 +550,13 @@ onUnmounted(() => {
 
 // 处理窗口大小变化
 const handleResize = debounce(() => {
-  // 重新调整所有颜色选择器的位置
+  // 获取当前容器宽度
+  const container = document.querySelector('.chart-container');
+  if (container) {
+    chartContainerWidth.value = container.offsetWidth;
+  }
+  
+  // 重新调整所有颜色选择器的位置（立即调整一次）
   selectedChannels.value.forEach(channel => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
     const chart = window.chartInstances?.[channelKey];
@@ -539,7 +564,18 @@ const handleResize = debounce(() => {
       adjustColorPickerPosition(chart, channel);
     }
   });
-}, 200);
+  
+  // 短暂延迟后再次调整，确保DOM已完全更新
+  setTimeout(() => {
+    selectedChannels.value.forEach(channel => {
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      const chart = window.chartInstances?.[channelKey];
+      if (chart) {
+        adjustColorPickerPosition(chart, channel);
+      }
+    });
+  }, 100);
+}, 100); // 减少去抖时间，使响应更快速
 
 // 添加解码函数
 const decodeChineseText = (text) => {
@@ -1909,7 +1945,8 @@ const updateChartColor = (channel, newColor) => {
 
 // 辅助函数：调整颜色选择器的位置
 const adjustColorPickerPosition = (chart, channel) => {
-  nextTick(() => {
+  // 使用setTimeout确保在DOM完全渲染后执行
+  setTimeout(() => {
     try {
       // 获取title元素
       const titleElement = chart.container.querySelector('.highcharts-title');
@@ -1922,24 +1959,24 @@ const adjustColorPickerPosition = (chart, channel) => {
         const titleLeftPosition = titleRect.left - chartRect.left;
         
         // 获取颜色选择器容器
-        const index = selectedChannels.value.findIndex(ch => 
-          ch.channel_name === channel.channel_name && 
-          ch.shot_number === channel.shot_number
-        );
-        
-        const colorPickerContainer = document.querySelector(`.chart-wrapper:nth-child(${index + 1}) .color-picker-container`);
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const colorPickerContainer = chart.container.closest('.chart-wrapper')?.querySelector('.color-picker-container');
         
         if (colorPickerContainer) {
           // 设置颜色选择器的位置，使其位于title的左侧
-          const rightPosition = chartRect.width - titleLeftPosition + 10;
+          const rightPosition = chartRect.width - titleLeftPosition;
           colorPickerContainer.style.right = `${rightPosition}px`;
-          // console.log(`调整颜色选择器位置: ${rightPosition}px`);
+          // 确保可见度和透明度相应更新
+          if (renderingStates[channelKey] === 100) {
+            colorPickerContainer.style.opacity = '1';
+            colorPickerContainer.style.visibility = 'visible';
+          }
         }
       }
     } catch (error) {
       console.warn('调整颜色选择器位置时出错:', error);
     }
-  });
+  }, 50); // 短暂延迟确保DOM更新
 };
 </script>
 
@@ -1970,10 +2007,10 @@ const adjustColorPickerPosition = (chart, channel) => {
   flex-direction: column;
   width: 100%;
   position: relative;
-  min-height: 250px;
+  min-height: 200px;
   overflow: hidden;
   padding: 5px 0;
-  margin-bottom: 10px;
+  margin-bottom: -10px; /* 调整图表之间的间距为15px，既不过于拥挤也不过于分散 */
 }
 
 svg {
