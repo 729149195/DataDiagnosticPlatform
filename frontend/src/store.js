@@ -193,7 +193,7 @@ const store = createStore({
     },
     updateChannelColor(state, { channel_key, color }) {
       const selectedChannel = state.selectedChannels.find(
-        (ch) => ch.channel_key === channel_key
+        (ch) => `${ch.channel_name}_${ch.shot_number}` === channel_key
       );
       if (selectedChannel) {
         selectedChannel.color = color;

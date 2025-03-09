@@ -34,12 +34,24 @@ const props = defineProps({
   }
 })
 
+const predefineColors = [
+    '#000000', '#4169E1', '#DC143C', '#228B22', '#FF8C00',
+    '#800080', '#FF1493', '#40E0D0', '#FFD700', '#8B4513',
+    '#2F4F4F', '#1E90FF', '#32CD32', '#FF6347', '#DA70D6',
+    '#191970', '#FA8072', '#6B8E23', '#6A5ACD', '#FF7F50',
+    '#4682B4',
+];
+
 const emit = defineEmits(['update:color', 'change'])
 const localColor = ref(props.color)
 const uniqueId = ref(Math.random().toString(36).substr(2, 9))
 
-// 动态添加样式
+// 确保在组件挂载时正确初始化颜色值
 onMounted(() => {
+  // 设置本地颜色值
+  localColor.value = props.color;
+  
+  // 添加自定义样式
   const styleId = `color-picker-style-${uniqueId.value}`
   const styleEl = document.createElement('style')
   styleEl.id = styleId
@@ -80,6 +92,7 @@ onBeforeUnmount(() => {
   }
 })
 
+// 监听props.color的变化，更新本地颜色值
 watch(
   () => props.color,
   (newColor) => {
@@ -89,27 +102,18 @@ watch(
   }
 )
 
+// 处理颜色变化事件
 const handleChange = (newColor) => {
-  // 先更新颜色值
-  emit('update:color', newColor)
+  console.log('颜色变化:', newColor);
   
-  // 使用setTimeout确保DOM更新后再触发change事件
-  setTimeout(() => {
-    emit('change', newColor)
-    
-    // 手动关闭颜色选择器弹窗
-    const colorPicker = document.querySelector(`.custom-color-picker-${uniqueId.value}`)
-    if (colorPicker && colorPicker.parentNode) {
-      // 查找关闭按钮并触发点击
-      const closeBtn = colorPicker.querySelector('.el-color-dropdown__btn')
-      if (closeBtn) {
-        closeBtn.click()
-      } else {
-        // 如果找不到关闭按钮，尝试从DOM中移除弹窗
-        colorPicker.parentNode.removeChild(colorPicker)
-      }
-    }
-  }, 0)
+  // 更新颜色值
+  emit('update:color', newColor);
+  
+  // 触发change事件
+  emit('change', newColor);
+  
+  // 确保本地颜色值与新颜色一致
+  localColor.value = newColor;
 }
 </script>
 
