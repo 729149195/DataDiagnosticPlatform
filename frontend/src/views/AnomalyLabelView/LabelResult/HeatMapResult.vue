@@ -1200,8 +1200,8 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     // 设置绘图尺寸
     const margin = { top: 8, right: 10, bottom: 100, left: 5 };
     const width = 1080 - margin.left - margin.right;
-    const rectH = 25; // 固定每个矩形的高度
-    const XaxisH = 20;
+    const rectH = 40; // 固定每个矩形的高度
+    const XaxisH = 30;
     const YaxisW = 140; // 调整宽度以适应通道名和炮号
     const height = rectH * channelNames.length + XaxisH;
 
@@ -1241,7 +1241,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
       .attr('x', (d, i) => YaxisW + i * (rectW + margin.left))
       .attr('y', XaxisH - 5)
       .style('text-anchor', 'middle')
-      .style('font-size', '10px')
+      .style('font-size', '16px')
       .text((d) => d);
 
     // 绘制热力图矩形
@@ -2362,7 +2362,7 @@ const updateAnomalyDialogContent = () => {
   }
 
   :deep(.el-dialog__title) {
-    font-size: 16px;
+    font-size: 20px;
     color: #303133;
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -2413,7 +2413,7 @@ const updateAnomalyDialogContent = () => {
   padding: 12px 16px;
   background-color: #f9fafc;
   border-left: 4px solid #409EFF;
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 500;
   color: #303133;
   border-radius: 0 8px 8px 0;
@@ -2496,7 +2496,7 @@ const updateAnomalyDialogContent = () => {
     max-width: 120px;
     padding: 12px 16px !important;
     background-color: #f9fafc;
-    font-size: 14px;
+    font-size: 20px;
     color: #606266;
     font-weight: 500;
     border-right: 1px solid #ebeef5;
@@ -2596,7 +2596,7 @@ const updateAnomalyDialogContent = () => {
 }
 
 .channelName {
-  font-size: 12px;
+  font-size: 16px;
   fill: #333;
 }
 
