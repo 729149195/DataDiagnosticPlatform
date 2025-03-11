@@ -14,9 +14,7 @@
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
               <span style="display: flex; align-items: center; margin-bottom: 5px;">
                 <span class="title">可视化配置</span>
-                <el-switch class="color_table_switch" v-model="color_table_value"
-                  style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色"
-                  inactive-text="异常颜色" />
+                <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" />
               </span>
               <div>
                 <el-scrollbar height="60vh" :always="false">
@@ -44,50 +42,70 @@
         <el-container>
           <el-main class="test_main" v-if="selectedButton === 'anay'">
             <el-card class="data_exploration" shadow="never">
-              <span style="display: flex; align-items: center; justify-content: space-between;">
+              <span style="display: flex; align-items: center; justify-content: space-between; ">
                 <span class="title">实验数据探索</span>
-                <span style="display: flex; align-items: center;">
-                  <span style="margin-right: 8px;">采样频率</span>
-                  <el-input-number v-model="sampling" :precision="3" :step="0.1" :min="0.001" :max="1000"
-                    @change="updateSampling" />
-                  <span style="margin-left: 4px;">KHz</span>
-                </span>
-                <span>平滑度 <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0"
-                    @change="updateSmoothness" /></span>
-                <el-switch v-model="SingleChannelMultiRow_channel_number"
-                  style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="单通道多行"
-                  inactive-text="多通道单行" />
+                <div class="control-panel">
+                  <div class="control-item">
+                    <span class="control-label">采样频率</span>
+                    <el-input-number v-model="sampling" :precision="3" :step="0.1" :min="0.001" :max="1000" @change="updateSampling" />
+                    <span class="control-unit">KHz</span>
+                  </div>
 
-                <el-switch v-model="boxSelect" style="--el-switch-on-color: #00CED1; --el-switch-off-color: #00CED1"
-                  active-text="框选标注/编辑" inactive-text="局部缩放"/>
+                  <div class="control-item">
+                    <span class="control-label">平滑度</span>
+                    <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
+                  </div>
 
-                <!-- <img src="/image1.png" style="height: 30px;" alt="图例" id="channelLegendImage"> -->
-                <span style="display: flex; align-items: center;">
-                  <el-dropdown trigger="click" @command="handleExportCommand">
-                    <el-button type="primary">
-                      导出<el-icon class="el-icon--right">
-                        <Upload />
-                      </el-icon>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
-                        <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                </span>
+                  <div class="control-item">
+                    <el-button-group>
+                      <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)">
+                        框选标注/编辑
+                      </el-button>
+                      <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)">
+                        局部缩放
+                      </el-button>
+                    </el-button-group>
+                  </div>
+
+                  <div class="control-item">
+                    <el-button-group>
+                      <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)">
+                        单通道多行
+                      </el-button>
+                      <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)">
+                        多通道单行
+                      </el-button>
+                    </el-button-group>
+                  </div>
+
+                  <div class="control-item">
+                    <el-dropdown trigger="click" @command="handleExportCommand">
+                      <el-button type="primary" class="menu-button" title="更多操作">
+                        <el-icon>
+                          <Menu />
+                        </el-icon>
+                      </el-button>
+                      <template #dropdown>
+                        <el-dropdown-menu>
+                          <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
+                          <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
+                          <el-dropdown-item command="syncUpload" v-if="store.state.authority != 0">上传标注异常</el-dropdown-item>
+                        </el-dropdown-menu>
+                      </template>
+                    </el-dropdown>
+                  </div>
+                </div>
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
                 <el-scrollbar :height="isSecondSectionCollapsed ? '83vh' : '58vh'" :always="false">
                   <div v-if="SingleChannelMultiRow_channel_number === true">
-                    <SingleChannelMultiRow v-show="selectedChannels.length > 0"/>
+                    <SingleChannelMultiRow v-show="selectedChannels.length > 0" />
                   </div>
                   <div v-show="SingleChannelMultiRow_channel_number === false">
                     <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
-                  <OverviewBrush />
+                <OverviewBrush />
               </div>
             </el-card>
 
@@ -104,7 +122,7 @@
                 <Sketch :key="selectedButton" />
               </el-card>
               <el-card class="two_right" shadow="never">
-                <HeatMap />
+                <HeatMap ref="heatMapRef" />
               </el-card>
             </div>
           </el-main>
@@ -136,7 +154,7 @@
                 <span class="title">通道分析结果</span>
                 <span>
                   <el-dropdown trigger="click" @command="handleResultExportCommand">
-                    <el-button type="primary" style="margin-right: 10px;">
+                    <el-button type="primary" style="margin-right: 10px;" title="导出数据">
                       导出<el-icon class="el-icon--right">
                         <Upload />
                       </el-icon>
@@ -167,8 +185,8 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { FolderChecked, Upload } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { FolderChecked, Upload, Menu } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 // 导入AppHeader组件
 import AppHeader from '@/components/AppHeader.vue';
 // 颜色配置及通道选取组件
@@ -203,24 +221,23 @@ const selectedButton = ref('anay');
 
 const MultiChannelRef = ref(null)
 const resultRef = ref(null)
+const heatMapRef = ref(null)
 const channelDataCache = computed(() => store.state.channelDataCache);
 const selectedChannels = computed(() => store.state.selectedChannels);
 
 const boxSelect = computed({
   get: () => {
     if (store.state.authority === '0') {
-      store.dispatch('updateIsBoxSelect', false);
       return false;
     }
     return store.state.isBoxSelect;
   },
   set: (value) => {
-    if (store.state.authority === '0') {
+    if (store.state.authority === '0' && value === true) {
       ElMessage({
         message: '您当前为查看者权限，无法进行标注操作',
         type: 'warning'
       });
-      store.dispatch('updateIsBoxSelect', false);
       return;
     }
     store.dispatch('updateIsBoxSelect', value);
@@ -241,11 +258,35 @@ onMounted(() => {
   if (savedButton) {
     selectedButton.value = savedButton;
   }
+
+  // 恢复通道显示模式
+  const savedChannelMode = localStorage.getItem('channelDisplayMode');
+  if (savedChannelMode !== null) {
+    SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
+  }
 });
 
 const selectButton = (button) => {
   selectedButton.value = button;
   localStorage.setItem('selectedButton', button);
+};
+
+// 添加保存通道显示模式的函数
+const toggleChannelDisplayMode = (value) => {
+  SingleChannelMultiRow_channel_number.value = value;
+  localStorage.setItem('channelDisplayMode', value);
+};
+
+// 添加更新框选模式的函数
+const updateBoxSelect = (value) => {
+  if (store.state.authority === '0' && value === true) {
+    ElMessage({
+      message: '您当前为查看者权限，无法进行标注操作',
+      type: 'warning'
+    });
+    return;
+  }
+  store.dispatch('updateIsBoxSelect', value);
 };
 
 const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
@@ -474,6 +515,8 @@ const handleExportCommand = (command) => {
     exportChannelSVG();
   } else if (command === 'exportData') {
     exportChannelData();
+  } else if (command === 'syncUpload') {
+    syncUpload();
   }
 }
 
@@ -496,11 +539,40 @@ const updateSampling = (value) => {
 const updateSmoothness = (value) => {
   store.dispatch('updateSmoothness', value)
 }
+
+// 实现上传同步功能
+const syncUpload = async () => {
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: '正在同步数据...',
+    background: 'rgba(0, 0, 0, 0.7)'
+  });
+
+  try {
+    // 直接通过ref引用调用HeatMap组件的syncUpload方法
+    if (!heatMapRef.value || typeof heatMapRef.value.syncUpload !== 'function') {
+      throw new Error('热力图组件未加载或未提供同步方法');
+    }
+
+    // 调用热力图组件的syncUpload方法
+    await heatMapRef.value.syncUpload();
+    ElMessage.success('同步成功');
+  } catch (error) {
+    console.error('同步失败:', error);
+    ElMessage.error('同步失败: ' + error.message);
+  } finally {
+    loadingInstance.close();
+  }
+};
 </script>
 
 <style scoped lang="scss">
 .title {
-  color: #999;
+  position: relative;
+  font-size: 12pt;
+  color: #333;
+  font-weight: bold;
+  margin-left: 5px;
 }
 
 .el-card {
@@ -615,7 +687,7 @@ const updateSmoothness = (value) => {
     display: flex;
     justify-content: center;
     margin: 0 0 2px 0;
-    
+
     .collapse-btn {
       padding: 2px 8px;
       font-size: 12px;
@@ -623,29 +695,29 @@ const updateSmoothness = (value) => {
       align-items: center;
       color: #909399;
       height: 24px;
-      
+
       &:hover {
         color: #409EFF;
       }
-      
+
       .el-icon {
         margin-right: 2px;
         font-size: 12px;
       }
-      
+
       .collapse-text {
         font-size: 12px;
       }
     }
   }
-  
+
   .collapse-bookmark {
     position: absolute;
     bottom: -12px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 10;
-    
+
     .bookmark-btn {
       width: 24px;
       height: 16px;
@@ -658,12 +730,12 @@ const updateSmoothness = (value) => {
       display: flex;
       justify-content: center;
       align-items: center;
-      
+
       &:hover {
         background-color: #ecf5ff;
         color: #409EFF;
       }
-      
+
       .el-icon {
         font-size: 12px;
         margin: 0;
@@ -797,23 +869,95 @@ const updateSmoothness = (value) => {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  
+
   &:hover {
     background-color: #ecf5ff;
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
     transform: translateY(1px);
   }
-  
+
   .arc-toggle-icon {
     margin-right: 4px;
     font-size: 14px;
     color: #409EFF;
   }
-  
+
   .arc-toggle-text {
     font-size: 12px;
     color: #606266;
-    white-space: nowrap; /* 防止文本换行 */
+    white-space: nowrap;
+    /* 防止文本换行 */
   }
+}
+
+/* 三横线菜单按钮样式 */
+.menu-button {
+  padding: 8px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu-button .el-icon {
+  font-size: 18px;
+  margin: 0;
+}
+
+/* 视图切换按钮组样式 */
+.el-button-group {
+  margin: 0 8px;
+}
+
+.el-button-group .el-button {
+  font-size: 12px;
+  padding: 6px 12px;
+  transition: all 0.3s;
+}
+
+.el-button-group .el-button:not(:first-child):not(:last-child) {
+  margin: 0 -1px;
+}
+
+/* 控制面板样式 */
+.control-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.control-item {
+  display: flex;
+  align-items: center;
+  margin-right: 5px;
+}
+
+.control-label {
+  margin-right: 8px;
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+}
+
+.control-unit {
+  margin-left: 4px;
+  font-size: 13px;
+  color: #606266;
+}
+
+/* 统一输入框样式 */
+:deep(.el-input-number) {
+  width: 140px;
+}
+
+:deep(.el-input-number .el-input__inner) {
+  text-align: center;
+}
+
+/* 统一按钮组样式 */
+:deep(.el-button-group .el-button) {
+  font-size: 12px;
+  padding: 6px 12px;
 }
 </style>

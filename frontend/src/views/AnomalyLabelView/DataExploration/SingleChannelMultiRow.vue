@@ -1033,7 +1033,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           height: 260,
           zoomType: isBoxSelect.value ? 'x' : 'xy',
           animation: false,
-          spacing: [10, 15, 10, 10], // 添加统一的内部间距 [top, right, bottom, left]
+          spacing: [0, 15, 10, 10], // 添加统一的内部间距 [top, right, bottom, left]
           marginLeft: 90, // 增加左边距，确保有足够空间显示Y轴标签
           resetZoomButton: {
             enabled: false,
@@ -2020,7 +2020,7 @@ svg {
 
 .color-picker-container {
   position: absolute;
-  top: 55px;
+  top: 45px;
   right: 250px; /* 初始位置，会被动态调整 */
   z-index: 10;
   display: flex;

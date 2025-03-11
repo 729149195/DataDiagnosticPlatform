@@ -922,7 +922,6 @@ onMounted(async () => {
 .gun-number-container {
   display: flex;
   align-items: center;
-  margin-bottom: 10px;
 }
 
 .gun-number-input {

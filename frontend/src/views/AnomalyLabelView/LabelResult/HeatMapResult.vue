@@ -17,7 +17,7 @@
         </template>
       </el-dropdown>
       <el-button type="primary" @click="syncUpload" v-if="store.state.authority != 0">
-        上传同步<el-icon class="el-icon--right">
+        上传标注异常<el-icon class="el-icon--right">
           <Upload />
         </el-icon>
       </el-button>
@@ -214,7 +214,7 @@
 
 <script setup>
 import * as d3 from 'd3';
-import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive } from 'vue';
+import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive, defineExpose } from 'vue';
 import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
@@ -620,14 +620,19 @@ const syncUpload = async () => {
 
     // 刷新数据
     await store.dispatch('refreshStructTreeData');
-    ElMessage.success('同步成功');
+    return true; // 返回成功状态
   } catch (error) {
     console.error('同步失败:', error);
-    ElMessage.error('同步失败: ' + error.message);
+    throw error; // 向上传递错误
   } finally {
     loadingInstance.close();
   }
 };
+
+// 将syncUpload方法暴露给父组件
+defineExpose({
+  syncUpload
+});
 
 // 辅助函数：判断给定的 errorIdx 是否为异常
 function isAnomaly(idx, channelKey) {
