@@ -754,7 +754,7 @@ const syncUpload = async () => {
   }
 
   .two_left {
-    flex: 1;
+    flex: 1.5;
     position: relative;
     width: 100%;
   }

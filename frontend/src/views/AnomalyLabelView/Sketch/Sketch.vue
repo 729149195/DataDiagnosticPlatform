@@ -86,13 +86,8 @@
     <!-- 绘图区域 -->
     <div class="sketch-container">
       <div class="canvas-container">
-        <canvas 
-          ref="canvas"
-          @touchstart.passive="onCanvasTouch"
-          @touchmove.passive="onCanvasTouch"
-          @touchend.passive="onCanvasTouch"
-          @touchcancel.passive="onCanvasTouch"
-        ></canvas>
+        <!-- 使用SVG替代Canvas作为白板 -->
+        <svg ref="svgCanvas" class="whiteboard-svg"></svg>
         <div class="buttons">
           <el-button type="danger" class="clear-button" @click="clearCanvas">
             清除
@@ -100,42 +95,6 @@
           <el-button type="success" :icon="Search" @click="submitData" class="search-button">
             查询
           </el-button>
-          <!-- <el-button type="success" :icon="Search" @click="exportCurrentCurve" class="search-button">
-            导出当前曲线数据
-          </el-button> -->
-        </div>
-      </div>
-      <div class="controls-wrapper">
-        <div class="inputs-container">
-          <div class="input-row">
-            <div class="input-group">
-              <span class="input-label">开始:</span>
-              <el-input-number v-model="time_begin" :precision="4" :step="0.01" size="small" class="time-input" />
-            </div>
-            <div class="input-group">
-              <span class="input-label">持续:</span>
-              <el-input-number v-model="time_during" :precision="4" :step="0.01" size="small" class="time-input" />
-            </div>
-            <div class="input-group">
-              <span class="input-label">结束:</span>
-              <el-input-number v-model="time_end" :precision="4" :step="0.01" size="small" class="time-input" />
-            </div>
-          </div>
-
-          <div class="input-row">
-            <div class="input-group">
-              <span class="input-label">上界:</span>
-              <el-input-number v-model="upper_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
-            </div>
-            <div class="input-group">
-              <span class="input-label">幅度:</span>
-              <el-input-number v-model="scope_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
-            </div>
-            <div class="input-group">
-              <span class="input-label">下界:</span>
-              <el-input-number v-model="lower_bound" :precision="4" :step="0.01" size="small" class="bound-input" />
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -153,30 +112,19 @@ import {
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
-import paper from 'paper';
+import * as d3 from 'd3';
 import curveTemplates from '@/assets/templates/curveTemplates.json'
 import chartWorkerManager from '@/workers/chartWorkerManager';
 
 // 使用 Vuex store
 const store = useStore();
 
-// 绑定的值
-const templatavalue = ref('');
-const historyvalue = ref('');
-
 // 选中的炮号数组
 const selectedGunNumbers = ref([]);
-const smoothness = computed(() => store.state.smoothness);
 const sampling = computed(() => store.state.sampling);
 
 // 从 Vuex 获取 selectedChannels
 const selectedChannels = computed(() => store.state.selectedChannels);
-
-// 历史选项
-const historys = [
-  { value: 'Option1', label: '历史1' },
-  { value: 'Option2', label: '历史2' },
-];
 
 // 模板选项
 const selectedTemplate = ref(null);
@@ -202,418 +150,310 @@ const selectV2Options = computed(() => {
   }));
 });
 
-// 其他绑定的值
-const brush_begin = computed(() => store.state.brush_begin);
-const brush_end = computed(() => store.state.brush_end);
-const time_begin = computed({
-  get: () => store.state.time_begin,
-  set: (value) => {
-    store.dispatch('updateTimeBegin', value);
-    // 移除不必要的重新渲染
-  }
-});
-const time_during = computed({
-  get: () => store.state.time_during,
-  set: (value) => {
-    store.dispatch('updateTimeDuring', value);
-    // 移除不必要的重新渲染
-  }
-});
-const time_end = computed({
-  get: () => store.state.time_end,
-  set: (value) => {
-    store.dispatch('updateTimeEnd', value);
-    // 移除不必要的重新渲染
-  }
-});
-const upper_bound = computed({
-  get: () => store.state.upper_bound,
-  set: (value) => {
-    store.dispatch('updateUpperBound', value);
-    // 移除不必要的重新渲染
-  }
-});
-const scope_bound = computed({
-  get: () => store.state.scope_bound,
-  set: (value) => {
-    store.dispatch('updateScopeBound', value);
-    // 移除不必要的重新渲染
-  }
-});
-const lower_bound = computed({
-  get: () => store.state.lower_bound,
-  set: (value) => {
-    store.dispatch('updateLowerBound', value);
-    // 移除不必要的重新渲染
-  }
-});
+// ----------- 白板绘图逻辑开始 -----------
 
-// ----------- 画绘图逻辑开始 -----------
-
-class DrawingApp {
-  constructor(canvasElement) {
-    // Note: 已知问题 - paper.js 会触发 passive event listener 警告
-    // 这是由于 paper.js 内部实现导致的，不影响功能使用
-    this.canvas = canvasElement;
-    // 确保先清理之前的项目工具
-    if (paper.project) {
-      paper.project.remove();
-    }
-    if (paper.tools) {
-      paper.tools.forEach(tool => tool.remove());
-    }
-
-    // 设置 paper.js 的全局配置
-    paper.settings.handleSize = 8;
-    paper.settings.hitTolerance = 8;
-
-    // 重新初始化 paper
-    paper.setup(this.canvas);
-    this.project = paper.project;
-
-    // 设置视图配置
-    paper.view.settings = {
-      ...paper.view.settings,
-      handleSize: 8,
-      hitTolerance: 8
-    };
-
-    this.size = { width: paper.view.size.width, height: paper.view.size.height };
-    this.hitOptions = {
-      segments: true,
-      stroke: true,
-      handles: true,
-      tolerance: 5,
-      guides: false,
-    };
-    this.path = null;
-    this.isDrawing = false;
-    this.segment = null;
-    this.handle = null;
-
-    this.gridGroup = new paper.Group();
-
-    // 移除触摸事件相关的绑定
-    this.onMouseDown = this.onMouseDown.bind(this);
-    this.onMouseDrag = this.onMouseDrag.bind(this);
-    this.onMouseUp = this.onMouseUp.bind(this);
-
-    this.setupTool();
-    this.drawGrid();
-
-    window.addEventListener('resize', this.resizeCanvas.bind(this));
-
-    // 添加一个标志来追踪是否已经初始化
-    this.isInitialized = false;
-  }
-
-  setupTool() {
-    if (this.tool) {
-      this.tool.remove();
-    }
-    this.tool = new paper.Tool();
-    this.tool.activate();
+class WhiteboardApp {
+  constructor(svgElement) {
+    this.svg = d3.select(svgElement);
+    this.width = svgElement.clientWidth;
+    this.height = svgElement.clientHeight;
     
-    // 只处理鼠标事件
-    this.tool.onMouseDown = this.onMouseDown;
-    this.tool.onMouseDrag = this.onMouseDrag;
-    this.tool.onMouseUp = this.onMouseUp;
+    // 创建网格线组
+    this.gridGroup = this.svg.append('g').attr('class', 'grid-group');
+    
+    // 创建绘图组
+    this.drawingGroup = this.svg.append('g').attr('class', 'drawing-group');
+    
+    // 创建路径生成器
+    this.line = d3.line()
+      .x(d => d.x)
+      .y(d => d.y)
+      .curve(d3.curveCatmullRom.alpha(0.5));
+    
+    // 当前绘制的路径
+    this.currentPath = null;
+    this.pathData = [];
+    
+    // 设置事件监听
+    this.setupEvents();
+    
+    // 绘制网格线
+    this.drawGrid();
+    
+    // 添加窗口大小变化监听
+    window.addEventListener('resize', this.resizeCanvas.bind(this));
   }
-
-  onMouseDown(event) {
-    this.segment = null;
-    this.handle = null;
-
-    let hitResult = this.project.hitTest(event.point, this.hitOptions);
-
-    if (hitResult && hitResult.item) {
-      // 用户点击了一个目
-      let clickedPath = hitResult.item;
-      if (!(clickedPath instanceof paper.Path)) {
-        // 果点击不是 Path，而是其子项
-        clickedPath = clickedPath.parent;
-      }
-
-      if (clickedPath === this.path) {
-        // 进入编辑模式
-        this.path.fullySelected = true;
-
-        if (hitResult.type === 'segment') {
-          if (event.modifiers.alt) {
-            // 删除点
-            hitResult.segment.remove();
-            paper.view.update();
-          } else {
-            // 移动点
-            this.segment = hitResult.segment;
-          }
-        } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
-          // 移动控制柄
-          this.segment = hitResult.segment;
-          this.handle = hitResult.type === 'handle-in' ? 'handleIn' : 'handleOut';
-        } else if (hitResult.type === 'stroke' && event.modifiers.shift) {
-          // 添加点
-          const location = hitResult.location;
-          let newSegment = this.path.insert(location.index + 1, event.point);
-          this.segment = newSegment;
-        }
-      } else {
-        // 点击了其他项目，但只允许一个路径存在
-        console.log('Clicked on another item, but only one path is allowed.');
-      }
-    } else {
-      // 点击了空白区域
-      if (!this.path) {
-        // 开始新的绘制
-        this.isDrawing = true;
-        this.path = new paper.Path();
-        this.path.strokeColor = 'black';
-        this.path.strokeWidth = 6;
-        this.path.strokeCap = 'round';
-        this.path.strokeJoin = 'round';
-        this.path.fullySelected = false;
-
-        // 添加第个点
-        this.previousPoint = event.point.clone();
-        this.path.add(this.previousPoint);
-      } else {
-        console.log('Path already exists, cannot start a new one.');
-      }
-    }
+  
+  setupEvents() {
+    // 鼠标事件
+    this.svg
+      .on('mousedown', (event) => this.onMouseDown(event))
+      .on('mousemove', (event) => this.onMouseMove(event))
+      .on('mouseup', () => this.onMouseUp())
+      .on('mouseleave', () => this.onMouseUp());
+      
+    // 触摸事件
+    this.svg.node()
+      .addEventListener('touchstart', (event) => this.onTouchStart(event), { passive: true });
+    this.svg.node()
+      .addEventListener('touchmove', (event) => this.onTouchMove(event), { passive: true });
+    this.svg.node()
+      .addEventListener('touchend', () => this.onTouchEnd(), { passive: true });
+    this.svg.node()
+      .addEventListener('touchcancel', () => this.onTouchEnd(), { passive: true });
   }
-
-  onMouseDrag(event) {
-    if (this.isDrawing) {
-      const newPoint = event.point.clone();
-
-      // x 轴递增约束
-      if (newPoint.x >= this.previousPoint.x) {
-        this.path.add(newPoint);
-        this.previousPoint = newPoint.clone();
-        paper.view.update();
-      }
-    } else if (this.segment) {
-      if (this.handle) {
-        // 移动控制柄
-        this.segment[this.handle] = this.segment[this.handle].add(event.delta);
-      } else {
-        // 移动点
-        this.segment.point = this.segment.point.add(event.delta);
-      }
-      paper.view.update();
-    }
-  }
-
-  onMouseUp(event) {
-    if (this.isDrawing) {
-      this.isDrawing = false;
-      // 绘制完成后，对曲线进行平滑处理
-      this.path.simplify();
-      this.path.smooth({ type: 'catmull-rom', factor: 0.5 });
-      this.path.fullySelected = true; // 显示控制柄
-      paper.view.update();
-    }
-
-    // 重选中的段和控制柄
-    this.segment = null;
-    this.handle = null;
-  }
-
+  
   drawGrid() {
-    this.gridGroup.removeChildren();
+    // 清除现有网格
+    this.gridGroup.selectAll('*').remove();
+    
+    // 获取当前尺寸
+    this.width = this.svg.node().clientWidth;
+    this.height = this.svg.node().clientHeight;
+    
+    // 网格间距
     const gridSpacing = 20;
-
+    
     // 计算中心点
-    const centerX = this.size.width / 2;
-    const centerY = this.size.height / 2;
+    const centerX = this.width / 2;
+    const centerY = this.height / 2;
+    
     // 计算最大距离（从中心点到最远角落的距离）
-    const maxDistance = Math.sqrt(Math.pow(this.size.width, 2) + Math.pow(this.size.height, 2)) / 2;
-
+    const maxDistance = Math.sqrt(Math.pow(this.width, 2) + Math.pow(this.height, 2)) / 2;
+    
     // 绘制垂直线
-    for (let x = 0; x <= this.size.width; x += gridSpacing) {
-      const path = new paper.Path.Line({
-        from: [x, 0],
-        to: [x, this.size.height],
-        strokeWidth: 1,
-      });
-
+    for (let x = 0; x <= this.width; x += gridSpacing) {
       // 计算当前线到中心的距离
       const distanceFromCenter = Math.abs(x - centerX);
       // 计算透明度（距离中心越远越透明）
       const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-
-      path.strokeColor = new paper.Color(0, 0, 0, opacity);
-      path.guide = true;
-      this.gridGroup.addChild(path);
+      
+      this.gridGroup.append('line')
+        .attr('x1', x)
+        .attr('y1', 0)
+        .attr('x2', x)
+        .attr('y2', this.height)
+        .attr('stroke', 'black')
+        .attr('stroke-width', 1)
+        .attr('opacity', opacity);
     }
-
+    
     // 绘制水平线
-    for (let y = 0; y <= this.size.height; y += gridSpacing) {
-      const path = new paper.Path.Line({
-        from: [0, y],
-        to: [this.size.width, y],
-        strokeWidth: 1,
-      });
-
+    for (let y = 0; y <= this.height; y += gridSpacing) {
       // 计算当前线到中心的距离
       const distanceFromCenter = Math.abs(y - centerY);
       // 计算透明度（距离中心越远越透明）
       const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-
-      path.strokeColor = new paper.Color(0, 0, 0, opacity);
-      path.guide = true;
-      this.gridGroup.addChild(path);
+      
+      this.gridGroup.append('line')
+        .attr('x1', 0)
+        .attr('y1', y)
+        .attr('x2', this.width)
+        .attr('y2', y)
+        .attr('stroke', 'black')
+        .attr('stroke-width', 1)
+        .attr('opacity', opacity);
     }
-
-    this.gridGroup.sendToBack();
-    paper.view.update();
   }
-
+  
   resizeCanvas() {
-    if (this.canvas) {
-      this.canvas.width = this.canvas.parentElement.clientWidth;
-      this.canvas.height = this.canvas.parentElement.clientHeight;
-      paper.view.viewSize = new paper.Size(this.canvas.width, this.canvas.height);
-      this.size.width = paper.view.size.width;
-      this.size.height = paper.view.size.height;
-
-      this.drawGrid();
-    }
-  }
-
-  clear() {
-    if (this.path) {
-      this.path.remove();
-      this.path = null;
-    }
+    // 更新尺寸
+    this.width = this.svg.node().clientWidth;
+    this.height = this.svg.node().clientHeight;
     
-    // 只有在未初始化时才重新设置工具和网格
-    if (!this.isInitialized) {
-      if (this.tool) {
-        this.tool.remove();
-      }
-      if (paper.project) {
-        paper.project.clear();
-        this.gridGroup = new paper.Group();
-        this.drawGrid();
-        this.setupTool();
-        paper.view.update();
-      }
-      this.isInitialized = true;
+    // 重绘网格
+    this.drawGrid();
+  }
+  
+  onMouseDown(event) {
+    // 开始绘制
+    this.isDrawing = true;
+    
+    // 获取鼠标位置
+    const [x, y] = d3.pointer(event);
+    
+    // 创建新路径
+    this.pathData = [{ x, y }];
+    this.previousPoint = { x, y };
+    
+    this.currentPath = this.drawingGroup.append('path')
+      .datum(this.pathData)
+      .attr('d', this.line)
+      .attr('fill', 'none')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 6)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round');
+  }
+  
+  onMouseMove(event) {
+    if (!this.isDrawing) return;
+    
+    // 获取鼠标位置
+    const [x, y] = d3.pointer(event);
+    
+    // x 轴递增约束
+    if (x >= this.previousPoint.x) {
+      this.pathData.push({ x, y });
+      this.previousPoint = { x, y };
+      
+      // 更新路径
+      this.currentPath.datum(this.pathData).attr('d', this.line);
     }
   }
-
+  
+  onMouseUp() {
+    this.isDrawing = false;
+  }
+  
+  onTouchStart(event) {
+    if (event.touches.length !== 1) return;
+    
+    // 阻止默认行为
+    event.preventDefault();
+    
+    const touch = event.touches[0];
+    const rect = this.svg.node().getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    
+    // 开始绘制
+    this.isDrawing = true;
+    
+    // 创建新路径
+    this.pathData = [{ x, y }];
+    this.previousPoint = { x, y };
+    
+    this.currentPath = this.drawingGroup.append('path')
+      .datum(this.pathData)
+      .attr('d', this.line)
+      .attr('fill', 'none')
+      .attr('stroke', 'black')
+      .attr('stroke-width', 6)
+      .attr('stroke-linecap', 'round')
+      .attr('stroke-linejoin', 'round');
+  }
+  
+  onTouchMove(event) {
+    if (!this.isDrawing || event.touches.length !== 1) return;
+    
+    // 阻止默认行为
+    event.preventDefault();
+    
+    const touch = event.touches[0];
+    const rect = this.svg.node().getBoundingClientRect();
+    const x = touch.clientX - rect.left;
+    const y = touch.clientY - rect.top;
+    
+    // x 轴递增约束
+    if (x >= this.previousPoint.x) {
+      this.pathData.push({ x, y });
+      this.previousPoint = { x, y };
+      
+      // 更新路径
+      this.currentPath.datum(this.pathData).attr('d', this.line);
+    }
+  }
+  
+  onTouchEnd() {
+    this.isDrawing = false;
+  }
+  
+  clear() {
+    // 清除所有绘制的路径
+    this.drawingGroup.selectAll('*').remove();
+    this.pathData = [];
+    this.currentPath = null;
+  }
+  
   destroy() {
-    if (this.tool) {
-      this.tool.remove();
-    }
-    if (paper.project) {
-      paper.project.remove();
-    }
-    window.removeEventListener('resize', this.resizeCanvas.bind(this));
+    // 移除事件监听
+    this.svg
+      .on('mousedown', null)
+      .on('mousemove', null)
+      .on('mouseup', null)
+      .on('mouseleave', null);
+      
+    this.svg.node().removeEventListener('touchstart', this.onTouchStart);
+    this.svg.node().removeEventListener('touchmove', this.onTouchMove);
+    this.svg.node().removeEventListener('touchend', this.onTouchEnd);
+    this.svg.node().removeEventListener('touchcancel', this.onTouchEnd);
+    
+    window.removeEventListener('resize', this.resizeCanvas);
+    
+    // 清除所有内容
+    this.svg.selectAll('*').remove();
   }
-
+  
   getPathsData() {
     // 获取路径的数据
-    if (this.path) {
-      return this.path.segments.map((segment) => ({
-        x: segment.point.x,
-        y: segment.point.y,
+    return this.pathData.map(point => ({
+      x: point.x,
+      y: point.y
+    }));
+  }
+  
+  loadTemplate(templatePoints) {
+    // 清除现有路径
+    this.clear();
+    
+    if (templatePoints && templatePoints.length > 0) {
+      // 创建新路径
+      this.pathData = templatePoints.map(point => ({
+        x: point.x,
+        y: point.y
       }));
-    } else {
-      return [];
-    }
-  }
-
-  // 修改触摸事件处理方法
-  onTouchStart(event) {
-    if (event.touches.length === 1) {
-      const touch = event.touches[0];
-      const rect = this.canvas.getBoundingClientRect();
-      const point = new paper.Point(
-        touch.clientX - rect.left,
-        touch.clientY - rect.top
-      );
       
-      // 调用现有的鼠标事件处理逻辑
-      this.onMouseDown({
-        point: point,
-        modifiers: {
-          alt: false,
-          shift: false
-        }
-      });
+      this.currentPath = this.drawingGroup.append('path')
+        .datum(this.pathData)
+        .attr('d', this.line)
+        .attr('fill', 'none')
+        .attr('stroke', 'black')
+        .attr('stroke-width', 6)
+        .attr('stroke-linecap', 'round')
+        .attr('stroke-linejoin', 'round');
     }
-  }
-
-  onTouchMove(event) {
-    if (event.touches.length === 1) {
-      const touch = event.touches[0];
-      const rect = this.canvas.getBoundingClientRect();
-      const point = new paper.Point(
-        touch.clientX - rect.left,
-        touch.clientY - rect.top
-      );
-      
-      // 调用现有的鼠标事件处理逻辑
-      this.onMouseDrag({
-        point: point,
-        delta: this.previousPoint ? point.subtract(this.previousPoint) : new paper.Point(0, 0)
-      });
-      
-      this.previousPoint = point;
-    }
-  }
-
-  onTouchEnd(event) {
-    // 调用现有的鼠标事件处理逻辑
-    this.onMouseUp();
-    this.previousPoint = null;
   }
 }
 
-let drawingApp = null;
+let whiteboardApp = null;
 
-// 引用画布
-const canvas = ref(null);
+// 引用SVG元素
+const svgCanvas = ref(null);
 
 // 键盘事件处理函数
 const handleKeyDown = (e) => {
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    // 删除选中的路径或点
-    if (drawingApp && drawingApp.path) {
-      const selectedItems = drawingApp.project.selectedItems;
-      if (selectedItems.length > 0) {
-        selectedItems.forEach((item) => {
-          item.remove();
-        });
-        drawingApp.path = null;
-        paper.view.update();
-      }
-    }
+    clearCanvas();
   }
 };
 
 // 生命周期钩子
 onMounted(() => {
-  if (canvas.value) {
+  if (svgCanvas.value) {
     // 确保之前的实例被完全清理
-    if (drawingApp) {
-      drawingApp.destroy();
-      drawingApp = null;
+    if (whiteboardApp) {
+      whiteboardApp.destroy();
+      whiteboardApp = null;
     }
     // 创建新实例
-    drawingApp = new DrawingApp(canvas.value);
+    whiteboardApp = new WhiteboardApp(svgCanvas.value);
   }
 
   // 监听键盘事件
   window.addEventListener('keydown', handleKeyDown);
+  
+  // 初始化分组全选状态
+  selectV2Options.value.forEach(group => {
+    groupSelectAll.value[group.value] = false;
+  });
+  allSelected.value = false;
 });
 
 onBeforeUnmount(() => {
-  if (drawingApp) {
-    drawingApp.destroy();
-    drawingApp = null;
+  if (whiteboardApp) {
+    whiteboardApp.destroy();
+    whiteboardApp = null;
   }
   // 移除全局键盘事件监听器
   window.removeEventListener('keydown', handleKeyDown);
@@ -622,7 +462,7 @@ onBeforeUnmount(() => {
 // 提交数据函数
 const submitData = async () => {
   const channelDataCache = store.state.channelDataCache;
-  const rawQueryPattern = drawingApp ? drawingApp.getPathsData() : [];
+  const rawQueryPattern = whiteboardApp ? whiteboardApp.getPathsData() : [];
 
   if (rawQueryPattern.length > 0) {
     // 归一化查询模式的 x 和 y 值
@@ -709,8 +549,8 @@ const submitData = async () => {
 
 // 修改清除画布函数
 const clearCanvas = () => {
-  if (drawingApp) {
-    drawingApp.clear();
+  if (whiteboardApp) {
+    whiteboardApp.clear();
     // 清 store 中的匹配结果
     store.dispatch('clearMatchedResults');
   }
@@ -718,39 +558,18 @@ const clearCanvas = () => {
 
 // 导出当前曲线数据到控制台
 const exportCurrentCurve = () => {
-  if (drawingApp) {
+  if (whiteboardApp) {
     console.log(JSON.stringify({
       name: "新模板",
-      points: drawingApp.getPathsData()
+      points: whiteboardApp.getPathsData()
     }, null, 2));
   }
 }
 
 // 加载选中的模板
 const loadTemplate = (template) => {
-  if (drawingApp && template && template.points) {
-    // 清除前的路径
-    drawingApp.clear();
-    
-    // 创建新路径
-    drawingApp.path = new paper.Path();
-    drawingApp.path.strokeColor = 'black';
-    drawingApp.path.strokeWidth = 6;
-    drawingApp.path.strokeCap = 'round';
-    drawingApp.path.strokeJoin = 'round';
-    
-    // 直接添加模板中的点
-    template.points.forEach(point => {
-      drawingApp.path.add(new paper.Point(point.x, point.y));
-    });
-    
-    // 平滑处理
-    drawingApp.path.simplify();
-    drawingApp.path.smooth({ type: 'catmull-rom', factor: 0.5 });
-    drawingApp.path.fullySelected = true;
-    
-    // 更新图
-    paper.view.update();
+  if (whiteboardApp && template && template.points) {
+    whiteboardApp.loadTemplate(template.points);
   }
 }
 
@@ -851,50 +670,6 @@ watch(selectedGunNumbers, (newVal) => {
   allSelected.value = allOptions.length > 0 && 
     allOptions.every(value => newVal.includes(value));
 });
-
-// 修改原有的 onMounted，增加全选状态的初始化
-onMounted(() => {
-  selectV2Options.value.forEach(group => {
-    groupSelectAll.value[group.value] = false;
-  });
-  allSelected.value = false;
-});
-
-// 修改触摸事件处理函数
-const onCanvasTouch = (event) => {
-  if (!drawingApp) return;
-  
-  // 将触摸事件转换为鼠标事件
-  const touch = event.touches?.[0] || event.changedTouches?.[0];
-  if (!touch) return;
-  
-  const rect = canvas.value.getBoundingClientRect();
-  const point = new paper.Point(
-    touch.clientX - rect.left,
-    touch.clientY - rect.top
-  );
-  
-  // 根据事件类型调用相应的处理函数
-  switch (event.type) {
-    case 'touchstart':
-      drawingApp.onMouseDown({ point });
-      break;
-    case 'touchmove':
-      drawingApp.onMouseDrag({ 
-        point,
-        delta: drawingApp.previousPoint ? 
-          point.subtract(drawingApp.previousPoint) : 
-          new paper.Point(0, 0)
-      });
-      drawingApp.previousPoint = point;
-      break;
-    case 'touchend':
-    case 'touchcancel':
-      drawingApp.onMouseUp();
-      drawingApp.previousPoint = null;
-      break;
-  }
-};
 </script>
 
 <style scoped>
@@ -906,7 +681,7 @@ const onCanvasTouch = (event) => {
 }
 
 .header {
-  padding: 5px 0;
+  padding: 0px 0 5px 0;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -958,12 +733,13 @@ const onCanvasTouch = (event) => {
   isolation: isolate;
 }
 
-canvas {
+.whiteboard-svg {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  background-color: white;
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -974,53 +750,9 @@ canvas {
   isolation: isolate;
 }
 
-.controls-wrapper {
-  flex-shrink: 0;
-  padding: 8px;
-  background-color: #fff;
-}
-
-.inputs-container {
-  position: relative;
-}
-
-.input-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 8px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
-  gap: 12px;
-}
-
-.input-row+.input-row {
-  margin-top: 8px;
-}
-
-.input-group {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-}
-
-.input-label {
-  margin-right: 8px;
-  color: #606266;
-  font-size: 14px;
-  white-space: nowrap;
-  width: 40px;
-}
-
-.time-input,
-.bound-input {
-  flex: 1;
-  width: 100%;
-}
-
 .buttons {
   position: absolute;
-  bottom: 0px;
+  bottom: 6px;
   right: 6px;
 }
 
@@ -1029,13 +761,10 @@ canvas {
 }
 
 .title {
-  color: #999;
-}
-
-.template-controls {
-  margin-bottom: 16px;
-  display: flex;
-  gap: 16px;
+  color: #333;
+  font-weight: bold;
+  font-size: 12pt;
+  margin-left: 5px;
 }
 
 .template-preview {

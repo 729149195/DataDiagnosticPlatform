@@ -1,7 +1,7 @@
 <template>
   <span style="display: flex; align-items: center; justify-content: space-between;">
     <span class="title">自动识别和人工标注结果</span>
-    <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend">
+    <!-- <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend"> -->
     <div>
       <el-dropdown trigger="click" @command="handleHeatmapExport">
         <el-button type="primary" style="margin-right: 10px;">
