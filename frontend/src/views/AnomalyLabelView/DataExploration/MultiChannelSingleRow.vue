@@ -2556,7 +2556,7 @@ const confirmChannelSelection = () => {
 .legend-container {
   position: absolute;
   top: 40px;
-  right: 30px;
+  right: 40px;
   z-index: 999;
   min-width: 100px;
   max-width: 200px;
