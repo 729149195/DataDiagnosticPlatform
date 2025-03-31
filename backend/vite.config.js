@@ -18,8 +18,8 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     https: {
-      key: './10.1.108.19+3-key.pem',  // 私钥路径
-      cert: './10.1.108.19+3.pem'      // 证书路径
+      key: './10.1.108.231+3-key.pem',  // 私钥路径
+      cert: './10.1.108.231+3.pem'      // 证书路径
     }
   },
   worker: {

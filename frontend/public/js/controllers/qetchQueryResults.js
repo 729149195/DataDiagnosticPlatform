@@ -44,7 +44,7 @@ QetchQuery.controller('QetchQuery_ResultsCntrl',
     $scope.changeColumnOrdering = function (columnName) {
       var columnIndex = -1;
       for (var i = 0; i < $scope.orderingColumns.length; i++) {
-        if ($scope.orderingColumns[i].substr(1) === columnName) {
+        if ($scope.orderingColumns[i].substring(1) === columnName) {
           columnIndex = i;
           break;
         }
@@ -53,7 +53,7 @@ QetchQuery.controller('QetchQuery_ResultsCntrl',
       if (columnIndex == -1) {
         $scope.orderingColumns.unshift('-' + columnName);
       } else if (columnIndex == 0) {
-        $scope.orderingColumns[0] = ($scope.orderingColumns[0].substr(0, 1) == '-' ? '+' : '-') + $scope.orderingColumns[0].substr(1);
+        $scope.orderingColumns[0] = ($scope.orderingColumns[0].substring(0, 1) == '-' ? '+' : '-') + $scope.orderingColumns[0].substring(1);
       } else {
         $scope.orderingColumns.splice(columnIndex);
         $scope.orderingColumns.unshift('-' + columnName);
@@ -61,11 +61,11 @@ QetchQuery.controller('QetchQuery_ResultsCntrl',
     };
 
     $scope.getLastOrderingColumn = function () {
-      return $scope.orderingColumns[0].substr(1);
+      return $scope.orderingColumns[0].substring(1);
     };
 
     $scope.getLastOrderingColumnSign = function () {
-      return $scope.orderingColumns[0].substr(0,1);
+      return $scope.orderingColumns[0].substring(0,1);
     };
 
     $scope.getSeriesName = function (snum) {

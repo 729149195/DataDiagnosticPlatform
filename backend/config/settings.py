@@ -33,8 +33,8 @@ CSRF_COOKIE_SECURE = True
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 本地开发配置 HTTPS 证书路径
-DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.19+3.pem')  # 证书路径
-DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.19+3-key.pem')  # 私钥路径
+DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.231+3.pem')  # 证书路径
+DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.231+3-key.pem')  # 私钥路径
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
@@ -92,8 +92,10 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8080',
     'http://localhost:5173',
     'http://192.168.21.179:5173',
-    'https://10.1.108.19:5173',
-    'http://10.1.108.19:5173'
+    'https://10.1.108.231:5173',
+    'http://10.1.108.231:5173',
+    'https://10.1.108.231:5173',
+    'http://10.1.108.231:5173' 
 ]
 
 CORS_ALLOW_METHODS = [
@@ -189,6 +191,13 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # Default primary key field type
+# https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+
+t primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

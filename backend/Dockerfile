@@ -7,4 +7,4 @@ RUN pip install -r /app/requirements.txt
 COPY . /app
 EXPOSE 5000
 
-CMD ["python", "manage.py", "runserver_plus", "--cert-file=10.1.108.19+3.pem", , "--key-file=10.1.108.19+3-key.pem", "0.0.0.0:5000"]
+CMD ["python", "manage.py", "runserver_plus", "--cert-file=10.1.108.231+3.pem", , "--key-file=10.1.108.231+3-key.pem", "0.0.0.0:5000"]

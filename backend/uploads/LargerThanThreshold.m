@@ -1,9 +1,17 @@
 function result = LargerThanThreshold(channel_key, threshold)
     % Read JSON data from file based on channel_key
     % Assuming channel_key is the filename
-    url = sprintf('http://localhost:5000/api/channel-data?channel_key=%s', channel_key);
-    options = weboptions('ContentType', 'json');
-    json_data = webread(url, options);
+    % 动态生成 URL 和查询参数
+    % url = sprintf('https://localhost:5000/api/channel-data/?channel_key=%s', channel_key);
+    
+    % 设置请求选项
+    % options = weboptions('ContentType', 'json');
+    
+    % 发送 GET 请求
+    %json_data = webread(url, options);
+    %fprintf('运行时间：%.4f 秒\n', elapsedTime);
+    json_data = channel_key
+
     % Extract X_value and Y_value from the JSON data
     X_value = json_data.X_value;
     Y_value = json_data.Y_value;

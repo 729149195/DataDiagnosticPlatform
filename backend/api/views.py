@@ -6,6 +6,7 @@ import threading
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
+import MDSplus
 import numpy as np
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -15,7 +16,6 @@ from api.self_algorithm_utils import period_condition_anomaly, channel_read
 from api.utils import filter_range, merge_overlapping_intervals
 from api.Mds import MdsTree
 from api.verify_user import send_post_request
-from pymongo import MongoClient
 # import matplotlib.pyplot as plt
 
 class JsonEncoder(json.JSONEncoder):
@@ -92,7 +92,7 @@ def get_channel_data(request, channel_key=None):
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
             if '_' in channel_key:
-                channel_name, shot_number = channel_key.split('_', 1)
+                channel_name, shot_number = channel_key.rsplit('_', 1)
                 try:
                     num = int(channel_name)
                     channel_name, shot_number = shot_number, channel_name
@@ -142,6 +142,12 @@ def get_channel_data(request, channel_key=None):
             # 暂不确定通道位于哪个数据库中，（这个也需要记录在 struct-tree 里)
             # print(channel_type)
             print(channel_name)
+            if channel_name[:2] == 'TS':
+                conn = MDSplus.Connection('192.168.20.11')  # EXL50 database
+                conn.openTree('exl50u', shot_number)
+                c_n = f'EXL50U::TOP.AI:{channel_name}'
+                data = conn.get(r"\{}".format(c_n))
+                print(data)
             for DB in DB_list:
                 tree = MdsTree(shot_number, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
                 data_x, data_y, unit = tree.getData(channel_name)
@@ -200,6 +206,46 @@ def get_error_data(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+
+def submit_data(request):
+    try:
+        # 从请求中获取 JSON 数据
+        data = json.loads(request.body)
+
+        selected_channels = data.get('selectedChannels')
+        paths = data.get('paths')
+        brush_begin = data.get('brush_begin')
+        brush_end = data.get('brush_end')
+        time_begin = data.get('time_begin')
+        time_during = data.get('time_during')
+        time_end = data.get('time_end')
+        upper_bound = data.get('upper_bound')
+        scope_bound = data.get('scope_bound')
+        lower_bound = data.get('lower_bound')
+        smoothness = data.get('smoothness')
+        sampling = data.get('sampling')
+        print(data)
+        # plt.figure(figsize=(10, 8))
+    
+        # for subpath in paths:
+        #     x_coords = [point['x'] for point in subpath]
+        #     y_coords = [point['y'] for point in subpath]
+        #     plt.plot(x_coords, y_coords, marker='o', linestyle='-', label='路径')
+
+        # plt.title('路径绘制')
+        # plt.xlabel('X 坐标')
+        # plt.ylabel('Y 坐标')
+        # plt.legend()
+        # plt.grid(True)
+        # plt.axis('equal')  # 保持X和Y轴比例相同
+        # plt.show()
+        
+        
+
+
+        return JsonResponse({"message": "Data processing started"}, status=200)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 def process_channel_names(request):
     try:

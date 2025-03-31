@@ -193,7 +193,7 @@ const store = createStore({
     },
     updateChannelColor(state, { channel_key, color }) {
       const selectedChannel = state.selectedChannels.find(
-        (ch) => `${ch.channel_name}_${ch.shot_number}` === channel_key
+        (ch) => ch.channel_key === channel_key
       );
       if (selectedChannel) {
         selectedChannel.color = color;
@@ -488,7 +488,7 @@ const store = createStore({
   actions: {
     async fetchStructTree({ commit, dispatch }, indices = []) {
       try {
-        let url = "https://10.1.108.19:5000/api/struct-tree";
+        let url = "https://10.1.108.231:5000/api/struct-tree";
         if (indices.length > 0) {
           const indicesParam = indices.join(",");
           url += `?indices=${encodeURIComponent(indicesParam)}`;
@@ -600,7 +600,7 @@ const store = createStore({
     async refreshStructTreeData({ commit, dispatch }) {
       try {
         const response = await fetch(
-          "https://10.1.108.19:5000/api/struct-tree"
+          "https://10.1.108.231:5000/api/struct-tree"
         );
         const data = await response.json();
         commit("refreshStructTree", data);
@@ -680,7 +680,7 @@ const store = createStore({
       const requestPromise = new Promise(async (resolve, reject) => {
         try {
           const response = await axios.get(
-            `https://10.1.108.19:5000/api/channel-data/`,
+            `https://10.1.108.231:5000/api/channel-data/`,
             { params }
           );
           // 获取原始数据
@@ -798,7 +798,7 @@ const store = createStore({
 
             // 发送请求获取错误数据
             const response = await fetch(
-              `https://10.1.108.19:5000/api/error-data/?${new URLSearchParams(
+              `https://10.1.108.231:5000/api/error-data/?${new URLSearchParams(
                 params
               ).toString()}`
             );
@@ -1045,3 +1045,4 @@ function processData(rawData) {
 }
 
 export default store;
+ort default store;
