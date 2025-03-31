@@ -66,10 +66,10 @@ const highlightChannels = () => {
 
     const content = formulasarea.value;
     const channelIdentifiers = selectedChannels.value.map((channel) =>
-        `${channel.shot_number}_${channel.channel_name}`
+        `${channel.channel_name}_${channel.shot_number}`
     );
     const colors = selectedChannels.value.reduce((acc, channel) => {
-        acc[`${channel.shot_number}_${channel.channel_name}`] = channel.color;
+        acc[`${channel.channel_name}_${channel.shot_number}`] = channel.color;
         return acc;
     }, {});
 
@@ -121,40 +121,70 @@ const restoreCursorPosition = (element, cursorPosition) => {
 
 const sendClickedChannelNames = async () => {
     try {
-        console.log(selectedChannels.value)
+        // 调试信息：查看通道格式
+        console.log("要发送的公式:", formulasarea.value);
+        console.log("选中的通道:", selectedChannels.value);
+        
+        // 检查标识符格式
+        const channelIdentifiers = selectedChannels.value.map(channel => 
+            `${channel.channel_name}_${channel.shot_number}`);
+        console.log("通道标识符格式:", channelIdentifiers);
+        
         const response = await axios.post('https://10.1.108.231:5000/api/operator-strs/', {
             clickedChannelNames: formulasarea.value,
             anomaly_func_str: formulasarea.value,
-            channel_mess: selectedChannels.value[0], // 目前只做一个通道的情况
+            channel_mess: selectedChannels.value, // 修改为传递所有选中通道
         });
         console.log('Response from backend:', response.data);
         store.state.ErrorLineXScopes = response.data.data;
         store.commit('updateCalculateResult', response.data.data.result)
-        console.log('xxx')
     } catch (error) {
         console.error('Error sending data to backend:', error);
     }
 };
 
 const tokenizeContent = (content, channelIdentifiers) => {
+    if (!content) return [];
+    
+    // 对channelIdentifiers按长度降序排序，确保先匹配较长的标识符
+    const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
+    
+    // 运算符列表
+    const operators = ['+', '-', '*', '/', '(', ')'];
+    
     const tokens = [];
-    let index = 0;
-    while (index < content.length) {
+    let i = 0;
+    
+    while (i < content.length) {
+        // 先检查是否是通道标识符
         let matched = false;
-
-        for (const identifier of channelIdentifiers.sort((a, b) => b.length - a.length)) {
-            if (content.substr(index, identifier.length) === identifier) {
+        
+        for (const identifier of sortedIdentifiers) {
+            if (content.substring(i, i + identifier.length) === identifier) {
                 tokens.push(identifier);
-                index += identifier.length;
+                i += identifier.length;
                 matched = true;
                 break;
             }
         }
+        
+        // 如果不是通道标识符，再检查是否是运算符
         if (!matched) {
-            tokens.push(content[index]);
-            index++;
+            const char = content[i];
+            if (operators.includes(char)) {
+                tokens.push(char);
+                i++;
+            } else if (char.trim() === '') {
+                // 跳过空白字符
+                i++;
+            } else {
+                // 处理其他字符（可能是部分通道名称或函数名）
+                tokens.push(char);
+                i++;
+            }
         }
     }
+    
     return tokens;
 };
 
@@ -183,6 +213,10 @@ watch(
 watch(
     clickedChannelNames,
     async (newstr) => {
+        if (!newstr) return;
+        
+        console.log("接收到点击的通道标识符:", newstr);
+        
         const editableDiv = document.querySelector('.editable-div');
         if (!editableDiv) return;
 
@@ -218,7 +252,7 @@ watch(
 const onInput = (event) => {
     const newText = getPlainText(event.target);
     const channelIdentifiers = selectedChannels.value.map((channel) =>
-        `${channel.shot_number}_${channel.channel_name}`
+        `${channel.channel_name}_${channel.shot_number}`
     );
 
     // 如果新文本比之前的短，说明可能发生了删除操作
@@ -273,23 +307,31 @@ const clearFormulas = () => {
 
 // 在 script setup 部分添加一个新的辅助函数
 const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => {
-    for (const identifier of channelIdentifiers) {
+    console.log("查找位置:", position, "文本:", text);
+    console.log("可用通道标识符:", channelIdentifiers);
+    
+    // 按长度排序标识符，优先匹配较长的标识符
+    const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
+    
+    for (const identifier of sortedIdentifiers) {
         // 检查position是否在某个通道标识符的范围内
-        const index = text.indexOf(identifier);
         let currentIndex = 0;
         while (currentIndex < text.length) {
             const idx = text.indexOf(identifier, currentIndex);
             if (idx === -1) break;
             if (position >= idx && position < idx + identifier.length) {
-                return {
+                const result = {
                     identifier,
                     start: idx,
                     end: idx + identifier.length
                 };
+                console.log("找到标识符:", result);
+                return result;
             }
             currentIndex = idx + 1;
         }
     }
+    console.log("未找到标识符");
     return null;
 };
 

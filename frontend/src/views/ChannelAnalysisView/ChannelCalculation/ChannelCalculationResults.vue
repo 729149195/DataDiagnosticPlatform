@@ -145,210 +145,222 @@ const optimizeDataPoints = (xValues, yValues, maxPoints = 100000) => {
 };
 
 const drawChart = (xValues, yValues, channel, channelKey) => {
-    if (!xValues || xValues.length === 0 || !yValues || yValues.length === 0) {
-        console.error('Invalid data for drawing chart');
-        return;
-    }
+    try {
+        console.log('初始化图表，通道:', channel?.channel_name);
+        
+        if (!xValues || xValues.length === 0 || !yValues || yValues.length === 0) {
+            console.error('Invalid data for drawing chart');
+            return;
+        }
 
-    // 优化数据点数量
-    const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(xValues, yValues);
+        // 优化数据点数量
+        const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(xValues, yValues);
 
-    // 将X和Y值组合成Highcharts需要的格式
-    const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
+        // 将X和Y值组合成Highcharts需要的格式
+        const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
 
-    // 如果已经存在图表实例，则销毁它
-    if (chartInstance.value) {
-        chartInstance.value.destroy();
-    }
+        // 如果已经存在图表实例，则销毁它
+        if (chartInstance.value) {
+            chartInstance.value.destroy();
+        }
 
-    // 创建Highcharts配置 - 不使用全局配置，而是在每个实例中设置
-    const options = {
-        chart: {
-            renderTo: 'calculation-result-container', // 使用更具体的ID
-            type: 'line',
-            zoomType: 'xy', // 允许在x和y轴上进行选择缩放
-            panning: true,
-            panKey: 'shift',
-            animation: false, // 禁用动画提高性能
-            resetZoomButton: {
-                enabled: false,
-                theme: {
+        // 创建Highcharts配置 - 不使用全局配置，而是在每个实例中设置
+        const options = {
+            chart: {
+                renderTo: 'calculation-result-container', // 使用更具体的ID
+                type: 'line',
+                zoomType: 'xy', // 允许在x和y轴上进行选择缩放
+                panning: true,
+                panKey: 'shift',
+                animation: false, // 禁用动画提高性能
+                resetZoomButton: {
+                    enabled: false,
+                    theme: {
+                        style: {
+                            display: 'none'
+                        }
+                    },
+                    position: {
+                        x: -9999,
+                        y: -9999
+                    }
+                },
+                spacing: [10, 10, 30, 10], // 增加底部间距，为X轴标签留出空间
+                marginTop: 10,
+                marginBottom: 40, // 增加底部边距，确保X轴标签可见
+                marginLeft: 40, // 确保Y轴标签可见
+                marginRight: 20, // 右侧留出一些空间
+                events: {
+                    load: function () {
+                        const container = this.container;
+                        const chart = this;
+
+                        // 绑定双击事件，使用更高效的方式重置缩放
+                        container.ondblclick = function () {
+                            // 直接重置缩放，不使用动画
+                            chart.xAxis[0].setExtremes(null, null, false);
+                            chart.yAxis[0].setExtremes(null, null, false);
+                            chart.redraw(false); // 禁用动画加速重绘
+                        };
+                    }
+                }
+            },
+            // 使用实例配置而非全局配置
+            global: {
+                useUTC: false
+            },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true,
+                seriesThreshold: 1
+            },
+            title: {
+                text: '', // 不使用标题
+            },
+            xAxis: {
+                title: {
+                    text: ''
+                },
+                gridLineWidth: 1, // 恢复网格线
+                gridLineDashStyle: 'ShortDash', // 使用虚线样式
+                gridLineColor: '#e6e6e6', // 使用浅灰色
+                tickLength: 5,
+                lineColor: '#ccc',
+                lineWidth: 1,
+                labels: {
+                    enabled: true, // 确保标签启用
                     style: {
-                        display: 'none'
-                    }
-                },
-                position: {
-                    x: -9999,
-                    y: -9999
+                        fontSize: '11px',
+                        color: '#666'
+                    },
+                    y: 20 // 增加标签与轴的距离
                 }
             },
-            spacing: [10, 10, 30, 10], // 增加底部间距，为X轴标签留出空间
-            marginTop: 10,
-            marginBottom: 40, // 增加底部边距，确保X轴标签可见
-            marginLeft: 40, // 确保Y轴标签可见
-            marginRight: 20, // 右侧留出一些空间
-            events: {
-                load: function () {
-                    const container = this.container;
-                    const chart = this;
-
-                    // 绑定双击事件，使用更高效的方式重置缩放
-                    container.ondblclick = function () {
-                        // 直接重置缩放，不使用动画
-                        chart.xAxis[0].setExtremes(null, null, false);
-                        chart.yAxis[0].setExtremes(null, null, false);
-                        chart.redraw(false); // 禁用动画加速重绘
+            yAxis: {
+                title: {
+                    text: ''
+                },
+                gridLineWidth: 1, // 恢复网格线
+                gridLineDashStyle: 'ShortDash', // 使用虚线样式
+                gridLineColor: '#e6e6e6', // 使用浅灰色
+                tickLength: 5,
+                lineColor: '#ccc',
+                lineWidth: 1,
+                labels: {
+                    enabled: true, // 确保标签启用
+                    style: {
+                        fontSize: '11px',
+                        color: '#666'
+                    },
+                    align: 'right',
+                    x: -10 // 调整标签与轴的距离
+                }
+            },
+            boost: {
+                useGPUTranslations: true,
+                usePreallocated: true,
+                seriesThreshold: 1, // 启用boost模块的阈值
+                allowForce: true, // 强制使用boost模式
+                debug: {
+                    timeRendering: false,
+                    timeSeriesProcessing: false,
+                    timeSetup: false
+                }
+            },
+            tooltip: {
+                enabled: true,
+                formatter: function () {
+                    return `( ${this.x.toFixed(3)}, ${this.y.toFixed(3)} )`;
+                },
+                positioner: function (labelWidth, labelHeight, point) {
+                    return {
+                        x: point.plotX + this.chart.plotLeft - labelWidth / 2,
+                        y: point.plotY + this.chart.plotTop - labelHeight - 10
                     };
+                },
+                backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                borderWidth: 1,
+                borderColor: '#ccc',
+                shadow: false,
+                style: {
+                    fontSize: '12px',
+                    padding: '2px 5px'
                 }
-            }
-        },
-        // 使用实例配置而非全局配置
-        global: {
-            useUTC: false
-        },
-        boost: {
-            useGPUTranslations: true,
-            usePreallocated: true,
-            seriesThreshold: 1
-        },
-        title: {
-            text: '', // 不使用标题
-        },
-        xAxis: {
-            title: {
-                text: ''
             },
-            gridLineWidth: 1, // 恢复网格线
-            gridLineDashStyle: 'ShortDash', // 使用虚线样式
-            gridLineColor: '#e6e6e6', // 使用浅灰色
-            tickLength: 5,
-            lineColor: '#ccc',
-            lineWidth: 1,
-            labels: {
-                enabled: true, // 确保标签启用
-                style: {
-                    fontSize: '11px',
-                    color: '#666'
+            plotOptions: {
+                series: {
+                    animation: false, // 禁用系列动画
+                    enableMouseTracking: true,
+                    marker: {
+                        enabled: false
+                    },
+                    states: {
+                        hover: {
+                            enabled: false // 禁用悬停状态以提高性能
+                        }
+                    },
+                    turboThreshold: 0, // 取消默认的1000点限制
+                    findNearestPointBy: 'xy', // 优化点查找算法
+                    stickyTracking: false // 禁用粘性跟踪以提高性能
                 },
-                y: 20 // 增加标签与轴的距离
-            }
-        },
-        yAxis: {
-            title: {
-                text: ''
+                line: {
+                    lineWidth: 1.5
+                }
             },
-            gridLineWidth: 1, // 恢复网格线
-            gridLineDashStyle: 'ShortDash', // 使用虚线样式
-            gridLineColor: '#e6e6e6', // 使用浅灰色
-            tickLength: 5,
-            lineColor: '#ccc',
-            lineWidth: 1,
-            labels: {
-                enabled: true, // 确保标签启用
-                style: {
-                    fontSize: '11px',
-                    color: '#666'
-                },
-                align: 'right',
-                x: -10 // 调整标签与轴的距离
-            }
-        },
-        boost: {
-            useGPUTranslations: true,
-            usePreallocated: true,
-            seriesThreshold: 1, // 启用boost模块的阈值
-            allowForce: true, // 强制使用boost模式
-            debug: {
-                timeRendering: false,
-                timeSeriesProcessing: false,
-                timeSetup: false
-            }
-        },
-        tooltip: {
-            enabled: true,
-            formatter: function () {
-                return `( ${this.x.toFixed(3)}, ${this.y.toFixed(3)} )`;
+            legend: {
+                enabled: false  // 禁用默认图例
             },
-            positioner: function (labelWidth, labelHeight, point) {
-                return {
-                    x: point.plotX + this.chart.plotLeft - labelWidth / 2,
-                    y: point.plotY + this.chart.plotTop - labelHeight - 10
-                };
+            credits: {
+                enabled: false
             },
-            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            borderWidth: 1,
-            borderColor: '#ccc',
-            shadow: false,
-            style: {
-                fontSize: '12px',
-                padding: '2px 5px'
-            }
-        },
-        plotOptions: {
-            series: {
-                animation: false, // 禁用系列动画
-                enableMouseTracking: true,
-                marker: {
-                    enabled: false
-                },
-                states: {
-                    hover: {
-                        enabled: false // 禁用悬停状态以提高性能
+            accessibility: {
+                enabled: false // 禁用无障碍功能，避免相关错误
+            },
+            series: [{
+                id: CHART_INSTANCE_ID, // 添加唯一ID，避免与其他图表冲突
+                name: channel?.channel_name || '',
+                color: channel?.color || 'steelblue',
+                data: seriesData,
+                boostThreshold: 1, // 当数据点超过1000时启用boost
+                lineWidth: 1.5,
+                animation: false // 禁用动画
+            }]
+        };
+
+        // 创建图表 - 使用try/catch捕获可能的错误
+        try {
+            chartInstance.value = new Highcharts.Chart(options);
+            
+            // 确保图表完全渲染后轴标签可见
+            setTimeout(() => {
+                if (chartInstance.value) {
+                    try {
+                        // 强制更新轴以确保标签可见
+                        chartInstance.value.xAxis[0].update({
+                            labels: {
+                                enabled: true,
+                                y: 20
+                            }
+                        }, false);
+
+                        chartInstance.value.yAxis[0].update({
+                            labels: {
+                                enabled: true
+                            }
+                        }, false);
+
+                        chartInstance.value.redraw(false);
+                    } catch (error) {
+                        console.error("更新轴标签时出错:", error);
                     }
-                },
-                turboThreshold: 0, // 取消默认的1000点限制
-                findNearestPointBy: 'xy', // 优化点查找算法
-                stickyTracking: false // 禁用粘性跟踪以提高性能
-            },
-            line: {
-                lineWidth: 1.5
-            }
-        },
-        legend: {
-            enabled: false  // 禁用默认图例
-        },
-        credits: {
-            enabled: false
-        },
-        accessibility: {
-            enabled: false // 禁用无障碍功能，避免相关错误
-        },
-        series: [{
-            id: CHART_INSTANCE_ID, // 添加唯一ID，避免与其他图表冲突
-            name: channel?.channel_name || '',
-            color: channel?.color || 'steelblue',
-            data: seriesData,
-            boostThreshold: 1, // 当数据点超过1000时启用boost
-            lineWidth: 1.5,
-            animation: false // 禁用动画
-        }]
-    };
-
-    // 创建图表 - 使用requestAnimationFrame优化渲染
-    requestAnimationFrame(() => {
-        chartInstance.value = new Highcharts.Chart(options);
-
-        // 确保图表完全渲染后轴标签可见
-        setTimeout(() => {
-            if (chartInstance.value) {
-                // 强制更新轴以确保标签可见
-                chartInstance.value.xAxis[0].update({
-                    labels: {
-                        enabled: true,
-                        y: 20
-                    }
-                }, false);
-
-                chartInstance.value.yAxis[0].update({
-                    labels: {
-                        enabled: true
-                    }
-                }, false);
-
-                chartInstance.value.redraw(false);
-            }
-        }, 200);
-    });
+                }
+            }, 200);
+        } catch (error) {
+            console.error("创建图表实例时出错:", error);
+        }
+    } catch (error) {
+        console.error("DrawChart全局错误:", error);
+    }
 };
 
 const scope2Index = (scope, X) => {
@@ -373,113 +385,253 @@ const scope2Index = (scope, X) => {
 };
 
 const drawResult = async (CalculateResult) => {
+    // 检查结果是否为空或无效
+    if (!CalculateResult) {
+        console.error('Invalid calculation result');
+        return;
+    }
+
     // 绘制新通道数据
     if ('X_value' in CalculateResult) {
-        // 优化数据点数量
-        const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
-            CalculateResult['X_value'],
-            CalculateResult['Y_value']
-        );
+        try {
+            console.log("开始绘制计算结果:", CalculateResult.channel_name);
+            
+            // 优化数据点数量
+            const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
+                CalculateResult['X_value'],
+                CalculateResult['Y_value']
+            );
 
-        const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
+            const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
 
-        if (chartInstance.value) {
-            // 如果图表已存在，更新数据
-            if (chartInstance.value.series[0]) {
-                chartInstance.value.series[0].setData(seriesData, false); // 禁用动画
-                chartInstance.value.redraw(false); // 禁用动画加速重绘
-            } else {
-                chartInstance.value.addSeries({
-                    id: CHART_INSTANCE_ID, // 确保使用唯一ID
-                    name: '计算结果',
-                    data: seriesData,
-                    boostThreshold: 1000,
-                    lineWidth: 1.5,
-                    animation: false // 禁用动画
-                }, false);
-                chartInstance.value.redraw(false); // 禁用动画加速重绘
+            // 更新通道信息显示 - 显示运算表达式作为通道名
+            if (CalculateResult['channel_name']) {
+                curChannel.value = {
+                    channel_name: CalculateResult['channel_name'],
+                    color: 'steelblue'
+                };
             }
-        } else {
-            // 如果图表不存在，创建新图表
-            drawChart(CalculateResult['X_value'], CalculateResult['Y_value']);
+
+            if (chartInstance.value) {
+                console.log("更新现有图表...");
+                // 如果图表已存在，更新数据
+                try {
+                    if (chartInstance.value.series && chartInstance.value.series.length > 0) {
+                        // 更新图例标题（不使用update方法）
+                        if (CalculateResult['channel_name']) {
+                            chartInstance.value.series[0].name = CalculateResult['channel_name'];
+                        }
+                        
+                        // 直接使用setData替代update
+                        chartInstance.value.series[0].setData(seriesData, false); // 禁用动画
+                        chartInstance.value.redraw(false); // 禁用动画加速重绘
+                    } else {
+                        // 如果没有系列，添加一个新的
+                        chartInstance.value.addSeries({
+                            id: CHART_INSTANCE_ID, // 确保使用唯一ID
+                            name: CalculateResult['channel_name'] || '计算结果',
+                            data: seriesData,
+                            boostThreshold: 1000,
+                            lineWidth: 1.5,
+                            animation: false // 禁用动画
+                        }, false);
+                        chartInstance.value.redraw(false); // 禁用动画加速重绘
+                    }
+                } catch (error) {
+                    console.error("更新图表失败，尝试重新创建:", error);
+                    // 如果更新失败，尝试重新创建图表
+                    chartInstance.value.destroy();
+                    chartInstance.value = null;
+                    
+                    // 重新创建图表
+                    drawChart(
+                        CalculateResult['X_value'], 
+                        CalculateResult['Y_value'], 
+                        { 
+                            channel_name: CalculateResult['channel_name'] || '计算结果',
+                            color: 'steelblue'
+                        }
+                    );
+                }
+            } else {
+                console.log("创建新图表...");
+                // 如果图表不存在，创建新图表
+                drawChart(
+                    CalculateResult['X_value'], 
+                    CalculateResult['Y_value'], 
+                    { 
+                        channel_name: CalculateResult['channel_name'] || '计算结果',
+                        color: 'steelblue'
+                    }
+                );
+            }
+        } catch (error) {
+            console.error('Error drawing calculation result:', error);
         }
     }
 
     // 绘制异常数据
     if ('X_range' in CalculateResult) {
-        await fetchChannelData(curChannel.value);
-        const ErrorLineXScopes = CalculateResult['X_range'];
-        const channelKey = curChannelKey.value;
+        try {
+            console.log("绘制异常区域...");
+            await fetchChannelData(curChannel.value);
+            const ErrorLineXScopes = CalculateResult['X_range'];
+            const channelKey = curChannelKey.value;
 
-        const channelData = channelDataCache.value[channelKey];
-        if (!channelData) {
-            console.error('Channel data not found in cache:', channelKey);
-            return;
-        }
+            const channelData = channelDataCache.value[channelKey];
+            if (!channelData) {
+                console.error('Channel data not found in cache:', channelKey);
+                return;
+            }
 
-        let xValues = channelData.X_value;
-        let yValues = channelData.Y_value;
+            let xValues = channelData.X_value;
+            let yValues = channelData.Y_value;
 
-        // 移除之前的异常区域系列
-        if (chartInstance.value) {
-            // 使用更高效的方式移除系列
-            if (chartInstance.value.series.length > 1) {
-                // 记录第一个系列
-                const firstSeries = chartInstance.value.series[0];
-                // 重置图表，只保留第一个系列的数据
-                chartInstance.value.update({
-                    series: [{
-                        id: CHART_INSTANCE_ID, // 确保使用唯一ID
-                        name: firstSeries.name,
-                        color: firstSeries.color,
-                        data: firstSeries.options.data,
+            // 移除之前的异常区域系列
+            if (chartInstance.value) {
+                try {
+                    // 保存第一个系列（主数据系列）
+                    const mainSeries = chartInstance.value.series[0];
+                    const mainSeriesOptions = {
+                        id: CHART_INSTANCE_ID,
+                        name: mainSeries.name,
+                        color: mainSeries.color,
+                        data: mainSeries.options.data,
                         boostThreshold: 1000,
                         lineWidth: 1.5,
-                        animation: false // 禁用动画
-                    }]
-                }, false, false); // 不使用动画，不重绘
+                        animation: false
+                    };
+
+                    // 准备所有异常区域系列数据
+                    const newSeriesOptions = [];
+                    newSeriesOptions.push(mainSeriesOptions);
+
+                    ErrorLineXScopes.forEach((ErrorLineXScope, errorIndex) => {
+                        let ErrorLineXIndex = scope2Index(ErrorLineXScope, xValues);
+
+                        // 优化异常区域数据点
+                        let X_value_error = xValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
+                        let Y_value_error = yValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
+
+                        // 对异常区域数据进行优化
+                        const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
+                            X_value_error,
+                            Y_value_error,
+                            2000 // 异常区域使用更少的点
+                        );
+
+                        const errorData = optimizedX.map((x, i) => [x, optimizedY[i]]);
+
+                        newSeriesOptions.push({
+                            id: `${CHART_INSTANCE_ID}-error-${errorIndex}`,
+                            name: `异常区域 ${errorIndex + 1}`,
+                            data: errorData,
+                            color: '#ff6767',
+                            lineWidth: 2,
+                            opacity: 0.8,
+                            boostThreshold: 1000,
+                            animation: false
+                        });
+                    });
+
+                    // 销毁当前图表，创建新图表
+                    const container = chartInstance.value.container.id;
+                    chartInstance.value.destroy();
+                    
+                    // 创建新的图表配置
+                    const options = {
+                        chart: {
+                            renderTo: container,
+                            type: 'line',
+                            zoomType: 'xy',
+                            panning: true,
+                            panKey: 'shift',
+                            animation: false,
+                            resetZoomButton: {
+                                enabled: false,
+                                theme: { style: { display: 'none' } },
+                                position: { x: -9999, y: -9999 }
+                            },
+                            spacing: [10, 10, 30, 10],
+                            marginTop: 10,
+                            marginBottom: 40,
+                            marginLeft: 40,
+                            marginRight: 20
+                        },
+                        global: { useUTC: false },
+                        boost: {
+                            useGPUTranslations: true,
+                            usePreallocated: true,
+                            seriesThreshold: 1
+                        },
+                        title: { text: '' },
+                        xAxis: {
+                            title: { text: '' },
+                            gridLineWidth: 1,
+                            gridLineDashStyle: 'ShortDash',
+                            gridLineColor: '#e6e6e6',
+                            tickLength: 5,
+                            lineColor: '#ccc',
+                            lineWidth: 1,
+                            labels: {
+                                enabled: true,
+                                style: { fontSize: '11px', color: '#666' },
+                                y: 20
+                            }
+                        },
+                        yAxis: {
+                            title: { text: '' },
+                            gridLineWidth: 1,
+                            gridLineDashStyle: 'ShortDash',
+                            gridLineColor: '#e6e6e6',
+                            tickLength: 5,
+                            lineColor: '#ccc',
+                            lineWidth: 1,
+                            labels: {
+                                enabled: true,
+                                style: { fontSize: '11px', color: '#666' },
+                                align: 'right',
+                                x: -10
+                            }
+                        },
+                        tooltip: {
+                            enabled: true,
+                            formatter: function() {
+                                return `( ${this.x.toFixed(3)}, ${this.y.toFixed(3)} )`;
+                            },
+                            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                            borderWidth: 1,
+                            borderColor: '#ccc',
+                            shadow: false,
+                            style: { fontSize: '12px', padding: '2px 5px' }
+                        },
+                        plotOptions: {
+                            series: {
+                                animation: false,
+                                enableMouseTracking: true,
+                                marker: { enabled: false },
+                                states: { hover: { enabled: false } },
+                                turboThreshold: 0,
+                                findNearestPointBy: 'xy',
+                                stickyTracking: false
+                            },
+                            line: { lineWidth: 1.5 }
+                        },
+                        legend: { enabled: false },
+                        credits: { enabled: false },
+                        accessibility: { enabled: false },
+                        series: newSeriesOptions
+                    };
+                    
+                    // 创建新图表实例
+                    chartInstance.value = new Highcharts.Chart(options);
+                    
+                } catch (error) {
+                    console.error("绘制异常区域出错:", error);
+                }
             }
-
-            // 批量准备所有异常区域系列数据
-            const newSeries = [];
-
-            ErrorLineXScopes.forEach((ErrorLineXScope, errorIndex) => {
-                let ErrorLineXIndex = scope2Index(ErrorLineXScope, xValues);
-
-                // 优化异常区域数据点
-                let X_value_error = xValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
-                let Y_value_error = yValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
-
-                // 对异常区域数据进行优化
-                const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
-                    X_value_error,
-                    Y_value_error,
-                    2000 // 异常区域使用更少的点
-                );
-
-                const errorData = optimizedX.map((x, i) => [x, optimizedY[i]]);
-
-                newSeries.push({
-                    id: `${CHART_INSTANCE_ID}-error-${errorIndex}`, // 确保使用唯一ID
-                    name: `异常区域 ${errorIndex + 1}`,
-                    data: errorData,
-                    color: '#ff6767',
-                    lineWidth: 2,
-                    opacity: 0.8,
-                    boostThreshold: 1000,
-                    animation: false // 禁用动画
-                });
-            });
-
-            // 批量添加所有系列
-            if (newSeries.length > 0) {
-                chartInstance.value.update({
-                    series: [chartInstance.value.series[0].options].concat(newSeries)
-                }, false, false); // 不使用动画，不重绘
-
-                // 一次性重绘图表
-                chartInstance.value.redraw(false); // 禁用动画加速重绘
-            }
+        } catch (error) {
+            console.error('Error drawing error ranges:', error);
         }
     }
 };
@@ -487,8 +639,9 @@ const drawResult = async (CalculateResult) => {
 const clickedShownChannelList = computed(() => store.state.clickedShownChannelList);
 
 watch(clickedShownChannelList, async (newClickedShownChannelList, oldV) => {
-    // 暂时只考虑一个图计算的情况
+    // 支持多通道情况
     if (newClickedShownChannelList && newClickedShownChannelList.length > 0) {
+        // 获取第一个通道用于展示
         const channel = newClickedShownChannelList[0];
         await fetchChannelData(channel);
         curChannel.value = channel;
@@ -520,7 +673,9 @@ const debounce = (fn, delay) => {
 // 使用防抖处理CalculateResult的变化
 const debouncedDrawResult = debounce(async (newCalculateResult) => {
     resultData.value = newCalculateResult;
-    await drawResult(newCalculateResult);
+    if (newCalculateResult) {
+        await drawResult(newCalculateResult);
+    }
 }, 50); // 50ms的防抖延迟
 
 watch(CalculateResult, (newCalculateResult, oldV) => {

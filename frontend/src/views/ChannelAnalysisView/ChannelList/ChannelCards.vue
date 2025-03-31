@@ -38,7 +38,9 @@ const chartInstances = ref({});
 const loadingChannels = ref({});
 
 const handleCardClick = (channel) => {
-    const fullChannelIdentifier = `${channel.shot_number}_${channel.channel_name}`;
+    // 确保使用"通道名_炮号"的格式
+    const fullChannelIdentifier = `${channel.channel_name}_${channel.shot_number}`;
+    console.log("点击通道卡片，添加标识符:", fullChannelIdentifier);
     store.commit('updateChannelName', fullChannelIdentifier);
     store.commit('addClickedShownChannelList', channel);
 };

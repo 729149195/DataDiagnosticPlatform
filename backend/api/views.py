@@ -89,16 +89,28 @@ def get_channel_data(request, channel_key=None):
             channel_key = request.GET.get('channel_key')
         else:
             pass
+        
+        # 调试输出
+        print(f"请求通道数据，通道键: '{channel_key}'")
+        
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
             if '_' in channel_key:
+                # 解析通道键格式
                 channel_name, shot_number = channel_key.rsplit('_', 1)
                 try:
                     num = int(channel_name)
                     channel_name, shot_number = shot_number, channel_name
+                    print(f"格式交换: '{channel_name}_{shot_number}' (通道名_炮号)")
                 except ValueError:
+                    # 格式已正确为"通道名_炮号"
+                    print(f"正确格式: '{channel_name}_{shot_number}' (通道名_炮号)")
                     pass
-                shot_number = int(shot_number)
+                    
+                try:
+                    shot_number = int(shot_number)
+                except ValueError:
+                    return JsonResponse({'error': f"invalid literal for int() with base 10: '{shot_number}'"}, status=400)
             else:
                 return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
             
@@ -248,59 +260,175 @@ def operator_strs(request):
         data = json.loads(request.body)
         anomaly_func_str = data.get('anomaly_func_str')
         channel_mess = data.get('channel_mess')
+        
+        print(f"收到计算请求: {anomaly_func_str}")
+        print(f"通道数据: {len(channel_mess) if isinstance(channel_mess, list) else 1} 个通道")
 
         # 判定是否函数名是导入函数
         end_idx = anomaly_func_str.find('(')
 
+        # 创建通道键值映射，方便后续查找
+        channel_map = {}
+        if isinstance(channel_mess, list):
+            for channel in channel_mess:
+                # 使用"通道名_炮号"格式作为键
+                channel_key = f"{channel['channel_name']}_{channel['shot_number']}"
+                channel_map[channel_key] = channel
+        else:
+            # 兼容单通道情况
+            channel_key = f"{channel_mess['channel_name']}_{channel_mess['shot_number']}"
+            channel_map[channel_key] = channel_mess
+
         # 这里其实还会出现有函数且有加减的情况，暂时先不考虑
         if end_idx == -1:
             # 非函数模式
-            # 解析表达式，提取通道名和运算符
+            # 解析表达式，查找运算符
+            operators = []
             for operator in ['+', '-', '*', '/']:  # 遍历所有可能的运算符
                 if operator in anomaly_func_str:
-                    channel1, channel2 = anomaly_func_str.split(operator)
-                    break
+                    operators.append(operator)
+            
+            if not operators:
+                # 如果没有运算符，可能是单通道，直接返回通道数据
+                channel_key = anomaly_func_str.strip()
+                if channel_key in channel_map:
+                    try:
+                        response = get_channel_data('', channel_key)
+                        channel_data = json.loads(response.content.decode('utf-8'))
+                        
+                        # 检查返回的数据是否有效
+                        if 'error' in channel_data:
+                            raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
+                        
+                        # 确保返回的数据包含所需的键
+                        if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                            raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+                        
+                        # 设置通道名称
+                        channel_data['channel_name'] = channel_key
+                        
+                        return JsonResponse({"data": {"result": channel_data}}, status=200)
+                    except Exception as e:
+                        raise ValueError(f"处理通道 {channel_key} 数据时出错: {str(e)}")
+                else:
+                    raise ValueError(f"未找到通道: {channel_key}")
+            
+            # 使用正则表达式分割表达式为通道和运算符
+            import re
+            # 调试输出原始表达式及格式
+            print(f"原始表达式: '{anomaly_func_str}'")
+            cleaned_expr = anomaly_func_str.replace(" ", "")
+            print(f"清理后表达式: '{cleaned_expr}'")
+            
+            # 首先尝试分离运算符和通道名
+            # 支持运算符: +, -, *, /
+            operators = ['+', '-', '*', '/']
+            operator_indices = []
+            
+            for op in operators:
+                idx = 0
+                while idx < len(cleaned_expr):
+                    found_idx = cleaned_expr.find(op, idx)
+                    if found_idx == -1:
+                        break
+                    operator_indices.append((found_idx, op))
+                    idx = found_idx + 1
+            
+            # 按位置排序操作符
+            operator_indices.sort(key=lambda x: x[0])
+            
+            if not operator_indices:
+                # 如果没有操作符，整个表达式就是一个通道名
+                tokens = [cleaned_expr]
             else:
-                raise ValueError("无效的表达式，没有找到运算符")
-
-            # 获取对应的通道数据
-            response1 = get_channel_data('', channel1)
-            data1 = json.loads(response1.content.decode('utf-8'))
-
-            response2 = get_channel_data('', channel2)
-            data2 = json.loads(response2.content.decode('utf-8'))
-
-            if data1 is None or data2 is None:
-                raise ValueError(f"未找到通道数据：{channel1.strip()} 或 {channel2.strip()}")
-
-            # 不匹配警告
-            if data1['X_value'] != data2['X_value']:
-                return JsonResponse({"error": 'not_match'}, status=500)
-
-            new_channel_data = {
-                'channel_number': anomaly_func_str,
-                'X_value': data1['X_value'],
-                'X_unit': data1['X_unit'],
-                'Y_unit': data1['Y_unit']
-            }
-            # 根据运算符进行计算
-            if operator == '+':
-                new_channel_data['Y_value'] = [x + y for x, y in zip(data1['Y_value'], data2['Y_value'])]
-            elif operator == '-':
-                new_channel_data['Y_value'] = [x - y for x, y in zip(data1['Y_value'], data2['Y_value'])]
-            elif operator == '*':
-                new_channel_data['Y_value'] = [x * y for x, y in zip(data1['Y_value'], data2['Y_value'])]
-            elif operator == '/':
-                new_channel_data['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(data1['Y_value'], data2['Y_value'])]  # 避免除以0
-
-            return JsonResponse({"data": new_channel_data}, status=200)
+                # 根据运算符位置分割表达式
+                tokens = []
+                last_end = 0
+                
+                for idx, op in operator_indices:
+                    if idx > last_end:
+                        tokens.append(cleaned_expr[last_end:idx])
+                    tokens.append(op)
+                    last_end = idx + 1
+                
+                # 添加最后一个通道
+                if last_end < len(cleaned_expr):
+                    tokens.append(cleaned_expr[last_end:])
+            
+            print(f"最终解析的标记: {tokens}")
+            
+            if not tokens:
+                raise ValueError("无法解析表达式: " + anomaly_func_str)
+                
+            # 获取第一个通道数据作为基础
+            current_channel = tokens[0]
+            response = get_channel_data('', current_channel)
+            result_response = json.loads(response.content.decode('utf-8'))
+            
+            # 检查返回的数据是否有效
+            if 'error' in result_response:
+                raise ValueError(f"获取通道 {current_channel} 数据失败: {result_response['error']}")
+            
+            # 确保返回的数据包含所需的键
+            if 'X_value' not in result_response or 'Y_value' not in result_response:
+                raise ValueError(f"通道 {current_channel} 返回数据格式不正确，缺少 X_value 或 Y_value")
+            
+            result = result_response
+            
+            # 顺序执行运算
+            for i in range(1, len(tokens), 2):
+                if i+1 < len(tokens):  # 确保有下一个通道
+                    operator = tokens[i]
+                    next_channel = tokens[i+1]
+                    
+                    # 获取下一个通道数据
+                    response = get_channel_data('', next_channel)
+                    next_data_response = json.loads(response.content.decode('utf-8'))
+                    
+                    # 检查返回的数据是否有效
+                    if 'error' in next_data_response:
+                        raise ValueError(f"获取通道 {next_channel} 数据失败: {next_data_response['error']}")
+                    
+                    # 确保返回的数据包含所需的键
+                    if 'X_value' not in next_data_response or 'Y_value' not in next_data_response:
+                        raise ValueError(f"通道 {next_channel} 返回数据格式不正确，缺少 X_value 或 Y_value")
+                    
+                    next_data = next_data_response
+                    
+                    # 检查X轴数据是否匹配
+                    if len(result['X_value']) != len(next_data['X_value']):
+                        # 如果长度不同，需要插值处理
+                        # 这里简化处理，实际应该根据具体情况调整
+                        min_len = min(len(result['X_value']), len(next_data['X_value']))
+                        result['X_value'] = result['X_value'][:min_len]
+                        result['Y_value'] = result['Y_value'][:min_len]
+                        next_data['X_value'] = next_data['X_value'][:min_len]
+                        next_data['Y_value'] = next_data['Y_value'][:min_len]
+                    
+                    # 根据运算符进行计算
+                    if operator == '+':
+                        result['Y_value'] = [x + y for x, y in zip(result['Y_value'], next_data['Y_value'])]
+                    elif operator == '-':
+                        result['Y_value'] = [x - y for x, y in zip(result['Y_value'], next_data['Y_value'])]
+                    elif operator == '*':
+                        result['Y_value'] = [x * y for x, y in zip(result['Y_value'], next_data['Y_value'])]
+                    elif operator == '/':
+                        result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], next_data['Y_value'])]
+            
+            # 设置结果通道名
+            result['channel_name'] = anomaly_func_str
+            
+            return JsonResponse({"data": {"result": result}}, status=200)
 
         else:
             func_name = anomaly_func_str[:end_idx]
             print(func_name)
 
-            if os.path.exists(FUNCTIONS_FILE_PATH):
-                with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
+            # 确保FUNCTIONS_FILE_PATH变量存在
+            functions_file_path = os.path.join(settings.MEDIA_ROOT, "imported_functions.json")
+            
+            if os.path.exists(functions_file_path):
+                with open(functions_file_path, "r", encoding='utf-8') as f:
                     functions_data = json.load(f)
             else:
                 functions_data = []
@@ -319,7 +447,8 @@ def operator_strs(request):
                 # 需要补一段输入参数转换的代码
                 ##
                 # data['parameters'] = [float(i) for i in data['parameters']]
-                data['parameters'][1] = float(data['parameters'][1])
+                if len(data['parameters']) > 1:  # 确保有足够的参数再访问索引1
+                    data['parameters'][1] = float(data['parameters'][1])
                 ret = execute_function(data)
                 return JsonResponse({"data": ret}, status=200)
             else:
@@ -333,12 +462,17 @@ def operator_strs(request):
                                                                    params_list[-2], params_list[-1]]
                     period = ast.literal_eval(period)
                     print('xxx')
-                    ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_mess)
+                    # 使用第一个通道进行处理，保持向后兼容
+                    channel_to_use = channel_mess[0] if isinstance(channel_mess, list) else channel_mess
+                    ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_to_use)
 
                     print(ret)
 
                 return JsonResponse({"data": ret.tolist()}, status=200)
     except Exception as e:
+        # 打印详细错误信息以便调试
+        import traceback
+        traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=500)
 
 
