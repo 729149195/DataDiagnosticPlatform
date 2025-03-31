@@ -1,12 +1,9 @@
 <template>
     <div>
-        <div class="editable-div" contenteditable="true" spellcheck="false" @input="onInput"
-            @click="updateCursorPosition" @keyup="updateCursorPosition"></div>
-
-
+        <div class="editable-div" contenteditable="true" spellcheck="false" @input="onInput" @click="updateCursorPosition" @keyup="updateCursorPosition"></div>
         <span style="position: absolute; bottom: 8px; right: 8px;">
-<!--            <span style="margin-right: 30px">{{output}}</span>-->
-            
+            <!--            <span style="margin-right: 30px">{{output}}</span>-->
+
             <el-button type="primary">
                 <FolderChecked />
                 记录公式
@@ -59,8 +56,8 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-    formulasarea.value = '';  
-    store.commit("updateChannelName",  '')
+    formulasarea.value = '';
+    store.commit("updateChannelName", '')
 });
 
 const highlightChannels = () => {
@@ -68,7 +65,7 @@ const highlightChannels = () => {
     if (!editableDiv) return;
 
     const content = formulasarea.value;
-    const channelIdentifiers = selectedChannels.value.map((channel) => 
+    const channelIdentifiers = selectedChannels.value.map((channel) =>
         `${channel.shot_number}_${channel.channel_name}`
     );
     const colors = selectedChannels.value.reduce((acc, channel) => {
@@ -220,15 +217,15 @@ watch(
 // Handle input event
 const onInput = (event) => {
     const newText = getPlainText(event.target);
-    const channelIdentifiers = selectedChannels.value.map((channel) => 
+    const channelIdentifiers = selectedChannels.value.map((channel) =>
         `${channel.shot_number}_${channel.channel_name}`
     );
-    
+
     // 如果新文本比之前的短，说明可能发生了删除操作
     if (newText.length < formulasarea.value.length) {
         const deletedPosition = currentCursorPosition - 1; // 假设删除发生在光标位置前一个字符
         const channelInfo = findChannelIdentifierAtPosition(formulasarea.value, deletedPosition, channelIdentifiers);
-        
+
         if (channelInfo) {
             // 如果删除的是通道标识符的一部分，删除整个标识符
             const beforeChannel = formulasarea.value.substring(0, channelInfo.start);

@@ -1,12 +1,12 @@
 <template>
     <div class="result-chart-container">
-      <div class="channel-info" v-if="curChannel.channel_name">
-        <div class="color-block" :style="{ backgroundColor: curChannel.color || 'steelblue' }"></div>
-        <div class="channel-name">{{ curChannel.channel_name }}</div>
-      </div>
-      <div class="chart-wrapper">
-        <div id="calculation-result-container" ref="chartContainerRef"></div>
-      </div>
+        <div class="channel-info" v-if="curChannel.channel_name">
+            <div class="color-block" :style="{ backgroundColor: curChannel.color || 'steelblue' }"></div>
+            <div class="channel-name">{{ curChannel.channel_name }}</div>
+        </div>
+        <div class="chart-wrapper">
+            <div id="calculation-result-container" ref="chartContainerRef"></div>
+        </div>
     </div>
 </template>
 
@@ -42,7 +42,7 @@ onUnmounted(() => {
     if (debouncedDrawResult.timer) {
         clearTimeout(debouncedDrawResult.timer);
     }
-    
+
     if (chartInstance.value) {
         // 先清空数据，减少内存占用
         if (chartInstance.value.series) {
@@ -52,17 +52,17 @@ onUnmounted(() => {
                 }
             });
         }
-        
+
         // 销毁图表实例
         chartInstance.value.destroy();
         chartInstance.value = null;
     }
-    
+
     // 移除键盘事件监听
     if (chartContainerRef.value) {
         chartContainerRef.value.removeEventListener('keydown', handleKeyDown);
     }
-    
+
     // 移除窗口大小变化监听
     window.removeEventListener('resize', handleResize);
 });
@@ -85,7 +85,7 @@ onMounted(() => {
         // 确保容器可以获得焦点
         chartContainerRef.value.tabIndex = 0;
     }
-    
+
     // 添加窗口大小变化监听 - 使用节流函数限制调用频率
     window.addEventListener('resize', handleResize);
 });
@@ -93,7 +93,7 @@ onMounted(() => {
 const fetchChannelData = async (channel) => {
     try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        
+
         // 确保使用最新数据
         let channelData = channelDataCache.value[channelKey];
         if (!channelData) {
@@ -108,7 +108,7 @@ const fetchChannelData = async (channel) => {
             channel,
             channelKey
         );
-        
+
     } catch (error) {
         console.error('Error fetching channel data:', error);
     }
@@ -117,30 +117,30 @@ const fetchChannelData = async (channel) => {
 // 优化数据处理函数，减少数据点数量
 const optimizeDataPoints = (xValues, yValues, maxPoints = 100000) => {
     const totalPoints = xValues.length;
-    
+
     // 如果数据点少于最大点数，直接返回原始数据
     if (totalPoints <= maxPoints) {
         return { xValues, yValues };
     }
-    
+
     // 计算采样间隔
     const interval = Math.ceil(totalPoints / maxPoints);
-    
+
     // 采样数据
     const sampledX = [];
     const sampledY = [];
-    
+
     for (let i = 0; i < totalPoints; i += interval) {
         sampledX.push(xValues[i]);
         sampledY.push(yValues[i]);
     }
-    
+
     // 确保包含最后一个点
     if (sampledX[sampledX.length - 1] !== xValues[totalPoints - 1]) {
         sampledX.push(xValues[totalPoints - 1]);
         sampledY.push(yValues[totalPoints - 1]);
     }
-    
+
     return { xValues: sampledX, yValues: sampledY };
 };
 
@@ -152,7 +152,7 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
 
     // 优化数据点数量
     const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(xValues, yValues);
-    
+
     // 将X和Y值组合成Highcharts需要的格式
     const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
 
@@ -191,9 +191,9 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                 load: function () {
                     const container = this.container;
                     const chart = this;
-                    
+
                     // 绑定双击事件，使用更高效的方式重置缩放
-                    container.ondblclick = function() {
+                    container.ondblclick = function () {
                         // 直接重置缩放，不使用动画
                         chart.xAxis[0].setExtremes(null, null, false);
                         chart.yAxis[0].setExtremes(null, null, false);
@@ -265,24 +265,24 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
             }
         },
         tooltip: {
-          enabled: true,
-          formatter: function () {
-            return `( ${this.x.toFixed(3)}, ${this.y.toFixed(3)} )`;
-          },
-          positioner: function (labelWidth, labelHeight, point) {
-            return {
-              x: point.plotX + this.chart.plotLeft - labelWidth / 2,
-              y: point.plotY + this.chart.plotTop - labelHeight - 10
-            };
-          },
-          backgroundColor: 'rgba(255, 255, 255, 0.8)',
-          borderWidth: 1,
-          borderColor: '#ccc',
-          shadow: false,
-          style: {
-            fontSize: '12px',
-            padding: '2px 5px'
-          }
+            enabled: true,
+            formatter: function () {
+                return `( ${this.x.toFixed(3)}, ${this.y.toFixed(3)} )`;
+            },
+            positioner: function (labelWidth, labelHeight, point) {
+                return {
+                    x: point.plotX + this.chart.plotLeft - labelWidth / 2,
+                    y: point.plotY + this.chart.plotTop - labelHeight - 10
+                };
+            },
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            borderWidth: 1,
+            borderColor: '#ccc',
+            shadow: false,
+            style: {
+                fontSize: '12px',
+                padding: '2px 5px'
+            }
         },
         plotOptions: {
             series: {
@@ -327,7 +327,7 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
     // 创建图表 - 使用requestAnimationFrame优化渲染
     requestAnimationFrame(() => {
         chartInstance.value = new Highcharts.Chart(options);
-        
+
         // 确保图表完全渲染后轴标签可见
         setTimeout(() => {
             if (chartInstance.value) {
@@ -338,13 +338,13 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                         y: 20
                     }
                 }, false);
-                
+
                 chartInstance.value.yAxis[0].update({
                     labels: {
                         enabled: true
                     }
                 }, false);
-                
+
                 chartInstance.value.redraw(false);
             }
         }, 200);
@@ -374,15 +374,15 @@ const scope2Index = (scope, X) => {
 
 const drawResult = async (CalculateResult) => {
     // 绘制新通道数据
-    if('X_value' in CalculateResult) {
+    if ('X_value' in CalculateResult) {
         // 优化数据点数量
         const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
-            CalculateResult['X_value'], 
+            CalculateResult['X_value'],
             CalculateResult['Y_value']
         );
-        
+
         const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
-        
+
         if (chartInstance.value) {
             // 如果图表已存在，更新数据
             if (chartInstance.value.series[0]) {
@@ -404,9 +404,9 @@ const drawResult = async (CalculateResult) => {
             drawChart(CalculateResult['X_value'], CalculateResult['Y_value']);
         }
     }
-    
+
     // 绘制异常数据
-    if('X_range' in CalculateResult) {
+    if ('X_range' in CalculateResult) {
         await fetchChannelData(curChannel.value);
         const ErrorLineXScopes = CalculateResult['X_range'];
         const channelKey = curChannelKey.value;
@@ -439,26 +439,26 @@ const drawResult = async (CalculateResult) => {
                     }]
                 }, false, false); // 不使用动画，不重绘
             }
-            
+
             // 批量准备所有异常区域系列数据
             const newSeries = [];
 
-        ErrorLineXScopes.forEach((ErrorLineXScope, errorIndex) => {
-            let ErrorLineXIndex = scope2Index(ErrorLineXScope, xValues);
-                
+            ErrorLineXScopes.forEach((ErrorLineXScope, errorIndex) => {
+                let ErrorLineXIndex = scope2Index(ErrorLineXScope, xValues);
+
                 // 优化异常区域数据点
-            let X_value_error = xValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
-            let Y_value_error = yValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
+                let X_value_error = xValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
+                let Y_value_error = yValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
 
                 // 对异常区域数据进行优化
                 const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
-                    X_value_error, 
+                    X_value_error,
                     Y_value_error,
                     2000 // 异常区域使用更少的点
                 );
-                
+
                 const errorData = optimizedX.map((x, i) => [x, optimizedY[i]]);
-                
+
                 newSeries.push({
                     id: `${CHART_INSTANCE_ID}-error-${errorIndex}`, // 确保使用唯一ID
                     name: `异常区域 ${errorIndex + 1}`,
@@ -470,13 +470,13 @@ const drawResult = async (CalculateResult) => {
                     animation: false // 禁用动画
                 });
             });
-            
+
             // 批量添加所有系列
             if (newSeries.length > 0) {
                 chartInstance.value.update({
                     series: [chartInstance.value.series[0].options].concat(newSeries)
                 }, false, false); // 不使用动画，不重绘
-                
+
                 // 一次性重绘图表
                 chartInstance.value.redraw(false); // 禁用动画加速重绘
             }
@@ -500,7 +500,7 @@ watch(clickedShownChannelList, async (newClickedShownChannelList, oldV) => {
 // 优化防抖函数，添加取消功能
 const debounce = (fn, delay) => {
     let timer = null;
-    const debouncedFn = function(...args) {
+    const debouncedFn = function (...args) {
         if (timer) clearTimeout(timer);
         timer = setTimeout(() => {
             fn.apply(this, args);
@@ -530,7 +530,7 @@ watch(CalculateResult, (newCalculateResult, oldV) => {
 // 节流函数限制事件触发频率
 const throttle = (fn, delay) => {
     let last = 0;
-    return function(...args) {
+    return function (...args) {
         const now = Date.now();
         if (now - last >= delay) {
             last = now;
@@ -543,7 +543,7 @@ const throttle = (fn, delay) => {
 const handleResize = throttle(() => {
     if (chartInstance.value) {
         chartInstance.value.reflow();
-        
+
         // 确保X轴标签可见
         if (chartInstance.value.xAxis && chartInstance.value.xAxis[0]) {
             chartInstance.value.xAxis[0].update({
@@ -553,7 +553,7 @@ const handleResize = throttle(() => {
                 }
             }, false);
         }
-        
+
         // 确保Y轴标签可见
         if (chartInstance.value.yAxis && chartInstance.value.yAxis[0]) {
             chartInstance.value.yAxis[0].update({
@@ -562,7 +562,7 @@ const handleResize = throttle(() => {
                 }
             }, false);
         }
-        
+
         chartInstance.value.redraw(false);
     }
 }, 100); // 100ms的节流延迟
@@ -570,64 +570,69 @@ const handleResize = throttle(() => {
 </script>
 
 <style scoped>
-  .result-chart-container {
-      display: flex;
-      flex-direction: column;
-      padding-bottom: 0;
-      height: 100%;
-  }
+.result-chart-container {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 0;
+    height: 100%;
+}
 
-  .channel-info {
-      display: flex;
-      align-items: center;
-      padding: 8px 0 4px 65px; /* 左侧与Y轴对齐 */
-      font-weight: bold;
-  }
+.channel-info {
+    display: flex;
+    align-items: center;
+    padding: 8px 0 4px 65px;
+    /* 左侧与Y轴对齐 */
+    font-weight: bold;
+}
 
-  .color-block {
-      width: 12px;
-      height: 12px;
-      border-radius: 2px;
-      margin-right: 6px;
-  }
+.color-block {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    margin-right: 6px;
+}
 
-  .channel-name {
-      font-size: 14px;
-  }
+.channel-name {
+    font-size: 14px;
+}
 
-  .chart-wrapper {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      width: 100%;
-      margin-bottom: 0;
-      height: calc(100% - 30px); /* 减去通道信息的高度 */
-      min-height: 400px; /* 增加最小高度，确保有足够空间显示X轴标签 */
-  }
+.chart-wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin-bottom: 0;
+    height: calc(100% - 30px);
+    /* 减去通道信息的高度 */
+    min-height: 400px;
+    /* 增加最小高度，确保有足够空间显示X轴标签 */
+}
 
-  #calculation-result-container {
-      width: 100%;
-      height: 100%; /* 使用100%高度填充父容器 */
-      min-height: 400px; /* 增加最小高度，确保有足够空间显示X轴标签 */
-  }
+#calculation-result-container {
+    width: 100%;
+    height: 100%;
+    /* 使用100%高度填充父容器 */
+    min-height: 400px;
+    /* 增加最小高度，确保有足够空间显示X轴标签 */
+}
 
-  :deep(.highcharts-selection-marker) {
-      fill: rgba(51, 92, 173, 0.25);
-      stroke: #335cad;
-  }
-  
-  :deep(.highcharts-zooming-rect) {
-      fill: rgba(51, 92, 173, 0.25);
-      stroke: #335cad;
-  }
-  
-  /* 确保X轴标签可见 */
-  :deep(.highcharts-axis-labels) {
-      font-size: 11px;
-      fill: #666;
-  }
-  
-  :deep(.highcharts-xaxis-labels) {
-      visibility: visible !important;
-  }
+:deep(.highcharts-selection-marker) {
+    fill: rgba(51, 92, 173, 0.25);
+    stroke: #335cad;
+}
+
+:deep(.highcharts-zooming-rect) {
+    fill: rgba(51, 92, 173, 0.25);
+    stroke: #335cad;
+}
+
+/* 确保X轴标签可见 */
+:deep(.highcharts-axis-labels) {
+    font-size: 11px;
+    fill: #666;
+}
+
+:deep(.highcharts-xaxis-labels) {
+    visibility: visible !important;
+}
 </style>
