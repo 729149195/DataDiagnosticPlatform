@@ -595,7 +595,7 @@ const syncUpload = async () => {
 }
 
 .aside {
-  width: 23vw;
+  width: 25vw;
   background-color: #e9e9e9;
   height: 95vh;
   padding: 5px;
