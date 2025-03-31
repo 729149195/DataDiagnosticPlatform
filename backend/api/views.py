@@ -316,6 +316,148 @@ def submit_data(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
+# 添加表达式解析类
+class ExpressionParser:
+    def __init__(self, get_channel_data_func):
+        self.get_channel_data_func = get_channel_data_func
+        self.tokens = []
+        self.current = 0
+    
+    def parse(self, expression):
+        """解析表达式并计算结果"""
+        self.tokenize(expression)
+        self.current = 0
+        return self.expression()
+    
+    def tokenize(self, expression):
+        """将表达式分词"""
+        # 去除所有空格
+        expression = expression.replace(" ", "")
+        
+        # 实现一个简单的分词器
+        self.tokens = []
+        i = 0
+        
+        while i < len(expression):
+            char = expression[i]
+            
+            # 处理运算符和括号
+            if char in "+-*/()":
+                self.tokens.append(char)
+                i += 1
+            # 处理通道标识符（字母、数字、下划线的组合）
+            elif char.isalnum() or char == '_':
+                start = i
+                # 继续读取直到遇到非标识符字符
+                while i < len(expression) and (expression[i].isalnum() or expression[i] == '_'):
+                    i += 1
+                self.tokens.append(expression[start:i])
+            else:
+                i += 1
+        
+        return self.tokens
+    
+    def expression(self):
+        """解析加减运算"""
+        result = self.term()
+        
+        while self.current < len(self.tokens) and self.tokens[self.current] in ['+', '-']:
+            operator = self.tokens[self.current]
+            self.current += 1
+            right = self.term()
+            
+            if operator == '+':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行加法
+                result['Y_value'] = [x + y for x, y in zip(result['Y_value'], right['Y_value'])]
+            elif operator == '-':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行减法
+                result['Y_value'] = [x - y for x, y in zip(result['Y_value'], right['Y_value'])]
+        
+        return result
+    
+    def term(self):
+        """解析乘除运算"""
+        result = self.factor()
+        
+        while self.current < len(self.tokens) and self.tokens[self.current] in ['*', '/']:
+            operator = self.tokens[self.current]
+            self.current += 1
+            right = self.factor()
+            
+            if operator == '*':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行乘法
+                result['Y_value'] = [x * y for x, y in zip(result['Y_value'], right['Y_value'])]
+            elif operator == '/':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行除法，避免除以0
+                result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], right['Y_value'])]
+        
+        return result
+    
+    def factor(self):
+        """解析括号和通道标识符"""
+        if self.current < len(self.tokens):
+            token = self.tokens[self.current]
+            
+            # 处理括号表达式
+            if token == '(':
+                self.current += 1
+                result = self.expression()
+                
+                # 必须有匹配的右括号
+                if self.current < len(self.tokens) and self.tokens[self.current] == ')':
+                    self.current += 1
+                    return result
+                else:
+                    raise ValueError("缺少右括号")
+            
+            # 处理通道标识符
+            elif token.isalnum() or '_' in token:
+                self.current += 1
+                # 获取通道数据
+                channel_key = token
+                response = self.get_channel_data_func('', channel_key)
+                if response.status_code != 200:
+                    error_content = json.loads(response.content.decode('utf-8'))
+                    raise ValueError(f"获取通道 {channel_key} 数据失败: {error_content.get('error', '未知错误')}")
+                
+                channel_data = json.loads(response.content.decode('utf-8'))
+                
+                # 确保返回的数据包含所需的键
+                if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                    raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+                
+                return channel_data
+        
+        raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
+
 def operator_strs(request):
     try:
         data = json.loads(request.body)
@@ -327,6 +469,7 @@ def operator_strs(request):
 
         # 判定是否函数名是导入函数
         end_idx = anomaly_func_str.find('(')
+        is_function_call = end_idx > 0 and anomaly_func_str[0].isalpha() and ')' in anomaly_func_str[end_idx:]
 
         # 创建通道键值映射，方便后续查找
         channel_map = {}
@@ -340,148 +483,8 @@ def operator_strs(request):
             channel_key = f"{channel_mess['channel_name']}_{channel_mess['shot_number']}"
             channel_map[channel_key] = channel_mess
 
-        # 这里其实还会出现有函数且有加减的情况，暂时先不考虑
-        if end_idx == -1:
-            # 非函数模式
-            # 解析表达式，查找运算符
-            operators = []
-            for operator in ['+', '-', '*', '/']:  # 遍历所有可能的运算符
-                if operator in anomaly_func_str:
-                    operators.append(operator)
-            
-            if not operators:
-                # 如果没有运算符，可能是单通道，直接返回通道数据
-                channel_key = anomaly_func_str.strip()
-                if channel_key in channel_map:
-                    try:
-                        response = get_channel_data('', channel_key)
-                        channel_data = json.loads(response.content.decode('utf-8'))
-                        
-                        # 检查返回的数据是否有效
-                        if 'error' in channel_data:
-                            raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
-                        
-                        # 确保返回的数据包含所需的键
-                        if 'X_value' not in channel_data or 'Y_value' not in channel_data:
-                            raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
-                        
-                        # 设置通道名称
-                        channel_data['channel_name'] = channel_key
-                        
-                        return JsonResponse({"data": {"result": channel_data}}, status=200)
-                    except Exception as e:
-                        raise ValueError(f"处理通道 {channel_key} 数据时出错: {str(e)}")
-                else:
-                    raise ValueError(f"未找到通道: {channel_key}")
-            
-            # 使用正则表达式分割表达式为通道和运算符
-            import re
-            # 调试输出原始表达式及格式
-            print(f"原始表达式: '{anomaly_func_str}'")
-            cleaned_expr = anomaly_func_str.replace(" ", "")
-            print(f"清理后表达式: '{cleaned_expr}'")
-            
-            # 首先尝试分离运算符和通道名
-            # 支持运算符: +, -, *, /
-            operators = ['+', '-', '*', '/']
-            operator_indices = []
-            
-            for op in operators:
-                idx = 0
-                while idx < len(cleaned_expr):
-                    found_idx = cleaned_expr.find(op, idx)
-                    if found_idx == -1:
-                        break
-                    operator_indices.append((found_idx, op))
-                    idx = found_idx + 1
-            
-            # 按位置排序操作符
-            operator_indices.sort(key=lambda x: x[0])
-            
-            if not operator_indices:
-                # 如果没有操作符，整个表达式就是一个通道名
-                tokens = [cleaned_expr]
-            else:
-                # 根据运算符位置分割表达式
-                tokens = []
-                last_end = 0
-                
-                for idx, op in operator_indices:
-                    if idx > last_end:
-                        tokens.append(cleaned_expr[last_end:idx])
-                    tokens.append(op)
-                    last_end = idx + 1
-                
-                # 添加最后一个通道
-                if last_end < len(cleaned_expr):
-                    tokens.append(cleaned_expr[last_end:])
-            
-            print(f"最终解析的标记: {tokens}")
-            
-            if not tokens:
-                raise ValueError("无法解析表达式: " + anomaly_func_str)
-                
-            # 获取第一个通道数据作为基础
-            current_channel = tokens[0]
-            response = get_channel_data('', current_channel)
-            result_response = json.loads(response.content.decode('utf-8'))
-            
-            # 检查返回的数据是否有效
-            if 'error' in result_response:
-                raise ValueError(f"获取通道 {current_channel} 数据失败: {result_response['error']}")
-            
-            # 确保返回的数据包含所需的键
-            if 'X_value' not in result_response or 'Y_value' not in result_response:
-                raise ValueError(f"通道 {current_channel} 返回数据格式不正确，缺少 X_value 或 Y_value")
-            
-            result = result_response
-            
-            # 顺序执行运算
-            for i in range(1, len(tokens), 2):
-                if i+1 < len(tokens):  # 确保有下一个通道
-                    operator = tokens[i]
-                    next_channel = tokens[i+1]
-                    
-                    # 获取下一个通道数据
-                    response = get_channel_data('', next_channel)
-                    next_data_response = json.loads(response.content.decode('utf-8'))
-                    
-                    # 检查返回的数据是否有效
-                    if 'error' in next_data_response:
-                        raise ValueError(f"获取通道 {next_channel} 数据失败: {next_data_response['error']}")
-                    
-                    # 确保返回的数据包含所需的键
-                    if 'X_value' not in next_data_response or 'Y_value' not in next_data_response:
-                        raise ValueError(f"通道 {next_channel} 返回数据格式不正确，缺少 X_value 或 Y_value")
-                    
-                    next_data = next_data_response
-                    
-                    # 检查X轴数据是否匹配
-                    if len(result['X_value']) != len(next_data['X_value']):
-                        # 如果长度不同，需要插值处理
-                        # 这里简化处理，实际应该根据具体情况调整
-                        min_len = min(len(result['X_value']), len(next_data['X_value']))
-                        result['X_value'] = result['X_value'][:min_len]
-                        result['Y_value'] = result['Y_value'][:min_len]
-                        next_data['X_value'] = next_data['X_value'][:min_len]
-                        next_data['Y_value'] = next_data['Y_value'][:min_len]
-                    
-                    # 根据运算符进行计算
-                    if operator == '+':
-                        result['Y_value'] = [x + y for x, y in zip(result['Y_value'], next_data['Y_value'])]
-                    elif operator == '-':
-                        result['Y_value'] = [x - y for x, y in zip(result['Y_value'], next_data['Y_value'])]
-                    elif operator == '*':
-                        result['Y_value'] = [x * y for x, y in zip(result['Y_value'], next_data['Y_value'])]
-                    elif operator == '/':
-                        result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], next_data['Y_value'])]
-            
-            # 设置结果通道名
-            result['channel_name'] = anomaly_func_str
-            
-            return JsonResponse({"data": {"result": result}}, status=200)
-
-        else:
+        # 检查是否是函数调用
+        if is_function_call:
             func_name = anomaly_func_str[:end_idx]
             print(func_name)
 
@@ -528,8 +531,45 @@ def operator_strs(request):
                     ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_to_use)
 
                     print(ret)
-
-                return JsonResponse({"data": ret.tolist()}, status=200)
+                    return JsonResponse({"data": ret.tolist()}, status=200)
+                else:
+                    raise ValueError(f"未知的函数: {func_name}")
+        else:
+            # 检查表达式是否包含括号或运算符
+            if '(' in anomaly_func_str or ')' in anomaly_func_str or any(op in anomaly_func_str for op in ['+', '-', '*', '/']):
+                # 使用表达式解析器处理带括号和运算优先级的表达式
+                print(f"正在解析复杂表达式: {anomaly_func_str}")
+                parser = ExpressionParser(get_channel_data)
+                result = parser.parse(anomaly_func_str)
+                
+                # 设置结果通道名
+                result['channel_name'] = anomaly_func_str
+                
+                return JsonResponse({"data": {"result": result}}, status=200)
+            else:
+                # 处理单通道情况
+                channel_key = anomaly_func_str.strip()
+                if channel_key in channel_map:
+                    try:
+                        response = get_channel_data('', channel_key)
+                        channel_data = json.loads(response.content.decode('utf-8'))
+                        
+                        # 检查返回的数据是否有效
+                        if 'error' in channel_data:
+                            raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
+                        
+                        # 确保返回的数据包含所需的键
+                        if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                            raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+                        
+                        # 设置通道名称
+                        channel_data['channel_name'] = channel_key
+                        
+                        return JsonResponse({"data": {"result": channel_data}}, status=200)
+                    except Exception as e:
+                        raise ValueError(f"处理通道 {channel_key} 数据时出错: {str(e)}")
+                else:
+                    raise ValueError(f"未找到通道: {channel_key}")
     except Exception as e:
         # 打印详细错误信息以便调试
         import traceback
