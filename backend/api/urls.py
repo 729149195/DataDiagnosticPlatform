@@ -9,7 +9,7 @@ urlpatterns = [
     path('error-data/', views.get_error_data),
 
     path('submit-data/', views.submit_data),
-    path('operator-strs/', views.process_channel_names),
+    path('operator-strs/', views.operator_strs),
     path('get-shot-number-index/', views.get_shot_number_index, name='get_shot_number_index'),
     path('get-channel-type-index/', views.get_channel_type_index, name='get-channel-type-index'),
     path('get-channel-name-index/', views.get_channel_name_index, name='get-channel-name-index'),

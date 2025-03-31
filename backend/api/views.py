@@ -239,15 +239,11 @@ def submit_data(request):
         # plt.grid(True)
         # plt.axis('equal')  # 保持X和Y轴比例相同
         # plt.show()
-        
-        
-
-
         return JsonResponse({"message": "Data processing started"}, status=200)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
-def process_channel_names(request):
+def operator_strs(request):
     try:
         data = json.loads(request.body)
         anomaly_func_str = data.get('anomaly_func_str')
@@ -346,7 +342,6 @@ def process_channel_names(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-import os
 import importlib.util
 import inspect
 from django.http import JsonResponse
