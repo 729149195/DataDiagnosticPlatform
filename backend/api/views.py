@@ -3,6 +3,7 @@ import json
 import os
 import re
 import threading
+import time
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
@@ -83,7 +84,41 @@ def get_error_origin_index(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
     
+def downsample_to_frequency(x_values, y_values, target_freq=1000):
+    """
+    对数据进行降采样到指定频率
+    
+    Args:
+        x_values: 时间序列数据的X值（时间值）
+        y_values: 对应的Y值
+        target_freq: 目标频率，默认1000Hz (1KHz)
+        
+    Returns:
+        降采样后的x_values和y_values
+    """
+    if len(x_values) <= target_freq:
+        return x_values, y_values
+    
+    # 确定数据的时间范围
+    time_start = min(x_values)
+    time_end = max(x_values)
+    time_span = time_end - time_start
+    
+    # 基于目标频率计算总采样点数
+    n_samples = int(time_span * target_freq)
+    
+    # 使用NumPy的线性插值计算新的采样点
+    # 创建均匀分布的时间点
+    new_times = np.linspace(time_start, time_end, n_samples)
+    
+    # 使用插值计算对应的Y值
+    new_values = np.interp(new_times, x_values, y_values)
+    
+    print(f"降采样: 从 {len(x_values)} 点 降至 {len(new_times)} 点")
+    return new_times, new_values
+
 def get_channel_data(request, channel_key=None):
+    start_time = time.time()
     try:
         if channel_key is None:
             channel_key = request.GET.get('channel_key')
@@ -114,9 +149,6 @@ def get_channel_data(request, channel_key=None):
             else:
                 return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
             
-            # file_path = os.path.join(
-            #     'static', 'Data', shot_number, channel_type, channel_name, f"{channel_name}.json"
-            # )
             DB_list = ["exl50u", "eng50u"]
             DBS = {
                 'exl50': {
@@ -151,34 +183,63 @@ def get_channel_data(request, channel_key=None):
                 },
             }
             data = {}
-            # 暂不确定通道位于哪个数据库中，（这个也需要记录在 struct-tree 里)
-            # print(channel_type)
             print(channel_name)
             if channel_name[:2] == 'TS':
+                conn_start_time = time.time()
                 conn = MDSplus.Connection('192.168.20.11')  # EXL50 database
                 conn.openTree('exl50u', shot_number)
                 c_n = f'EXL50U::TOP.AI:{channel_name}'
                 data = conn.get(r"\{}".format(c_n))
+                print(f"MDSplus连接和查询耗时: {time.time() - conn_start_time:.2f}秒")
                 print(data)
+            
+            db_start_time = time.time()
             for DB in DB_list:
+                tree_start_time = time.time()
                 tree = MdsTree(shot_number, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
+                print(f"创建MdsTree对象耗时: {time.time() - tree_start_time:.2f}秒")
+                
+                data_start_time = time.time()
                 data_x, data_y, unit = tree.getData(channel_name)
+                print(f"获取数据耗时: {time.time() - data_start_time:.2f}秒")
+                print(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
+                
                 if len(data_x) != 0:
+                    # 应用降采样，目标频率为1KHz
+                    downsampling_start = time.time()
+                    sample_freq = 1000  # 指定降采样至1KHz
+                    data_x, data_y = downsample_to_frequency(data_x, data_y, target_freq=sample_freq)
+                    print(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
+                    
                     data = {
-                        # 'channel_type':channel_type,
-                        'channel_number':channel_name,
+                        'channel_number': channel_name,
                         'X_value': list(data_x),
                         'Y_value': list(data_y),
-                        'X_unit': 's', #一维数据的 X 轴默认是秒
+                        'X_unit': 's',
                         'Y_unit': 'Y',
+                        'downsampled': True,
+                        'sample_frequency': sample_freq
                     }
-                    # print(data)
-                    return JsonResponse(data, encoder=JsonEncoder)
-            # else:
-            #     return JsonResponse({'error': 'File not found'}, status=404)
+                    
+                    # 添加数据序列化时间统计
+                    serialize_start_time = time.time()
+                    json_data = json.dumps(data, cls=JsonEncoder)
+                    print(f"数据序列化耗时: {time.time() - serialize_start_time:.2f}秒")
+                    print(f"序列化后数据大小: {len(json_data) / 1024:.2f} KB")
+                    
+                    print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
+                    print(f"总耗时: {time.time() - start_time:.2f}秒")
+                    
+                    response = JsonResponse(data, encoder=JsonEncoder)
+                    print(f"创建响应对象耗时: {time.time() - serialize_start_time:.2f}秒")
+                    return response
+                    
+            print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
+            print(f"总耗时: {time.time() - start_time:.2f}秒")
         else:
             return JsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
     except Exception as e:
+        print(f"发生错误，总耗时: {time.time() - start_time:.2f}秒")
         return JsonResponse({'error': str(e)}, status=500)
     
 def get_error_data(request):
@@ -262,7 +323,7 @@ def operator_strs(request):
         channel_mess = data.get('channel_mess')
         
         print(f"收到计算请求: {anomaly_func_str}")
-        print(f"通道数据: {len(channel_mess) if isinstance(channel_mess, list) else 1} 个通道")
+        # print(f"通道数据: {len(channel_mess) if isinstance(channel_mess, list) else 1} 个通道")
 
         # 判定是否函数名是导入函数
         end_idx = anomaly_func_str.find('(')
