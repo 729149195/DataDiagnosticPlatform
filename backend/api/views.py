@@ -4,6 +4,7 @@ import os
 import re
 import threading
 import time
+import gzip
 from urllib.parse import urlparse, parse_qs
 from datetime import datetime
 
@@ -11,7 +12,8 @@ import MDSplus
 import numpy as np
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
+from django.middleware.gzip import GZipMiddleware
 
 from api.self_algorithm_utils import period_condition_anomaly, channel_read
 from api.utils import filter_range, merge_overlapping_intervals
@@ -117,6 +119,18 @@ def downsample_to_frequency(x_values, y_values, target_freq=1000):
     print(f"降采样: 从 {len(x_values)} 点 降至 {len(new_times)} 点")
     return new_times, new_values
 
+def compress_response(view_func):
+    """
+    装饰器：压缩响应内容
+    """
+    def wrapped_view(request, *args, **kwargs):
+        response = view_func(request, *args, **kwargs)
+        if isinstance(response, HttpResponse):
+            response.headers['Content-Encoding'] = 'gzip'
+            response.content = gzip.compress(response.content)
+        return response
+    return wrapped_view
+
 def get_channel_data(request, channel_key=None):
     start_time = time.time()
     try:
@@ -125,8 +139,12 @@ def get_channel_data(request, channel_key=None):
         else:
             pass
         
+        # 获取采样参数，默认采用降采样
+        sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
+        sample_freq = int(request.GET.get('sample_freq', 1000))     # 默认1KHz
+        
         # 调试输出
-        print(f"请求通道数据，通道键: '{channel_key}'")
+        print(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 频率: {sample_freq} Hz")
         
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
@@ -205,11 +223,14 @@ def get_channel_data(request, channel_key=None):
                 print(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
                 
                 if len(data_x) != 0:
-                    # 应用降采样，目标频率为1KHz
-                    downsampling_start = time.time()
-                    sample_freq = 1000  # 指定降采样至1KHz
-                    data_x, data_y = downsample_to_frequency(data_x, data_y, target_freq=sample_freq)
-                    print(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
+                    # 根据客户端参数决定是否进行降采样
+                    if sample_mode == 'downsample' and len(data_x) > sample_freq:
+                        downsampling_start = time.time()
+                        data_x, data_y = downsample_to_frequency(data_x, data_y, target_freq=sample_freq)
+                        print(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
+                        is_downsampled = True
+                    else:
+                        is_downsampled = False
                     
                     data = {
                         'channel_number': channel_name,
@@ -217,21 +238,18 @@ def get_channel_data(request, channel_key=None):
                         'Y_value': list(data_y),
                         'X_unit': 's',
                         'Y_unit': 'Y',
-                        'downsampled': True,
-                        'sample_frequency': sample_freq
+                        'is_downsampled': is_downsampled,
+                        'points': len(data_x)
                     }
                     
                     # 添加数据序列化时间统计
                     serialize_start_time = time.time()
-                    json_data = json.dumps(data, cls=JsonEncoder)
-                    print(f"数据序列化耗时: {time.time() - serialize_start_time:.2f}秒")
-                    print(f"序列化后数据大小: {len(json_data) / 1024:.2f} KB")
+                    response = JsonResponse(data, encoder=JsonEncoder)
+                    print(f"响应创建耗时: {time.time() - serialize_start_time:.2f}秒")
                     
                     print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
                     print(f"总耗时: {time.time() - start_time:.2f}秒")
                     
-                    response = JsonResponse(data, encoder=JsonEncoder)
-                    print(f"创建响应对象耗时: {time.time() - serialize_start_time:.2f}秒")
                     return response
                     
             print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
@@ -443,12 +461,28 @@ class ExpressionParser:
                 self.current += 1
                 # 获取通道数据
                 channel_key = token
-                response = self.get_channel_data_func('', channel_key)
-                if response.status_code != 200:
-                    error_content = json.loads(response.content.decode('utf-8'))
-                    raise ValueError(f"获取通道 {channel_key} 数据失败: {error_content.get('error', '未知错误')}")
                 
-                channel_data = json.loads(response.content.decode('utf-8'))
+                # 创建一个模拟请求对象
+                class MockRequest:
+                    def __init__(self, channel_key):
+                        self.GET = {'channel_key': channel_key, 'sample_mode': 'downsample'}
+                
+                mock_request = MockRequest(channel_key)
+                response = self.get_channel_data_func(mock_request, channel_key)
+                
+                if hasattr(response, 'content'):
+                    # 对于HttpResponse对象
+                    try:
+                        channel_data = json.loads(response.content.decode('utf-8'))
+                    except Exception:
+                        raise ValueError(f"解析通道 {channel_key} 返回数据失败")
+                else:
+                    # 对于JsonResponse对象
+                    channel_data = response
+                
+                # 检查返回的数据是否有效
+                if 'error' in channel_data:
+                    raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
                 
                 # 确保返回的数据包含所需的键
                 if 'X_value' not in channel_data or 'Y_value' not in channel_data:
