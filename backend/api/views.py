@@ -143,6 +143,11 @@ def get_channel_data(request, channel_key=None):
         sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
         sample_freq = int(request.GET.get('sample_freq', 1000))     # 默认1KHz
         
+        # sample_mode、sample_freq使用方法：
+        # 默认使用降采样（最快）: /api/get_channel_data?channel_key=通道名_炮号
+        # 获取全量数据: /api/get_channel_data?channel_key=通道名_炮号&sample_mode=full
+        # 自定义采样频率: /api/get_channel_data?channel_key=通道名_炮号&sample_freq=2000
+        
         # 调试输出
         print(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 频率: {sample_freq} Hz")
         
