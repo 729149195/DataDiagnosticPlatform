@@ -1,25 +1,17 @@
 import ast
 import json
+import orjson
 import os
 import re
-import threading
 import time
 import gzip
-from urllib.parse import urlparse, parse_qs
-from datetime import datetime
 
-import MDSplus
 import numpy as np
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from django.http import JsonResponse, HttpResponse
-from django.middleware.gzip import GZipMiddleware
 
-from api.self_algorithm_utils import period_condition_anomaly, channel_read
-from api.utils import filter_range, merge_overlapping_intervals
+from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
 from api.verify_user import send_post_request
-# import matplotlib.pyplot as plt
 
 class JsonEncoder(json.JSONEncoder):
     """Convert numpy classes to JSON serializable objects."""
@@ -131,6 +123,16 @@ def compress_response(view_func):
         return response
     return wrapped_view
 
+# 使用orjson创建更快的JsonResponse
+def OrJsonResponse(data):
+    """使用orjson创建更快的JsonResponse，同时保持对numpy的支持"""
+    # orjson不需要自定义encoder，它内置支持numpy类型
+    # 设置option保持精度和按顺序输出
+    return HttpResponse(
+        orjson.dumps(data, option=orjson.OPT_SERIALIZE_NUMPY),
+        content_type='application/json'
+    )
+
 def get_channel_data(request, channel_key=None):
     start_time = time.time()
     try:
@@ -142,11 +144,6 @@ def get_channel_data(request, channel_key=None):
         # 获取采样参数，默认采用降采样
         sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
         sample_freq = int(request.GET.get('sample_freq', 1000))     # 默认1KHz
-        
-        # sample_mode、sample_freq使用方法：
-        # 默认使用降采样（最快）: /api/get_channel_data?channel_key=通道名_炮号
-        # 获取全量数据: /api/get_channel_data?channel_key=通道名_炮号&sample_mode=full
-        # 自定义采样频率: /api/get_channel_data?channel_key=通道名_炮号&sample_freq=2000
         
         # 调试输出
         print(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 频率: {sample_freq} Hz")
@@ -207,18 +204,22 @@ def get_channel_data(request, channel_key=None):
             }
             data = {}
             print(channel_name)
-            if channel_name[:2] == 'TS':
-                conn_start_time = time.time()
-                conn = MDSplus.Connection('192.168.20.11')  # EXL50 database
-                conn.openTree('exl50u', shot_number)
-                c_n = f'EXL50U::TOP.AI:{channel_name}'
-                data = conn.get(r"\{}".format(c_n))
-                print(f"MDSplus连接和查询耗时: {time.time() - conn_start_time:.2f}秒")
-                print(data)
-            
+            # if channel_name[:2] == 'TS':
+            #     conn_start_time = time.time()
+            #     conn = Connection('192.168.20.11')  # EXL50 database
+            #     print('xxxxxxxxxxxxxxxxxxxxxxx', shot_number, type(shot_number))
+            #     try:
+            #         conn.openTree('exl50u', 4489)
+            #     except Exception as e:
+            #         print('ABC',e)
+            #     c_n = f'EXL50U::TOP.AI:{channel_name}'
+            #     data = conn.get(r"\{}".format(c_n))
+            #     print(f"MDSplus连接和查询耗时: {time.time() - conn_start_time:.2f}秒")
+            #     print(data)
             db_start_time = time.time()
             for DB in DB_list:
                 tree_start_time = time.time()
+
                 tree = MdsTree(shot_number, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
                 print(f"创建MdsTree对象耗时: {time.time() - tree_start_time:.2f}秒")
                 
@@ -236,6 +237,9 @@ def get_channel_data(request, channel_key=None):
                         is_downsampled = True
                     else:
                         is_downsampled = False
+                        
+                    original_frequency = len(data_x) / (data_x[-1] - data_x[0]) if len(data_x) > 1 else 0
+                    print(f"原始频率: {original_frequency/1000}KHz")
                     
                     data = {
                         'channel_number': channel_name,
@@ -244,12 +248,14 @@ def get_channel_data(request, channel_key=None):
                         'X_unit': 's',
                         'Y_unit': 'Y',
                         'is_downsampled': is_downsampled,
-                        'points': len(data_x)
+                        'points': len(data_x),
+                        'original_frequency_khz': original_frequency/1000
                     }
                     
-                    # 添加数据序列化时间统计
+                    
+                    # 使用orjson替代标准json进行序列化，大幅提升性能
                     serialize_start_time = time.time()
-                    response = JsonResponse(data, encoder=JsonEncoder)
+                    response = OrJsonResponse(data)
                     print(f"响应创建耗时: {time.time() - serialize_start_time:.2f}秒")
                     
                     print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")

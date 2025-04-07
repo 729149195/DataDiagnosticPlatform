@@ -1045,4 +1045,3 @@ function processData(rawData) {
 }
 
 export default store;
-ort default store;
