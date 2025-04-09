@@ -15,6 +15,3 @@ function result = NoiseThreshold(channel_key, threshold)
     result_struct.Y_value = Y_value;
     result = jsonencode(result_struct);
 end
-Y_value = Y_value;
-    result = jsonencode(result_struct);
-end

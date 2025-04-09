@@ -5,7 +5,7 @@ import os
 import re
 import time
 import gzip
-
+import MDSplus
 import numpy as np
 from django.http import JsonResponse, HttpResponse
 
@@ -206,10 +206,10 @@ def get_channel_data(request, channel_key=None):
             print(channel_name)
             # if channel_name[:2] == 'TS':
             #     conn_start_time = time.time()
-            #     conn = Connection('192.168.20.11')  # EXL50 database
+            #     conn = MDSplus.Connection('192.168.20.11')  # EXL50 database
             #     print('xxxxxxxxxxxxxxxxxxxxxxx', shot_number, type(shot_number))
             #     try:
-            #         conn.openTree('exl50u', 4489)
+            #         conn.openTree('exl50u', shot_number)
             #     except Exception as e:
             #         print('ABC',e)
             #     c_n = f'EXL50U::TOP.AI:{channel_name}'

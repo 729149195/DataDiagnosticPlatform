@@ -3,7 +3,6 @@
 import numpy as np
 from MDSplus import Tree, mdsExceptions, Connection
 
-
 def judge_data(npary):
     """ 判断MDSplus返回数据是否是一维数据 """
     if len(npary.shape) == 1:
@@ -168,7 +167,7 @@ class MdsTree:
         """ 设置起止时间及采样率，参数单位s """
         self.tree.setTimeContext(begin, end, delta)
 
-    def getData(self, channel_name, begin=None, end=None, delta=None, isSetTime=True):
+    def getData(self, channel_name, begin=-2, end=5, delta=None, isSetTime=True):
         """
         返回x, y, unit数据
         """
@@ -176,7 +175,7 @@ class MdsTree:
             self.setTimeContext(begin, end, delta)
         channel_name = self.renameChaName(channel_name)
         try:
-            data_x = self.tree.getNode(channel_name).dim_of().data()
+            # data_x = self.tree.getNode(channel_name).dim_of().data()
             data_y = self.tree.getNode(channel_name).data()
             unit = self.tree.getNode(channel_name).units_of()
             unit = '' if unit == ' ' else unit
@@ -215,6 +214,9 @@ def formChaPool(dbname, shot, path, subtrees):
 
     tree.close()
     return channels
+
+
+
 
 
 
