@@ -122,20 +122,20 @@ const restoreCursorPosition = (element, cursorPosition) => {
 const sendClickedChannelNames = async () => {
     try {
         // 调试信息：查看通道格式
-        console.log("要发送的公式:", formulasarea.value);
-        console.log("选中的通道:", selectedChannels.value);
+        //console.log("要发送的公式:", formulasarea.value);
+        //console.log("选中的通道:", selectedChannels.value);
         
         // 检查标识符格式
         const channelIdentifiers = selectedChannels.value.map(channel => 
             `${channel.channel_name}_${channel.shot_number}`);
-        console.log("通道标识符格式:", channelIdentifiers);
+        //console.log("通道标识符格式:", channelIdentifiers);
         
         const response = await axios.post('https://10.1.108.231:5000/api/operator-strs/', {
             clickedChannelNames: formulasarea.value,
             anomaly_func_str: formulasarea.value,
             channel_mess: selectedChannels.value, // 修改为传递所有选中通道
         });
-        console.log('Response from backend:', response.data);
+        //console.log('Response from backend:', response.data);
         store.state.ErrorLineXScopes = response.data.data;
         store.commit('updateCalculateResult', response.data.data.result)
     } catch (error) {
