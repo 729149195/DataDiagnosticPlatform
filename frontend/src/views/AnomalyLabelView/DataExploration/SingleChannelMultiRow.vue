@@ -708,7 +708,7 @@ const saveAnomaly = () => {
             id: `anomaly-highlight-${currentAnomaly.id}`,
             name: `异常区域-${currentAnomaly.id}`,
             data: pointsInRange,
-            color: 'rgba(255, 0, 0, 0.8)',
+            color: 'rgba(255, 0, 0, 0)',
             lineWidth: 2,
             zIndex: 10,
             marker: {
@@ -919,7 +919,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                       const leftBorderLine = {
                         id: `error-line-start-${groupIndex}-${personIndex}-${errorIndex}-${rangeIndex}`,
                         value: startTime,
-                        color: 'rgba(255, 0, 0, 0.5)',
+                        color: 'rgba(255, 0, 0, 0)',
                         width: 1,
                         dashStyle: isPerson ? 'Solid' : 'ShortDot', // 使用 'Dot' 样式
                         zIndex: 1,
@@ -934,7 +934,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                       const rightBorderLine = {
                         id: `error-line-end-${groupIndex}-${personIndex}-${errorIndex}-${rangeIndex}`,
                         value: endTime,
-                        color: 'rgba(255, 0, 0, 0.5)',
+                        color: 'rgba(255, 0, 0, 0)',
                         width: 1,
                         dashStyle: isPerson ? 'Solid' : 'ShortDot', // 使用 'Dot' 样式
                         zIndex: 1,
