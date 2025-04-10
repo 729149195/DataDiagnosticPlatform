@@ -8,7 +8,7 @@
                 <FolderChecked />
                 记录公式
             </el-button>
-            <el-button type="primary" @click="sendClickedChannelNames">
+            <el-button type="primary" @click="sendClickedChannelNames" :loading="isCalculating">
                 <Cpu />
                 计算
             </el-button>
@@ -33,6 +33,9 @@ const formulasarea = ref('');
 const operators = ref('');
 
 const output = ref('');
+
+// 计算状态
+const isCalculating = computed(() => store.state.isCalculating);
 
 let currentCursorPosition = 0; // 用于记录光标位置
 
@@ -119,27 +122,116 @@ const restoreCursorPosition = (element, cursorPosition) => {
     selection.addRange(range);
 };
 
+// 轮询后端进度的函数
+const pollCalculationProgress = async (taskId) => {
+    try {
+        const progressCheckInterval = setInterval(async () => {
+            if (!store.state.isCalculating) {
+                clearInterval(progressCheckInterval);
+                return;
+            }
+            
+            try {
+                const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}/`);
+                const { step, progress, status } = response.data;
+                
+                // 更新进度和步骤
+                store.commit('setCalculatingProgress', {
+                    step: step,
+                    progress: progress
+                });
+                
+                // 如果计算完成或失败，停止轮询
+                if (status === 'completed' || status === 'failed') {
+                    clearInterval(progressCheckInterval);
+                    
+                    if (status === 'failed') {
+                        store.commit('setCalculatingProgress', {
+                            step: `计算失败: ${response.data.error || '未知错误'}`,
+                            progress: 0
+                        });
+                        
+                        // 3秒后清除错误状态
+                        setTimeout(() => {
+                            store.commit('setCalculatingStatus', false);
+                        }, 3000);
+                    } else {
+                        // 短暂延迟后清除计算状态
+                        setTimeout(() => {
+                            store.commit('setCalculatingStatus', false);
+                        }, 500);
+                    }
+                }
+            } catch (error) {
+                console.error('Error polling calculation progress:', error);
+                // 如果轮询失败，不要立即停止，可能是网络波动
+            }
+        }, 300); // 每300ms检查一次进度
+    } catch (error) {
+        console.error('Error setting up progress polling:', error);
+    }
+};
+
 const sendClickedChannelNames = async () => {
     try {
-        // 调试信息：查看通道格式
-        //console.log("要发送的公式:", formulasarea.value);
-        //console.log("选中的通道:", selectedChannels.value);
-        
-        // 检查标识符格式
-        const channelIdentifiers = selectedChannels.value.map(channel => 
-            `${channel.channel_name}_${channel.shot_number}`);
-        //console.log("通道标识符格式:", channelIdentifiers);
-        
-        const response = await axios.post('https://10.1.108.231:5000/api/operator-strs/', {
-            clickedChannelNames: formulasarea.value,
-            anomaly_func_str: formulasarea.value,
-            channel_mess: selectedChannels.value, // 修改为传递所有选中通道
+        // 设置计算开始状态
+        store.commit('setCalculatingStatus', true);
+        store.commit('setCalculatingProgress', {
+            step: '准备计算',
+            progress: 0
         });
-        //console.log('Response from backend:', response.data);
-        store.state.ErrorLineXScopes = response.data.data;
-        store.commit('updateCalculateResult', response.data.data.result)
+        
+        // 使用axios的取消令牌
+        const source = axios.CancelToken.source();
+        const timeoutId = setTimeout(() => source.cancel('操作超时'), 60000); // 60秒超时
+        
+        try {
+            // 发送计算请求，并获取后端返回的任务ID
+            const initResponse = await axios.post('https://10.1.108.231:5000/api/operator-strs/init/', {
+                expression: formulasarea.value
+            });
+            
+            const taskId = initResponse.data.task_id;
+            
+            // 启动进度轮询
+            pollCalculationProgress(taskId);
+            
+            // 发送实际计算请求
+            const response = await axios.post('https://10.1.108.231:5000/api/operator-strs/', {
+                clickedChannelNames: formulasarea.value,
+                anomaly_func_str: formulasarea.value,
+                channel_mess: selectedChannels.value,
+                task_id: taskId
+            }, {
+                cancelToken: source.token
+            });
+            
+            // 处理计算结果
+            store.state.ErrorLineXScopes = response.data.data;
+            store.commit('updateCalculateResult', response.data.data.result);
+            
+        } catch (error) {
+            // 处理错误
+            console.error('Error sending data to backend:', error);
+            
+            if (!axios.isCancel(error)) {
+                // 非取消错误才更新进度
+                store.commit('setCalculatingProgress', {
+                    step: `计算出错: ${error.message || '未知错误'}`,
+                    progress: 0
+                });
+                
+                // 3秒后清除计算状态
+                setTimeout(() => {
+                    store.commit('setCalculatingStatus', false);
+                }, 3000);
+            }
+        } finally {
+            clearTimeout(timeoutId); // 清除超时计时器
+        }
     } catch (error) {
-        console.error('Error sending data to backend:', error);
+        console.error('Error in calculation process:', error);
+        store.commit('setCalculatingStatus', false);
     }
 };
 

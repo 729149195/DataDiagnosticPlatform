@@ -8,10 +8,17 @@ import gzip
 import MDSplus # type: ignore
 import numpy as np
 from django.http import JsonResponse, HttpResponse
+import uuid
+import threading
+from django.utils import timezone
+from datetime import datetime
 
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
 from api.verify_user import send_post_request
+
+# 存储计算任务状态的字典
+calculation_tasks = {}
 
 class JsonEncoder(json.JSONEncoder):
     """Convert numpy classes to JSON serializable objects."""
@@ -503,11 +510,68 @@ class ExpressionParser:
         
         raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
 
+def init_calculation(request):
+    """初始化计算任务，返回唯一任务ID"""
+    try:
+        data = json.loads(request.body)
+        expression = data.get('expression', '')
+        
+        # 生成唯一任务ID
+        task_id = str(uuid.uuid4())
+        
+        # 初始化任务状态
+        calculation_tasks[task_id] = {
+            'status': 'pending',
+            'step': '准备计算',
+            'progress': 0,
+            'expression': expression,
+            'start_time': timezone.now().isoformat(),
+            'last_update': timezone.now().isoformat(),
+        }
+        
+        return JsonResponse({'task_id': task_id, 'status': 'initialized'})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+def get_calculation_progress(request, task_id):
+    """获取计算任务的进度"""
+    try:
+        if task_id not in calculation_tasks:
+            return JsonResponse({'error': '找不到指定的任务'}, status=404)
+        
+        task_info = calculation_tasks[task_id]
+        
+        # 清理过期任务（超过30分钟的任务）
+        current_time = timezone.now()
+        for t_id in list(calculation_tasks.keys()):
+            last_update = datetime.fromisoformat(calculation_tasks[t_id]['last_update'])
+            if (current_time - last_update).total_seconds() > 1800:  # 30分钟
+                calculation_tasks.pop(t_id, None)
+        
+        return JsonResponse(task_info)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+def update_calculation_progress(task_id, step, progress, status='processing'):
+    """更新计算任务的进度（供内部使用）"""
+    if task_id in calculation_tasks:
+        calculation_tasks[task_id].update({
+            'status': status,
+            'step': step,
+            'progress': progress,
+            'last_update': timezone.now().isoformat()
+        })
+
 def operator_strs(request):
     try:
         data = json.loads(request.body)
         anomaly_func_str = data.get('anomaly_func_str')
         channel_mess = data.get('channel_mess')
+        task_id = data.get('task_id')
+        
+        # 如果提供了任务ID，进行进度更新
+        if task_id and task_id in calculation_tasks:
+            update_calculation_progress(task_id, '解析表达式', 10)
         
         print(f"收到计算请求: {anomaly_func_str}")
         # print(f"通道数据: {len(channel_mess) if isinstance(channel_mess, list) else 1} 个通道")
@@ -527,6 +591,10 @@ def operator_strs(request):
             # 兼容单通道情况
             channel_key = f"{channel_mess['channel_name']}_{channel_mess['shot_number']}"
             channel_map[channel_key] = channel_mess
+            
+        # 更新进度：准备数据完成
+        if task_id and task_id in calculation_tasks:
+            update_calculation_progress(task_id, '准备数据完成', 20)
 
         # 检查是否是函数调用
         if is_function_call:
@@ -545,8 +613,16 @@ def operator_strs(request):
             for function in functions_data:
                 if function['name'] == func_name:
                     is_import_func = True
+                    
+            # 更新进度：函数识别完成
+            if task_id and task_id in calculation_tasks:
+                update_calculation_progress(task_id, '函数识别完成', 30)
 
             if is_import_func:
+                # 更新进度：开始执行函数
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, f'执行函数 {func_name}', 40)
+                    
                 data = {}
                 data['function_name'] = func_name
                 params_str = anomaly_func_str[end_idx:].replace(" ", "").replace("(", "").replace(")", "")
@@ -558,13 +634,37 @@ def operator_strs(request):
                 # data['parameters'] = [float(i) for i in data['parameters']]
                 if len(data['parameters']) > 1:  # 确保有足够的参数再访问索引1
                     data['parameters'][1] = float(data['parameters'][1])
+                    
+                # 更新进度：函数参数解析完成
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '函数参数解析完成', 50)
+                    
                 ret = execute_function(data)
+                
+                # 更新进度：函数执行完成
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '函数执行完成', 90)
+                    
+                # 标记计算完成
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '计算完成', 100, 'completed')
+                    
                 return JsonResponse({"data": ret}, status=200)
             else:
                 # 在这里可以添加对channel_names的处理逻辑
                 print("operator-strs:", anomaly_func_str)
+                
+                # 更新进度：开始特殊函数处理
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '开始特殊函数处理', 40)
+                    
                 if anomaly_func_str[:3] == 'Pca':
                     print('xxxx')
+                    
+                    # 更新进度：开始PCA分析
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, '开始PCA分析', 50)
+                        
                     anomaly_func_str = anomaly_func_str[3:]
                     params_list = anomaly_func_str.replace(" ", "")[1:-1].split(',')
                     [channel_name, period, condition_str, mode] = [params_list[0], ",".join(params_list[1:-2]),
@@ -573,49 +673,126 @@ def operator_strs(request):
                     print('xxx')
                     # 使用第一个通道进行处理，保持向后兼容
                     channel_to_use = channel_mess[0] if isinstance(channel_mess, list) else channel_mess
+                    
+                    # 更新进度：PCA分析中
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, 'PCA分析中', 70)
+                        
                     ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_to_use)
+                    
+                    # 更新进度：PCA分析完成
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, 'PCA分析完成', 90)
 
                     print(ret)
+                    
+                    # 标记计算完成
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, '计算完成', 100, 'completed')
+                        
                     return JsonResponse({"data": ret.tolist()}, status=200)
                 else:
+                    # 任务失败
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, f'未知的函数: {func_name}', 0, 'failed')
+                        
                     raise ValueError(f"未知的函数: {func_name}")
         else:
+            # 更新进度：开始表达式解析
+            if task_id and task_id in calculation_tasks:
+                update_calculation_progress(task_id, '开始表达式解析', 40)
+                
             # 检查表达式是否包含括号或运算符
             if '(' in anomaly_func_str or ')' in anomaly_func_str or any(op in anomaly_func_str for op in ['+', '-', '*', '/']):
                 # 使用表达式解析器处理带括号和运算优先级的表达式
                 print(f"正在解析复杂表达式: {anomaly_func_str}")
+                
+                # 更新进度：解析复杂表达式
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '解析复杂表达式', 50)
+                    
                 parser = ExpressionParser(get_channel_data)
+                
+                # 更新进度：获取通道数据
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '获取通道数据', 60)
+                    
                 result = parser.parse(anomaly_func_str)
+                
+                # 更新进度：计算表达式结果
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '计算表达式结果', 80)
                 
                 # 设置结果通道名
                 result['channel_name'] = anomaly_func_str
                 
+                # 标记计算完成
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '计算完成', 100, 'completed')
+                    
                 return JsonResponse({"data": {"result": result}}, status=200)
             else:
                 # 处理单通道情况
                 channel_key = anomaly_func_str.strip()
+                
+                # 更新进度：查找通道数据
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, f'查找通道: {channel_key}', 50)
+                    
                 if channel_key in channel_map:
                     try:
+                        # 更新进度：获取通道数据
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, f'获取通道数据: {channel_key}', 70)
+                            
                         response = get_channel_data('', channel_key)
                         channel_data = json.loads(response.content.decode('utf-8'))
                         
                         # 检查返回的数据是否有效
                         if 'error' in channel_data:
+                            # 任务失败
+                            if task_id and task_id in calculation_tasks:
+                                update_calculation_progress(task_id, f'获取通道数据失败: {channel_data["error"]}', 0, 'failed')
+                                
                             raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
                         
                         # 确保返回的数据包含所需的键
                         if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                            # 任务失败
+                            if task_id and task_id in calculation_tasks:
+                                update_calculation_progress(task_id, f'通道数据格式错误: {channel_key}', 0, 'failed')
+                                
                             raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
                         
                         # 设置通道名称
                         channel_data['channel_name'] = channel_key
                         
+                        # 更新进度：处理通道数据
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, '处理通道数据', 90)
+                            
+                        # 标记计算完成
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, '计算完成', 100, 'completed')
+                            
                         return JsonResponse({"data": {"result": channel_data}}, status=200)
                     except Exception as e:
+                        # 任务失败
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, f'处理通道数据出错: {str(e)}', 0, 'failed')
+                            
                         raise ValueError(f"处理通道 {channel_key} 数据时出错: {str(e)}")
                 else:
+                    # 任务失败
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, f'未找到通道: {channel_key}', 0, 'failed')
+                        
                     raise ValueError(f"未找到通道: {channel_key}")
     except Exception as e:
+        # 如果提供了任务ID，标记任务失败
+        if 'task_id' in data and data['task_id'] in calculation_tasks:
+            update_calculation_progress(data['task_id'], f'计算出错: {str(e)}', 0, 'failed')
+            
         # 打印详细错误信息以便调试
         import traceback
         traceback.print_exc()

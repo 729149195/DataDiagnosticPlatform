@@ -118,6 +118,11 @@ const store = createStore({
       currentPage: 1,
       hasMoreData: true,
       userMessage: "",
+      isCalculating: false,
+      calculatingProgress: {
+        step: '',
+        progress: 0
+      },
     };
   },
   getters: {
@@ -483,6 +488,12 @@ const store = createStore({
     },
     clearAnomalies(state) {
       state.anomalies = {}; // 清空 anomalies 对象
+    },
+    setCalculatingStatus(state, status) {
+      state.isCalculating = status;
+    },
+    setCalculatingProgress(state, { step, progress }) {
+      state.calculatingProgress = { step, progress };
     },
   },
   actions: {

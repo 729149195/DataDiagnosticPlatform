@@ -4,6 +4,24 @@
             <div class="color-block" :style="{ backgroundColor: curChannel.color || 'steelblue' }"></div>
             <div class="channel-name">{{ curChannel.channel_name }}</div>
         </div>
+        
+        <!-- 美化后的进度条 -->
+        <transition name="fade">
+            <div v-if="isCalculating" class="progress-overlay">
+                <div class="progress-content">
+                    <div class="progress-step-indicator">{{ calculatingProgress.step }}</div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar-track">
+                            <div class="progress-bar-fill" :style="{ width: `${calculatingProgress.progress}%` }">
+                                <div class="progress-bar-pulse"></div>
+                            </div>
+                        </div>
+                        <div class="progress-percentage">{{ calculatingProgress.progress }}%</div>
+                    </div>
+                </div>
+            </div>
+        </transition>
+        
         <div class="chart-wrapper">
             <div id="calculation-result-container" ref="chartContainerRef"></div>
         </div>
@@ -27,6 +45,11 @@ const channelDataCache = computed(() => store.state.channelDataCache);
 const chartContainerRef = ref(null);
 const resultData = ref(null);
 const chartInstance = ref(null);
+
+// 计算状态和进度 
+const isCalculating = computed(() => store.state.isCalculating);
+const calculatingProgress = computed(() => store.state.calculatingProgress);
+
 // 用于标识当前组件的图表实例
 const CHART_INSTANCE_ID = 'calculation-result-chart';
 
@@ -730,6 +753,93 @@ const handleResize = throttle(() => {
     flex-direction: column;
     padding-bottom: 0;
     height: 100%;
+    position: relative; /* 添加相对定位，使进度条可以绝对定位 */
+}
+
+/* 淡入淡出动画 */
+.fade-enter-active, .fade-leave-active {
+    transition: opacity 0.3s ease;
+}
+.fade-enter-from, .fade-leave-to {
+    opacity: 0;
+}
+
+/* 进度条覆盖层 */
+.progress-overlay {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    width: 400px;
+    max-width: 90%;
+    background-color: rgba(255, 255, 255, 0.95);
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    padding: 20px;
+}
+
+.progress-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.progress-step-indicator {
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.progress-bar-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.progress-bar-track {
+    flex-grow: 1;
+    height: 8px;
+    background-color: #f1f1f1;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-right: 15px;
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4285F4, #34A853);
+    border-radius: 4px;
+    position: relative;
+    transition: width 0.3s ease;
+}
+
+/* 脉冲效果 */
+.progress-bar-pulse {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: 15px;
+    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.8), rgba(255,255,255,0));
+    animation: pulse 1.5s infinite;
+}
+
+.progress-percentage {
+    font-size: 14px;
+    font-weight: 600;
+    color: #4285F4;
+    min-width: 40px;
+    text-align: right;
+}
+
+@keyframes pulse {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 .channel-info {
