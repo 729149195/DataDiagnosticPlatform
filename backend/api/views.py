@@ -235,6 +235,9 @@ def get_channel_data(request, channel_key=None):
                 print(f"获取数据耗时: {time.time() - data_start_time:.2f}秒")
                 print(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
                 
+                original_frequency = len(data_x) / (data_x[-1] - data_x[0]) if len(data_x) > 1 else 0
+                print(f"原始频率: {original_frequency/1000}KHz")
+                
                 if len(data_x) != 0:
                     # 根据客户端参数决定是否进行降采样
                     if sample_mode == 'downsample' and len(data_x) > sample_freq:
@@ -245,8 +248,7 @@ def get_channel_data(request, channel_key=None):
                     else:
                         is_downsampled = False
                         
-                    original_frequency = len(data_x) / (data_x[-1] - data_x[0]) if len(data_x) > 1 else 0
-                    print(f"原始频率: {original_frequency/1000}KHz")
+                    
                     
                     data = {
                         'channel_number': channel_name,

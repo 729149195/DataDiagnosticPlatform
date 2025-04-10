@@ -86,16 +86,19 @@ function calculateSamplingRate(X_value) {
  * @returns {Object} 重采样后的数据对象
  */
 function sampleData(data, targetRate) {
-  // 计算原始采样频率
-  const originalRate = calculateSamplingRate(data.X_value);
+  // 保存原始频率值 - 直接使用传入的originalFrequency字段
+  const originalFrequency = data.originalFrequency;
   
-  // 如果原始频率接近目标频率(允许0.1%的误差),直接返回原始数据
-  if (Math.abs(originalRate - targetRate) / targetRate < 0.001) {
+  // 计算原始采样频率(用于内部计算，不会替换原始值)
+  const calculatedRate = calculateSamplingRate(data.X_value);
+  
+  // 如果计算的原始频率接近目标频率(允许0.1%的误差),直接返回原始数据
+  if (Math.abs(calculatedRate - targetRate) / targetRate < 0.001) {
     return {
       X_value: data.X_value,
       Y_value: data.Y_value,
-      originalFrequency: originalRate,
-      originalDataPoints: data.X_value.length
+      originalFrequency: originalFrequency, // 保持原始频率值不变
+      originalDataPoints: data.originalDataPoints || data.X_value.length
     };
   }
 
@@ -109,7 +112,7 @@ function sampleData(data, targetRate) {
   const newX = Array.from({length: numPoints}, (_, i) => startTime + i * deltaT);
 
   let newY;
-  if (originalRate < targetRate) {
+  if (calculatedRate < targetRate) {
     // 需要插值增加采样率
     try {
       newY = interp1(data.X_value, data.Y_value, newX, 'linear');
@@ -140,26 +143,26 @@ function sampleData(data, targetRate) {
       return {
         X_value: data.X_value,
         Y_value: data.Y_value,
-        originalFrequency: originalRate,
-        originalDataPoints: data.X_value.length
+        originalFrequency: originalFrequency, // 保持原始频率值不变
+        originalDataPoints: data.originalDataPoints || data.X_value.length
       };
     }
   } else {
     // 需要降采样
-    const samplingInterval = Math.floor(originalRate / targetRate);
+    const samplingInterval = Math.floor(calculatedRate / targetRate);
     return {
       X_value: data.X_value.filter((_, i) => i % samplingInterval === 0),
       Y_value: data.Y_value.filter((_, i) => i % samplingInterval === 0),
-      originalFrequency: originalRate,
-      originalDataPoints: data.X_value.length
+      originalFrequency: originalFrequency, // 保持原始频率值不变
+      originalDataPoints: data.originalDataPoints || data.X_value.length
     };
   }
 
   return {
     X_value: newX,
     Y_value: newY,
-    originalFrequency: originalRate,
-    originalDataPoints: data.X_value.length
+    originalFrequency: originalFrequency, // 保持原始频率值不变
+    originalDataPoints: data.originalDataPoints || data.X_value.length
   };
 }
 

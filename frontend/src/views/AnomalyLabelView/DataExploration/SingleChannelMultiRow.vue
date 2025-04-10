@@ -219,14 +219,25 @@ const processChannelData = async (data, channel) => {
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   try {
     renderingStates[channelKey] = 0;
+    // 添加调试日志
+    console.log(`处理通道数据 ${channelKey}:`, {
+      originalFrequency: data.originalFrequency || '未知'
+    });
+    
     // 准备数据
     const channelData = {
       X_value: [...data.X_value],
       Y_value: [...data.Y_value],
-      originalFrequency: data.originalFrequency || 1.0,
-      originalDataPoints: data.originalDataPoints || data.X_value.length,
+      originalFrequency: data.originalFrequency, // 直接传递原始频率值，不设置默认值
+      originalDataPoints: data.originalDataPoints || data.points || data.X_value.length,
       channel_number: data.channel_number || channel.channel_name
     };
+    
+    // 输出准备好的通道数据
+    console.log(`准备好的通道数据 ${channelKey}:`, {
+      originalFrequency: channelData.originalFrequency
+    });
+    
     renderingStates[channelKey] = 25;
     // 并行获取错误数据 - 不阻塞其他处理
     const errorDataPromise = channel.errors && channel.errors.length > 0
@@ -839,6 +850,15 @@ watch(isBoxSelect, (newValue) => {
 const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelType, shotNumber) => {
   return new Promise((resolve, reject) => {
     try {
+      // 添加调试语句，查看data对象的结构
+      console.log(`绘制图表 ${channelName}，原始频率数据:`, { 
+        originalFrequency: data.originalFrequency
+      });
+      
+      // 处理频率数据 - 保持原始频率值不变
+      const freqValue = data.originalFrequency;
+      console.log(`通道 ${channelName} 的最终频率值:`, freqValue);
+      
       // 添加防抖检查
       const chartKey = `${channelName}-${color}-${sampling.value}-${smoothnessValue.value}`;
       if (chartKey === drawChart.lastDrawnChart) {
@@ -1395,13 +1415,13 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         },
         // 添加自定义属性，存储原始频率信息
         custom: {
-          originalFrequency: data.originalFrequency || 1.0,
+          originalFrequency: freqValue,
           channelName: channelName,
           shotNumber: shotNumber,
           color: color
         },
         title: {
-          text: `${channelType || channelName.split('_')[0]} | ${shotNumber} (${(data.originalFrequency || 1.0).toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+          text: `${channelType || channelName.split('_')[0]} | ${shotNumber} (${freqValue.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
           align: 'right',
           x: -10, // 向左偏移10像素，使其位于右上角
           y: 60,  // 向下偏移20像素，确保在图表内部

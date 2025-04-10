@@ -440,7 +440,7 @@ const store = createStore({
         X_value: data.X_value || [],
         Y_value: data.Y_value || [],
         originalFrequency: data.originalFrequency || 1.0,
-        originalDataPoints: data.originalDataPoints || 0,
+        originalDataPoints: data.points || 0,
         channel_number: data.channel_number || channelKey.split('_')[0],
         X_unit: data.X_unit || 's',
         Y_unit: data.Y_unit || '',
@@ -701,25 +701,11 @@ const store = createStore({
           const enhancedData = Object.assign({}, originalData);
           
           // 只计算必要的字段，减少计算开销
-          // 计算原始数据点数量 - 直接获取长度，避免条件判断
-          enhancedData.originalDataPoints = enhancedData.X_value ? enhancedData.X_value.length : 0;
+          // 获取原始数据点数量 - 直接使用后端返回的points字段
+          enhancedData.originalDataPoints = enhancedData.points || 0;
           
-          // 计算原始采样频率 - 只在数据点足够时计算
-          if (enhancedData.X_value && enhancedData.X_value.length > 1) {
-            // 直接使用数组索引，避免使用数组方法
-            const firstPoint = enhancedData.X_value[0];
-            const lastPoint = enhancedData.X_value[enhancedData.X_value.length - 1];
-            const timeRange = Math.abs(lastPoint - firstPoint);
-            
-            // 只有在timeRange有效时才计算频率
-            if (timeRange > 0) {
-              enhancedData.originalFrequency = enhancedData.originalDataPoints / timeRange / 1000;
-            } else {
-              enhancedData.originalFrequency = 1.0;
-            }
-          } else {
-            enhancedData.originalFrequency = 1.0;
-          }
+          // 获取原始频率 - 直接使用后端返回的originalFrequency字段
+          enhancedData.originalFrequency = enhancedData.originalFrequency || 1.0;
           
           // 只在必要时设置channel_number
           if (!enhancedData.channel_number) {
