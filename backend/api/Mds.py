@@ -175,7 +175,7 @@ class MdsTree:
             self.setTimeContext(begin, end, delta)
         channel_name = self.renameChaName(channel_name)
         try:
-            # data_x = self.tree.getNode(channel_name).dim_of().data()
+            data_x = self.tree.getNode(channel_name).dim_of().data()
             data_y = self.tree.getNode(channel_name).data()
             unit = self.tree.getNode(channel_name).units_of()
             unit = '' if unit == ' ' else unit
@@ -214,11 +214,6 @@ def formChaPool(dbname, shot, path, subtrees):
 
     tree.close()
     return channels
-
-
-
-
-
 
 
 
