@@ -51,10 +51,10 @@
                     <span class="control-unit">KHz</span>
                   </div>
 
-                  <div class="control-item">
+                  <!-- <div class="control-item">
                     <span class="control-label">平滑度</span>
                     <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
-                  </div>
+                  </div> -->
 
                   <div class="control-item">
                     <el-button-group>
