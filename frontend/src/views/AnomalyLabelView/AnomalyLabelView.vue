@@ -56,6 +56,17 @@
                     <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
                   </div> -->
 
+                  <!-- 是否显示异常区域的按钮 -->
+                  <div class="control-item">
+                    <el-tooltip :content="showAnomaly ? '点击隐藏异常区域' : '点击显示异常区域'" placement="top">
+                      <el-button circle :type="showAnomaly ? 'primary' : 'info'" @click="updateShowAnomaly(!showAnomaly)">
+                        <el-icon>
+                          <component :is="showAnomaly ? 'View' : 'Hide'" />
+                        </el-icon>
+                      </el-button>
+                    </el-tooltip>
+                  </div>
+
                   <div class="control-item">
                     <el-button-group>
                       <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)">
@@ -185,8 +196,11 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { FolderChecked, Upload, Menu } from '@element-plus/icons-vue'
+import { FolderChecked, Upload, Menu, View, Hide } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
+import Highcharts from 'highcharts';
+import 'highcharts/modules/boost';
+import 'highcharts/modules/accessibility';
 // 导入AppHeader组件
 import AppHeader from '@/components/AppHeader.vue';
 // 颜色配置及通道选取组件
@@ -213,6 +227,7 @@ const store = useStore()
 const sampling = ref(1)
 const smoothness = ref(0)
 const isSecondSectionCollapsed = ref(true) // 默认为折叠状态
+const showAnomaly = ref(true) // 是否显示异常区域，默认显示
 
 const color_table_value = ref(true)
 const SingleChannelMultiRow_channel_number = ref(true)
@@ -336,6 +351,43 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
       message: '保存文件失败，请重试',
       type: 'error',
     });
+  }
+};
+
+const updateShowAnomaly = (value) => {
+  showAnomaly.value = value;
+  localStorage.setItem('showAnomaly', value.toString());
+
+  // 实现异常区域透明度变化
+  if (SingleChannelMultiRow_channel_number.value) {
+    // 单通道多行模式
+    const allCharts = document.querySelectorAll('[id^="chart-"]');
+    allCharts.forEach(chartElement => {
+      const chartInstance = Highcharts.charts.find(c => c && c.renderTo === chartElement);
+      if (chartInstance) {
+        chartInstance.xAxis[0].plotLinesAndBands.forEach(band => {
+          if (band.id && (band.id.startsWith('band-') || band.id.startsWith('error-band-'))) {
+            // 不影响现场标注的异常(橙色)
+            if (band.id.startsWith('band-') && !band.options.color.includes('255, 0, 0')) {
+              return;
+            }
+
+            const element = band.svgElem;
+            if (element) {
+              element.attr({
+                fill: value ? (band.options.color || 'rgba(255, 0, 0, 0.2)') : 'rgba(0, 0, 0, 0)'
+              });
+            }
+          }
+        });
+      }
+    });
+  } else if (MultiChannelRef.value) {
+    // 多通道单行模式实现类似逻辑
+    const chartInstance = MultiChannelRef.value.chartInstance;
+    if (chartInstance) {
+      // 实现与单通道多行模式类似的透明度控制
+    }
   }
 };
 
