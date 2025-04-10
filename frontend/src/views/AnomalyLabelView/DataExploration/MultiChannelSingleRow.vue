@@ -1805,7 +1805,9 @@ const drawCombinedChart = () => {
       // 确保使用保存的Y轴范围，而不是重新计算
       yExtent = originalDomains.value.global.y;
     } else {
-      yExtent = [-1, 1]; // 默认归一化范围
+      // 默认归一化范围为-1到1，增加5%的上下空白用于视觉效果
+      const padding = 0.05;
+      yExtent = [-1 - padding, 1 + padding]; // 范围为 -1.05 到 1.05，但刻度只显示-1到1
       // 保存初始 Y 轴范围
       if (!originalDomains.value.global) {
         originalDomains.value.global = {
@@ -1815,7 +1817,7 @@ const drawCombinedChart = () => {
       }
     }
 
-    // 使用保存的范围，不添加额外的padding
+    // 使用保存的范围
     const yMin = yExtent[0];
     const yMax = yExtent[1];
 
@@ -2042,10 +2044,16 @@ const drawCombinedChart = () => {
               if (brush_begin.value && brush_end.value) {
                 // 恢复到总览条的范围
                 xDomains.value.global = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
-                // 重置 Y 轴到默认范围
+                
+                // 计算带padding的Y轴范围
+                const padding = 0.05;
+                const yMinWithPadding = -1 - padding;
+                const yMaxWithPadding = 1 + padding;
+                
+                // 重置 Y 轴到默认范围（带padding）
                 originalDomains.value.global = {
                   x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-                  y: [-1, 1]
+                  y: [yMinWithPadding, yMaxWithPadding]
                 };
 
                 // 直接设置坐标轴范围，而不是重新调用 drawCombinedChart
@@ -2054,7 +2062,7 @@ const drawCombinedChart = () => {
                   parseFloat(brush_end.value),
                   false
                 );
-                this.yAxis[0].setExtremes(-1, 1, true);
+                this.yAxis[0].setExtremes(yMinWithPadding, yMaxWithPadding, true);
 
                 // 重新绘制高亮区域
                 selectedChannels.value.forEach((channel) => {
@@ -2264,16 +2272,21 @@ const drawCombinedChart = () => {
                 // 恢复到总览条的范围
                 const beginValue = parseFloat(brush_begin.value);
                 const endValue = parseFloat(brush_end.value);
+                
+                // 计算带padding的Y轴范围
+                const padding = 0.05;
+                const yMinWithPadding = -1 - padding;
+                const yMaxWithPadding = 1 + padding;
 
                 // 设置坐标轴范围
                 this.xAxis[0].setExtremes(beginValue, endValue);
-                this.yAxis[0].setExtremes(-1, 1);
+                this.yAxis[0].setExtremes(yMinWithPadding, yMaxWithPadding);
 
                 // 更新内部状态
                 xDomains.value.global = [beginValue, endValue];
                 originalDomains.value.global = {
                   x: [beginValue, endValue],
-                  y: [-1, 1]
+                  y: [yMinWithPadding, yMaxWithPadding]
                 };
 
                 // 重新绘制高亮区域
@@ -2343,14 +2356,46 @@ const drawCombinedChart = () => {
         tickAmount: 8, // 指定Y轴标记数量
         startOnTick: false,
         endOnTick: false,
+        tickPositions: [-1, -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1], // 强制指定刻度位置
+        minorTickInterval: null, // 禁用次要刻度
+        minorGridLineWidth: 0, // 禁用次要网格线
+        showFirstLabel: true, // 确保显示第一个标签
+        showLastLabel: true, // 确保显示最后一个标签
+        lineWidth: 1, // 显示Y轴线
+        lineColor: '#ccc', // 设置Y轴线颜色
+        plotLines: [{ // 添加上边界线
+          color: '#ccc',
+          width: 1,
+          value: 1,
+          dashStyle: 'ShortDash',
+          zIndex: 1
+        }, { // 添加padding区域的上边界线
+          color: '#ccc',
+          width: 1,
+          value: 1 + 0.05, // 添加在1.05位置的边界线
+          dashStyle: 'ShortDash',
+          zIndex: 1
+        }, { // 添加下边界线
+          color: '#ccc',
+          width: 1,
+          value: -1,
+          dashStyle: 'ShortDash',
+          zIndex: 1
+        }, { // 添加padding区域的下边界线
+          color: '#ccc',
+          width: 1,
+          value: -1 - 0.05, // 添加在-1.05位置的边界线
+          dashStyle: 'ShortDash',
+          zIndex: 1
+        }],
         labels: {
           style: {
             fontSize: '1em',
             fontWeight: 'medium'
           },
           formatter: function () {
-            // 限制小数位数为3位，避免布局问题
-            return (this.value >= -2 && this.value <= 2) ? this.value.toFixed(3) : '';
+            // 只显示-1到1范围内的刻度值
+            return (this.value >= -1 && this.value <= 1) ? this.value.toFixed(1) : '';
           }
         }
       },

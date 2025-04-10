@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="filter-container">
     <div class="two">
       <div>
         <span>炮号：</span>
@@ -914,8 +914,18 @@ onMounted(async () => {
 </script>
 
 <style scoped lang="scss">
+.filter-container {
+  padding-bottom: 10px;
+  height: auto;
+  min-height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .buttons {
   margin-top: 10px;
+  margin-bottom: 15px;
   width: 100%;
 }
 
