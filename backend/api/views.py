@@ -5,7 +5,7 @@ import os
 import re
 import time
 import gzip
-import MDSplus
+import MDSplus # type: ignore
 import numpy as np
 from django.http import JsonResponse, HttpResponse
 

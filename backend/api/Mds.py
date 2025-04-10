@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from MDSplus import Tree, mdsExceptions, Connection
+from MDSplus import Tree, mdsExceptions, Connection # type: ignore
 
 def judge_data(npary):
     """ 判断MDSplus返回数据是否是一维数据 """
