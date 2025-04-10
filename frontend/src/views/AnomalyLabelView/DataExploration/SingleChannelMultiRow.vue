@@ -277,7 +277,7 @@ const processChannelData = async (data, channel) => {
 };
 
 // 专门负责数据获取的函数
-const fetchChannelData = async (channel) => {
+const fetchChannelData = async (channel, forceRefresh = false) => {
   try {
     if (!channel || !channel.channel_name || !channel.shot_number) {
       console.warn('Invalid channel data:', channel);
@@ -298,8 +298,13 @@ const fetchChannelData = async (channel) => {
     }, 100);
 
     try {
-      // 使用 store action 获取数据
-      const data = await store.dispatch('fetchChannelData', { channel });
+      console.log(`正在获取通道数据: ${channelKey}, 采样率: ${sampling.value} KHz, 强制刷新: ${forceRefresh}`);
+      
+      // 使用 store action 获取数据，传递forceRefresh参数
+      const data = await store.dispatch('fetchChannelData', { 
+        channel,
+        forceRefresh: forceRefresh // 传递强制刷新参数
+      });
 
       clearInterval(progressInterval);
       loadingStates[channelKey] = Number(100);
@@ -325,6 +330,32 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       console.warn('No channels selected');
       return;
     }
+    
+    // 如果强制重新渲染，清除现有图表实例
+    if (forceRenderAll) {
+      console.log('强制重新渲染所有图表，正在清除现有图表实例...');
+      
+      // 清除所有现有图表实例
+      if (window.chartInstances) {
+        Object.keys(window.chartInstances).forEach(key => {
+          const chart = window.chartInstances[key];
+          if (chart) {
+            try {
+              chart.destroy();
+            } catch (e) {
+              console.warn(`销毁图表实例失败: ${e.message}`);
+            }
+          }
+          delete window.chartInstances[key];
+        });
+      }
+      
+      // 清空已渲染标记
+      renderedChannels.value.clear();
+      
+      window.chartInstances = {};
+    }
+    
     let channelsToRender;
     if (forceRenderAll) {
       channelsToRender = [...selectedChannels.value];
@@ -348,8 +379,8 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-        // 获取通道数据
-        const data = await fetchChannelData(channel);
+        // 获取通道数据 - 传递forceRenderAll作为强制刷新的标志
+        const data = await fetchChannelData(channel, forceRenderAll);
         if (!data) return;
 
         // 处理数据并渲染图表 (不等待其他通道)
@@ -482,6 +513,54 @@ watch(() => domains.value, (newDomains, oldDomains) => {
     }
   });
 });
+
+// 添加对采样率的监听，当采样率变化时重新渲染所有图表
+watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
+  console.log(`[重要] 采样率从 ${oldSamplingRate} 变更为 ${newSamplingRate} KHz，正在准备刷新图表`);
+  
+  // 更彻底的清理图表实例和缓存
+  if (window.chartInstances) {
+    Object.keys(window.chartInstances).forEach(key => {
+      const chart = window.chartInstances[key];
+      if (chart) {
+        try {
+          // 销毁图表实例
+          chart.destroy();
+          console.log(`已销毁图表实例: ${key}`);
+        } catch (e) {
+          console.warn(`销毁图表实例失败: ${key} - ${e.message}`);
+        }
+      }
+      delete window.chartInstances[key];
+    });
+  }
+  
+  // 清空已渲染标记
+  renderedChannels.value.clear();
+  console.log('已清空渲染缓存标记，即将重新渲染所有图表');
+  
+  // 使用更长的延迟确保store中的数据已更新
+  setTimeout(() => {
+    // 强制重新渲染所有通道图表
+    window.chartInstances = {}; // 重新初始化图表实例对象
+    renderCharts(true);
+    console.log('已触发强制重新渲染');
+  }, 500);
+});
+
+// 添加对channelDataCache的监听，当缓存数据发生变化时重新渲染图表
+watch(() => channelDataCache.value, () => {
+  // 仅当已经有通道被选择时才重新渲染
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    console.log('数据缓存已更新，重新渲染图表');
+    // 清空已渲染标记，以便所有通道都能重新渲染
+    renderedChannels.value.clear();
+    // 使用timeout以确保状态已完全更新
+    setTimeout(() => {
+      renderCharts(true);
+    }, 300);
+  }
+}, { deep: true });
 
 // 添加对brush_begin和brush_end的监听，当它们变化时更新所有图表的横坐标范围
 watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
