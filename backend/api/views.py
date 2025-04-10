@@ -150,10 +150,10 @@ def get_channel_data(request, channel_key=None):
         
         # 获取采样参数，默认采用降采样
         sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
-        sample_freq = int(request.GET.get('sample_freq', 1000))     # 默认1KHz
+        sample_freq = float(request.GET.get('sample_freq', 1000))   # 默认1KHz，改为float类型
         
         # 调试输出
-        print(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 频率: {sample_freq} Hz")
+        print(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 目标频率: {sample_freq} KHz")
         
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
@@ -235,21 +235,34 @@ def get_channel_data(request, channel_key=None):
                 print(f"获取数据耗时: {time.time() - data_start_time:.2f}秒")
                 print(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
                 
+                # 计算原始频率，由Hz转换为KHz
                 original_frequency = len(data_x) / (data_x[-1] - data_x[0]) if len(data_x) > 1 else 0
-                print(f"原始频率: {original_frequency/1000}KHz")
+                original_frequency_khz = original_frequency / 1000
+                print(f"原始频率: {original_frequency_khz}KHz")
                 
                 if len(data_x) != 0:
-                    # 根据客户端参数决定是否进行降采样
-                    if sample_mode == 'downsample' and len(data_x) > sample_freq:
-                        downsampling_start = time.time()
-                        data_x, data_y = downsample_to_frequency(data_x, data_y, target_freq=sample_freq)
-                        print(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
-                        is_downsampled = True
-                    else:
-                        is_downsampled = False
+                    is_downsampled = False
+                    is_upsampled = False
+                    
+                    # 处理采样率调整
+                    if sample_mode != 'full' and sample_freq > 0:
+                        # 将sample_freq从KHz转换为Hz
+                        target_freq_hz = sample_freq * 1000
                         
-                    
-                    
+                        # 如果目标频率小于原始频率，进行降采样
+                        if target_freq_hz < original_frequency:
+                            downsampling_start = time.time()
+                            data_x, data_y = downsample_to_frequency(data_x, data_y, target_freq=target_freq_hz)
+                            print(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
+                            is_downsampled = True
+                        # 如果目标频率大于原始频率，进行插值采样
+                        elif target_freq_hz > original_frequency:
+                            upsampling_start = time.time()
+                            # 为了避免混淆，创建一个专门的插值采样函数
+                            data_x, data_y = upsample_to_frequency(data_x, data_y, target_freq=target_freq_hz)
+                            print(f"插值采样耗时: {time.time() - upsampling_start:.2f}秒")
+                            is_upsampled = True
+                        
                     data = {
                         'channel_number': channel_name,
                         'X_value': list(data_x),
@@ -257,10 +270,10 @@ def get_channel_data(request, channel_key=None):
                         'X_unit': 's',
                         'Y_unit': 'Y',
                         'is_downsampled': is_downsampled,
+                        'is_upsampled': is_upsampled,
                         'points': len(data_x),
-                        'original_frequency_khz': original_frequency/1000
+                        'originalFrequency': original_frequency_khz
                     }
-                    
                     
                     # 使用orjson替代标准json进行序列化，大幅提升性能
                     serialize_start_time = time.time()
@@ -279,7 +292,40 @@ def get_channel_data(request, channel_key=None):
     except Exception as e:
         print(f"发生错误，总耗时: {time.time() - start_time:.2f}秒")
         return JsonResponse({'error': str(e)}, status=500)
+
+# 添加一个插值采样函数
+def upsample_to_frequency(x_values, y_values, target_freq=1000):
+    """
+    对数据进行插值采样到指定频率
     
+    Args:
+        x_values: 时间序列数据的X值（时间值）
+        y_values: 对应的Y值
+        target_freq: 目标频率，单位Hz
+        
+    Returns:
+        插值采样后的x_values和y_values
+    """
+    # 计算原始频率
+    time_span = max(x_values) - min(x_values)
+    original_freq = len(x_values) / time_span
+    
+    # 如果目标频率小于或等于原始频率，直接返回原始数据
+    if target_freq <= original_freq:
+        return x_values, y_values
+    
+    # 基于目标频率计算总采样点数
+    n_samples = int(time_span * target_freq)
+    
+    # 创建均匀分布的新时间点
+    new_times = np.linspace(min(x_values), max(x_values), n_samples)
+    
+    # 使用线性插值计算对应的Y值
+    new_values = np.interp(new_times, x_values, y_values)
+    
+    print(f"插值采样: 从 {len(x_values)} 点 增至 {len(new_times)} 点")
+    return new_times, new_values
+
 def get_error_data(request):
     try:
         channel_key = request.GET.get('channel_key')

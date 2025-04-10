@@ -557,8 +557,30 @@ const store = createStore({
       // 检查是否还有更多数据
       commit("setHasMoreData", endIndex < state.rawData.length);
     },
-    updateSampling({ commit }, value) {
+    updateSampling({ commit, state, dispatch }, value) {
       commit("setSampling", value);
+      
+      // 当采样率更改时，刷新所有选定通道的数据
+      if (state.selectedChannels && state.selectedChannels.length > 0) {
+        console.log(`采样率更改为 ${value} KHz，重新加载所有选定通道数据`);
+        
+        // 为每个选定的通道创建强制刷新请求
+        const refreshPromises = state.selectedChannels.map(channel => {
+          return dispatch('fetchChannelData', { 
+            channel, 
+            forceRefresh: true 
+          }).catch(error => {
+            console.error(`刷新通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error);
+            return null;
+          });
+        });
+        
+        // 无需等待所有请求完成，让它们并行执行
+        // 各个组件会通过监听数据缓存的变化来更新自己
+        return Promise.all(refreshPromises).then(() => {
+          console.log('所有通道数据已更新完成');
+        });
+      }
     },
     updateSmoothness({ commit }, value) {
       commit("setSmoothness", value);
@@ -685,6 +707,7 @@ const store = createStore({
       const params = {
         channel_key: channelKey,
         channel_type: channel.channel_type,
+        sample_freq: state.sampling, // 传递当前的采样率设置
       };
 
       // 创建请求的 Promise 并将其存储

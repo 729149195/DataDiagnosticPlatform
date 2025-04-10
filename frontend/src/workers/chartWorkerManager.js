@@ -4,6 +4,13 @@
  */
 import { dataCache } from '../services/cacheManager';
 
+// chartWorkerManager.js
+//
+// 注意：从v2.0开始，前端不再负责数据采样处理工作。
+// 采样处理已经交由后端API完成，前端仅处理渲染相关工作。
+// 当前保留此文件是为了兼容性考虑，后续版本可能会移除相关功能。
+//
+
 class ChartWorkerManager {
   constructor() {
     this.worker = null;
@@ -69,39 +76,27 @@ class ChartWorkerManager {
     const cached = dataCache.get(cacheKey);
     if (cached) return cached.data;
     
-    return new Promise((resolve, reject) => {
-      const messageId = this.messageId++;
-      
-      this.callbacks.set(messageId, (data, error) => {
-        if (error) {
-          reject(new Error(error));
-        } else {
-          // 缓存处理结果
-          dataCache.put(cacheKey, {
-            data: data,
-            timestamp: Date.now()
-          });
-          resolve(data);
-        }
-      });
-
-      this.getWorker().postMessage({
-        type: 'processData',
-        messageId,
-        data: {
-          channelData,
-          sampleRate,
-          smoothnessValue,
-          channelKey,
-          color,
-          xUnit,
-          yUnit,
-          channelType,
-          channelNumber,
-          shotNumber
-        }
-      });
+    console.log(`processData: 跳过采样处理，${channelKey} 的采样处理已由后端完成`);
+    
+    // 直接格式化数据并返回，不再调用worker进行采样处理
+    const processedData = {
+      processedData: channelData,
+      channelKey,
+      color,
+      xUnit,
+      yUnit,
+      channelType,
+      channelNumber,
+      shotNumber
+    };
+    
+    // 缓存处理结果
+    dataCache.put(cacheKey, {
+      data: processedData,
+      timestamp: Date.now()
     });
+    
+    return processedData;
   }
 
   /**

@@ -224,21 +224,9 @@ const processChannelData = async (data, channel) => {
       originalFrequency: data.originalFrequency || '未知'
     });
     
-    // 准备数据
-    const channelData = {
-      X_value: [...data.X_value],
-      Y_value: [...data.Y_value],
-      originalFrequency: data.originalFrequency, // 直接传递原始频率值，不设置默认值
-      originalDataPoints: data.originalDataPoints || data.points || data.X_value.length,
-      channel_number: data.channel_number || channel.channel_name
-    };
-    
-    // 输出准备好的通道数据
-    console.log(`准备好的通道数据 ${channelKey}:`, {
-      originalFrequency: channelData.originalFrequency
-    });
-    
+    // 标记渲染开始
     renderingStates[channelKey] = 25;
+    
     // 并行获取错误数据 - 不阻塞其他处理
     const errorDataPromise = channel.errors && channel.errors.length > 0
       ? store.dispatch('fetchAllErrorData', channel).catch(err => {
@@ -249,49 +237,36 @@ const processChannelData = async (data, channel) => {
 
     renderingStates[channelKey] = 40;
 
-    // 并行处理 - 同时进行数据处理和错误数据获取
-    const [processedData, errorDataResults] = await Promise.all([
-      // 使用 chartWorkerManager 处理数据
-      chartWorkerManager.processData(
-        channelData,
-        sampleRate.value,
-        smoothnessValue.value,
-        channelKey,
-        channel.color,
-        data.X_unit || 's',
-        data.Y_unit || 'Y',
-        data.channel_type || channel.channel_type,
-        channelData.channel_number,
-        channel.shot_number
-      ),
-      errorDataPromise
-    ]);
+    // 获取错误数据，这是唯一需要的异步操作
+    const errorDataResults = await errorDataPromise;
+    
+    renderingStates[channelKey] = 75; // 更新渲染状态
 
-    if (processedData) {
-      renderingStates[channelKey] = 75; // 更新渲染状态
+    // 绘制图表，后端已经完成了采样处理
+    await nextTick();
+    await drawChart(
+      {
+        X_value: data.X_value,
+        Y_value: data.Y_value,
+        originalFrequency: data.originalFrequency
+      },
+      errorDataResults,
+      channelKey,
+      channel.color,
+      data.X_unit || 's',
+      data.Y_unit || 'Y',
+      data.channel_type || channel.channel_type,
+      channel.shot_number
+    );
 
-      // 只渲染当前通道，不重新渲染其他通道
-      await nextTick();
-      await drawChart(
-        processedData.processedData,
-        errorDataResults,
-        channelKey,
-        channel.color,
-        processedData.xUnit,
-        processedData.yUnit,
-        processedData.channelType,
-        processedData.shotNumber
-      );
-
-      renderingStates[channelKey] = 100;
-      
-      // 在渲染完成后，确保再次调整颜色选择器位置
-      const chart = window.chartInstances?.[channelKey];
-      if (chart) {
-        // 使用两次调用，确保有足够时间让DOM更新
-        adjustColorPickerPosition(chart, channel);
-        setTimeout(() => adjustColorPickerPosition(chart, channel), 100);
-      }
+    renderingStates[channelKey] = 100;
+    
+    // 在渲染完成后，确保再次调整颜色选择器位置
+    const chart = window.chartInstances?.[channelKey];
+    if (chart) {
+      // 使用两次调用，确保有足够时间让DOM更新
+      adjustColorPickerPosition(chart, channel);
+      setTimeout(() => adjustColorPickerPosition(chart, channel), 100);
     }
 
   } catch (error) {
@@ -855,7 +830,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         originalFrequency: data.originalFrequency
       });
       
-      // 处理频率数据 - 保持原始频率值不变
+      // 保持原始频率值不变
       const freqValue = data.originalFrequency;
       console.log(`通道 ${channelName} 的最终频率值:`, freqValue);
       
@@ -1421,7 +1396,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           color: color
         },
         title: {
-          text: `${channelType || channelName.split('_')[0]} | ${shotNumber} (${freqValue.toFixed(2)}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+          text: `${channelType || channelName.split('_')[0]} | ${shotNumber} (${freqValue ? freqValue.toFixed(2) : '?'}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
           align: 'right',
           x: -10, // 向左偏移10像素，使其位于右上角
           y: 60,  // 向下偏移20像素，确保在图表内部

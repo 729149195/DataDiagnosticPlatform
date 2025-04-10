@@ -686,14 +686,6 @@ const processChannelDataAsync = async (data, channel) => {
 
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
-  // 准备数据
-  const channelData = {
-    X_value: [...data.X_value],
-    Y_value: [...data.Y_value],
-    originalFrequency: data.originalFrequency,
-    originalDataPoints: data.X_value.length
-  };
-
   // 获取错误数据
   let errorDataResults = [];
   if (channel.errors && channel.errors.length > 0) {
@@ -705,33 +697,16 @@ const processChannelDataAsync = async (data, channel) => {
     }
   }
 
-  // 使用 chartWorkerManager 处理数据
-  const processedData = await chartWorkerManager.processData(
-    channelData,
-    sampleRate.value,
-    smoothnessValue.value,
-    channelKey,
-    channel.color,
-    data.X_unit,
-    data.Y_unit,
-    data.channel_type,
-    data.channel_number,
-    channel.shot_number
-  );
-
-  if (!processedData) {
-    throw new Error(`Failed to process data for channel ${channelKey}`);
-  }
-
+  // 直接使用后端已经处理好的数据
   // 归一化 Y 值
-  const yValues = processedData.processedData.Y_value;
+  const yValues = data.Y_value;
   const yAbsMax = Math.max(...yValues.map(d => Math.abs(d)));
   const normalizedY = yAbsMax === 0 ?
-    processedData.processedData.Y_value.map(() => 0) :
-    processedData.processedData.Y_value.map(y => y / yAbsMax);
+    data.Y_value.map(() => 0) :
+    data.Y_value.map(y => y / yAbsMax);
 
   let finalY = normalizedY;
-  let xValues = processedData.processedData.X_value;
+  let xValues = data.X_value;
 
   // 对于数字信号，确保值只有0和1，避免中间值
   if (data.channel_type === 'DIGITAL') {
@@ -765,14 +740,15 @@ const processChannelDataAsync = async (data, channel) => {
     channelshotnumber: channel.shot_number,
     X_value: xValues,
     Y_value: finalY,
-    Y_original: processedData.processedData.Y_value,
+    Y_original: data.Y_value,
     color: channel.color,
     errorsData: errorDataResults,
     xUnit: data.X_unit,
     yUnit: data.Y_unit,
     channelType: data.channel_type,
     channelNumber: data.channel_number,
-    shotNumber: channel.shot_number
+    shotNumber: channel.shot_number,
+    originalFrequency: data.originalFrequency
   };
 };
 
