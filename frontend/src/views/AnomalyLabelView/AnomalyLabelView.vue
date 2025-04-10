@@ -47,7 +47,7 @@
                 <div class="control-panel">
                   <div class="control-item">
                     <span class="control-label">采样频率</span>
-                    <el-input-number v-model="sampling" :precision="3" :step="0.1" :min="0.001" :max="1000" @change="updateSampling" />
+                    <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="1" :max="1000" @change="updateSampling" />
                     <span class="control-unit">KHz</span>
                   </div>
 
