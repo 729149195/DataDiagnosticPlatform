@@ -58,7 +58,6 @@ import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
-import chartWorkerManager from '@/workers/chartWorkerManager';
 
 // 使用 Vuex store
 const store = useStore();
@@ -127,10 +126,10 @@ const createGrid = (width, height) => {
   }
 
   grid = new Paper.Group();
-  
+
   // 网格间距
   const gridSpacing = 25;
-  
+
   // 创建主网格
   for (let x = 0; x <= width; x += gridSpacing) {
     const line = new Paper.Path.Line(
@@ -141,7 +140,7 @@ const createGrid = (width, height) => {
     line.strokeWidth = 0.8;
     grid.addChild(line);
   }
-  
+
   for (let y = 0; y <= height; y += gridSpacing) {
     const line = new Paper.Path.Line(
       new Paper.Point(0, y),
@@ -165,10 +164,10 @@ const resizeCanvas = () => {
       paperCanvas.value.offsetWidth,
       paperCanvas.value.offsetHeight
     );
-    
+
     // 重绘网格
     createGrid(paperCanvas.value.offsetWidth, paperCanvas.value.offsetHeight);
-    
+
     // 重绘路径
     paperScope.view.draw();
   }
@@ -177,27 +176,27 @@ const resizeCanvas = () => {
 // 初始化Paper.js
 const initPaperJs = () => {
   if (!paperCanvas.value) return;
-  
+
   // 确保Paper.js还没有初始化
   if (paperScope) {
     paperScope.remove();
   }
-  
+
   // 初始化Paper.js
   paperScope = new Paper.PaperScope();
   paperScope.setup(paperCanvas.value);
-  
+
   // 创建网格
   createGrid(paperCanvas.value.offsetWidth, paperCanvas.value.offsetHeight);
-  
+
   // 设置工具事件
   const tool = new paperScope.Tool();
-  
+
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
     selectedSegment = null;
     selectedHandle = null;
-    
+
     // 检查是否点击了现有路径上的段点或手柄
     if (path) {
       const hitResult = path.hitTest(event.point, hitOptions);
@@ -211,14 +210,14 @@ const initPaperJs = () => {
         }
       }
     }
-    
+
     // 如果已有路径，先清除它
     if (path) {
       path.remove();
       path = null;
       segmentInfo.value = '';
     }
-    
+
     // 创建新路径
     path = new paperScope.Path({
       segments: [event.point],
@@ -228,7 +227,7 @@ const initPaperJs = () => {
       strokeJoin: 'round'
     });
   };
-  
+
   // 鼠标拖动事件
   tool.onMouseDrag = (event) => {
     // 如果正在拖动段点
@@ -236,7 +235,7 @@ const initPaperJs = () => {
       selectedSegment.point = selectedSegment.point.add(event.delta);
       return;
     }
-    
+
     // 如果正在拖动手柄
     if (selectedHandle) {
       if (selectedHandle.type === 'handle-in') {
@@ -246,14 +245,14 @@ const initPaperJs = () => {
       }
       return;
     }
-    
+
     // 否则绘制新路径
     if (path && (!path.lastSegment || event.point.x >= path.lastSegment.point.x)) {
       path.add(event.point);
       segmentInfo.value = `点数: ${path.segments.length}`;
     }
   };
-  
+
   // 鼠标释放事件
   tool.onMouseUp = (event) => {
     // 如果是在拖动段点或手柄，不进行简化操作
@@ -262,21 +261,21 @@ const initPaperJs = () => {
       selectedHandle = null;
       return;
     }
-    
+
     if (path && path.segments.length > 1) {
       const segmentCount = path.segments.length;
-      
+
       // 只有在绘制新路径时才简化路径
       if (!path.fullySelected) {
         path.simplify(10);
-        
+
         // 设置路径为选中状态，显示控制点和手柄
         path.fullySelected = true;
-        
+
         const newSegmentCount = path.segments.length;
         const difference = segmentCount - newSegmentCount;
         const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
-        
+
         segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
       }
     }
@@ -335,9 +334,9 @@ const startVisibilityCheck = () => {
       const currentHeight = paperCanvas.value.offsetHeight;
 
       // 如果Paper.js视图尺寸与当前尺寸不同，重新绘制
-      if (paperScope && paperScope.view && 
-          (paperScope.view.viewSize.width !== currentWidth || 
-           paperScope.view.viewSize.height !== currentHeight)) {
+      if (paperScope && paperScope.view &&
+        (paperScope.view.viewSize.width !== currentWidth ||
+          paperScope.view.viewSize.height !== currentHeight)) {
         resizeCanvas();
       }
     }
@@ -346,8 +345,6 @@ const startVisibilityCheck = () => {
 
 // 提交数据函数
 const submitData = async () => {
-  const channelDataCache = store.state.channelDataCache;
-  
   // 获取绘制的路径数据（包括控制点信息以便重现曲线）
   const rawQueryPattern = path ? path.segments.map(segment => ({
     x: segment.point.x,
@@ -365,117 +362,90 @@ const submitData = async () => {
   console.log(rawQueryPattern);
 
   if (rawQueryPattern.length > 0) {
-    // 归一化查询模式的 x 和 y 值
-    const minX = Math.min(...rawQueryPattern.map(p => p.x));
-    const maxX = Math.max(...rawQueryPattern.map(p => p.x));
-    const xRange = maxX - minX;
+    // 首先更新本地的查询模式
+    store.dispatch('updateQueryPattern', { rawPattern: rawQueryPattern });
 
-    const minY = Math.min(...rawQueryPattern.map(p => p.y));
-    const maxY = Math.max(...rawQueryPattern.map(p => p.y));
-    const yRange = maxY - minY;
+    // 检查是否有选中的通道
+    if (selectedGunNumbers.value.length === 0) {
+      ElMessage.warning('请选择需要匹配的通道');
+      return;
+    }
 
-    // 使查询模式规范化，并保留控制点信息
-    const queryPattern = rawQueryPattern.map((point) => ({
-      x: -1 + (2 * (point.x - minX) / xRange),
-      y: -(-1 + (2 * (point.y - minY) / yRange)),  // 翻转 Y 值
-      handleIn: point.handleIn ? {
-        x: point.handleIn.x / xRange * 2,
-        y: point.handleIn.y / yRange * 2
-      } : null,
-      handleOut: point.handleOut ? {
-        x: point.handleOut.x / xRange * 2,
-        y: point.handleOut.y / yRange * 2
-      } : null
-    }));
+    try {
+      // 显示加载中消息
+      const loadingInstance = ElMessage({
+        message: '正在搜索匹配的通道数据...',
+        type: 'info',
+        duration: 0
+      });
 
-    // 保存原始曲线数据到store，以便将来可以重现曲线
-    store.dispatch('updateQueryPattern', {
-      rawPattern: rawQueryPattern,
-      normalizedPattern: queryPattern
-    });
-
-    // 初始化结果对象
-    const matchResults = {};
-    const smoothedData = {};
-
-    // 使用 Promise.all 并行处理所有通道数据
-    await Promise.all(selectedGunNumbers.value.map(async channel => {
-      const channelData = channelDataCache[channel];
-      if (channelData && queryPattern.length > 0) {
-        try {
-          // 使用 Worker 处理数据
-          const processedData = await chartWorkerManager.processData({
-            X_value: Array.from(channelData.X_value),
-            Y_value: Array.from(channelData.Y_value)
-          }, sampling.value);
-
-          if (processedData) {
-            // 使用 Worker 进行模式匹配
-            const matches = await chartWorkerManager.findPatterns(
-              queryPattern,
-              Array.from(processedData.processedData.Y_value),
-              Array.from(processedData.processedData.X_value)
-            );
-
-            // 使用 selectV2Options 中的格式作为键
-            const channelInfo = selectV2Options.value.find(option =>
-              option.children.some(child => child.value === channel)
-            );
-
-            if (channelInfo) {
-              const child = channelInfo.children.find(child => child.value === channel);
-              if (child) {
-                const shotNumber = channel.split('_').pop();
-                const channelName = child.label.split('_')[0];
-                const key = `${channelName}_${shotNumber}`;
-
-                // 存储匹配结果
-                matchResults[key] = matches.map(match => ({
-                  range: match.range,
-                  distance: match.distance,
-                  confidence: match.confidence,
-                  timeSpan: match.range[1] - match.range[0],
-                  startTime: match.range[0],
-                  endTime: match.range[1],
-                  channelName: channelName,
-                  shotNumber: shotNumber
-                }));
-
-                // 存储采样后的数据
-                smoothedData[key] = processedData;
-              }
+      // 将选中的通道ID转换为通道对象
+      const selectedChannels = selectedGunNumbers.value.map(channelId => {
+        // 从选项中找到匹配的通道
+        for (const group of selectV2Options.value) {
+          for (const option of group.children) {
+            if (option.value === channelId) {
+              // 分离通道名和炮号，通道名可能包含多个下划线，所以只分离最后一个下划线
+              const lastUnderscoreIndex = channelId.lastIndexOf('_');
+              const channelName = channelId.substring(0, lastUnderscoreIndex);
+              const shotNumber = channelId.substring(lastUnderscoreIndex + 1);
+              return {
+                channel_name: channelName,
+                shot_number: shotNumber,
+                channel_type: group.value
+              };
             }
           }
-        } catch (error) {
-          console.error(`处理通道 ${channel} 时出错:`, error);
-          ElMessage.error(`处理通道 ${channel} 失败: ${error.message}`);
         }
+        return null;
+      }).filter(channel => channel !== null);
+
+      // 发送请求到后端
+      const response = await fetch('https://10.1.108.231:5000/api/sketch-query/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rawQueryPattern,
+          sampling: sampling.value,
+          selectedChannels
+        })
+      });
+
+      // 关闭加载消息
+      loadingInstance.close();
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '查询失败');
       }
-    }));
 
+      const data = await response.json();
 
-    // 当获取到匹配结果后
-    if (Object.keys(matchResults).length > 0) {
-      // 将匹配结果存入 store
-      store.dispatch('updateMatchedResults', Object.values(matchResults));
+      // 显示成功消息
+      ElMessage.success(data.message || '查询成功');
+
+      // 将结果存储到Vuex
+      store.dispatch('updateMatchedResults', data.results);
+
+    } catch (error) {
+      ElMessage.error(error.message || '查询过程中发生错误');
+      console.error('手绘查询错误:', error);
     }
+  } else {
+    ElMessage.warning('请先绘制曲线');
   }
 };
 
 // 修改清除画布函数
 const clearCanvas = () => {
   if (paperScope) {
-    // 清除所有路径
     if (path) {
       path.remove();
       path = null;
     }
-    
-    // 清空段信息
     segmentInfo.value = '';
-    
-    // 清 store 中的匹配结果
-    store.dispatch('clearMatchedResults');
   }
 };
 
@@ -637,12 +607,6 @@ onUnmounted(() => {
   width: 200px;
 }
 
-.select-template,
-.select-history {
-  width: 150px;
-  margin-left: 5px;
-}
-
 .sketch-container {
   position: relative;
   border: 0.5px solid #ccc;
@@ -706,27 +670,10 @@ onUnmounted(() => {
   right: 6px;
 }
 
-.search-button {
-  margin-left: 5px;
-}
-
 .title {
   color: #333;
   font-weight: bold;
   font-size: 12pt;
   margin-left: 5px;
-}
-
-.template-preview {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 4px;
-  background: #f5f7fa;
-  border-radius: 4px;
-}
-
-.template-preview canvas {
-  display: block;
 }
 </style>

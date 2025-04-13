@@ -8,7 +8,6 @@ urlpatterns = [
     path('channel-data/', views.get_channel_data),
     path('error-data/', views.get_error_data),
 
-    path('submit-data/', views.submit_data),
     path('operator-strs/', views.operator_strs),
     path('operator-strs/init/', views.init_calculation, name='init_calculation'),
     path('calculation-progress/<str:task_id>/', views.get_calculation_progress, name='get_calculation_progress'),
@@ -17,6 +16,8 @@ urlpatterns = [
     path('get-channel-name-index/', views.get_channel_name_index, name='get-channel-name-index'),
     path('get-errors-name-index/', views.get_errors_name_index, name='get-errors-name-index'),
     path('get-error-origin-index/', views.get_error_origin_index, name='get-error-origin-index'),
+
+    path('sketch-query/', views.sketch_query, name='sketch_query'),
 
     path('upload/', views.upload_file, name='upload_file'),
     # path('function-details/<str:function_name>/', views.function_details, name='function_details'),

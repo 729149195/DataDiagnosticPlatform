@@ -163,6 +163,9 @@ def OrJsonResponse(data):
     )
 
 def get_channel_data(request, channel_key=None):
+    """
+    获取通道数据
+    """
     start_time = time.time()
     try:
         if channel_key is None:
@@ -388,6 +391,9 @@ def upsample_to_frequency(x_values, y_values, target_freq=1000):
     return new_times, new_values
 
 def get_error_data(request):
+    """
+    获取异常数据
+    """
     try:
         channel_key = request.GET.get('channel_key')
         channel_type = request.GET.get('channel_type')
@@ -421,43 +427,6 @@ def get_error_data(request):
 
         else:
             return JsonResponse({'error': 'Required parameters are missing'}, status=400)
-    except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
-
-
-def submit_data(request):
-    try:
-        # 从请求中获取 JSON 数据
-        data = json.loads(request.body)
-
-        selected_channels = data.get('selectedChannels')
-        paths = data.get('paths')
-        brush_begin = data.get('brush_begin')
-        brush_end = data.get('brush_end')
-        time_begin = data.get('time_begin')
-        time_during = data.get('time_during')
-        time_end = data.get('time_end')
-        upper_bound = data.get('upper_bound')
-        scope_bound = data.get('scope_bound')
-        lower_bound = data.get('lower_bound')
-        smoothness = data.get('smoothness')
-        sampling = data.get('sampling')
-        print(data)
-        # plt.figure(figsize=(10, 8))
-    
-        # for subpath in paths:
-        #     x_coords = [point['x'] for point in subpath]
-        #     y_coords = [point['y'] for point in subpath]
-        #     plt.plot(x_coords, y_coords, marker='o', linestyle='-', label='路径')
-
-        # plt.title('路径绘制')
-        # plt.xlabel('X 坐标')
-        # plt.ylabel('Y 坐标')
-        # plt.legend()
-        # plt.grid(True)
-        # plt.axis('equal')  # 保持X和Y轴比例相同
-        # plt.show()
-        return JsonResponse({"message": "Data processing started"}, status=200)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
 
@@ -672,6 +641,9 @@ def update_calculation_progress(task_id, step, progress, status='processing'):
         })
 
 def operator_strs(request):
+    """
+    处理计算请求
+    """
     try:
         data = json.loads(request.body)
         anomaly_func_str = data.get('anomaly_func_str')
@@ -1041,6 +1013,9 @@ def view_imported_functions(request):
 
 @csrf_exempt
 def execute_function(data):
+    """
+    执行函数
+    """
     global loaded_module
     function_name = data.get("function_name")
     parameters = data.get("parameters", [])
@@ -1058,8 +1033,6 @@ def execute_function(data):
             ret = json.loads(response.content.decode('utf-8'))
             fields_values = sum(([k, matlab.double(v) if isinstance(v, list) else v] for k, v in ret.items()), [])
             parameters[idx] = eng.feval('struct', *fields_values)
-
-
 
     if loaded_module:
         # Execute Python function
@@ -1083,6 +1056,9 @@ def execute_function(data):
         return {"error": "MATLAB engine is not available"}
 
 def verify_user(request):
+    """
+    验证用户
+    """
     try:
         data = json.loads(request.body)
         username = data.get('username')
@@ -1105,6 +1081,9 @@ def verify_user(request):
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
 def sync_error_data(request):
+    """
+    同步异常标注数据
+    """
     try:
         # 获取请求数据
         data = json.loads(request.body)
@@ -1232,6 +1211,9 @@ def sync_error_data(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 def delete_error_data(request):
+    """
+    删除指定通道的指定错误类型数据
+    """
     try:
         # 获取请求数据
         data = json.loads(request.body)
@@ -1297,5 +1279,77 @@ def delete_error_data(request):
         return JsonResponse({'message': '删除成功'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+def bezier_to_points(bezier_segments, num_points=100):
+    """将贝塞尔曲线段转换为归一化采样点序列"""
+    if not bezier_segments or len(bezier_segments) < 2: return []
+    
+    # 生成曲线点
+    points = []
+    for i in range(len(bezier_segments) - 1):
+        p0 = (bezier_segments[i]['x'], bezier_segments[i]['y'])
+        p3 = (bezier_segments[i+1]['x'], bezier_segments[i+1]['y'])
+        handle_out = bezier_segments[i].get('handleOut')
+        handle_in = bezier_segments[i+1].get('handleIn')
+        
+        # 每段生成适当数量的点
+        segment_points_count = max(5, num_points // (len(bezier_segments) - 1))
+        
+        # 如果有控制点，使用三次贝塞尔曲线；否则使用线性插值
+        if handle_out and handle_in:
+            p1 = (p0[0] + handle_out['x'], p0[1] + handle_out['y'])
+            p2 = (p3[0] + handle_in['x'], p3[1] + handle_in['y'])
+            for j in range(segment_points_count):
+                t = j / (segment_points_count - 1) if segment_points_count > 1 else 0
+                x = (1-t)**3 * p0[0] + 3*(1-t)**2 * t * p1[0] + 3*(1-t) * t**2 * p2[0] + t**3 * p3[0]
+                y = (1-t)**3 * p0[1] + 3*(1-t)**2 * t * p1[1] + 3*(1-t) * t**2 * p2[1] + t**3 * p3[1]
+                points.append((x, y))
+        else:
+            for j in range(segment_points_count):
+                t = j / (segment_points_count - 1) if segment_points_count > 1 else 0
+                points.append(((1-t) * p0[0] + t * p3[0], (1-t) * p0[1] + t * p3[1]))
+    
+    # 归一化曲线
+    if points:
+        x_values, y_values = zip(*points)
+        x_min, x_max = min(x_values), max(x_values)
+        y_min, y_max = min(y_values), max(y_values)
+        x_range = max(x_max - x_min, 0.0001)
+        y_range = max(y_max - y_min, 0.0001)
+        
+        # 返回归一化后的点
+        return [((x - x_min) / x_range, (y - y_min) / y_range) for x, y in points]
+    return []
+
+
+def sketch_query(request):
+    """
+    处理手绘查询请求，接收sampling、已选中的通道列表和绘制的路径数据
+    """
+    # 从请求中获取 JSON 数据
+    data = json.loads(request.body)
+    # 获取采样率  单位KHz
+    sampling = data.get('sampling')
+    # 获取选择的通道列表
+    selected_channels = data.get('selectedChannels')
+    # 获取路径数据
+    raw_query_pattern = data.get('rawQueryPattern')
+        
+    # selected_channels 格式为 [{'channel_name': 'B07_H', 'shot_number': '4470', 'channel_type': 'B'},...]
+    # raw_query_pattern 格式为 [{'x': 0.1, 'y': 0.1, 'handleOut': {'x': 0.1, 'y': 0.1}, 'handleIn': {'x': 0.1, 'y': 0.1}},...] 为贝塞尔曲线
+    print(f"接收到手绘查询请求: 采样率={sampling}KHz, 选择通道={selected_channels}, 路径点数={len(raw_query_pattern)}")
+    
+    # 将贝塞尔曲线转换为采样点序列并归一化
+    points = bezier_to_points(raw_query_pattern)
+    
+    return JsonResponse({
+        'success': True,
+        'results': [666],
+        'message': f'成功处理查询，找到 XX 个匹配结果',
+        'normalizedCurve': points
+    })
+ 
+
 
 
