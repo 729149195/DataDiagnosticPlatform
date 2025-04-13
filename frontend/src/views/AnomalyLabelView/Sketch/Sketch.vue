@@ -4,79 +4,32 @@
     <div class="header">
       <span class="title">查询</span>
       <span class="operate">
-        <el-select 
-          v-model="selectedGunNumbers" 
-          placeholder="请选择需要匹配的通道" 
-          multiple 
-          collapse-tags 
-          clearable
-          collapse-tags-tooltip 
-          class="select-gun-numbers"
-        >
+        <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
           <!-- 添加全部全选选项 -->
-          <el-option
-            key="select-all"
-            value="select-all"
-            label="全选所有通道"
-          >
-            <el-checkbox
-              v-model="allSelected"
-              @change="handleSelectAll"
-            >
+          <el-option key="select-all" value="select-all" label="全选所有通道">
+            <el-checkbox v-model="allSelected" @change="handleSelectAll">
               全选所有通道
             </el-checkbox>
           </el-option>
 
           <!-- 添加分组全选选项 -->
-          <el-option
-            v-for="group in selectV2Options"
-            :key="'select-all-' + group.value"
-            :value="'select-all-' + group.value"
-            :label="'全选' + group.label"
-          >
-            <el-checkbox
-              v-model="groupSelectAll[group.value]"
-              @change="(val) => handleSelectAllGroup(val, group)"
-            >
+          <el-option v-for="group in selectV2Options" :key="'select-all-' + group.value" :value="'select-all-' + group.value" :label="'全选' + group.label">
+            <el-checkbox v-model="groupSelectAll[group.value]" @change="(val) => handleSelectAllGroup(val, group)">
               全选{{ group.label }}
             </el-checkbox>
           </el-option>
-          
+
           <!-- 原有的分组选项 -->
-          <el-option-group 
-            v-for="group in selectV2Options" 
-            :key="group.value" 
-            :label="group.label"
-          >
-            <el-option
-              v-for="option in group.children"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+          <el-option-group v-for="group in selectV2Options" :key="group.value" :label="group.label">
+            <el-option v-for="option in group.children" :key="option.value" :label="option.label" :value="option.value" />
           </el-option-group>
         </el-select>
 
         <!-- 模板选择 -->
-        <el-select 
-          v-model="selectedTemplate" 
-          placeholder="模板" 
-          class="select-template" 
-          @change="loadTemplate"
-          :value-key="'name'"
-        >
-          <el-option
-            v-for="template in templates"
-            :key="template.name"
-            :label="template.name"
-            :value="template"
-          >
+        <el-select v-model="selectedTemplate" placeholder="模板" class="select-template" @change="loadTemplate" :value-key="'name'">
+          <el-option v-for="template in templates" :key="template.name" :label="template.name" :value="template">
             <div class="template-preview">
-              <canvas
-                :ref="el => { if (el) previewTemplate(template, el) }"
-                width="120"
-                height="60"
-              ></canvas>
+              <canvas :ref="el => { if (el) previewTemplate(template, el) }" width="120" height="60"></canvas>
             </div>
           </el-option>
         </el-select>
@@ -157,33 +110,33 @@ class WhiteboardApp {
     this.svg = d3.select(svgElement);
     this.width = svgElement.clientWidth;
     this.height = svgElement.clientHeight;
-    
+
     // 创建网格线组
     this.gridGroup = this.svg.append('g').attr('class', 'grid-group');
-    
+
     // 创建绘图组
     this.drawingGroup = this.svg.append('g').attr('class', 'drawing-group');
-    
+
     // 创建路径生成器
     this.line = d3.line()
       .x(d => d.x)
       .y(d => d.y)
       .curve(d3.curveCatmullRom.alpha(0.5));
-    
+
     // 当前绘制的路径
     this.currentPath = null;
     this.pathData = [];
-    
+
     // 设置事件监听
     this.setupEvents();
-    
+
     // 绘制网格线
     this.drawGrid();
-    
+
     // 添加窗口大小变化监听
     window.addEventListener('resize', this.resizeCanvas.bind(this));
   }
-  
+
   setupEvents() {
     // 鼠标事件
     this.svg
@@ -191,7 +144,7 @@ class WhiteboardApp {
       .on('mousemove', (event) => this.onMouseMove(event))
       .on('mouseup', () => this.onMouseUp())
       .on('mouseleave', () => this.onMouseUp());
-      
+
     // 触摸事件
     this.svg.node()
       .addEventListener('touchstart', (event) => this.onTouchStart(event), { passive: true });
@@ -202,32 +155,32 @@ class WhiteboardApp {
     this.svg.node()
       .addEventListener('touchcancel', () => this.onTouchEnd(), { passive: true });
   }
-  
+
   drawGrid() {
     // 清除现有网格
     this.gridGroup.selectAll('*').remove();
-    
+
     // 获取当前尺寸
     this.width = this.svg.node().clientWidth;
     this.height = this.svg.node().clientHeight;
-    
+
     // 网格间距
     const gridSpacing = 20;
-    
+
     // 计算中心点
     const centerX = this.width / 2;
     const centerY = this.height / 2;
-    
+
     // 计算最大距离（从中心点到最远角落的距离）
     const maxDistance = Math.sqrt(Math.pow(this.width, 2) + Math.pow(this.height, 2)) / 2;
-    
+
     // 绘制垂直线
     for (let x = 0; x <= this.width; x += gridSpacing) {
       // 计算当前线到中心的距离
       const distanceFromCenter = Math.abs(x - centerX);
       // 计算透明度（距离中心越远越透明）
       const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-      
+
       this.gridGroup.append('line')
         .attr('x1', x)
         .attr('y1', 0)
@@ -237,14 +190,14 @@ class WhiteboardApp {
         .attr('stroke-width', 1)
         .attr('opacity', opacity);
     }
-    
+
     // 绘制水平线
     for (let y = 0; y <= this.height; y += gridSpacing) {
       // 计算当前线到中心的距离
       const distanceFromCenter = Math.abs(y - centerY);
       // 计算透明度（距离中心越远越透明）
       const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-      
+
       this.gridGroup.append('line')
         .attr('x1', 0)
         .attr('y1', y)
@@ -255,27 +208,27 @@ class WhiteboardApp {
         .attr('opacity', opacity);
     }
   }
-  
+
   resizeCanvas() {
     // 更新尺寸
     this.width = this.svg.node().clientWidth;
     this.height = this.svg.node().clientHeight;
-    
+
     // 重绘网格
     this.drawGrid();
   }
-  
+
   onMouseDown(event) {
     // 开始绘制
     this.isDrawing = true;
-    
+
     // 获取鼠标位置
     const [x, y] = d3.pointer(event);
-    
+
     // 创建新路径
     this.pathData = [{ x, y }];
     this.previousPoint = { x, y };
-    
+
     this.currentPath = this.drawingGroup.append('path')
       .datum(this.pathData)
       .attr('d', this.line)
@@ -285,45 +238,45 @@ class WhiteboardApp {
       .attr('stroke-linecap', 'round')
       .attr('stroke-linejoin', 'round');
   }
-  
+
   onMouseMove(event) {
     if (!this.isDrawing) return;
-    
+
     // 获取鼠标位置
     const [x, y] = d3.pointer(event);
-    
+
     // x 轴递增约束
     if (x >= this.previousPoint.x) {
       this.pathData.push({ x, y });
       this.previousPoint = { x, y };
-      
+
       // 更新路径
       this.currentPath.datum(this.pathData).attr('d', this.line);
     }
   }
-  
+
   onMouseUp() {
     this.isDrawing = false;
   }
-  
+
   onTouchStart(event) {
     if (event.touches.length !== 1) return;
-    
+
     // 阻止默认行为
     event.preventDefault();
-    
+
     const touch = event.touches[0];
     const rect = this.svg.node().getBoundingClientRect();
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
-    
+
     // 开始绘制
     this.isDrawing = true;
-    
+
     // 创建新路径
     this.pathData = [{ x, y }];
     this.previousPoint = { x, y };
-    
+
     this.currentPath = this.drawingGroup.append('path')
       .datum(this.pathData)
       .attr('d', this.line)
@@ -333,39 +286,39 @@ class WhiteboardApp {
       .attr('stroke-linecap', 'round')
       .attr('stroke-linejoin', 'round');
   }
-  
+
   onTouchMove(event) {
     if (!this.isDrawing || event.touches.length !== 1) return;
-    
+
     // 阻止默认行为
     event.preventDefault();
-    
+
     const touch = event.touches[0];
     const rect = this.svg.node().getBoundingClientRect();
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
-    
+
     // x 轴递增约束
     if (x >= this.previousPoint.x) {
       this.pathData.push({ x, y });
       this.previousPoint = { x, y };
-      
+
       // 更新路径
       this.currentPath.datum(this.pathData).attr('d', this.line);
     }
   }
-  
+
   onTouchEnd() {
     this.isDrawing = false;
   }
-  
+
   clear() {
     // 清除所有绘制的路径
     this.drawingGroup.selectAll('*').remove();
     this.pathData = [];
     this.currentPath = null;
   }
-  
+
   destroy() {
     // 移除事件监听
     this.svg
@@ -373,18 +326,18 @@ class WhiteboardApp {
       .on('mousemove', null)
       .on('mouseup', null)
       .on('mouseleave', null);
-      
+
     this.svg.node().removeEventListener('touchstart', this.onTouchStart);
     this.svg.node().removeEventListener('touchmove', this.onTouchMove);
     this.svg.node().removeEventListener('touchend', this.onTouchEnd);
     this.svg.node().removeEventListener('touchcancel', this.onTouchEnd);
-    
+
     window.removeEventListener('resize', this.resizeCanvas);
-    
+
     // 清除所有内容
     this.svg.selectAll('*').remove();
   }
-  
+
   getPathsData() {
     // 获取路径的数据
     return this.pathData.map(point => ({
@@ -392,18 +345,18 @@ class WhiteboardApp {
       y: point.y
     }));
   }
-  
+
   loadTemplate(templatePoints) {
     // 清除现有路径
     this.clear();
-    
+
     if (templatePoints && templatePoints.length > 0) {
       // 创建新路径
       this.pathData = templatePoints.map(point => ({
         x: point.x,
         y: point.y
       }));
-      
+
       this.currentPath = this.drawingGroup.append('path')
         .datum(this.pathData)
         .attr('d', this.line)
@@ -442,7 +395,7 @@ onMounted(() => {
 
   // 监听键盘事件
   window.addEventListener('keydown', handleKeyDown);
-  
+
   // 初始化分组全选状态
   selectV2Options.value.forEach(group => {
     groupSelectAll.value[group.value] = false;
@@ -578,12 +531,12 @@ const previewTemplate = (template, canvas) => {
   const ctx = canvas.getContext('2d')
   const width = canvas.width
   const height = canvas.height
-  
+
   ctx.clearRect(0, 0, width, height)
   ctx.beginPath()
   ctx.strokeStyle = '#409EFF'
   ctx.lineWidth = 2
-  
+
   if (template.points.length > 0) {
     // 计算缩放比例
     const templatePoints = template.points;
@@ -591,26 +544,26 @@ const previewTemplate = (template, canvas) => {
     const maxX = Math.max(...templatePoints.map(p => p.x));
     const minY = Math.min(...templatePoints.map(p => p.y));
     const maxY = Math.max(...templatePoints.map(p => p.y));
-    
+
     const scaleX = width / (maxX - minX);
     const scaleY = height / (maxY - minY);
     const scale = Math.min(scaleX, scaleY) * 0.8; // 留出一些边距
-    
+
     // 计算居中偏移
     const offsetX = (width - (maxX - minX) * scale) / 2 - minX * scale;
     const offsetY = (height - (maxY - minY) * scale) / 2 - minY * scale;
-    
+
     templatePoints.forEach((point, index) => {
       const x = point.x * scale + offsetX;
       const y = point.y * scale + offsetY;
-      
+
       if (index === 0) {
         ctx.moveTo(x, y);
       } else {
         ctx.lineTo(x, y);
       }
     });
-    
+
     ctx.stroke();
   }
 }
@@ -621,7 +574,7 @@ const groupSelectAll = ref({});
 // 处理分组全选
 const handleSelectAllGroup = (checked, group) => {
   const groupValues = group.children.map(item => item.value);
-  
+
   if (checked) {
     // 全选当前分组
     const newSelection = new Set([...selectedGunNumbers.value]);
@@ -667,7 +620,7 @@ watch(selectedGunNumbers, (newVal) => {
 
   // 更新全部全选状态
   const allOptions = getAllOptions.value;
-  allSelected.value = allOptions.length > 0 && 
+  allSelected.value = allOptions.length > 0 &&
     allOptions.every(value => newVal.includes(value));
 });
 </script>
