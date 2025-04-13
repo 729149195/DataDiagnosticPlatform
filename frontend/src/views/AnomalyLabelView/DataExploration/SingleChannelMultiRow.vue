@@ -2106,7 +2106,6 @@ svg {
   position: absolute;
   top: 45px;
   right: 250px; /* 初始位置，会被动态调整 */
-  z-index: 10;
   display: flex;
   align-items: center;
   gap: 5px;

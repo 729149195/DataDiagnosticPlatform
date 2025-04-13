@@ -1,15 +1,13 @@
 <template>
   <el-header class="header">
     <div shadow="never">
-      <el-button class="anay" :class="{ selected: selectedButton === 'anay' }"
-        :type="selectedButton === 'anay' ? 'primary' : 'default'" size="large" @click="selectButton('anay')">
+      <el-button class="anay" :class="{ selected: selectedButton === 'anay' }" :type="selectedButton === 'anay' ? 'primary' : 'default'" size="large" @click="selectButton('anay')">
         <el-icon :size="20">
           <DataAnalysis />
         </el-icon>
         <span v-if="selectedButton === 'anay'">实验数据分析</span>
       </el-button>
-      <el-button class="channel" :class="{ selected: selectedButton === 'channel' }"
-        :type="selectedButton === 'channel' ? 'primary' : 'default'" size="large" @click="selectButton('channel')">
+      <el-button class="channel" :class="{ selected: selectedButton === 'channel' }" :type="selectedButton === 'channel' ? 'primary' : 'default'" size="large" @click="selectButton('channel')">
         <el-icon :size="20">
           <Odometer />
         </el-icon>
@@ -60,26 +58,12 @@
 
   <!-- 缓存信息对话框 -->
   <Teleport to="body">
-    <el-dialog
-      v-model="cacheInfoDialogVisible"
-      title="缓存信息"
-      width="80%"
-      :close-on-click-modal="false"
-      :close-on-press-escape="true"
-      destroy-on-close
-      append-to-body
-    >
+    <el-dialog v-model="cacheInfoDialogVisible" title="缓存信息" width="80%" :close-on-click-modal="false" :close-on-press-escape="true" destroy-on-close append-to-body>
       <div v-if="cacheKeys.length === 0" class="empty-cache">
         <el-empty description="暂无缓存数据" />
       </div>
       <div v-else>
-        <el-table 
-          :data="cacheKeys" 
-          style="width: 100%" 
-          max-height="500px" 
-          border
-          @selection-change="handleSelectionChange"
-        >
+        <el-table :data="cacheKeys" style="width: 100%" max-height="500px" border @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="55" />
           <el-table-column type="expand">
             <template #default="props">
@@ -107,7 +91,7 @@
                     </el-descriptions-item>
                   </el-descriptions>
                 </div>
-                
+
                 <!-- 通道数据显示 -->
                 <div v-else>
                   <el-descriptions :column="2" border>
@@ -259,7 +243,7 @@ const deleteSelectedCache = async () => {
   if (selectedCacheKeys.value.length === 0) {
     return;
   }
-  
+
   try {
     await ElMessageBox.confirm(
       `确定要删除选中的 ${selectedCacheKeys.value.length} 项缓存吗？`,
@@ -270,29 +254,29 @@ const deleteSelectedCache = async () => {
         type: 'warning'
       }
     );
-    
+
     // 逐个删除选中的缓存
     for (const row of selectedCacheKeys.value) {
       await indexedDBService.deleteChannelData(row.key);
       // 从Vuex中移除该缓存
       store.commit('removeChannelDataCache', row.key);
     }
-    
+
     ElMessage({
       message: `已删除 ${selectedCacheKeys.value.length} 项缓存`,
       type: 'success'
     });
-    
+
     // 清空选中项
     selectedCacheKeys.value = [];
-    
+
     // 刷新缓存列表
     await getCacheInfo();
   } catch (error) {
     if (error === 'cancel' || error.toString().includes('cancel')) {
       return;
     }
-    
+
     console.error('删除缓存失败:', error);
     ElMessage({
       message: '删除缓存失败，请重试',
@@ -320,17 +304,17 @@ const getCacheInfo = async () => {
   try {
     const keys = await indexedDBService.getAllKeys();
     cacheKeys.value = [];
-    
+
     for (const key of keys) {
       try {
         const data = await indexedDBService.getChannelData(key);
         if (data) {
           // 计算数据大小（近似值）
           const size = JSON.stringify(data).length;
-          
+
           // 判断是否为异常标注数据
           const isErrorData = key.startsWith('error-');
-          
+
           if (isErrorData) {
             // 异常标注数据
             cacheKeys.value.push({
@@ -343,16 +327,16 @@ const getCacheInfo = async () => {
           } else {
             // 通道数据
             // 提取数据点数量
-            const dataPoints = data.data?.X_value?.length || 
-                              data.data?.originalDataPoints || 
-                              '未知';
-            
+            const dataPoints = data.data?.X_value?.length ||
+              data.data?.originalDataPoints ||
+              '未知';
+
             // 创建不包含X_value和Y_value的详细信息对象
             const details = { ...data.data };
             // 删除大型数组数据
             delete details.X_value;
             delete details.Y_value;
-            
+
             cacheKeys.value.push({
               key,
               timestamp: data.timestamp || Date.now(),
@@ -367,7 +351,7 @@ const getCacheInfo = async () => {
         console.error(`获取缓存数据失败: ${key}`, error);
       }
     }
-    
+
     // 按数据类型和时间排序
     cacheKeys.value.sort((a, b) => {
       // 先按数据类型排序
@@ -403,23 +387,23 @@ const deleteChannelCache = async (key) => {
         type: 'warning'
       }
     );
-    
+
     await indexedDBService.deleteChannelData(key);
     // 从Vuex中移除该缓存
     store.commit('removeChannelDataCache', key);
-    
+
     ElMessage({
       message: '缓存已删除',
       type: 'success'
     });
-    
+
     // 刷新缓存列表
     await getCacheInfo();
   } catch (error) {
     if (error === 'cancel' || error.toString().includes('cancel')) {
       return;
     }
-    
+
     console.error('删除缓存失败:', error);
     ElMessage({
       message: '删除缓存失败，请重试',
@@ -457,7 +441,7 @@ const clearCache = async () => {
         draggable: true,
       }
     );
-    
+
     // 用户点击确认后，执行清空操作
     await indexedDBService.clearAllChannelData();
     // 清空Vuex中的缓存
@@ -471,7 +455,7 @@ const clearCache = async () => {
     if (error === 'cancel' || error.toString().includes('cancel')) {
       return;
     }
-    
+
     console.error('清空缓存失败:', error);
     ElMessage({
       message: '清空缓存失败，请重试',
@@ -678,4 +662,4 @@ const emit = defineEmits(['button-change']);
   margin-right: 5px;
   margin-bottom: 5px;
 }
-</style> 
+</style>

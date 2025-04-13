@@ -2605,14 +2605,20 @@ const drawCombinedChart = () => {
       syncLegendColors();
       
       // 添加变更监听，确保颜色持续同步
-      const observer = new MutationObserver(() => {
+      // 断开之前的observer (如果存在)
+      if (chartLegendObserver.value) {
+        chartLegendObserver.value.disconnect();
+      }
+      
+      // 创建新的observer
+      chartLegendObserver.value = new MutationObserver(() => {
         syncLegendColors();
       });
       
       // 监听图例容器
       const legendContainer = document.getElementById('channelLegendContainer');
       if (legendContainer) {
-        observer.observe(legendContainer, { 
+        chartLegendObserver.value.observe(legendContainer, { 
           childList: true, 
           subtree: true, 
           attributes: true,
@@ -2620,10 +2626,10 @@ const drawCombinedChart = () => {
         });
       }
       
-      // 组件卸载时断开监听
-      onUnmounted(() => {
-        observer.disconnect();
-      });
+      // 移除这部分代码，因为已经在组件顶层添加了onUnmounted钩子
+      // onUnmounted(() => {
+      //   observer.disconnect();
+      // });
     });
   } catch (error) {
     // console.error('Error drawing combined chart:', error);
@@ -2665,6 +2671,16 @@ const confirmChannelSelection = () => {
     ElMessage.warning('请选择一个通道');
   }
 };
+
+// 在setup部分顶层添加一个ref存储MutationObserver实例
+const chartLegendObserver = ref(null);
+
+// 在组件卸载时清理MutationObserver
+onUnmounted(() => {
+  if (chartLegendObserver.value) {
+    chartLegendObserver.value.disconnect();
+  }
+});
 </script>
 
 
@@ -2702,14 +2718,14 @@ const confirmChannelSelection = () => {
   overflow: hidden;
   margin-top: 5px;
   /* 减少顶部空白 */
-  min-height: 300px; /* 设置最小高度 */
+  min-height: 100px; /* 降低最小高度，允许更小的图表高度 */
 }
 
 #combined-chart {
   width: 100%;
   height: 100%;
   position: relative;
-  min-height: 300px; /* 设置最小高度 */
+  min-height: 100px; /* 降低最小高度，允许更小的图表高度 */
 }
 
 .legend-container {

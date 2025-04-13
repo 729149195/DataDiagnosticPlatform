@@ -108,7 +108,7 @@
                 </div>
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
-                <el-scrollbar :height="isSecondSectionCollapsed ? '83vh' : '58vh'" :always="false">
+                <el-scrollbar :height="isSecondSectionCollapsed ? '81vh' : '50vh'" :always="false">
                   <div v-if="SingleChannelMultiRow_channel_number === true">
                     <SingleChannelMultiRow v-show="selectedChannels.length > 0" />
                   </div>
@@ -120,7 +120,7 @@
               </div>
             </el-card>
 
-            <div class="arc-toggle-container">
+            <div class="arc-toggle-container" :style="{ marginBottom: isSecondSectionCollapsed ? '0' : '5px' }">
               <div class="arc-toggle" @click="toggleCollapse">
                 <el-icon class="arc-toggle-icon">
                   <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />

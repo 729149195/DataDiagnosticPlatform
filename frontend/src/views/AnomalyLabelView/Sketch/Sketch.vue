@@ -2,7 +2,7 @@
   <div class="container">
     <!-- 顶部操作栏 -->
     <div class="header">
-      <span class="title">查询</span>
+      <span class="title">手绘查询</span>
       <span class="operate">
         <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
           <!-- 添加全部全选选项 -->
@@ -24,23 +24,15 @@
             <el-option v-for="option in group.children" :key="option.value" :label="option.label" :value="option.value" />
           </el-option-group>
         </el-select>
-
-        <!-- 模板选择 -->
-        <el-select v-model="selectedTemplate" placeholder="模板" class="select-template" @change="loadTemplate" :value-key="'name'">
-          <el-option v-for="template in templates" :key="template.name" :label="template.name" :value="template">
-            <div class="template-preview">
-              <canvas :ref="el => { if (el) previewTemplate(template, el) }" width="120" height="60"></canvas>
-            </div>
-          </el-option>
-        </el-select>
       </span>
     </div>
 
     <!-- 绘图区域 -->
     <div class="sketch-container">
       <div class="canvas-container">
-        <!-- 使用SVG替代Canvas作为白板 -->
-        <svg ref="svgCanvas" class="whiteboard-svg"></svg>
+        <!-- 使用canvas替代SVG作为Paper.js的绘图区域 -->
+        <canvas ref="paperCanvas" id="paperCanvas" class="whiteboard-canvas" resize></canvas>
+        <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
         <div class="buttons">
           <el-button type="danger" class="clear-button" @click="clearCanvas">
             清除
@@ -59,14 +51,13 @@ import {
   ref,
   computed,
   onMounted,
-  onBeforeUnmount,
+  onUnmounted,
   watch,
 } from 'vue';
 import { Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
-import * as d3 from 'd3';
-import curveTemplates from '@/assets/templates/curveTemplates.json'
+import Paper from 'paper';
 import chartWorkerManager from '@/workers/chartWorkerManager';
 
 // 使用 Vuex store
@@ -78,10 +69,6 @@ const sampling = computed(() => store.state.sampling);
 
 // 从 Vuex 获取 selectedChannels
 const selectedChannels = computed(() => store.state.selectedChannels);
-
-// 模板选项
-const selectedTemplate = ref(null);
-const templates = ref(curveTemplates.templates || []);
 
 const selectV2Options = computed(() => {
   const grouped = selectedChannels.value.reduce((acc, channel) => {
@@ -103,276 +90,141 @@ const selectV2Options = computed(() => {
   }));
 });
 
-// ----------- 白板绘图逻辑开始 -----------
+// ----------- Paper.js 绘图逻辑开始 -----------
 
-class WhiteboardApp {
-  constructor(svgElement) {
-    this.svg = d3.select(svgElement);
-    this.width = svgElement.clientWidth;
-    this.height = svgElement.clientHeight;
+// Paper.js 变量
+let path = null;
+let grid = null;
+let paperScope = null;
+const segmentInfo = ref('');
 
-    // 创建网格线组
-    this.gridGroup = this.svg.append('g').attr('class', 'grid-group');
+// Paper.js canvas元素引用
+const paperCanvas = ref(null);
+// 添加ResizeObserver引用
+let resizeObserver = null;
+// 添加可见性变化检测
+let visibilityCheckInterval = null;
+// 添加MutationObserver引用
+let mutationObserver = null;
+// 添加resize事件处理函数引用
+let handleResize = null;
 
-    // 创建绘图组
-    this.drawingGroup = this.svg.append('g').attr('class', 'drawing-group');
-
-    // 创建路径生成器
-    this.line = d3.line()
-      .x(d => d.x)
-      .y(d => d.y)
-      .curve(d3.curveCatmullRom.alpha(0.5));
-
-    // 当前绘制的路径
-    this.currentPath = null;
-    this.pathData = [];
-
-    // 设置事件监听
-    this.setupEvents();
-
-    // 绘制网格线
-    this.drawGrid();
-
-    // 添加窗口大小变化监听
-    window.addEventListener('resize', this.resizeCanvas.bind(this));
+// 创建网格
+const createGrid = (width, height) => {
+  // 清除现有网格
+  if (grid) {
+    grid.remove();
   }
 
-  setupEvents() {
-    // 鼠标事件
-    this.svg
-      .on('mousedown', (event) => this.onMouseDown(event))
-      .on('mousemove', (event) => this.onMouseMove(event))
-      .on('mouseup', () => this.onMouseUp())
-      .on('mouseleave', () => this.onMouseUp());
-
-    // 触摸事件
-    this.svg.node()
-      .addEventListener('touchstart', (event) => this.onTouchStart(event), { passive: true });
-    this.svg.node()
-      .addEventListener('touchmove', (event) => this.onTouchMove(event), { passive: true });
-    this.svg.node()
-      .addEventListener('touchend', () => this.onTouchEnd(), { passive: true });
-    this.svg.node()
-      .addEventListener('touchcancel', () => this.onTouchEnd(), { passive: true });
+  grid = new Paper.Group();
+  
+  // 网格间距
+  const gridSpacing = 25;
+  
+  // 创建主网格
+  for (let x = 0; x <= width; x += gridSpacing) {
+    const line = new Paper.Path.Line(
+      new Paper.Point(x, 0),
+      new Paper.Point(x, height)
+    );
+    line.strokeColor = '#e6e6e6';
+    line.strokeWidth = 0.8;
+    grid.addChild(line);
+  }
+  
+  for (let y = 0; y <= height; y += gridSpacing) {
+    const line = new Paper.Path.Line(
+      new Paper.Point(0, y),
+      new Paper.Point(width, y)
+    );
+    line.strokeColor = '#e6e6e6';
+    line.strokeWidth = 0.8;
+    grid.addChild(line);
   }
 
-  drawGrid() {
-    // 清除现有网格
-    this.gridGroup.selectAll('*').remove();
+  // 将网格置于底层
+  grid.sendToBack();
+  return grid;
+};
 
-    // 获取当前尺寸
-    this.width = this.svg.node().clientWidth;
-    this.height = this.svg.node().clientHeight;
-
-    // 网格间距
-    const gridSpacing = 20;
-
-    // 计算中心点
-    const centerX = this.width / 2;
-    const centerY = this.height / 2;
-
-    // 计算最大距离（从中心点到最远角落的距离）
-    const maxDistance = Math.sqrt(Math.pow(this.width, 2) + Math.pow(this.height, 2)) / 2;
-
-    // 绘制垂直线
-    for (let x = 0; x <= this.width; x += gridSpacing) {
-      // 计算当前线到中心的距离
-      const distanceFromCenter = Math.abs(x - centerX);
-      // 计算透明度（距离中心越远越透明）
-      const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-
-      this.gridGroup.append('line')
-        .attr('x1', x)
-        .attr('y1', 0)
-        .attr('x2', x)
-        .attr('y2', this.height)
-        .attr('stroke', 'black')
-        .attr('stroke-width', 1)
-        .attr('opacity', opacity);
-    }
-
-    // 绘制水平线
-    for (let y = 0; y <= this.height; y += gridSpacing) {
-      // 计算当前线到中心的距离
-      const distanceFromCenter = Math.abs(y - centerY);
-      // 计算透明度（距离中心越远越透明）
-      const opacity = Math.max(0.05, 0.3 - (distanceFromCenter / maxDistance) * 0.3);
-
-      this.gridGroup.append('line')
-        .attr('x1', 0)
-        .attr('y1', y)
-        .attr('x2', this.width)
-        .attr('y2', y)
-        .attr('stroke', 'black')
-        .attr('stroke-width', 1)
-        .attr('opacity', opacity);
-    }
-  }
-
-  resizeCanvas() {
-    // 更新尺寸
-    this.width = this.svg.node().clientWidth;
-    this.height = this.svg.node().clientHeight;
-
+// 调整画布大小
+const resizeCanvas = () => {
+  if (paperScope && paperScope.view) {
+    // 重置视图大小
+    paperScope.view.viewSize = new Paper.Size(
+      paperCanvas.value.offsetWidth,
+      paperCanvas.value.offsetHeight
+    );
+    
     // 重绘网格
-    this.drawGrid();
+    createGrid(paperCanvas.value.offsetWidth, paperCanvas.value.offsetHeight);
+    
+    // 重绘路径
+    paperScope.view.draw();
   }
+};
 
-  onMouseDown(event) {
-    // 开始绘制
-    this.isDrawing = true;
-
-    // 获取鼠标位置
-    const [x, y] = d3.pointer(event);
-
+// 初始化Paper.js
+const initPaperJs = () => {
+  if (!paperCanvas.value) return;
+  
+  // 确保Paper.js还没有初始化
+  if (paperScope) {
+    paperScope.remove();
+  }
+  
+  // 初始化Paper.js
+  paperScope = new Paper.PaperScope();
+  paperScope.setup(paperCanvas.value);
+  
+  // 创建网格
+  createGrid(paperCanvas.value.offsetWidth, paperCanvas.value.offsetHeight);
+  
+  // 设置工具事件
+  const tool = new paperScope.Tool();
+  
+  // 鼠标按下事件
+  tool.onMouseDown = (event) => {
+    // 如果已有路径，取消选择
+    if (path) {
+      path.selected = false;
+    }
+    
     // 创建新路径
-    this.pathData = [{ x, y }];
-    this.previousPoint = { x, y };
-
-    this.currentPath = this.drawingGroup.append('path')
-      .datum(this.pathData)
-      .attr('d', this.line)
-      .attr('fill', 'none')
-      .attr('stroke', 'black')
-      .attr('stroke-width', 6)
-      .attr('stroke-linecap', 'round')
-      .attr('stroke-linejoin', 'round');
-  }
-
-  onMouseMove(event) {
-    if (!this.isDrawing) return;
-
-    // 获取鼠标位置
-    const [x, y] = d3.pointer(event);
-
-    // x 轴递增约束
-    if (x >= this.previousPoint.x) {
-      this.pathData.push({ x, y });
-      this.previousPoint = { x, y };
-
-      // 更新路径
-      this.currentPath.datum(this.pathData).attr('d', this.line);
+    path = new paperScope.Path({
+      segments: [event.point],
+      strokeColor: 'black',
+      strokeWidth: 2,
+      strokeCap: 'round',
+      strokeJoin: 'round'
+    });
+  };
+  
+  // 鼠标拖动事件
+  tool.onMouseDrag = (event) => {
+    // 只在X轴递增的情况下添加点
+    if (path && (!path.lastSegment || event.point.x >= path.lastSegment.point.x)) {
+      path.add(event.point);
+      segmentInfo.value = `点数: ${path.segments.length}`;
     }
-  }
-
-  onMouseUp() {
-    this.isDrawing = false;
-  }
-
-  onTouchStart(event) {
-    if (event.touches.length !== 1) return;
-
-    // 阻止默认行为
-    event.preventDefault();
-
-    const touch = event.touches[0];
-    const rect = this.svg.node().getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-
-    // 开始绘制
-    this.isDrawing = true;
-
-    // 创建新路径
-    this.pathData = [{ x, y }];
-    this.previousPoint = { x, y };
-
-    this.currentPath = this.drawingGroup.append('path')
-      .datum(this.pathData)
-      .attr('d', this.line)
-      .attr('fill', 'none')
-      .attr('stroke', 'black')
-      .attr('stroke-width', 6)
-      .attr('stroke-linecap', 'round')
-      .attr('stroke-linejoin', 'round');
-  }
-
-  onTouchMove(event) {
-    if (!this.isDrawing || event.touches.length !== 1) return;
-
-    // 阻止默认行为
-    event.preventDefault();
-
-    const touch = event.touches[0];
-    const rect = this.svg.node().getBoundingClientRect();
-    const x = touch.clientX - rect.left;
-    const y = touch.clientY - rect.top;
-
-    // x 轴递增约束
-    if (x >= this.previousPoint.x) {
-      this.pathData.push({ x, y });
-      this.previousPoint = { x, y };
-
-      // 更新路径
-      this.currentPath.datum(this.pathData).attr('d', this.line);
+  };
+  
+  // 鼠标释放事件
+  tool.onMouseUp = (event) => {
+    if (path && path.segments.length > 1) {
+      const segmentCount = path.segments.length;
+      
+      // 简化路径
+      path.simplify(10);
+      
+      const newSegmentCount = path.segments.length;
+      const difference = segmentCount - newSegmentCount;
+      const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
+      
+      segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
     }
-  }
-
-  onTouchEnd() {
-    this.isDrawing = false;
-  }
-
-  clear() {
-    // 清除所有绘制的路径
-    this.drawingGroup.selectAll('*').remove();
-    this.pathData = [];
-    this.currentPath = null;
-  }
-
-  destroy() {
-    // 移除事件监听
-    this.svg
-      .on('mousedown', null)
-      .on('mousemove', null)
-      .on('mouseup', null)
-      .on('mouseleave', null);
-
-    this.svg.node().removeEventListener('touchstart', this.onTouchStart);
-    this.svg.node().removeEventListener('touchmove', this.onTouchMove);
-    this.svg.node().removeEventListener('touchend', this.onTouchEnd);
-    this.svg.node().removeEventListener('touchcancel', this.onTouchEnd);
-
-    window.removeEventListener('resize', this.resizeCanvas);
-
-    // 清除所有内容
-    this.svg.selectAll('*').remove();
-  }
-
-  getPathsData() {
-    // 获取路径的数据
-    return this.pathData.map(point => ({
-      x: point.x,
-      y: point.y
-    }));
-  }
-
-  loadTemplate(templatePoints) {
-    // 清除现有路径
-    this.clear();
-
-    if (templatePoints && templatePoints.length > 0) {
-      // 创建新路径
-      this.pathData = templatePoints.map(point => ({
-        x: point.x,
-        y: point.y
-      }));
-
-      this.currentPath = this.drawingGroup.append('path')
-        .datum(this.pathData)
-        .attr('d', this.line)
-        .attr('fill', 'none')
-        .attr('stroke', 'black')
-        .attr('stroke-width', 6)
-        .attr('stroke-linecap', 'round')
-        .attr('stroke-linejoin', 'round');
-    }
-  }
-}
-
-let whiteboardApp = null;
-
-// 引用SVG元素
-const svgCanvas = ref(null);
+  };
+};
 
 // 键盘事件处理函数
 const handleKeyDown = (e) => {
@@ -381,41 +233,69 @@ const handleKeyDown = (e) => {
   }
 };
 
-// 生命周期钩子
-onMounted(() => {
-  if (svgCanvas.value) {
-    // 确保之前的实例被完全清理
-    if (whiteboardApp) {
-      whiteboardApp.destroy();
-      whiteboardApp = null;
-    }
-    // 创建新实例
-    whiteboardApp = new WhiteboardApp(svgCanvas.value);
-  }
-
-  // 监听键盘事件
-  window.addEventListener('keydown', handleKeyDown);
-
-  // 初始化分组全选状态
-  selectV2Options.value.forEach(group => {
-    groupSelectAll.value[group.value] = false;
+// 添加MutationObserver来监测元素可见性变化
+const setupMutationObserver = () => {
+  // 创建监听器
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.attributeName === 'style' || mutation.attributeName === 'class') {
+        // 当元素的style或class变化时，检查可见性
+        if (paperCanvas.value && paperCanvas.value.offsetParent !== null) {
+          // 元素变为可见，重新绘制
+          setTimeout(() => {
+            resizeCanvas();
+          }, 100);
+        }
+      }
+    });
   });
-  allSelected.value = false;
-});
 
-onBeforeUnmount(() => {
-  if (whiteboardApp) {
-    whiteboardApp.destroy();
-    whiteboardApp = null;
+  // 找到父级.two元素
+  const parentElement = paperCanvas.value?.closest('.two');
+  if (parentElement) {
+    // 开始监听
+    observer.observe(parentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+    return observer;
   }
-  // 移除全局键盘事件监听器
-  window.removeEventListener('keydown', handleKeyDown);
-});
+  return null;
+};
+
+// 启动定期检查可见性的定时器
+const startVisibilityCheck = () => {
+  // 清除可能存在的旧定时器
+  if (visibilityCheckInterval) {
+    clearInterval(visibilityCheckInterval);
+  }
+
+  // 创建新定时器，每500ms检查一次可见性
+  return setInterval(() => {
+    if (paperCanvas.value && paperCanvas.value.offsetParent !== null) {
+      // 元素可见，检查大小是否变化
+      const currentWidth = paperCanvas.value.offsetWidth;
+      const currentHeight = paperCanvas.value.offsetHeight;
+
+      // 如果Paper.js视图尺寸与当前尺寸不同，重新绘制
+      if (paperScope && paperScope.view && 
+          (paperScope.view.viewSize.width !== currentWidth || 
+           paperScope.view.viewSize.height !== currentHeight)) {
+        resizeCanvas();
+      }
+    }
+  }, 500);
+};
 
 // 提交数据函数
 const submitData = async () => {
   const channelDataCache = store.state.channelDataCache;
-  const rawQueryPattern = whiteboardApp ? whiteboardApp.getPathsData() : [];
+  
+  // 获取绘制的路径数据
+  const rawQueryPattern = path ? path.segments.map(segment => ({
+    x: segment.point.x,
+    y: segment.point.y
+  })) : [];
 
   if (rawQueryPattern.length > 0) {
     // 归一化查询模式的 x 和 y 值
@@ -428,7 +308,7 @@ const submitData = async () => {
     const yRange = maxY - minY;
 
     // 只在这里翻转 Y 值
-    const queryPattern = rawQueryPattern.map((point, index) => ({
+    const queryPattern = rawQueryPattern.map((point) => ({
       x: -1 + (2 * (point.x - minX) / xRange),
       y: -(-1 + (2 * (point.y - minY) / yRange))  // 翻转 Y 值
     }));
@@ -502,71 +382,20 @@ const submitData = async () => {
 
 // 修改清除画布函数
 const clearCanvas = () => {
-  if (whiteboardApp) {
-    whiteboardApp.clear();
+  if (paperScope) {
+    // 清除所有路径
+    if (path) {
+      path.remove();
+      path = null;
+    }
+    
+    // 清空段信息
+    segmentInfo.value = '';
+    
     // 清 store 中的匹配结果
     store.dispatch('clearMatchedResults');
   }
 };
-
-// 导出当前曲线数据到控制台
-const exportCurrentCurve = () => {
-  if (whiteboardApp) {
-    console.log(JSON.stringify({
-      name: "新模板",
-      points: whiteboardApp.getPathsData()
-    }, null, 2));
-  }
-}
-
-// 加载选中的模板
-const loadTemplate = (template) => {
-  if (whiteboardApp && template && template.points) {
-    whiteboardApp.loadTemplate(template.points);
-  }
-}
-
-// 预览模板
-const previewTemplate = (template, canvas) => {
-  const ctx = canvas.getContext('2d')
-  const width = canvas.width
-  const height = canvas.height
-
-  ctx.clearRect(0, 0, width, height)
-  ctx.beginPath()
-  ctx.strokeStyle = '#409EFF'
-  ctx.lineWidth = 2
-
-  if (template.points.length > 0) {
-    // 计算缩放比例
-    const templatePoints = template.points;
-    const minX = Math.min(...templatePoints.map(p => p.x));
-    const maxX = Math.max(...templatePoints.map(p => p.x));
-    const minY = Math.min(...templatePoints.map(p => p.y));
-    const maxY = Math.max(...templatePoints.map(p => p.y));
-
-    const scaleX = width / (maxX - minX);
-    const scaleY = height / (maxY - minY);
-    const scale = Math.min(scaleX, scaleY) * 0.8; // 留出一些边距
-
-    // 计算居中偏移
-    const offsetX = (width - (maxX - minX) * scale) / 2 - minX * scale;
-    const offsetY = (height - (maxY - minY) * scale) / 2 - minY * scale;
-
-    templatePoints.forEach((point, index) => {
-      const x = point.x * scale + offsetX;
-      const y = point.y * scale + offsetY;
-
-      if (index === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    });
-
-    ctx.stroke();
-  }
-}
 
 // 添加全选状态处理
 const groupSelectAll = ref({});
@@ -622,6 +451,81 @@ watch(selectedGunNumbers, (newVal) => {
   const allOptions = getAllOptions.value;
   allSelected.value = allOptions.length > 0 &&
     allOptions.every(value => newVal.includes(value));
+});
+
+// 组件挂载时执行的逻辑
+onMounted(() => {
+  if (paperCanvas.value) {
+    // 初始化Paper.js
+    initPaperJs();
+
+    // 设置ResizeObserver监听容器大小变化
+    if (window.ResizeObserver) {
+      resizeObserver = new ResizeObserver(() => {
+        if (paperCanvas.value) {
+          resizeCanvas();
+        }
+      });
+      resizeObserver.observe(paperCanvas.value);
+    }
+
+    // 设置MutationObserver
+    mutationObserver = setupMutationObserver();
+
+    // 启动可见性检查
+    visibilityCheckInterval = startVisibilityCheck();
+
+    // 监听DOM大小变化
+    handleResize = () => {
+      resizeCanvas();
+    };
+    window.addEventListener('resize', handleResize);
+  }
+
+  // 监听键盘事件
+  window.addEventListener('keydown', handleKeyDown);
+
+  // 初始化分组全选状态
+  selectV2Options.value.forEach(group => {
+    groupSelectAll.value[group.value] = false;
+  });
+  allSelected.value = false;
+});
+
+// 组件卸载时清理资源
+onUnmounted(() => {
+  // 清理Paper.js实例
+  if (paperScope) {
+    paperScope.remove();
+    paperScope = null;
+  }
+
+  // 清理ResizeObserver
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+
+  // 清理MutationObserver
+  if (mutationObserver) {
+    mutationObserver.disconnect();
+    mutationObserver = null;
+  }
+
+  // 清理可见性检查定时器
+  if (visibilityCheckInterval) {
+    clearInterval(visibilityCheckInterval);
+    visibilityCheckInterval = null;
+  }
+
+  // 移除resize事件监听
+  if (handleResize) {
+    window.removeEventListener('resize', handleResize);
+    handleResize = null;
+  }
+
+  // 移除全局键盘事件监听器
+  window.removeEventListener('keydown', handleKeyDown);
 });
 </script>
 
@@ -686,7 +590,7 @@ watch(selectedGunNumbers, (newVal) => {
   isolation: isolate;
 }
 
-.whiteboard-svg {
+.whiteboard-canvas {
   position: absolute;
   top: 0;
   left: 0;
@@ -701,6 +605,17 @@ watch(selectedGunNumbers, (newVal) => {
   overscroll-behavior: contain;
   pointer-events: auto;
   isolation: isolate;
+}
+
+.segment-info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #333;
 }
 
 .buttons {
