@@ -715,65 +715,15 @@ const processChannelDataAsync = async (data, channel) => {
   let finalY = data.Y_normalized || [];
   let xValues = data.X_value;
 
-  // 处理数字信号，使用后端判断或自行判断
-  const isDigital = data.is_digital === true || 
-    (data.channel_type === 'DIGITAL') || 
-    (Math.min(...finalY) >= 0 && Math.max(...finalY) <= 1 && 
-     finalY.every(y => Math.abs(y) < 0.1 || Math.abs(y - 1) < 0.1));
-
-  // 对于数字信号，确保值只有0和1，避免中间值
-  if (isDigital) {
-    finalY = finalY.map(y => y > 0.5 ? 1 : 0);
-
-    // 为数字信号添加额外的点，确保方波形状
-    const enhancedX = [];
-    const enhancedY = [];
-
-    for (let i = 0; i < xValues.length; i++) {
-      if (i > 0) {
-        // 如果当前点与前一点的值不同，添加一个过渡点
-        if (finalY[i] !== finalY[i - 1]) {
-          // 在两点之间添加一个极小偏移的点，确保垂直线段
-          const transitionX = xValues[i] - 0.0000001;
-          enhancedX.push(transitionX);
-          enhancedY.push(finalY[i - 1]); // 使用前一点的值
-        }
-      }
-      enhancedX.push(xValues[i]);
-      enhancedY.push(finalY[i]);
-    }
-
-    xValues = enhancedX;
-    finalY = enhancedY;
-  }
-
-  // 返回处理后的数据，尽可能使用后端提供的统计值
+  // 处理绘图数据
   return {
-    channelName: channel.channel_name,
-    channelshotnumber: channel.shot_number,
-    X_value: xValues,
-    Y_value: finalY,
-    Y_original: data.Y_value,
-    color: channel.color,
-    errorsData: errorDataResults,
-    xUnit: data.X_unit || 's',
-    yUnit: data.Y_unit || 'Y',
-    // 使用后端提供的通道类型，如果没有则使用前端判断
-    channelType: data.channel_type || (isDigital ? 'DIGITAL' : 'ANALOG'),
-    channelNumber: data.channel_number || channel.channel_name,
-    shotNumber: channel.shot_number,
-    originalFrequency: data.originalFrequency || 0,
-    // 使用后端提供的统计数据
-    stats: data.stats || {
-      y_min: Math.min(...data.Y_value),
-      y_max: Math.max(...data.Y_value),
-      y_mean: data.Y_value.reduce((a, b) => a + b, 0) / data.Y_value.length,
-      y_median: [...data.Y_value].sort((a, b) => a - b)[Math.floor(data.Y_value.length / 2)],
-      y_std: Math.sqrt(data.Y_value.reduce((a, b) => a + Math.pow(b - (data.Y_value.reduce((a, b) => a + b, 0) / data.Y_value.length), 2), 0) / data.Y_value.length),
-      x_min: Math.min(...data.X_value),
-      x_max: Math.max(...data.X_value)
+    channelKey,
+    data: {
+      x: xValues,
+      y: finalY
     },
-    is_digital: isDigital
+    channel,
+    errorData: errorDataResults
   };
 };
 
@@ -812,14 +762,14 @@ const prepareAndRenderChart = async () => {
 
         // 更新导出数据
         exposeData.value.push({
-          channel_type: processedData.channelType,
-          channel_name: processedData.channelName,
-          X_value: processedData.X_value,
-          X_unit: processedData.xUnit,
-          Y_value: processedData.Y_original,
-          Y_unit: processedData.yUnit,
-          errorsData: processedData.errorsData,
-          shot_number: processedData.shotNumber
+          channel_type: processedData.channel.channelType,
+          channel_name: processedData.channel.channelName,
+          X_value: processedData.data.x,
+          X_unit: processedData.channel.xUnit,
+          Y_value: processedData.data.y,
+          Y_unit: processedData.channel.yUnit,
+          errorsData: processedData.errorData,
+          shot_number: processedData.channel.shotNumber
         });
         
         // 更新进度
@@ -835,7 +785,7 @@ const prepareAndRenderChart = async () => {
 
     // 计算全局X轴范围
     if (!xDomains.value.global && channelsData.value.length > 0) {
-      const allX = channelsData.value.flatMap(d => d.X_value);
+      const allX = channelsData.value.flatMap(d => d.data.x);
       if (allX.length > 0) {
         xDomains.value.global = [Math.min(...allX), Math.max(...allX)];
       }
@@ -1804,7 +1754,7 @@ const drawCombinedChart = () => {
     }
 
     // 计算所有数据的范围
-    const allX = channelsData.value.flatMap(d => d.X_value);
+    const allX = channelsData.value.flatMap(d => d.data.x);
     if (allX.length === 0) {
       console.warn('没有有效的X轴数据点');
       renderingState.completed = true;
@@ -1876,13 +1826,13 @@ const drawCombinedChart = () => {
       // 为每个通道创建数据系列
       channelsData.value.forEach((data) => {
         // 确保X和Y数组长度一致
-        if (!data.X_value || !data.Y_value || data.X_value.length !== data.Y_value.length) {
-          console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.X_value?.length}, Y=${data.Y_value?.length}`);
+        if (!data.data.x || !data.data.y || data.data.x.length !== data.data.y.length) {
+          console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.data.x?.length}, Y=${data.data.y?.length}`);
           return;
         }
 
         // 创建完整的数据点数组
-        const pointsData = data.X_value.map((x, i) => ([x, data.Y_value[i]]));
+        const pointsData = data.data.x.map((x, i) => ([x, data.data.y[i]]));
 
         // 创建主线数据
         const mainLineSeries = {
@@ -1910,26 +1860,26 @@ const drawCombinedChart = () => {
         if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
           let smoothedYValue = [];
           try {
-            smoothedYValue = interpolateData(data.Y_value, smoothnessValue.value);
+            smoothedYValue = interpolateData(data.data.y, smoothnessValue.value);
           } catch (error) {
             console.error(`平滑处理数据出错: ${error.message}`);
-            smoothedYValue = [...data.Y_value]; // 出错时使用原始数据
+            smoothedYValue = [...data.data.y]; // 出错时使用原始数据
           }
 
           // 确保平滑后的Y值数组长度与X值数组一致
-          if (smoothedYValue.length !== data.X_value.length) {
-            console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.X_value.length})`);
-            if (smoothedYValue.length > data.X_value.length) {
-              smoothedYValue = smoothedYValue.slice(0, data.X_value.length);
+          if (smoothedYValue.length !== data.data.x.length) {
+            console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.data.x.length})`);
+            if (smoothedYValue.length > data.data.x.length) {
+              smoothedYValue = smoothedYValue.slice(0, data.data.x.length);
             } else {
               // 填充缺失值
-              while (smoothedYValue.length < data.X_value.length) {
+              while (smoothedYValue.length < data.data.x.length) {
                 smoothedYValue.push(smoothedYValue[smoothedYValue.length - 1] || 0);
               }
             }
           }
 
-          const smoothedPointsData = data.X_value.map((x, i) => ([x, smoothedYValue[i]]));
+          const smoothedPointsData = data.data.x.map((x, i) => ([x, smoothedYValue[i]]));
 
           const smoothedLineSeries = {
             name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
@@ -1954,8 +1904,8 @@ const drawCombinedChart = () => {
         }
 
         // 处理错误数据 - 但不立即添加到series，而是返回它们
-        if (data.errorsData && data.errorsData.length > 0) {
-          data.errorsData.forEach(errorData => {
+        if (data.errorData && data.errorData.length > 0) {
+          data.errorData.forEach(errorData => {
             if (!errorData || !Array.isArray(errorData) || errorData.length < 2) {
               return; // 跳过无效的错误数据
             }
@@ -1974,9 +1924,9 @@ const drawCombinedChart = () => {
               const points = [];
 
               // 找到对应时间范围内的数据点
-              data.X_value.forEach((x, i) => {
+              data.data.x.forEach((x, i) => {
                 if (x >= startTime && x <= endTime) {
-                  points.push([x, data.Y_value[i]]);
+                  points.push([x, data.data.y[i]]);
                 }
               });
 
