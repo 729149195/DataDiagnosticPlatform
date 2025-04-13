@@ -216,6 +216,7 @@ const initPaperJs = () => {
       path.remove();
       path = null;
       segmentInfo.value = '';
+      store.dispatch('updateMatchedResults', []);
     }
 
     // 创建新路径
@@ -440,6 +441,9 @@ const submitData = async () => {
 
 // 修改清除画布函数
 const clearCanvas = () => {
+  // 无论有没有paperScope，都清空匹配结果
+  store.dispatch('updateMatchedResults', []);
+  
   if (paperScope) {
     if (path) {
       path.remove();
@@ -447,7 +451,6 @@ const clearCanvas = () => {
     }
     segmentInfo.value = '';
   }
-  store.dispatch('updateMatchedResults', []);
 };
 
 // 添加全选状态处理
