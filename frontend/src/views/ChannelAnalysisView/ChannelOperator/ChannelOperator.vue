@@ -196,7 +196,7 @@ let importedFunc = ref([]);
 const handleFileSelect = ({ file }) => {
   fileInfo.value.file = file;
   dialogVisible.value = true;
-  console.log('xxxx')
+  // console.log('xxxx')
 };
 
 const addInputRow = () => {
@@ -392,7 +392,7 @@ const handleButtonClick = async (button, index) => {
 
 const handleUpload = (files, res) => {
   operators['da_functions'] = operators['da_functions'].concat(res.response.functions.map(d => d['name'] + "()"));
-  console.log(functions.value);
+  // console.log(functions.value);
 };
 
 const expandCategory = (category, index) => {
@@ -504,7 +504,7 @@ onMounted(async () => {
   }
   operators['da_functions'] = ttda;
   operators['functions'] = ttcp;
-  console.log('xxx');
+  // console.log('xxx');
 });
 
 // 移除点击空白区域监听器

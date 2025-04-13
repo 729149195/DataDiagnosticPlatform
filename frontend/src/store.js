@@ -41,12 +41,12 @@ function isChannelSelected(channelKey, selectedChannels) {
 // 从IndexedDB加载缓存数据到内存缓存
 async function loadCacheFromIndexedDB() {
   if (!indexedDBService.isSupported) {
-    console.log('当前浏览器不支持IndexedDB，跳过加载缓存数据');
+    // console.log('当前浏览器不支持IndexedDB，跳过加载缓存数据');
     return;
   }
   
   try {
-    console.log('正在从IndexedDB加载缓存数据...');
+    // console.log('正在从IndexedDB加载缓存数据...');
     const keys = await indexedDBService.getAllKeys();
     
     for (const key of keys) {
@@ -60,14 +60,14 @@ async function loadCacheFromIndexedDB() {
             timestamp: Date.now() // 使用当前时间戳，而不是原始时间戳
           });
         } else {
-          console.log(`跳过过期的缓存数据: ${key}`);
+          // console.log(`跳过过期的缓存数据: ${key}`);
         }
       }
     }
     
-    console.log(`从IndexedDB加载了 ${dataCache.keys().length} 条缓存数据`);
+    // console.log(`从IndexedDB加载了 ${dataCache.keys().length} 条缓存数据`);
   } catch (error) {
-    console.error('从IndexedDB加载缓存数据失败:', error);
+    // console.error('从IndexedDB加载缓存数据失败:', error);
   }
 }
 
@@ -562,7 +562,7 @@ const store = createStore({
       
       // 当采样率更改时，刷新所有选定通道的数据
       if (state.selectedChannels && state.selectedChannels.length > 0) {
-        console.log(`采样率更改为 ${value} KHz，重新加载所有选定通道数据`);
+        // console.log(`采样率更改为 ${value} KHz，重新加载所有选定通道数据`);
         
         // 为每个选定的通道创建强制刷新请求
         const refreshPromises = state.selectedChannels.map(channel => {
@@ -578,7 +578,7 @@ const store = createStore({
         // 无需等待所有请求完成，让它们并行执行
         // 各个组件会通过监听数据缓存的变化来更新自己
         return Promise.all(refreshPromises).then(() => {
-          console.log('所有通道数据已更新完成');
+          // console.log('所有通道数据已更新完成');
         });
       }
     },
@@ -650,17 +650,17 @@ const store = createStore({
 
       // 如果强制刷新，跳过所有缓存检查
       if (forceRefresh) {
-        console.log(`强制刷新通道数据: ${channelKey}`);
+        // console.log(`强制刷新通道数据: ${channelKey}`);
       } else {
         // 首先检查内存缓存 - 内存缓存是最快的
         const cached = dataCache.get(channelKey);
         if (cached) {
           // 内存缓存存在，检查是否在有效期内（30分钟）
           if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
-            console.log(`使用内存缓存数据: ${channelKey}`);
+            // console.log(`使用内存缓存数据: ${channelKey}`);
             return cached.data;
           } else {
-            console.log(`内存缓存已过期: ${channelKey}，检查IndexedDB`);
+            // console.log(`内存缓存已过期: ${channelKey}，检查IndexedDB`);
           }
         }
 
@@ -670,7 +670,7 @@ const store = createStore({
           if (dbCached && dbCached.data) {
             // 检查IndexedDB缓存是否在有效期内（7天）
             if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
-              console.log(`从IndexedDB加载通道数据: ${channelKey}`);
+              // console.log(`从IndexedDB加载通道数据: ${channelKey}`);
               
               // 直接使用缓存数据，不做额外处理
               const cachedData = dbCached.data;
@@ -689,7 +689,7 @@ const store = createStore({
               
               return reactiveData;
             } else {
-              console.log(`IndexedDB缓存已过期: ${channelKey}，从服务器获取`);
+              // console.log(`IndexedDB缓存已过期: ${channelKey}，从服务器获取`);
             }
           }
         } catch (error) {
@@ -699,11 +699,11 @@ const store = createStore({
 
       // 检查是否有相同的请求正在进行中
       if (pendingRequests.has(channelKey)) {
-        console.log(`复用进行中的请求: ${channelKey}`);
+        // console.log(`复用进行中的请求: ${channelKey}`);
         return pendingRequests.get(channelKey);
       }
 
-      console.log(`从服务器获取通道数据: ${channelKey}`);
+      // console.log(`从服务器获取通道数据: ${channelKey}`);
       const params = {
         channel_key: channelKey,
         channel_type: channel.channel_type,
@@ -786,11 +786,11 @@ const store = createStore({
           if (cached) {
             // 检查内存缓存是否在有效期内（30分钟）
             if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
-              console.log(`使用内存缓存的错误数据: ${errorCacheKey}`);
+              // console.log(`使用内存缓存的错误数据: ${errorCacheKey}`);
               errorResults.push(cached.data);
               continue;
             } else {
-              console.log(`内存缓存的错误数据已过期: ${errorCacheKey}，检查IndexedDB`);
+              // console.log(`内存缓存的错误数据已过期: ${errorCacheKey}，检查IndexedDB`);
             }
           }
 
@@ -800,7 +800,7 @@ const store = createStore({
             if (dbCached && dbCached.data) {
               // 检查IndexedDB缓存是否在有效期内（7天）
               if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
-                console.log(`从IndexedDB加载错误数据: ${errorCacheKey}`);
+                // console.log(`从IndexedDB加载错误数据: ${errorCacheKey}`);
                 
                 // 将数据放入内存缓存，更新时间戳为当前时间
                 const reactiveData = reactive(dbCached.data);
@@ -811,7 +811,7 @@ const store = createStore({
                 errorResults.push(reactiveData);
                 continue;
               } else {
-                console.log(`IndexedDB缓存的错误数据已过期: ${errorCacheKey}，从服务器获取`);
+                // console.log(`IndexedDB缓存的错误数据已过期: ${errorCacheKey}，从服务器获取`);
               }
             }
           } catch (error) {
@@ -819,7 +819,7 @@ const store = createStore({
           }
 
           try {
-            console.log(`从服务器获取错误数据: ${errorCacheKey}`);
+            // console.log(`从服务器获取错误数据: ${errorCacheKey}`);
             // 构建请求参数
             const params = {
               channel_key: channelKey,
@@ -905,13 +905,13 @@ const store = createStore({
       try {
         // 获取IndexedDB存储使用情况
         const usage = await indexedDBService.getStorageUsage();
-        console.log('IndexedDB存储使用情况:', usage);
+        // console.log('IndexedDB存储使用情况:', usage);
         
         // 如果存储超过100MB，清理过期数据
         if (usage.size > 100 * 1024 * 1024) {
-          console.log('IndexedDB存储超过100MB，开始清理过期数据...');
+          // console.log('IndexedDB存储超过100MB，开始清理过期数据...');
           const cleanedCount = await indexedDBService.cleanupExpiredData(3 * 24 * 60 * 60 * 1000); // 3天
-          console.log(`清理了 ${cleanedCount} 条过期数据`);
+          // console.log(`清理了 ${cleanedCount} 条过期数据`);
         }
         
         return usage;

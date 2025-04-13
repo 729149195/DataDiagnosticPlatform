@@ -220,10 +220,10 @@ const processChannelData = async (data, channel) => {
   try {
     renderingStates[channelKey] = 0;
     // 添加调试日志
-    console.log(`处理通道数据 ${channelKey}:`, {
-      originalFrequency: data.originalFrequency || '未知',
-      stats: data.stats || '未提供统计数据'
-    });
+    // console.log(`处理通道数据 ${channelKey}:`, {
+    //   originalFrequency: data.originalFrequency || '未知',
+    //   stats: data.stats || '未提供统计数据'
+    // });
     
     // 标记渲染开始
     renderingStates[channelKey] = 25;
@@ -303,7 +303,7 @@ const fetchChannelData = async (channel, forceRefresh = false) => {
     }, 100);
 
     try {
-      console.log(`正在获取通道数据: ${channelKey}, 采样率: ${sampling.value} KHz, 强制刷新: ${forceRefresh}`);
+      // console.log(`正在获取通道数据: ${channelKey}, 采样率: ${sampling.value} KHz, 强制刷新: ${forceRefresh}`);
       
       // 使用 store action 获取数据，传递forceRefresh参数
       const data = await store.dispatch('fetchChannelData', { 
@@ -338,7 +338,7 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
     
     // 如果强制重新渲染，清除现有图表实例
     if (forceRenderAll) {
-      console.log('强制重新渲染所有图表，正在清除现有图表实例...');
+      // console.log('强制重新渲染所有图表，正在清除现有图表实例...');
       
       // 清除所有现有图表实例
       if (window.chartInstances) {
@@ -521,7 +521,7 @@ watch(() => domains.value, (newDomains, oldDomains) => {
 
 // 添加对采样率的监听，当采样率变化时重新渲染所有图表
 watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
-  console.log(`[重要] 采样率从 ${oldSamplingRate} 变更为 ${newSamplingRate} KHz，正在准备刷新图表`);
+  // console.log(`[重要] 采样率从 ${oldSamplingRate} 变更为 ${newSamplingRate} KHz，正在准备刷新图表`);
   
   // 更彻底的清理图表实例和缓存
   if (window.chartInstances) {
@@ -531,7 +531,7 @@ watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
         try {
           // 销毁图表实例
           chart.destroy();
-          console.log(`已销毁图表实例: ${key}`);
+          // console.log(`已销毁图表实例: ${key}`);
         } catch (e) {
           console.warn(`销毁图表实例失败: ${key} - ${e.message}`);
         }
@@ -542,14 +542,14 @@ watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
   
   // 清空已渲染标记
   renderedChannels.value.clear();
-  console.log('已清空渲染缓存标记，即将重新渲染所有图表');
+  // console.log('已清空渲染缓存标记，即将重新渲染所有图表');
   
   // 使用更长的延迟确保store中的数据已更新
   setTimeout(() => {
     // 强制重新渲染所有通道图表
     window.chartInstances = {}; // 重新初始化图表实例对象
     renderCharts(true);
-    console.log('已触发强制重新渲染');
+    // console.log('已触发强制重新渲染');
   }, 500);
 });
 
@@ -557,7 +557,7 @@ watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
 watch(() => channelDataCache.value, () => {
   // 仅当已经有通道被选择时才重新渲染
   if (selectedChannels.value && selectedChannels.value.length > 0) {
-    console.log('数据缓存已更新，重新渲染图表');
+    // console.log('数据缓存已更新，重新渲染图表');
     // 清空已渲染标记，以便所有通道都能重新渲染
     renderedChannels.value.clear();
     // 使用timeout以确保状态已完全更新
@@ -910,13 +910,13 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
   return new Promise((resolve, reject) => {
     try {
       // 添加调试语句，查看data对象的结构
-      console.log(`绘制图表 ${channelName}，原始频率数据:`, { 
-        originalFrequency: data.originalFrequency
-      });
+      // console.log(`绘制图表 ${channelName}，原始频率数据:`, { 
+      //   originalFrequency: data.originalFrequency
+      // });
       
       // 保持原始频率值不变
       const freqValue = data.originalFrequency;
-      console.log(`通道 ${channelName} 的最终频率值:`, freqValue);
+      // console.log(`通道 ${channelName} 的最终频率值:`, freqValue);
       
       // 添加防抖检查
       const chartKey = `${channelName}-${color}-${sampling.value}-${smoothnessValue.value}`;

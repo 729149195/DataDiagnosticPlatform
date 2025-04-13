@@ -40,7 +40,7 @@ const loadingChannels = ref({});
 const handleCardClick = (channel) => {
     // 确保使用"通道名_炮号"的格式
     const fullChannelIdentifier = `${channel.channel_name}_${channel.shot_number}`;
-    console.log("点击通道卡片，添加标识符:", fullChannelIdentifier);
+    // console.log("点击通道卡片，添加标识符:", fullChannelIdentifier);
     store.commit('updateChannelName', fullChannelIdentifier);
     store.commit('addClickedShownChannelList', channel);
 };
@@ -255,7 +255,7 @@ watch(
 );
 
 onMounted(() => {
-    console.log('ChannelCards组件已挂载，开始初始化图表');
+    // console.log('ChannelCards组件已挂载，开始初始化图表');
     // 确保DOM已经渲染完成
     nextTick(() => {
         renderCharts();

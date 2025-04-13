@@ -269,7 +269,7 @@ const updateChannelColor = ({ channelKey, color }) => {
 const updateChartColor = (channel, newColor) => {
   if (!channel || !newColor) return;
   
-  console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
+  // console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
   
   // 更新本地数据
   channel.color = newColor;
@@ -279,7 +279,7 @@ const updateChartColor = (channel, newColor) => {
   // 获取当前图表实例
   const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (!chart) {
-    console.warn(`找不到图表实例`);
+    // console.warn(`找不到图表实例`);
     return;
   }
   
@@ -354,7 +354,7 @@ const drawHighlightRects = (channelName, matchedResults) => {
     // 找到当前图表实例
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (!chart) {
-      console.warn('未找到图表实例，无法绘制高亮区域');
+      // console.warn('未找到图表实例，无法绘制高亮区域');
       return;
     }
 
@@ -368,7 +368,7 @@ const drawHighlightRects = (channelName, matchedResults) => {
         try {
           rect.destroy();
         } catch (error) {
-          console.warn(`删除高亮区域时出错: ${error.message}`);
+          // console.warn(`删除高亮区域时出错: ${error.message}`);
         }
       }
     });
@@ -382,7 +382,7 @@ const drawHighlightRects = (channelName, matchedResults) => {
 
     // 确保xDomains.value.global是有效的范围
     if (!xDomains.value.global || !Array.isArray(xDomains.value.global) || xDomains.value.global.length !== 2) {
-      console.warn('无效的X轴范围，无法绘制高亮区域');
+      // console.warn('无效的X轴范围，无法绘制高亮区域');
       return;
     }
 
@@ -524,14 +524,14 @@ const drawHighlightRects = (channelName, matchedResults) => {
           }
         }
       } else {
-        console.warn(`找不到对应的通道系列: ${channelName}_${result.shot_number}`);
+        // console.warn(`找不到对应的通道系列: ${channelName}_${result.shot_number}`);
       }
     });
 
     // 一次性重绘图表
     chart.redraw();
   } catch (error) {
-    console.error(`绘制高亮区域时出错: ${error.message}`);
+    // console.error(`绘制高亮区域时出错: ${error.message}`);
   }
 };
 
@@ -562,7 +562,7 @@ const isUpdatingSampling = ref(false);
 const renderCharts = debounce(async () => {
   // 如果已经在渲染中，则跳过
   if (isRenderingLocked.value) {
-    console.log('图表正在渲染中，跳过重复渲染请求');
+    // console.log('图表正在渲染中，跳过重复渲染请求');
     return;
   }
   
@@ -577,18 +577,18 @@ const renderCharts = debounce(async () => {
     renderingState.completed = false;
     processedDataCache.value.clear();
 
-    console.log(`开始渲染图表，当前采样率: ${sampling.value} kHz`);
+    // console.log(`开始渲染图表，当前采样率: ${sampling.value} kHz`);
 
     // 清除可能存在的旧图表
     const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (existingChart) {
+      // console.log('已销毁旧图表实例');
       existingChart.destroy();
-      console.log('已销毁旧图表实例');
     }
 
     // 确保有选中的通道
     if (!selectedChannels.value || selectedChannels.value.length === 0) {
-      console.warn('No channels selected');
+      // console.warn('No channels selected');
       loadingState.isLoading = false;
       renderingState.completed = true;
       isRenderingLocked.value = false; // 解锁渲染
@@ -612,13 +612,13 @@ const renderCharts = debounce(async () => {
     const totalChannels = selectedChannels.value.length;
     const progressStep = 50 / totalChannels; // 数据处理阶段占50%进度
     
-    console.log(`开始加载 ${totalChannels} 个通道的数据，采样率: ${sampling.value} kHz`);
+    // console.log(`开始加载 ${totalChannels} 个通道的数据，采样率: ${sampling.value} kHz`);
     
     for (let i = 0; i < totalChannels; i++) {
       const channel = selectedChannels.value[i];
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        console.log(`正在加载通道 ${channelKey} 的数据，采样率: ${sampling.value} kHz`);
+        // console.log(`正在加载通道 ${channelKey} 的数据，采样率: ${sampling.value} kHz`);
         
         // 获取通道数据，不再强制刷新，直接从缓存获取
         const data = await store.dispatch('fetchChannelData', { 
@@ -630,7 +630,7 @@ const renderCharts = debounce(async () => {
           throw new Error(`Failed to fetch data for channel ${channelKey}`);
         }
         
-        console.log(`已成功加载通道 ${channelKey} 的数据，数据点数: ${data.X_value?.length || 0}`);
+        // console.log(`已成功加载通道 ${channelKey} 的数据，数据点数: ${data.X_value?.length || 0}`);
         
         // 处理通道数据
         const processedData = await processChannelDataAsync(data, channel);
@@ -642,20 +642,20 @@ const renderCharts = debounce(async () => {
         // 让UI线程有机会更新
         await new Promise(resolve => setTimeout(resolve, 0));
       } catch (error) {
-        console.error(`Error processing data for channel ${channel.channel_name}:`, error);
+        // console.error(`Error processing data for channel ${channel.channel_name}:`, error);
         // 继续处理其他通道，不要因为一个通道失败而中断整个过程
       }
     }
 
     // 更新加载进度到50%（数据处理阶段完成）
     loadingState.progress = 50;
-    console.log('所有通道数据加载完成，准备渲染图表');
+    // console.log('所有通道数据加载完成，准备渲染图表');
 
     // 准备渲染图表
     try {
       await prepareAndRenderChart();
     } catch (error) {
-      console.error('Error in prepareAndRenderChart:', error);
+      // console.error('Error in prepareAndRenderChart:', error);
       ElMessage.error(`准备渲染图表时出错: ${error.message}`);
       loadingState.isLoading = false;
       loadingState.error = error.message;
@@ -680,7 +680,7 @@ const renderCharts = debounce(async () => {
       finalizeProgress();
     }
   } catch (error) {
-    console.error('Error rendering charts:', error);
+    // console.error('Error rendering charts:', error);
     ElMessage.error(`加载图表时出错: ${error.message}`);
     loadingState.isLoading = false;
     loadingState.error = error.message;
@@ -727,7 +727,7 @@ const processChannelDataAsync = async (data, channel) => {
       // 使用store中的方法获取异常数据
       errorDataResults = await store.dispatch('fetchAllErrorData', channel);
     } catch (err) {
-      console.warn('Failed to fetch error data:', err);
+      // console.warn('Failed to fetch error data:', err);
     }
   }
 
@@ -834,7 +834,7 @@ const prepareAndRenderChart = async () => {
     // 这里不需要 await，因为 drawCombinedChart 内部已经处理了异步操作
     drawCombinedChart();
   } catch (error) {
-    console.error('Error preparing chart data:', error);
+    // console.error('Error preparing chart data:', error);
     ElMessage.error(`准备图表数据时出错: ${error.message}`);
     renderingState.isRendering = false;
     renderingState.completed = true;
@@ -1100,7 +1100,7 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 }, { deep: true });
 
 watch(sampling, (newSamplingRate, oldSamplingRate) => {
-  console.log(`[重要] 采样率从 ${oldSamplingRate} kHz 变更为 ${newSamplingRate} kHz，准备刷新数据和图表`);
+  // console.log(`[重要] 采样率从 ${oldSamplingRate} kHz 变更为 ${newSamplingRate} kHz，准备刷新数据和图表`);
   sampleRate.value = newSamplingRate;
   
   // 设置采样率更新标志并锁定渲染
@@ -1120,15 +1120,15 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
   // 销毁现有图表，避免重叠渲染
   const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (existingChart) {
+    // console.log('已销毁现有图表，准备重新渲染');
     existingChart.destroy();
-    console.log('已销毁现有图表，准备重新渲染');
   }
   
   // 需要延迟一下，确保DOM已更新
   nextTick(() => {
     // 使用 store 的全局采样率更新机制，这会触发所有选中通道的数据刷新
     store.dispatch('updateSampling', newSamplingRate).then(() => {
-      console.log('所有通道数据已更新，准备渲染图表');
+      // console.log('所有通道数据已更新，准备渲染图表');
       // 使用较长的延迟确保所有数据都已加载完成
       setTimeout(() => {
         // 解锁渲染并触发渲染
@@ -1138,7 +1138,7 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
         renderCharts();
       }, 500);
     }).catch(error => {
-      console.error('更新采样率数据时出错:', error);
+      // console.error('更新采样率数据时出错:', error);
       ElMessage.error(`更新采样率数据时出错: ${error.message}`);
       // 出错时也要解锁渲染
       isRenderingLocked.value = false;
@@ -1152,11 +1152,11 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
 watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
   // 重要：如果正在更新采样率，跳过这次触发
   if (isUpdatingSampling.value) {
-    console.log('正在更新采样率，跳过缓存更新触发的渲染');
+    // console.log('正在更新采样率，跳过缓存更新触发的渲染');
     return;
   }
   
-  console.log('通道数据缓存键值已更新，重新渲染图表');
+  // console.log('通道数据缓存键值已更新，重新渲染图表');
   
   // 清空已处理的数据缓存
   processedDataCache.value.clear();
@@ -1188,7 +1188,7 @@ const updateChartRangeDebounced = debounce(() => {
 
   // 验证值的有效性
   if (isNaN(beginValue) || isNaN(endValue) || beginValue >= endValue) {
-    console.warn('无效的 brush 范围:', beginValue, endValue);
+    // console.warn('无效的 brush 范围:', beginValue, endValue);
     return;
   }
   try {
@@ -1224,7 +1224,7 @@ const updateChartRangeDebounced = debounce(() => {
       });
     }
   } catch (err) {
-    console.error('更新图表范围时出错:', err);
+    // console.error('更新图表范围时出错:', err);
   }
 }, 300);
 
@@ -1274,7 +1274,7 @@ const decodeChineseText = (text) => {
       const decodedText = decodeURIComponent(escape(text));
       return decodedText;
     } catch (e) {
-      console.warn('Failed to decode text:', text, e);
+      // console.warn('Failed to decode text:', text, e);
       return text;
     }
   }
@@ -1697,7 +1697,7 @@ const addAnomalyToChart = (channelName, anomaly) => {
 
     chart.redraw();
   } catch (error) {
-    console.error('添加异常到图表时出错:', error);
+    // console.error('添加异常到图表时出错:', error);
   }
 };
 
@@ -1814,7 +1814,7 @@ const drawCombinedChart = () => {
     // 计算所有数据的范围
     const allX = channelsData.value.flatMap(d => d.data.x);
     if (allX.length === 0) {
-      console.warn('没有有效的X轴数据点');
+      // console.warn('没有有效的X轴数据点');
       renderingState.completed = true;
 
       // 清除进度更新定时器
@@ -1843,7 +1843,7 @@ const drawCombinedChart = () => {
     // 检查xExtent是否有效
     if (!Array.isArray(xExtent) || xExtent.length !== 2 ||
       isNaN(xExtent[0]) || isNaN(xExtent[1]) || xExtent[0] >= xExtent[1]) {
-      console.warn('无效的X轴范围:', xExtent);
+      // console.warn('无效的X轴范围:', xExtent);
       renderingState.completed = true;
       return;
     }
@@ -1885,7 +1885,7 @@ const drawCombinedChart = () => {
       channelsData.value.forEach((data) => {
         // 确保X和Y数组长度一致
         if (!data.data.x || !data.data.y || data.data.x.length !== data.data.y.length) {
-          console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.data.x?.length}, Y=${data.data.y?.length}`);
+          // console.warn(`Channel ${data.channelName} data arrays length mismatch or undefined: X=${data.data.x?.length}, Y=${data.data.y?.length}`);
           return;
         }
 
@@ -1920,13 +1920,13 @@ const drawCombinedChart = () => {
           try {
             smoothedYValue = interpolateData(data.data.y, smoothnessValue.value);
           } catch (error) {
-            console.error(`平滑处理数据出错: ${error.message}`);
+            // console.error(`平滑处理数据出错: ${error.message}`);
             smoothedYValue = [...data.data.y]; // 出错时使用原始数据
           }
 
           // 确保平滑后的Y值数组长度与X值数组一致
           if (smoothedYValue.length !== data.data.x.length) {
-            console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.data.x.length})`);
+            // console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.data.x.length})`);
             if (smoothedYValue.length > data.data.x.length) {
               smoothedYValue = smoothedYValue.slice(0, data.data.x.length);
             } else {
@@ -2066,7 +2066,7 @@ const drawCombinedChart = () => {
 
     // 确保有数据系列
     if (series.length === 0) {
-      console.warn('没有有效的数据系列可以绘制');
+      // console.warn('没有有效的数据系列可以绘制');
       renderingState.completed = true;
       return;
     }
@@ -2074,6 +2074,7 @@ const drawCombinedChart = () => {
     // 销毁现有图表（如果有）
     const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (existingChart) {
+      // console.log('已销毁现有图表实例');
       existingChart.destroy();
     }
 
@@ -2567,7 +2568,7 @@ const drawCombinedChart = () => {
       finalizeProgress();
     });
   } catch (error) {
-    console.error('Error drawing combined chart:', error);
+    // console.error('Error drawing combined chart:', error);
     ElMessage.error(`绘制图表时出错: ${error.message}`);
 
     // 确保在出错时也标记为完成

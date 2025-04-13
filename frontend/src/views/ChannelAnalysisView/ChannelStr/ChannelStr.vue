@@ -307,7 +307,7 @@ watch(
     async (newstr) => {
         if (!newstr) return;
         
-        console.log("接收到点击的通道标识符:", newstr);
+        // console.log("接收到点击的通道标识符:", newstr);
         
         const editableDiv = document.querySelector('.editable-div');
         if (!editableDiv) return;
@@ -399,8 +399,8 @@ const clearFormulas = () => {
 
 // 在 script setup 部分添加一个新的辅助函数
 const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => {
-    console.log("查找位置:", position, "文本:", text);
-    console.log("可用通道标识符:", channelIdentifiers);
+    // console.log("查找位置:", position, "文本:", text);
+    // console.log("可用通道标识符:", channelIdentifiers);
     
     // 按长度排序标识符，优先匹配较长的标识符
     const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
@@ -417,13 +417,13 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
                     start: idx,
                     end: idx + identifier.length
                 };
-                console.log("找到标识符:", result);
+                // console.log("找到标识符:", result);
                 return result;
             }
             currentIndex = idx + 1;
         }
     }
-    console.log("未找到标识符");
+    // console.log("未找到标识符");
     return null;
 };
 

@@ -169,7 +169,7 @@ const optimizeDataPoints = (xValues, yValues, maxPoints = 100000) => {
 
 const drawChart = (xValues, yValues, channel, channelKey) => {
     try {
-        console.log('初始化图表，通道:', channel?.channel_name);
+        // console.log('初始化图表，通道:', channel?.channel_name);
         
         if (!xValues || xValues.length === 0 || !yValues || yValues.length === 0) {
             console.error('Invalid data for drawing chart');
@@ -417,7 +417,7 @@ const drawResult = async (CalculateResult) => {
     // 绘制新通道数据
     if ('X_value' in CalculateResult) {
         try {
-            console.log("开始绘制计算结果:", CalculateResult.channel_name);
+            // console.log("开始绘制计算结果:", CalculateResult.channel_name);
             
             // 优化数据点数量
             const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
@@ -436,7 +436,7 @@ const drawResult = async (CalculateResult) => {
             }
 
             if (chartInstance.value) {
-                console.log("更新现有图表...");
+                // console.log("更新现有图表...");
                 // 如果图表已存在，更新数据
                 try {
                     if (chartInstance.value.series && chartInstance.value.series.length > 0) {
@@ -477,7 +477,7 @@ const drawResult = async (CalculateResult) => {
                     );
                 }
             } else {
-                console.log("创建新图表...");
+                // console.log("创建新图表...");
                 // 如果图表不存在，创建新图表
                 drawChart(
                     CalculateResult['X_value'], 
@@ -496,7 +496,7 @@ const drawResult = async (CalculateResult) => {
     // 绘制异常数据
     if ('X_range' in CalculateResult) {
         try {
-            console.log("绘制异常区域...");
+            // console.log("绘制异常区域...");
             await fetchChannelData(curChannel.value);
             const ErrorLineXScopes = CalculateResult['X_range'];
             const channelKey = curChannelKey.value;

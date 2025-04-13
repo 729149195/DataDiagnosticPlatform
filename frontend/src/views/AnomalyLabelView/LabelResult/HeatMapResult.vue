@@ -2087,7 +2087,7 @@ const deleteErrorData = (errorData, type) => {
 
       try {
         // 打印错误数据，帮助调试
-        console.log('要删除的异常数据:', errorData);
+        // console.log('要删除的异常数据:', errorData);
         
         // 处理字段名称映射，确保使用正确的字段名
         const requestData = {
@@ -2097,7 +2097,7 @@ const deleteErrorData = (errorData, type) => {
           error_type: errorData.error_type || errorData.错误类型
         };
         
-        console.log('处理后的请求数据:', requestData);
+        // console.log('处理后的请求数据:', requestData);
 
         // 检查是否所有必要字段都存在
         if (!requestData.diagnostic_name || !requestData.channel_number ||
