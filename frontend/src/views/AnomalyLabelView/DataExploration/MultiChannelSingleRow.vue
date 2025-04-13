@@ -785,9 +785,24 @@ const prepareAndRenderChart = async () => {
 
     // 计算全局X轴范围
     if (!xDomains.value.global && channelsData.value.length > 0) {
-      const allX = channelsData.value.flatMap(d => d.data.x);
-      if (allX.length > 0) {
-        xDomains.value.global = [Math.min(...allX), Math.max(...allX)];
+      // 使用第一个通道的stats中提供的x_min和x_max
+      const firstChannel = channelsData.value[0];
+      if (firstChannel && firstChannel.channel && firstChannel.channel.stats) {
+        const stats = firstChannel.channel.stats;
+        xDomains.value.global = [stats.x_min, stats.x_max];
+      } else {
+        // 后备方案：如果没有stats数据，再使用计算方式
+        const allX = channelsData.value.flatMap(d => d.data.x);
+        if (allX.length > 0) {
+          // 使用循环代替Math.min(...allX)和Math.max(...allX)
+          let minX = allX[0];
+          let maxX = allX[0];
+          for (let i = 1; i < allX.length; i++) {
+            if (allX[i] < minX) minX = allX[i];
+            if (allX[i] > maxX) maxX = allX[i];
+          }
+          xDomains.value.global = [minX, maxX];
+        }
       }
     }
 
@@ -1081,19 +1096,16 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
   }
   
   // 使用 store 的全局采样率更新机制，这会触发所有选中通道的数据刷新
+  // 确保更新完成后强制重新渲染图表
   store.dispatch('updateSampling', newSamplingRate).then(() => {
-    console.log('所有通道数据已更新，准备重新渲染图表');
-    // 在数据更新后触发图表重新渲染
-    // 由于添加了对 channelDataCache 的监听，图表会自动重新渲染
-    // 但为确保可靠性，这里仍然手动调用渲染函数
+    console.log('所有通道数据已更新，强制重新渲染图表');
+    // 使用较长的延迟确保所有数据都已加载完成
     setTimeout(() => {
       renderCharts();
     }, 500);
   }).catch(error => {
     console.error('更新采样率数据时出错:', error);
     ElMessage.error(`更新采样率数据时出错: ${error.message}`);
-    // 即使出错也尝试渲染
-    renderCharts();
   });
 });
 
@@ -1102,15 +1114,15 @@ watch(smoothnessValue, () => {
 });
 
 // 监听 channelDataCache 变化，当通道数据缓存更新时重新渲染图表
-watch(channelDataCache, () => {
-  console.log('通道数据缓存已更新，重新渲染图表');
+watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
+  console.log('通道数据缓存键值已更新，重新渲染图表');
   // 清空已处理的数据缓存
   processedDataCache.value.clear();
   // 使用setTimeout确保状态完全更新后再渲染
   setTimeout(() => {
     renderCharts();
   }, 300);
-}, { deep: true });
+});
 
 watch(
   () => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
