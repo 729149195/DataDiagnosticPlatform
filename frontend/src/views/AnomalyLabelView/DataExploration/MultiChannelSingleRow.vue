@@ -604,10 +604,10 @@ const renderCharts = debounce(async () => {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         console.log(`正在加载通道 ${channelKey} 的数据，采样率: ${sampling.value} kHz`);
         
-        // 获取通道数据，添加 forceRefresh 参数确保在采样率变化时获取新数据
+        // 获取通道数据，不再强制刷新，直接从缓存获取
         const data = await store.dispatch('fetchChannelData', { 
           channel,
-          forceRefresh: true // 强制刷新数据，确保使用当前采样率
+          forceRefresh: false // 不再强制刷新，依赖采样率变化时的全局刷新机制
         });
         
         if (!data) {
