@@ -205,66 +205,6 @@ const smoothnessValue = computed(() => store.state.smoothness);
 const sampleRate = ref(store.state.sampling);
 const matchedResults = computed(() => store.getters.getMatchedResults);
 
-const updateChannelColor = ({ channelKey, color }) => {
-  const channel = selectedChannels.value.find(
-    (ch) => `${ch.channel_name}_${ch.shot_number}` === channelKey
-  );
-  if (channel) {
-    // 更新本地数据
-    channel.color = color;
-    
-    // 更新 Vuex 存储
-    store.commit('updateChannelColor', { channel_key: channelKey, color });
-
-    // 获取当前图表实例
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (chart) {
-      // 更新特定通道的线条颜色，但不重绘整个图表
-      chart.series.forEach(series => {
-        if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
-          // 直接更新颜色属性，而不是调用 series.update
-          series.color = color;
-          
-          // 更新线条的颜色，但不触发重绘
-          if (series.graph) {
-            series.graph.attr({
-              stroke: color
-            });
-          }
-          
-          // 更新区域填充颜色（如果有）
-          if (series.area) {
-            series.area.attr({
-              fill: color
-            });
-          }
-          
-          // 更新标记点颜色（如果有）
-          if (series.markerGroup) {
-            series.markerGroup.attr({
-              fill: color,
-              stroke: color
-            });
-          }
-          
-          // 更新内部选项
-          series.options.color = color;
-        }
-      });
-      
-      // 不调用 chart.redraw()，避免重绘整个图表
-    }
-
-    // 更新数据中的颜色
-    const channelDataIndex = channelsData.value.findIndex(
-      d => `${d.channelName}_${d.channelshotnumber}` === channelKey
-    );
-    if (channelDataIndex !== -1) {
-      channelsData.value[channelDataIndex].color = color;
-    }
-  }
-};
-
 // 添加 updateChartColor 函数，直接更新图表颜色而不触发重绘
 const updateChartColor = (channel, newColor) => {
   if (!channel || !newColor) return;
@@ -284,36 +224,21 @@ const updateChartColor = (channel, newColor) => {
   }
   
   try {
+    let seriesUpdated = false;
+    
     // 更新特定通道的线条颜色
     chart.series.forEach(series => {
       if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
-        // 直接更新颜色属性
+        // 更新线条颜色属性
         series.color = newColor;
-        
-        // 更新线条的颜色
-        if (series.graph) {
-          series.graph.attr({
-            stroke: newColor
-          });
-        }
-        
-        // 更新区域填充颜色（如果有）
-        if (series.area) {
-          series.area.attr({
-            fill: newColor
-          });
-        }
-        
-        // 更新标记点颜色（如果有）
-        if (series.markerGroup) {
-          series.markerGroup.attr({
-            fill: newColor,
-            stroke: newColor
-          });
-        }
-        
-        // 更新内部选项
         series.options.color = newColor;
+        
+        // 使用update方法更新图表系列
+        series.update({
+          color: newColor
+        }, false); // 不立即重绘
+        
+        seriesUpdated = true;
       }
     });
     
@@ -323,12 +248,84 @@ const updateChartColor = (channel, newColor) => {
       legendText.style.color = newColor;
     }
     
-    // 不调用 chart.redraw()，避免重绘整个图表
+    // 更新 channelsData 中的颜色 
+    const channelDataIndex = channelsData.value.findIndex(
+      d => d.channelName === channel.channel_name && d.channelshotnumber === channel.shot_number
+    );
+    
+    if (channelDataIndex !== -1) {
+      channelsData.value[channelDataIndex].color = newColor;
+    }
+    
+    // 只有在实际更新了系列时才重绘图表
+    if (seriesUpdated) {
+      chart.redraw();
+    }
     
     // 确保 Vuex 存储中的颜色也被更新
     store.commit('updateChannelColor', { channel_key: channelKey, color: newColor });
   } catch (error) {
     console.error(`更新通道 ${channelKey} 的颜色时出错:`, error);
+  }
+};
+
+// 修改 updateChannelColor 函数，使用与 updateChartColor 相同的机制
+const updateChannelColor = ({ channelKey, color }) => {
+  const channel = selectedChannels.value.find(
+    (ch) => `${ch.channel_name}_${ch.shot_number}` === channelKey
+  );
+  if (channel) {
+    // 更新本地数据
+    channel.color = color;
+    
+    // 更新 Vuex 存储
+    store.commit('updateChannelColor', { channel_key: channelKey, color });
+
+    // 获取当前图表实例
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart) {
+      let seriesUpdated = false;
+      
+      // 更新特定通道的线条颜色
+      chart.series.forEach(series => {
+        if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
+          // 更新线条颜色属性
+          series.color = color;
+          series.options.color = color;
+          
+          // 使用update方法更新图表系列
+          series.update({
+            color: color
+          }, false); // 不立即重绘
+          
+          seriesUpdated = true;
+        }
+      });
+      
+      // 只有在实际更新了系列时才重绘图表
+      if (seriesUpdated) {
+        chart.redraw();
+      }
+    }
+
+    // 更新channelsData中的颜色
+    const channelParts = channelKey.split('_');
+    if (channelParts.length >= 2) {
+      const channelName = channelParts[0];
+      const shotNumber = channelParts[1];
+      const channelDataIndex = channelsData.value.findIndex(
+        d => d.channelName === channelName && d.channelshotnumber === shotNumber
+      );
+      if (channelDataIndex !== -1) {
+        channelsData.value[channelDataIndex].color = color;
+      }
+    }
+    
+    // 更新图例文字颜色
+    const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
+    if (legendText) {
+      legendText.style.color = color;
+    }
   }
 };
 
@@ -739,6 +736,9 @@ const processChannelDataAsync = async (data, channel) => {
   // 处理绘图数据
   return {
     channelKey,
+    channelName: channel.channel_name,
+    channelshotnumber: channel.shot_number,
+    color: channel.color, // 确保包含颜色属性
     data: {
       x: xValues,
       y: finalY
@@ -1027,65 +1027,70 @@ watch(selectedChannels, (newChannels, oldChannels) => {
         old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
       );
       return oldCh &&
-        oldCh.color !== newCh.color &&
         JSON.stringify({ ...oldCh, color: newCh.color }) === JSON.stringify(newCh);
     });
 
+  // 如果是仅颜色变化，更新每个通道的颜色
   if (isOnlyColorChange) {
-    // 只处理颜色变化的通道，直接更新DOM元素颜色，不触发重绘
+    // 获取现有图表实例
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
+      let seriesUpdated = false;
+      
+      // 逐个检查并更新图表中的颜色
       newChannels.forEach(newCh => {
         const oldCh = oldChannels.find(
           old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
         );
+        
         if (oldCh && oldCh.color !== newCh.color) {
           const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
           const color = newCh.color;
           
-          // 更新 Vuex 存储
-          store.commit('updateChannelColor', { channel_key: channelKey, color });
-          
-          // 直接更新图表中的颜色，不调用updateChannelColor函数
-          chart.series.forEach(series => {
-            if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
-              // 直接更新颜色属性
-              series.color = color;
-              
-              // 更新线条的颜色
-              if (series.graph) {
-                series.graph.attr({
-                  stroke: color
-                });
-              }
-              
-              // 更新区域填充颜色（如果有）
-              if (series.area) {
-                series.area.attr({
-                  fill: color
-                });
-              }
-              
-              // 更新标记点颜色（如果有）
-              if (series.markerGroup) {
-                series.markerGroup.attr({
-                  fill: color,
-                  stroke: color
-                });
-              }
-              
-              // 更新内部选项
-              series.options.color = color;
-            }
-          });
-          
-          // 更新数据中的颜色
+          // 更新 channelsData 中的颜色
           const channelDataIndex = channelsData.value.findIndex(
-            d => `${d.channelName}_${d.channelshotnumber}` === channelKey
+            d => d.channelName === newCh.channel_name && d.channelshotnumber === newCh.shot_number
           );
+          
           if (channelDataIndex !== -1) {
             channelsData.value[channelDataIndex].color = color;
           }
+          
+          // 更新图表中的所有相关系列颜色
+          chart.series.forEach(series => {
+            // 检查系列名称是否为当前通道的主线或平滑线
+            if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
+              // 使用 series.update 而不是直接修改属性
+              series.update({
+                color: color
+              }, false); // 不立即重绘
+              
+              seriesUpdated = true;
+            }
+          });
+          
+          // 更新图例文字颜色
+          const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
+          if (legendText) {
+            legendText.style.color = color;
+          }
+        }
+      });
+      
+      // 一次性重绘图表，提高性能
+      if (seriesUpdated) {
+        chart.redraw();
+      }
+      
+      // 更新 store 中的颜色
+      newChannels.forEach(newCh => {
+        const oldCh = oldChannels.find(
+          old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
+        );
+        
+        if (oldCh && oldCh.color !== newCh.color) {
+          const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
+          store.commit('updateChannelColor', { channel_key: channelKey, color: newCh.color });
         }
       });
     }
@@ -1889,6 +1894,17 @@ const drawCombinedChart = () => {
           return;
         }
 
+        // 从selectedChannels获取最新的颜色
+        const channelFromStore = selectedChannels.value.find(ch => 
+          ch.channel_name === data.channelName && ch.shot_number === data.channelshotnumber
+        );
+        
+        // 始终使用selectedChannels中的颜色，确保颜色一致性
+        const channelColor = channelFromStore ? channelFromStore.color : data.color;
+        
+        // 更新channelsData中的颜色以保持同步
+        data.color = channelColor;
+        
         // 创建完整的数据点数组
         const pointsData = data.data.x.map((x, i) => ([x, data.data.y[i]]));
 
@@ -1896,7 +1912,7 @@ const drawCombinedChart = () => {
         const mainLineSeries = {
           name: `${data.channelName}_${data.channelshotnumber}`,
           data: pointsData,
-          color: data.color,
+          color: channelColor,
           lineWidth: 1.5,
           opacity: smoothnessValue.value > 0 ? 0.3 : 1,
           zIndex: 1,
@@ -1942,7 +1958,7 @@ const drawCombinedChart = () => {
           const smoothedLineSeries = {
             name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
             data: smoothedPointsData,
-            color: data.color,
+            color: channelColor,
             lineWidth: 1.5,
             zIndex: 2,
             marker: {
@@ -2566,6 +2582,48 @@ const drawCombinedChart = () => {
       };
 
       finalizeProgress();
+    });
+
+    // 图表创建完成后，同步图例文字颜色
+    const syncLegendColors = () => {
+      // 获取图表实例
+      const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+      if (!chart) return;
+
+      // 同步图例文字颜色
+      selectedChannels.value.forEach(channel => {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
+        if (legendText) {
+          legendText.style.color = channel.color;
+        }
+      });
+    };
+
+    // 在图表创建成功后调用
+    nextTick(() => {
+      syncLegendColors();
+      
+      // 添加变更监听，确保颜色持续同步
+      const observer = new MutationObserver(() => {
+        syncLegendColors();
+      });
+      
+      // 监听图例容器
+      const legendContainer = document.getElementById('channelLegendContainer');
+      if (legendContainer) {
+        observer.observe(legendContainer, { 
+          childList: true, 
+          subtree: true, 
+          attributes: true,
+          attributeFilter: ['style', 'class']
+        });
+      }
+      
+      // 组件卸载时断开监听
+      onUnmounted(() => {
+        observer.disconnect();
+      });
     });
   } catch (error) {
     // console.error('Error drawing combined chart:', error);
