@@ -135,7 +135,7 @@
 
                        <!-- 修改时间范围行，使标题和值在同一行 -->
                        <div class="statistic-row time-row">
-                        <div class="time-title">异常时间范围:</div>
+                        <div class="time-title">异常时间范围(s):</div>
                         <div class="time-value">
                           <!-- 处理对象类型的时间范围（可折叠的多个时间范围） -->
                           <template v-if="typeof anomaly['时间范围'] === 'object' && anomaly['时间范围'].ranges">
@@ -168,7 +168,6 @@
                           <template v-else>
                             {{ formatValue(anomaly['时间范围'], '时间范围') }}
                           </template>
-                          s
                         </div>
                       </div>
                     </div>
@@ -634,13 +633,6 @@ defineExpose({
   syncUpload
 });
 
-// 辅助函数：判断给定的 errorIdx 是否为异常
-function isAnomaly(idx, channelKey) {
-  const result = errorResults.find(
-    (r) => r.errorIdx === idx && r.channelKey === channelKey
-  );
-  return result && result.isAnomaly;
-}
 
 // 辅助函数：将键名映射为友好的显示名称
 function formatKey(key) {
