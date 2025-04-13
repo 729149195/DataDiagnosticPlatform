@@ -109,6 +109,16 @@ let mutationObserver = null;
 // 添加resize事件处理函数引用
 let handleResize = null;
 
+// 添加选中的段点和手柄变量
+let selectedSegment = null;
+let selectedHandle = null;
+let hitOptions = {
+  segments: true,
+  stroke: true,
+  handles: true,
+  tolerance: 5
+};
+
 // 创建网格
 const createGrid = (width, height) => {
   // 清除现有网格
@@ -185,9 +195,28 @@ const initPaperJs = () => {
   
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
-    // 如果已有路径，取消选择
+    selectedSegment = null;
+    selectedHandle = null;
+    
+    // 检查是否点击了现有路径上的段点或手柄
     if (path) {
-      path.selected = false;
+      const hitResult = path.hitTest(event.point, hitOptions);
+      if (hitResult) {
+        if (hitResult.type === 'segment') {
+          selectedSegment = hitResult.segment;
+          return;
+        } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
+          selectedHandle = hitResult;
+          return;
+        }
+      }
+    }
+    
+    // 如果已有路径，先清除它
+    if (path) {
+      path.remove();
+      path = null;
+      segmentInfo.value = '';
     }
     
     // 创建新路径
@@ -202,7 +231,23 @@ const initPaperJs = () => {
   
   // 鼠标拖动事件
   tool.onMouseDrag = (event) => {
-    // 只在X轴递增的情况下添加点
+    // 如果正在拖动段点
+    if (selectedSegment) {
+      selectedSegment.point = selectedSegment.point.add(event.delta);
+      return;
+    }
+    
+    // 如果正在拖动手柄
+    if (selectedHandle) {
+      if (selectedHandle.type === 'handle-in') {
+        selectedHandle.segment.handleIn = selectedHandle.segment.handleIn.add(event.delta);
+      } else if (selectedHandle.type === 'handle-out') {
+        selectedHandle.segment.handleOut = selectedHandle.segment.handleOut.add(event.delta);
+      }
+      return;
+    }
+    
+    // 否则绘制新路径
     if (path && (!path.lastSegment || event.point.x >= path.lastSegment.point.x)) {
       path.add(event.point);
       segmentInfo.value = `点数: ${path.segments.length}`;
@@ -211,17 +256,29 @@ const initPaperJs = () => {
   
   // 鼠标释放事件
   tool.onMouseUp = (event) => {
+    // 如果是在拖动段点或手柄，不进行简化操作
+    if (selectedSegment || selectedHandle) {
+      selectedSegment = null;
+      selectedHandle = null;
+      return;
+    }
+    
     if (path && path.segments.length > 1) {
       const segmentCount = path.segments.length;
       
-      // 简化路径
-      path.simplify(10);
-      
-      const newSegmentCount = path.segments.length;
-      const difference = segmentCount - newSegmentCount;
-      const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
-      
-      segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
+      // 只有在绘制新路径时才简化路径
+      if (!path.fullySelected) {
+        path.simplify(10);
+        
+        // 设置路径为选中状态，显示控制点和手柄
+        path.fullySelected = true;
+        
+        const newSegmentCount = path.segments.length;
+        const difference = segmentCount - newSegmentCount;
+        const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
+        
+        segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
+      }
     }
   };
 };
