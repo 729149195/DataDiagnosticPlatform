@@ -12,6 +12,7 @@ import uuid
 import threading
 from django.utils import timezone
 from datetime import datetime
+import unicodedata  # 添加这一行来导入unicodedata模块
 
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
@@ -348,16 +349,54 @@ def get_channel_data(request, channel_key=None):
                     logs.append(f"总耗时: {time.time() - start_time:.2f}秒")
                     
                     # 打印表格形式的日志
-                    width = 70
+                    width = 80
+                    
+                    # 计算字符串显示宽度的函数
+                    def display_width(s):
+                        width = 0
+                        for c in s:
+                            # 东亚宽字符（中文、日文等）计为2个单位宽度
+                            if unicodedata.east_asian_width(c) in ['F', 'W']:
+                                width += 2
+                            else:
+                                width += 1
+                        return width
+                    
+                    # 根据显示宽度调整字符串格式化
+                    def format_str(s, width, align='<'):
+                        # 计算实际显示宽度
+                        disp_width = display_width(s)
+                        # 调整padding以适应显示宽度
+                        padding = width - disp_width
+                        if padding < 0:
+                            padding = 0
+                        
+                        if align == '^':  # 居中对齐
+                            left_padding = padding // 2
+                            right_padding = padding - left_padding
+                            return ' ' * left_padding + s + ' ' * right_padding
+                        elif align == '>':  # 右对齐
+                            return ' ' * padding + s
+                        else:  # 左对齐
+                            return s + ' ' * padding
+                    
                     print(f"+{'-'*width}+")
-                    print(f"| {'请求通道数据概览':^{width-2}} |")
+                    title = '请求通道数据概览'
+                    title_padding = width - 2 - display_width(title)
+                    print(f"| {' ' * (title_padding//2)}{title}{' ' * (title_padding - title_padding//2)} |")
                     print(f"+{'-'*width}+")
                     for log in logs:
                         if ":" in log:
                             key, value = log.split(":", 1)
-                            print(f"| {key+':':<25} {value.strip():>{width-27}} |")
+                            key_str = key + ':'
+                            value_str = value.strip()
+                            # 固定键宽度为25，值宽度为width-27
+                            formatted_key = format_str(key_str, 25)
+                            formatted_value = format_str(value_str, width-27, '>')
+                            print(f"| {formatted_key}{formatted_value} |")
                         else:
-                            print(f"| {log:^{width-2}} |")
+                            formatted_log = format_str(log, width-2, '^')
+                            print(f"| {formatted_log} |")
                     print(f"+{'-'*width}+")
                     
                     return response
@@ -366,26 +405,99 @@ def get_channel_data(request, channel_key=None):
             logs.append(f"总耗时: {time.time() - start_time:.2f}秒")
             
             # 打印表格形式的日志
-            width = 70
+            width = 80
+            
+            # 计算字符串显示宽度的函数
+            def display_width(s):
+                width = 0
+                for c in s:
+                    # 东亚宽字符（中文、日文等）计为2个单位宽度
+                    if unicodedata.east_asian_width(c) in ['F', 'W']:
+                        width += 2
+                    else:
+                        width += 1
+                return width
+            
+            # 根据显示宽度调整字符串格式化
+            def format_str(s, width, align='<'):
+                # 计算实际显示宽度
+                disp_width = display_width(s)
+                # 调整padding以适应显示宽度
+                padding = width - disp_width
+                if padding < 0:
+                    padding = 0
+                
+                if align == '^':  # 居中对齐
+                    left_padding = padding // 2
+                    right_padding = padding - left_padding
+                    return ' ' * left_padding + s + ' ' * right_padding
+                elif align == '>':  # 右对齐
+                    return ' ' * padding + s
+                else:  # 左对齐
+                    return s + ' ' * padding
+            
             print(f"+{'-'*width}+")
-            print(f"| {'请求通道数据概览':^{width-2}} |")
+            title = '请求通道数据概览'
+            title_padding = width - 2 - display_width(title)
+            print(f"| {' ' * (title_padding//2)}{title}{' ' * (title_padding - title_padding//2)} |")
             print(f"+{'-'*width}+")
             for log in logs:
                 if ":" in log:
                     key, value = log.split(":", 1)
-                    print(f"| {key+':':<25} {value.strip():>{width-27}} |")
+                    key_str = key + ':'
+                    value_str = value.strip()
+                    # 固定键宽度为25，值宽度为width-27
+                    formatted_key = format_str(key_str, 25)
+                    formatted_value = format_str(value_str, width-27, '>')
+                    print(f"| {formatted_key}{formatted_value} |")
                 else:
-                    print(f"| {log:^{width-2}} |")
+                    formatted_log = format_str(log, width-2, '^')
+                    print(f"| {formatted_log} |")
             print(f"+{'-'*width}+")
         else:
             return JsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
     except Exception as e:
         # 打印错误信息
-        width = 70
+        width = 80
+        
+        # 计算字符串显示宽度的函数
+        def display_width(s):
+            width = 0
+            for c in s:
+                # 东亚宽字符（中文、日文等）计为2个单位宽度
+                if unicodedata.east_asian_width(c) in ['F', 'W']:
+                    width += 2
+                else:
+                    width += 1
+            return width
+        
+        # 根据显示宽度调整字符串格式化
+        def format_str(s, width, align='<'):
+            # 计算实际显示宽度
+            disp_width = display_width(s)
+            # 调整padding以适应显示宽度
+            padding = width - disp_width
+            if padding < 0:
+                padding = 0
+            
+            if align == '^':  # 居中对齐
+                left_padding = padding // 2
+                right_padding = padding - left_padding
+                return ' ' * left_padding + s + ' ' * right_padding
+            elif align == '>':  # 右对齐
+                return ' ' * padding + s
+            else:  # 左对齐
+                return s + ' ' * padding
+                
         print(f"+{'-'*width}+")
-        print(f"| {'错误信息概览':^{width-2}} |")
+        title = '错误信息概览'
+        title_padding = width - 2 - display_width(title)
+        print(f"| {' ' * (title_padding//2)}{title}{' ' * (title_padding - title_padding//2)} |")
         print(f"+{'-'*width}+")
-        print(f"| {'发生错误，总耗时:':<25} {time.time() - start_time:.2f}秒{' ':>{width-27-len(f'{time.time() - start_time:.2f}秒')}} |")
+        
+        error_msg = f"发生错误，总耗时: {time.time() - start_time:.2f}秒"
+        formatted_error = format_str(error_msg, width-2)
+        print(f"| {formatted_error} |")
         print(f"+{'-'*width}+")
         import traceback
         traceback.print_exc()  # 打印完整的错误堆栈跟踪
