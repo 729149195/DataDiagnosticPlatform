@@ -16,6 +16,7 @@ from datetime import datetime
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
 from api.verify_user import send_post_request
+from api.pattern_matching import match_pattern  # 只导入模式匹配函数
 
 # 存储计算任务状态的字典
 calculation_tasks = {}
@@ -177,8 +178,9 @@ def get_channel_data(request, channel_key=None):
         sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
         sample_freq = float(request.GET.get('sample_freq', 1000))   # 默认1KHz，改为float类型
         
-        # 调试输出
-        print(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 目标频率: {sample_freq} KHz")
+        # 收集日志信息，最后统一打印
+        logs = []
+        logs.append(f"请求通道数据，通道键: '{channel_key}', 采样模式: {sample_mode}, 目标频率: {sample_freq} KHz")
         
         # channel_type = request.GET.get('channel_type')
         if channel_key: # and channel_type:
@@ -188,10 +190,10 @@ def get_channel_data(request, channel_key=None):
                 try:
                     num = int(channel_name)
                     channel_name, shot_number = shot_number, channel_name
-                    print(f"格式交换: '{channel_name}_{shot_number}' (通道名_炮号)")
+                    logs.append(f"格式交换: '{channel_name}_{shot_number}' (通道名_炮号)")
                 except ValueError:
                     # 格式已正确为"通道名_炮号"
-                    print(f"正确格式: '{channel_name}_{shot_number}' (通道名_炮号)")
+                    logs.append(f"正确格式: '{channel_name}_{shot_number}' (通道名_炮号)")
                     pass
                     
                 try:
@@ -235,24 +237,24 @@ def get_channel_data(request, channel_key=None):
                 },
             }
             data = {}
-            print(channel_name)
+            logs.append(f"通道名: {channel_name}")
             
             db_start_time = time.time()
             for DB in DB_list:
                 tree_start_time = time.time()
 
                 tree = MdsTree(shot_number, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
-                print(f"创建MdsTree对象耗时: {time.time() - tree_start_time:.2f}秒")
+                logs.append(f"创建MdsTree对象耗时: {time.time() - tree_start_time:.2f}秒")
                 
                 data_start_time = time.time()
                 data_x, data_y, unit = tree.getData(channel_name)
-                print(f"获取数据耗时: {time.time() - data_start_time:.2f}秒")
-                print(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
+                logs.append(f"获取数据耗时: {time.time() - data_start_time:.2f}秒")
+                logs.append(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
                 
                 # 计算原始频率，由Hz转换为KHz
                 original_frequency = len(data_x) / (data_x[-1] - data_x[0]) if len(data_x) > 1 else 0
                 original_frequency_khz = original_frequency / 1000
-                print(f"原始频率: {original_frequency_khz}KHz")
+                logs.append(f"原始频率: {original_frequency_khz}KHz")
                 
                 if len(data_x) != 0:
                     is_downsampled = False
@@ -267,14 +269,14 @@ def get_channel_data(request, channel_key=None):
                         if target_freq_hz < original_frequency:
                             downsampling_start = time.time()
                             data_x, data_y = downsample_to_frequency(data_x, data_y, target_freq=target_freq_hz)
-                            print(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
+                            logs.append(f"降采样耗时: {time.time() - downsampling_start:.2f}秒")
                             is_downsampled = True
                         # 如果目标频率大于原始频率，进行插值采样
                         elif target_freq_hz > original_frequency:
                             upsampling_start = time.time()
                             # 为了避免混淆，创建一个专门的插值采样函数
                             data_x, data_y = upsample_to_frequency(data_x, data_y, target_freq=target_freq_hz)
-                            print(f"插值采样耗时: {time.time() - upsampling_start:.2f}秒")
+                            logs.append(f"插值采样耗时: {time.time() - upsampling_start:.2f}秒")
                             is_upsampled = True
                     
                     # 计算前端绘图需要的数据统计信息
@@ -309,7 +311,7 @@ def get_channel_data(request, channel_key=None):
                     else:
                         y_normalized = list(data_y)
                     
-                    print(f"计算统计数据耗时: {time.time() - calculate_start_time:.2f}秒")
+                    logs.append(f"计算统计数据耗时: {time.time() - calculate_start_time:.2f}秒")
                     
                     data = {
                         'channel_number': channel_name,
@@ -340,19 +342,51 @@ def get_channel_data(request, channel_key=None):
                     # 使用orjson替代标准json进行序列化，大幅提升性能
                     serialize_start_time = time.time()
                     response = OrJsonResponse(data)
-                    print(f"响应创建耗时: {time.time() - serialize_start_time:.2f}秒")
+                    logs.append(f"响应创建耗时: {time.time() - serialize_start_time:.2f}秒")
                     
-                    print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
-                    print(f"总耗时: {time.time() - start_time:.2f}秒")
+                    logs.append(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
+                    logs.append(f"总耗时: {time.time() - start_time:.2f}秒")
+                    
+                    # 打印表格形式的日志
+                    width = 70
+                    print(f"+{'-'*width}+")
+                    print(f"| {'请求通道数据概览':^{width-2}} |")
+                    print(f"+{'-'*width}+")
+                    for log in logs:
+                        if ":" in log:
+                            key, value = log.split(":", 1)
+                            print(f"| {key+':':<25} {value.strip():>{width-27}} |")
+                        else:
+                            print(f"| {log:^{width-2}} |")
+                    print(f"+{'-'*width}+")
                     
                     return response
                     
-            print(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
-            print(f"总耗时: {time.time() - start_time:.2f}秒")
+            logs.append(f"数据库遍历总耗时: {time.time() - db_start_time:.2f}秒")
+            logs.append(f"总耗时: {time.time() - start_time:.2f}秒")
+            
+            # 打印表格形式的日志
+            width = 70
+            print(f"+{'-'*width}+")
+            print(f"| {'请求通道数据概览':^{width-2}} |")
+            print(f"+{'-'*width}+")
+            for log in logs:
+                if ":" in log:
+                    key, value = log.split(":", 1)
+                    print(f"| {key+':':<25} {value.strip():>{width-27}} |")
+                else:
+                    print(f"| {log:^{width-2}} |")
+            print(f"+{'-'*width}+")
         else:
             return JsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
     except Exception as e:
-        print(f"发生错误，总耗时: {time.time() - start_time:.2f}秒")
+        # 打印错误信息
+        width = 70
+        print(f"+{'-'*width}+")
+        print(f"| {'错误信息概览':^{width-2}} |")
+        print(f"+{'-'*width}+")
+        print(f"| {'发生错误，总耗时:':<25} {time.time() - start_time:.2f}秒{' ':>{width-27-len(f'{time.time() - start_time:.2f}秒')}} |")
+        print(f"+{'-'*width}+")
         import traceback
         traceback.print_exc()  # 打印完整的错误堆栈跟踪
         return JsonResponse({'error': str(e)}, status=500)
@@ -1338,17 +1372,73 @@ def sketch_query(request):
         
     # selected_channels 格式为 [{'channel_name': 'B07_H', 'shot_number': '4470', 'channel_type': 'B'},...]
     # raw_query_pattern 格式为 [{'x': 0.1, 'y': 0.1, 'handleOut': {'x': 0.1, 'y': 0.1}, 'handleIn': {'x': 0.1, 'y': 0.1}},...] 为贝塞尔曲线
-    print(f"接收到手绘查询请求: 采样率={sampling}KHz, 选择通道={selected_channels}, 路径点数={len(raw_query_pattern)}")
+    print(f"接收到手绘查询请求: 采样率={sampling}KHz, 选择通道数={len(selected_channels)}, 路径点数={len(raw_query_pattern)}")
     
-    # 将贝塞尔曲线转换为采样点序列并归一化
-    points = bezier_to_points(raw_query_pattern)
-    
-    return JsonResponse({
-        'success': True,
-        'results': [666],
-        'message': f'成功处理查询，找到 XX 个匹配结果',
-        'normalizedCurve': points
-    })
+    try:
+        # 将贝塞尔曲线转换为采样点序列并归一化
+        normalized_curve = bezier_to_points(raw_query_pattern)
+        
+        # 创建修改后的通道数据获取函数
+        def get_channel_data_local(channel, sampling_rate):
+            """为模式匹配专门定制的获取通道数据的函数"""
+            channel_key = f"{channel['channel_name']}_{channel['shot_number']}"
+            
+            # 创建一个模拟请求对象
+            class MockRequest:
+                def __init__(self, channel_key, sample_freq):
+                    self.GET = {
+                        'channel_key': channel_key,
+                        'sample_mode': 'downsample',
+                        'sample_freq': sample_freq
+                    }
+                
+            mock_request = MockRequest(channel_key, sampling_rate)
+            
+            # 直接调用views中的get_channel_data函数
+            response = get_channel_data(mock_request)
+            
+            # 解析结果
+            if hasattr(response, 'content'):
+                try:
+                    return json.loads(response.content.decode('utf-8'))
+                except Exception as e:
+                    print(f"解析通道数据失败: {str(e)}")
+                    return None
+            return None
+        
+        # 获取通道数据，执行模式匹配
+        start_time = time.time()
+        
+        # 准备通道数据
+        channel_data_list = []
+        for channel in selected_channels:
+            channel_data = get_channel_data_local(channel, sampling)
+            if channel_data:
+                # 添加通道信息到数据中
+                channel_data['channel_name'] = channel['channel_name']
+                channel_data['shot_number'] = channel['shot_number']
+                channel_data_list.append(channel_data)
+        
+        # 执行模式匹配
+        
+        results = match_pattern(normalized_curve, channel_data_list)
+        
+        print(f"模式匹配完成, 耗时: {time.time() - start_time:.2f}秒, 找到匹配结果: {len(results)}个")
+        
+        return JsonResponse({
+            'success': True,
+            'results': results,
+            'message': f'成功处理查询'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({
+            'success': False,
+            'error': str(e),
+            'message': f'处理查询时发生错误: {str(e)}'
+        }, status=500)
  
 
 
