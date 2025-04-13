@@ -7,7 +7,7 @@ def match_pattern(normalized_query_pattern, channel_data_list):
         
         ===== 数据格式信息 =====
         normalized_query_pattern 类型: <class 'list'>
-        normalized_query_pattern 长度: 不定
+        normalized_query_pattern 长度: 不定（数据量一般几十到上百）
         normalized_query_pattern 示例元素类型: <class 'tuple'>
         normalized_query_pattern 结构: 点序列 [(x1, y1), (x2, y2), ...]
         channel_data_list 类型: <class 'list'>
