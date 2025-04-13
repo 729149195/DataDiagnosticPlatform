@@ -87,7 +87,7 @@ def get_error_origin_index(request):
     
 def downsample_to_frequency(x_values, y_values, target_freq=1000):
     """
-    对数据进行降采样到指定频率
+    对数据进行高效降采样到指定频率
     
     Args:
         x_values: 时间序列数据的X值（时间值）
@@ -108,14 +108,36 @@ def downsample_to_frequency(x_values, y_values, target_freq=1000):
     # 基于目标频率计算总采样点数
     n_samples = int(time_span * target_freq)
     
-    # 使用NumPy的线性插值计算新的采样点
-    # 创建均匀分布的时间点
-    new_times = np.linspace(time_start, time_end, n_samples)
+    # 如果目标点数比原始点数多，直接返回原始数据
+    if n_samples >= len(x_values):
+        return x_values, y_values
     
-    # 使用插值计算对应的Y值
-    new_values = np.interp(new_times, x_values, y_values)
+    # 计算降采样比例
+    sample_ratio = len(x_values) // n_samples
     
-    print(f"降采样: 从 {len(x_values)} 点 降至 {len(new_times)} 点")
+    # 使用高效的矢量化操作进行降采样
+    # 方法一：直接等间隔抽样（速度最快）
+    if sample_ratio > 10:  # 对于高降采样比率，使用混合策略
+        # 方法：先等距离取固定点，加上局部极值点
+        # 计算每个区间的索引
+        indices = np.arange(0, len(x_values), sample_ratio)[:n_samples]
+        
+        # 确保长度匹配
+        if len(indices) > n_samples:
+            indices = indices[:n_samples]
+        elif len(indices) < n_samples:
+            # 补足点数
+            extra_indices = np.linspace(0, len(x_values)-1, n_samples-len(indices)).astype(int)
+            indices = np.sort(np.concatenate([indices, extra_indices]))
+            
+        new_times = x_values[indices]
+        new_values = y_values[indices]
+    else:
+        # 方法二：对于降采样程度不高的情况，使用线性插值（平滑且快速）
+        new_times = np.linspace(time_start, time_end, n_samples)
+        new_values = np.interp(new_times, x_values, y_values)
+    
+    print(f"高效降采样: 从 {len(x_values)} 点 降至 {len(new_times)} 点")
     return new_times, new_values
 
 def compress_response(view_func):
@@ -172,7 +194,7 @@ def get_channel_data(request, channel_key=None):
                 try:
                     shot_number = int(shot_number)
                 except ValueError:
-                    return JsonResponse({'error': f"invalid literal for int() with base 10: '{shot_number}'"}, status=400)
+                    return JsonResponse({'error': f"无法将炮号转换为整数: '{shot_number}'"}, status=400)
             else:
                 return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
             
@@ -211,18 +233,7 @@ def get_channel_data(request, channel_key=None):
             }
             data = {}
             print(channel_name)
-            # if channel_name[:2] == 'TS':
-            #     conn_start_time = time.time()
-            #     conn = MDSplus.Connection('192.168.20.11')  # EXL50 database
-            #     print('xxxxxxxxxxxxxxxxxxxxxxx', shot_number, type(shot_number))
-            #     try:
-            #         conn.openTree('exl50u', shot_number)
-            #     except Exception as e:
-            #         print('ABC',e)
-            #     c_n = f'EXL50U::TOP.AI:{channel_name}'
-            #     data = conn.get(r"\{}".format(c_n))
-            #     print(f"MDSplus连接和查询耗时: {time.time() - conn_start_time:.2f}秒")
-            #     print(data)
+            
             db_start_time = time.time()
             for DB in DB_list:
                 tree_start_time = time.time()
@@ -262,17 +273,65 @@ def get_channel_data(request, channel_key=None):
                             data_x, data_y = upsample_to_frequency(data_x, data_y, target_freq=target_freq_hz)
                             print(f"插值采样耗时: {time.time() - upsampling_start:.2f}秒")
                             is_upsampled = True
+                    
+                    # 计算前端绘图需要的数据统计信息
+                    calculate_start_time = time.time()
+                    
+                    # 计算Y值的统计数据
+                    y_min = float(np.min(data_y))
+                    y_max = float(np.max(data_y))
+                    y_mean = float(np.mean(data_y))
+                    y_median = float(np.median(data_y))
+                    y_std = float(np.std(data_y))
+                    
+                    # 计算X轴范围
+                    x_min = float(np.min(data_x))
+                    x_max = float(np.max(data_x))
+                    
+                    # 计算数据范围，用于Y轴缩放
+                    y_range = y_max - y_min
+                    y_range_padding = y_range * 0.2  # 添加20%的padding
+                    y_axis_min = y_min - y_range_padding
+                    y_axis_max = y_max + y_range_padding
+                    
+                    # 判断通道类型
+                    is_digital = False
+                    if y_min >= 0 and y_max <= 1 and np.all(np.logical_or(np.isclose(data_y, 0), np.isclose(data_y, 1))):
+                        is_digital = True
                         
+                    # 归一化数据（用于多通道对比）
+                    y_abs_max = max(abs(y_min), abs(y_max))
+                    if y_abs_max > 0:
+                        y_normalized = list(data_y / y_abs_max)
+                    else:
+                        y_normalized = list(data_y)
+                    
+                    print(f"计算统计数据耗时: {time.time() - calculate_start_time:.2f}秒")
+                    
                     data = {
                         'channel_number': channel_name,
                         'X_value': list(data_x),
                         'Y_value': list(data_y),
                         'X_unit': 's',
-                        'Y_unit': 'Y',
+                        'Y_unit': str(unit) if unit is not None else 'Y',  # 确保单位是字符串类型
                         'is_downsampled': is_downsampled,
                         'is_upsampled': is_upsampled,
                         'points': len(data_x),
-                        'originalFrequency': original_frequency_khz
+                        'originalFrequency': original_frequency_khz,
+                        # 添加新的统计数据
+                        'stats': {
+                            'y_min': y_min,
+                            'y_max': y_max,
+                            'y_mean': y_mean,
+                            'y_median': y_median,
+                            'y_std': y_std,
+                            'x_min': x_min,
+                            'x_max': x_max,
+                            'y_axis_min': y_axis_min,
+                            'y_axis_max': y_axis_max
+                        },
+                        'is_digital': is_digital,
+                        'Y_normalized': y_normalized,
                     }
                     
                     # 使用orjson替代标准json进行序列化，大幅提升性能
@@ -291,6 +350,8 @@ def get_channel_data(request, channel_key=None):
             return JsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
     except Exception as e:
         print(f"发生错误，总耗时: {time.time() - start_time:.2f}秒")
+        import traceback
+        traceback.print_exc()  # 打印完整的错误堆栈跟踪
         return JsonResponse({'error': str(e)}, status=500)
 
 # 添加一个插值采样函数

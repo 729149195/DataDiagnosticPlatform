@@ -562,10 +562,13 @@ const renderCharts = debounce(async () => {
     renderingState.completed = false;
     processedDataCache.value.clear();
 
+    console.log(`开始渲染图表，当前采样率: ${sampling.value} kHz`);
+
     // 清除可能存在的旧图表
     const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (existingChart) {
       existingChart.destroy();
+      console.log('已销毁旧图表实例');
     }
 
     // 确保有选中的通道
@@ -593,16 +596,25 @@ const renderCharts = debounce(async () => {
     const totalChannels = selectedChannels.value.length;
     const progressStep = 50 / totalChannels; // 数据处理阶段占50%进度
     
+    console.log(`开始加载 ${totalChannels} 个通道的数据，采样率: ${sampling.value} kHz`);
+    
     for (let i = 0; i < totalChannels; i++) {
       const channel = selectedChannels.value[i];
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        console.log(`正在加载通道 ${channelKey} 的数据，采样率: ${sampling.value} kHz`);
         
-        // 获取通道数据
-        const data = await store.dispatch('fetchChannelData', { channel });
+        // 获取通道数据，添加 forceRefresh 参数确保在采样率变化时获取新数据
+        const data = await store.dispatch('fetchChannelData', { 
+          channel,
+          forceRefresh: true // 强制刷新数据，确保使用当前采样率
+        });
+        
         if (!data) {
           throw new Error(`Failed to fetch data for channel ${channelKey}`);
         }
+        
+        console.log(`已成功加载通道 ${channelKey} 的数据，数据点数: ${data.X_value?.length || 0}`);
         
         // 处理通道数据
         const processedData = await processChannelDataAsync(data, channel);
@@ -621,6 +633,7 @@ const renderCharts = debounce(async () => {
 
     // 更新加载进度到50%（数据处理阶段完成）
     loadingState.progress = 50;
+    console.log('所有通道数据加载完成，准备渲染图表');
 
     // 准备渲染图表
     try {
@@ -698,19 +711,19 @@ const processChannelDataAsync = async (data, channel) => {
   }
 
   // 直接使用后端已经处理好的数据
-  // 归一化 Y 值
-  const yValues = data.Y_value;
-  const yAbsMax = Math.max(...yValues.map(d => Math.abs(d)));
-  const normalizedY = yAbsMax === 0 ?
-    data.Y_value.map(() => 0) :
-    data.Y_value.map(y => y / yAbsMax);
-
-  let finalY = normalizedY;
+  // 后端提供的归一化Y值，如果没有则使用默认处理方式
+  let finalY = data.Y_normalized || [];
   let xValues = data.X_value;
 
+  // 处理数字信号，使用后端判断或自行判断
+  const isDigital = data.is_digital === true || 
+    (data.channel_type === 'DIGITAL') || 
+    (Math.min(...finalY) >= 0 && Math.max(...finalY) <= 1 && 
+     finalY.every(y => Math.abs(y) < 0.1 || Math.abs(y - 1) < 0.1));
+
   // 对于数字信号，确保值只有0和1，避免中间值
-  if (data.channel_type === 'DIGITAL') {
-    finalY = normalizedY.map(y => y > 0.5 ? 1 : 0);
+  if (isDigital) {
+    finalY = finalY.map(y => y > 0.5 ? 1 : 0);
 
     // 为数字信号添加额外的点，确保方波形状
     const enhancedX = [];
@@ -734,7 +747,7 @@ const processChannelDataAsync = async (data, channel) => {
     finalY = enhancedY;
   }
 
-  // 返回处理后的数据
+  // 返回处理后的数据，尽可能使用后端提供的统计值
   return {
     channelName: channel.channel_name,
     channelshotnumber: channel.shot_number,
@@ -743,12 +756,24 @@ const processChannelDataAsync = async (data, channel) => {
     Y_original: data.Y_value,
     color: channel.color,
     errorsData: errorDataResults,
-    xUnit: data.X_unit,
-    yUnit: data.Y_unit,
-    channelType: data.channel_type,
-    channelNumber: data.channel_number,
+    xUnit: data.X_unit || 's',
+    yUnit: data.Y_unit || 'Y',
+    // 使用后端提供的通道类型，如果没有则使用前端判断
+    channelType: data.channel_type || (isDigital ? 'DIGITAL' : 'ANALOG'),
+    channelNumber: data.channel_number || channel.channel_name,
     shotNumber: channel.shot_number,
-    originalFrequency: data.originalFrequency
+    originalFrequency: data.originalFrequency || 0,
+    // 使用后端提供的统计数据
+    stats: data.stats || {
+      y_min: Math.min(...data.Y_value),
+      y_max: Math.max(...data.Y_value),
+      y_mean: data.Y_value.reduce((a, b) => a + b, 0) / data.Y_value.length,
+      y_median: [...data.Y_value].sort((a, b) => a - b)[Math.floor(data.Y_value.length / 2)],
+      y_std: Math.sqrt(data.Y_value.reduce((a, b) => a + Math.pow(b - (data.Y_value.reduce((a, b) => a + b, 0) / data.Y_value.length), 2), 0) / data.Y_value.length),
+      x_min: Math.min(...data.X_value),
+      x_max: Math.max(...data.X_value)
+    },
+    is_digital: isDigital
   };
 };
 
@@ -1088,14 +1113,54 @@ watch(selectedChannels, (newChannels, oldChannels) => {
   }
 }, { deep: true });
 
-watch(sampling, () => {
-  sampleRate.value = sampling.value;
-  renderCharts();
+watch(sampling, (newSamplingRate, oldSamplingRate) => {
+  console.log(`[重要] 采样率从 ${oldSamplingRate} kHz 变更为 ${newSamplingRate} kHz，准备刷新数据和图表`);
+  sampleRate.value = newSamplingRate;
+  
+  // 清空处理后的数据缓存
+  processedDataCache.value.clear();
+  
+  // 重置进度状态
+  resetProgress();
+  
+  // 销毁现有图表，避免重叠渲染
+  const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+  if (existingChart) {
+    existingChart.destroy();
+    console.log('已销毁现有图表，准备重新渲染');
+  }
+  
+  // 使用 store 的全局采样率更新机制，这会触发所有选中通道的数据刷新
+  store.dispatch('updateSampling', newSamplingRate).then(() => {
+    console.log('所有通道数据已更新，准备重新渲染图表');
+    // 在数据更新后触发图表重新渲染
+    // 由于添加了对 channelDataCache 的监听，图表会自动重新渲染
+    // 但为确保可靠性，这里仍然手动调用渲染函数
+    setTimeout(() => {
+      renderCharts();
+    }, 500);
+  }).catch(error => {
+    console.error('更新采样率数据时出错:', error);
+    ElMessage.error(`更新采样率数据时出错: ${error.message}`);
+    // 即使出错也尝试渲染
+    renderCharts();
+  });
 });
 
 watch(smoothnessValue, () => {
   renderCharts();
 });
+
+// 监听 channelDataCache 变化，当通道数据缓存更新时重新渲染图表
+watch(channelDataCache, () => {
+  console.log('通道数据缓存已更新，重新渲染图表');
+  // 清空已处理的数据缓存
+  processedDataCache.value.clear();
+  // 使用setTimeout确保状态完全更新后再渲染
+  setTimeout(() => {
+    renderCharts();
+  }, 300);
+}, { deep: true });
 
 watch(
   () => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
@@ -1775,22 +1840,28 @@ const drawCombinedChart = () => {
       return;
     }
 
-    // 使用存储的 Y 轴范围或默认范围
+    // 检查是否有任何通道提供了统计数据
+    const hasStats = channelsData.value.some(channel => channel.stats && 
+      channel.stats.y_min !== undefined && channel.stats.y_max !== undefined);
+
+    // 如果至少有一个通道提供了统计数据，使用归一化的-1到1范围
+    const padding = 0.05;
+    // 定义yExtent变量
     let yExtent;
-    if (originalDomains.value.global && originalDomains.value.global.y) {
-      // 确保使用保存的Y轴范围，而不是重新计算
-      yExtent = originalDomains.value.global.y;
-    } else {
+    
+    if (!hasStats) {
       // 默认归一化范围为-1到1，增加5%的上下空白用于视觉效果
-      const padding = 0.05;
       yExtent = [-1 - padding, 1 + padding]; // 范围为 -1.05 到 1.05，但刻度只显示-1到1
-      // 保存初始 Y 轴范围
-      if (!originalDomains.value.global) {
-        originalDomains.value.global = {
-          x: xExtent,
-          y: yExtent
-        };
-      }
+    } else {
+      yExtent = [-1 - padding, 1 + padding]; // 仍然使用标准归一化范围，因为所有通道都已归一化
+    }
+
+    // 如果存在原始域设置，保存Y轴范围
+    if (!originalDomains.value.global) {
+      originalDomains.value.global = {
+        x: xExtent,
+        y: yExtent
+      };
     }
 
     // 使用保存的范围
@@ -1830,7 +1901,7 @@ const drawCombinedChart = () => {
             }
           },
           connectNulls: true, // 连接空值点
-          step: data.channelType === 'DIGITAL' ? 'left' : false, // 对数字信号使用阶梯状连接
+          step: data.is_digital || data.channelType === 'DIGITAL' ? 'left' : false, // 使用后端判断的数字信号类型
           turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
         };
         series.push(mainLineSeries);
@@ -1876,7 +1947,7 @@ const drawCombinedChart = () => {
             },
             connectNulls: true, // 连接空值点
             enableMouseTracking: false,
-            step: data.channelType === 'DIGITAL' ? 'left' : false, // 对数字信号使用阶梯状连接
+            step: data.is_digital || data.channelType === 'DIGITAL' ? 'left' : false, // 使用后端判断的数字信号类型
             turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
           };
           series.push(smoothedLineSeries);

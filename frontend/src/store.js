@@ -81,7 +81,7 @@ const store = createStore({
       authority: 0,
       StructTree: null,
       selectedChannels: [],
-      sampling: 1,
+      sampling: 5,
       smoothness: 0,
       anomalies: {},
       matchedResults: [],
@@ -720,20 +720,32 @@ const store = createStore({
           // 获取原始数据
           const originalData = response.data;
           
-          // 使用Object.assign进行浅拷贝，比展开运算符更高效
-          const enhancedData = Object.assign({}, originalData);
-          
-          // 只计算必要的字段，减少计算开销
-          // 获取原始数据点数量 - 直接使用后端返回的points字段
-          enhancedData.originalDataPoints = enhancedData.points || 0;
-          
-          // 获取原始频率 - 直接使用后端返回的originalFrequency字段
-          enhancedData.originalFrequency = enhancedData.originalFrequency || 1.0;
-          
-          // 只在必要时设置channel_number
-          if (!enhancedData.channel_number) {
-            enhancedData.channel_number = channel.channel_name;
-          }
+          // 直接使用后端返回的数据，不做额外处理
+          // 使用后端预计算的统计数据
+          const enhancedData = {
+            ...originalData,
+            // 确保这些字段存在，即使后端没有提供
+            channel_number: originalData.channel_number || channel.channel_name,
+            originalDataPoints: originalData.points || 0,
+            originalFrequency: originalData.originalFrequency || 1.0,
+            X_unit: originalData.X_unit || 's',
+            Y_unit: originalData.Y_unit || '',
+            // 如果后端提供了统计数据，直接使用
+            stats: originalData.stats || {
+              y_min: 0,
+              y_max: 0,
+              y_mean: 0,
+              y_median: 0,
+              y_std: 0,
+              x_min: 0,
+              x_max: 0,
+              y_axis_min: 0,
+              y_axis_max: 0
+            },
+            channel_type: originalData.channel_type || channel.channel_type,
+            is_digital: originalData.is_digital || false,
+            Y_normalized: originalData.Y_normalized || []
+          };
           
           // 异步存储到缓存，不阻塞主流程
           setTimeout(() => {

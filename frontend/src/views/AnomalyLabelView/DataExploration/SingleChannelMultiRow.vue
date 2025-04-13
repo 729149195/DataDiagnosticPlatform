@@ -221,7 +221,8 @@ const processChannelData = async (data, channel) => {
     renderingStates[channelKey] = 0;
     // 添加调试日志
     console.log(`处理通道数据 ${channelKey}:`, {
-      originalFrequency: data.originalFrequency || '未知'
+      originalFrequency: data.originalFrequency || '未知',
+      stats: data.stats || '未提供统计数据'
     });
     
     // 标记渲染开始
@@ -242,13 +243,17 @@ const processChannelData = async (data, channel) => {
     
     renderingStates[channelKey] = 75; // 更新渲染状态
 
-    // 绘制图表，后端已经完成了采样处理
+    // 绘制图表，直接使用后端处理好的数据
     await nextTick();
     await drawChart(
       {
         X_value: data.X_value,
         Y_value: data.Y_value,
-        originalFrequency: data.originalFrequency
+        originalFrequency: data.originalFrequency,
+        stats: data.stats, // 使用后端预计算的统计数据
+        is_digital: data.is_digital, // 使用后端判断的数字信号类型
+        Y_normalized: data.Y_normalized, // 使用后端归一化的Y值
+        channel_type: data.channel_type // 使用后端判断的通道类型
       },
       errorDataResults,
       channelKey,
@@ -936,18 +941,23 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         originalData.push([data.X_value[i], data.Y_value[i]]);
       }
 
-      // 获取Y轴范围，保持与原实现一致
-      const yExtent = [
-        Math.min(...data.Y_value),
-        Math.max(...data.Y_value)
-      ];
-      const yRangePadding = (yExtent[1] - yExtent[0]) * 0.2;
-      const yMin = yExtent[0] - yRangePadding;
-      const yMax = yExtent[1] + yRangePadding;
-
+      // 使用后端提供的统计数据设置Y轴范围
+      const stats = data.stats || {};
+      
+      // 使用后端计算的Y轴范围 (如果有)，否则计算默认值
+      const yMin = stats.y_axis_min !== undefined ? stats.y_axis_min :
+        Math.min(...data.Y_value) - (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
+      const yMax = stats.y_axis_max !== undefined ? stats.y_axis_max :
+        Math.max(...data.Y_value) + (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
+      
       // 设置X轴和Y轴范围
-      const xDomain = domains.value.x[channelName] || [Math.min(...data.X_value), Math.max(...data.X_value)];
+      const xDomain = domains.value.x[channelName] || 
+        (stats.x_min !== undefined && stats.x_max !== undefined ? 
+          [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)]);
       const yDomain = domains.value.y[channelName] || [yMin, yMax];
+      
+      // 使用后端判断是否为数字信号
+      const isDigitalSignal = data.is_digital === true;
 
       // 处理错误数据
       const errorRanges = []; // 存储所有错误区间

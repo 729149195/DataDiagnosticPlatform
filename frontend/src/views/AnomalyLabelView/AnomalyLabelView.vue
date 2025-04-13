@@ -224,7 +224,7 @@ import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalcul
 import OverviewBrush from '@/components/OverviewBrush.vue';
 
 const store = useStore()
-const sampling = ref(1)
+const sampling = ref(5)
 const smoothness = ref(0)
 const isSecondSectionCollapsed = ref(true) // 默认为折叠状态
 const showAnomaly = ref(true) // 是否显示异常区域，默认显示
