@@ -586,6 +586,9 @@ watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
 
       // 更新异常高亮线条
       updateAnomalyHighlights(chart, channelKey);
+      
+      // 更新匹配高亮线条
+      updateMatchedHighlights(chart, channelKey);
 
       chart.redraw();
     }
@@ -1835,6 +1838,9 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
       // 重绘图表
       chart.redraw();
 
+      // 图表初始化完成后，添加匹配高亮
+      updateMatchedHighlights(chart, channelName);
+      
       resolve();
     } catch (error) {
       console.error('Error in drawChart:', error);
@@ -2061,6 +2067,191 @@ const adjustColorPickerPosition = (chart, channel) => {
       console.warn('调整颜色选择器位置时出错:', error);
     }
   }, 50); // 短暂延迟确保DOM更新
+};
+
+// 添加对matchedResults的监听
+watch(matchedResults, (newMatchedResults) => {
+  // 清除所有现有的匹配高亮区域
+  Object.keys(window.chartInstances || {}).forEach(channelKey => {
+    const chart = window.chartInstances[channelKey];
+    if (chart) {
+      // 移除现有的匹配高亮区域
+      chart.xAxis[0].plotLinesAndBands.forEach(band => {
+        if (band.id && band.id.startsWith('match-band-')) {
+          chart.xAxis[0].removePlotBand(band.id);
+        }
+      });
+      
+      // 移除现有的匹配高亮系列
+      chart.series.forEach(series => {
+        if (series.options.id && series.options.id.startsWith('match-highlight-')) {
+          series.remove(false);
+        }
+      });
+    }
+  });
+  
+  // 处理新的匹配结果
+  if (newMatchedResults && newMatchedResults.length > 0) {
+    newMatchedResults.forEach((matchResult, index) => {
+      // 获取通道名称和炮号
+      const { channelName, shotNumber, range, confidence } = matchResult;
+      const channelKey = `${channelName}_${shotNumber}`;
+      
+      // 获取匹配区域的范围
+      if (range && range.length > 0) {
+        // 获取对应的图表实例
+        const chart = window.chartInstances?.[channelKey];
+        if (chart) {
+          // 遍历匹配区域的范围
+          range.forEach((rangeItem, rangeIndex) => {
+            const startTime = rangeItem[0];
+            const endTime = rangeItem[1];
+            
+            // 根据置信度计算透明度
+            const alpha = Math.max(0.1, Math.min(0.8, confidence));
+            
+            // 添加高亮区域
+            chart.xAxis[0].addPlotBand({
+              id: `match-band-${index}-${rangeIndex}`,
+              from: startTime,
+              to: endTime,
+              color: `rgba(255, 255, 0, ${alpha})`,
+              zIndex: 3,
+              borderColor: 'rgba(255, 215, 0, 0.8)',
+              borderWidth: 1
+            });
+            
+            // 获取当前通道的数据
+            const channelData = channelDataCache.value[channelKey];
+            if (channelData && channelData.X_value && channelData.Y_value) {
+              // 找到区间内的所有点
+              const pointsInRange = [];
+              for (let i = 0; i < channelData.X_value.length; i++) {
+                if (channelData.X_value[i] >= startTime && channelData.X_value[i] <= endTime) {
+                  pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
+                }
+              }
+              
+              // 确保点按X轴排序
+              pointsInRange.sort((a, b) => a[0] - b[0]);
+              
+              // 添加高亮线条
+              if (pointsInRange.length > 0) {
+                chart.addSeries({
+                  id: `match-highlight-${index}-${rangeIndex}`,
+                  name: `匹配区域-${index}-${rangeIndex}`,
+                  data: pointsInRange,
+                  color: `rgba(255, 215, 0, ${alpha + 0.2})`,
+                  lineWidth: 2,
+                  zIndex: 4,
+                  marker: {
+                    enabled: false
+                  },
+                  states: {
+                    hover: {
+                      lineWidthPlus: 0
+                    }
+                  },
+                  enableMouseTracking: false,
+                  showInLegend: false
+                });
+              }
+            }
+          });
+          
+          // 重绘图表
+          chart.redraw();
+        }
+      }
+    });
+  }
+}, { deep: true });
+
+// 在drawChart函数中的updateAnomalyHighlights后添加处理匹配结果的函数
+const updateMatchedHighlights = (chart, channelKey) => {
+  if (!chart || !matchedResults.value) return;
+  
+  // 移除现有的匹配高亮区域
+  chart.xAxis[0].plotLinesAndBands.forEach(band => {
+    if (band.id && band.id.startsWith('match-band-')) {
+      chart.xAxis[0].removePlotBand(band.id);
+    }
+  });
+  
+  // 移除现有的匹配高亮系列
+  chart.series.forEach(series => {
+    if (series.options.id && series.options.id.startsWith('match-highlight-')) {
+      series.remove(false);
+    }
+  });
+  
+  // 处理匹配结果
+  matchedResults.value.forEach((matchResult, index) => {
+    // 获取通道名称和炮号
+    const { channelName, shotNumber, range, confidence } = matchResult;
+    const matchChannelKey = `${channelName}_${shotNumber}`;
+    
+    // 只处理当前通道的匹配结果
+    if (matchChannelKey === channelKey && range && range.length > 0) {
+      // 遍历匹配区域的范围
+      range.forEach((rangeItem, rangeIndex) => {
+        const startTime = rangeItem[0];
+        const endTime = rangeItem[1];
+        
+        // 根据置信度计算透明度
+        const alpha = Math.max(0.1, Math.min(0.8, confidence));
+        
+        // 添加高亮区域
+        chart.xAxis[0].addPlotBand({
+          id: `match-band-${index}-${rangeIndex}`,
+          from: startTime,
+          to: endTime,
+          color: `rgba(255, 255, 0, ${alpha})`,
+          zIndex: 3,
+          borderColor: 'rgba(255, 215, 0, 0.8)',
+          borderWidth: 1
+        });
+        
+        // 获取当前通道的数据
+        const channelData = channelDataCache.value[channelKey];
+        if (channelData && channelData.X_value && channelData.Y_value) {
+          // 找到区间内的所有点
+          const pointsInRange = [];
+          for (let i = 0; i < channelData.X_value.length; i++) {
+            if (channelData.X_value[i] >= startTime && channelData.X_value[i] <= endTime) {
+              pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
+            }
+          }
+          
+          // 确保点按X轴排序
+          pointsInRange.sort((a, b) => a[0] - b[0]);
+          
+          // 添加高亮线条
+          if (pointsInRange.length > 0) {
+            chart.addSeries({
+              id: `match-highlight-${index}-${rangeIndex}`,
+              name: `匹配区域-${index}-${rangeIndex}`,
+              data: pointsInRange,
+              color: `rgba(255, 215, 0, ${alpha + 0.2})`,
+              lineWidth: 2,
+              zIndex: 4,
+              marker: {
+                enabled: false
+              },
+              states: {
+                hover: {
+                  lineWidthPlus: 0
+                }
+              },
+              enableMouseTracking: false,
+              showInLegend: false
+            });
+          }
+        }
+      });
+    }
+  });
 };
 </script>
 

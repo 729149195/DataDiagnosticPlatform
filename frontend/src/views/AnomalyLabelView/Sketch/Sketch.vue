@@ -359,8 +359,6 @@ const submitData = async () => {
     } : null
   })) : [];
 
-  console.log(rawQueryPattern);
-
   if (rawQueryPattern.length > 0) {
     // 首先更新本地的查询模式
     store.dispatch('updateQueryPattern', { rawPattern: rawQueryPattern });
@@ -428,6 +426,8 @@ const submitData = async () => {
 
       // 将结果存储到Vuex
       store.dispatch('updateMatchedResults', data.results);
+
+      console.log(store.state.matchedResults);
 
     } catch (error) {
       ElMessage.error(error.message || '查询过程中发生错误');
