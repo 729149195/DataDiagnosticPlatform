@@ -123,6 +123,7 @@ const store = createStore({
         step: '',
         progress: 0
       },
+      queryPattern: null,
     };
   },
   getters: {
@@ -152,6 +153,9 @@ const store = createStore({
     },
     hasMoreData(state) {
       return state.hasMoreData;
+    },
+    getQueryPattern(state) {
+      return state.queryPattern;
     },
   },
   mutations: {
@@ -339,6 +343,9 @@ const store = createStore({
     },
     clearMatchedResults(state) {
       state.matchedResults = [];
+    },
+    setQueryPattern(state, patternData) {
+      state.queryPattern = patternData;
     },
     updateTimeBegin(state, value) {
       state.time_begin = value;
@@ -919,6 +926,9 @@ const store = createStore({
         console.error('管理缓存存储失败:', error);
         return { count: 0, size: 0 };
       }
+    },
+    updateQueryPattern({ commit }, patternData) {
+      commit("setQueryPattern", patternData);
     },
   },
 });

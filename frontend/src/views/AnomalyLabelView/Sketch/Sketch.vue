@@ -348,11 +348,21 @@ const startVisibilityCheck = () => {
 const submitData = async () => {
   const channelDataCache = store.state.channelDataCache;
   
-  // 获取绘制的路径数据
+  // 获取绘制的路径数据（包括控制点信息以便重现曲线）
   const rawQueryPattern = path ? path.segments.map(segment => ({
     x: segment.point.x,
-    y: segment.point.y
+    y: paperCanvas.value.offsetHeight - segment.point.y,  // 在这里翻转Y轴
+    handleIn: segment.handleIn ? {
+      x: segment.handleIn.x,
+      y: -segment.handleIn.y  // 翻转控制点的Y坐标
+    } : null,
+    handleOut: segment.handleOut ? {
+      x: segment.handleOut.x,
+      y: -segment.handleOut.y  // 翻转控制点的Y坐标
+    } : null
   })) : [];
+
+  console.log(rawQueryPattern);
 
   if (rawQueryPattern.length > 0) {
     // 归一化查询模式的 x 和 y 值
@@ -364,11 +374,25 @@ const submitData = async () => {
     const maxY = Math.max(...rawQueryPattern.map(p => p.y));
     const yRange = maxY - minY;
 
-    // 只在这里翻转 Y 值
+    // 使查询模式规范化，并保留控制点信息
     const queryPattern = rawQueryPattern.map((point) => ({
       x: -1 + (2 * (point.x - minX) / xRange),
-      y: -(-1 + (2 * (point.y - minY) / yRange))  // 翻转 Y 值
+      y: -(-1 + (2 * (point.y - minY) / yRange)),  // 翻转 Y 值
+      handleIn: point.handleIn ? {
+        x: point.handleIn.x / xRange * 2,
+        y: point.handleIn.y / yRange * 2
+      } : null,
+      handleOut: point.handleOut ? {
+        x: point.handleOut.x / xRange * 2,
+        y: point.handleOut.y / yRange * 2
+      } : null
     }));
+
+    // 保存原始曲线数据到store，以便将来可以重现曲线
+    store.dispatch('updateQueryPattern', {
+      rawPattern: rawQueryPattern,
+      normalizedPattern: queryPattern
+    });
 
     // 初始化结果对象
     const matchResults = {};
@@ -428,6 +452,7 @@ const submitData = async () => {
         }
       }
     }));
+
 
     // 当获取到匹配结果后
     if (Object.keys(matchResults).length > 0) {
@@ -666,7 +691,7 @@ onUnmounted(() => {
 
 .segment-info {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   left: 10px;
   background-color: rgba(255, 255, 255, 0.8);
   padding: 5px 10px;
