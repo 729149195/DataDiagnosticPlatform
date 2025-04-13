@@ -552,8 +552,23 @@ const renderingState = reactive({
 // 使用与 OverviewBrush 类似的数据缓存机制
 const processedDataCache = ref(new Map());
 
+// 添加一个渲染锁定标志，防止重复渲染
+const isRenderingLocked = ref(false);
+
+// 添加一个标志，表示是否处于采样率更新过程中
+const isUpdatingSampling = ref(false);
+
 // 重构的 renderCharts 函数
 const renderCharts = debounce(async () => {
+  // 如果已经在渲染中，则跳过
+  if (isRenderingLocked.value) {
+    console.log('图表正在渲染中，跳过重复渲染请求');
+    return;
+  }
+  
+  // 锁定渲染过程
+  isRenderingLocked.value = true;
+  
   try {
     // 重置状态
     resetProgress();
@@ -576,6 +591,7 @@ const renderCharts = debounce(async () => {
       console.warn('No channels selected');
       loadingState.isLoading = false;
       renderingState.completed = true;
+      isRenderingLocked.value = false; // 解锁渲染
       return;
     }
 
@@ -688,6 +704,11 @@ const renderCharts = debounce(async () => {
     };
 
     finalizeProgress();
+  } finally {
+    // 完成后解锁渲染，延迟解锁以防止快速连续触发
+    setTimeout(() => {
+      isRenderingLocked.value = false;
+    }, 1000);
   }
 }, 300);
 
@@ -1082,11 +1103,19 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
   console.log(`[重要] 采样率从 ${oldSamplingRate} kHz 变更为 ${newSamplingRate} kHz，准备刷新数据和图表`);
   sampleRate.value = newSamplingRate;
   
+  // 设置采样率更新标志并锁定渲染
+  isUpdatingSampling.value = true;
+  isRenderingLocked.value = true;
+  
   // 清空处理后的数据缓存
   processedDataCache.value.clear();
   
   // 重置进度状态
   resetProgress();
+  
+  // 立即清空数据，防止旧数据重绘
+  channelsData.value = [];
+  exposeData.value = [];
   
   // 销毁现有图表，避免重叠渲染
   const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
@@ -1095,33 +1124,50 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
     console.log('已销毁现有图表，准备重新渲染');
   }
   
-  // 使用 store 的全局采样率更新机制，这会触发所有选中通道的数据刷新
-  // 确保更新完成后强制重新渲染图表
-  store.dispatch('updateSampling', newSamplingRate).then(() => {
-    console.log('所有通道数据已更新，强制重新渲染图表');
-    // 使用较长的延迟确保所有数据都已加载完成
-    setTimeout(() => {
-      renderCharts();
-    }, 500);
-  }).catch(error => {
-    console.error('更新采样率数据时出错:', error);
-    ElMessage.error(`更新采样率数据时出错: ${error.message}`);
+  // 需要延迟一下，确保DOM已更新
+  nextTick(() => {
+    // 使用 store 的全局采样率更新机制，这会触发所有选中通道的数据刷新
+    store.dispatch('updateSampling', newSamplingRate).then(() => {
+      console.log('所有通道数据已更新，准备渲染图表');
+      // 使用较长的延迟确保所有数据都已加载完成
+      setTimeout(() => {
+        // 解锁渲染并触发渲染
+        isRenderingLocked.value = false;
+        isUpdatingSampling.value = false; // 重置采样率更新标志
+        // 手动触发一次渲染
+        renderCharts();
+      }, 500);
+    }).catch(error => {
+      console.error('更新采样率数据时出错:', error);
+      ElMessage.error(`更新采样率数据时出错: ${error.message}`);
+      // 出错时也要解锁渲染
+      isRenderingLocked.value = false;
+      isUpdatingSampling.value = false; // 重置采样率更新标志
+    });
   });
 });
 
-watch(smoothnessValue, () => {
-  renderCharts();
-});
-
+// 一并修改channelDataCache监听，确保在采样率更新时不会触发渲染
 // 监听 channelDataCache 变化，当通道数据缓存更新时重新渲染图表
 watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
+  // 重要：如果正在更新采样率，跳过这次触发
+  if (isUpdatingSampling.value) {
+    console.log('正在更新采样率，跳过缓存更新触发的渲染');
+    return;
+  }
+  
   console.log('通道数据缓存键值已更新，重新渲染图表');
+  
   // 清空已处理的数据缓存
   processedDataCache.value.clear();
   // 使用setTimeout确保状态完全更新后再渲染
   setTimeout(() => {
     renderCharts();
   }, 300);
+});
+
+watch(smoothnessValue, () => {
+  renderCharts();
 });
 
 watch(
