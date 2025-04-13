@@ -447,6 +447,7 @@ const clearCanvas = () => {
     }
     segmentInfo.value = '';
   }
+  store.dispatch('updateMatchedResults', []);
 };
 
 // 添加全选状态处理
