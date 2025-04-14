@@ -100,7 +100,7 @@
                         <el-dropdown-menu>
                           <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
                           <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
-                          <el-dropdown-item command="syncUpload" v-if="store.state.authority != 0">上传标注异常</el-dropdown-item>
+                          <!-- <el-dropdown-item command="syncUpload" v-if="store.state.authority != 0">上传标注异常</el-dropdown-item> -->
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
@@ -567,9 +567,10 @@ const handleExportCommand = (command) => {
     exportChannelSVG();
   } else if (command === 'exportData') {
     exportChannelData();
-  } else if (command === 'syncUpload') {
-    syncUpload();
   }
+  // } else if (command === 'syncUpload') {
+  //   syncUpload();
+  // }
 }
 
 const handleResultExportCommand = (command) => {
@@ -593,29 +594,29 @@ const updateSmoothness = (value) => {
 }
 
 // 实现上传同步功能
-const syncUpload = async () => {
-  const loadingInstance = ElLoading.service({
-    lock: true,
-    text: '正在同步数据...',
-    background: 'rgba(0, 0, 0, 0.7)'
-  });
+// const syncUpload = async () => {
+//   const loadingInstance = ElLoading.service({
+//     lock: true,
+//     text: '正在同步数据...',
+//     background: 'rgba(0, 0, 0, 0.7)'
+//   });
 
-  try {
-    // 直接通过ref引用调用HeatMap组件的syncUpload方法
-    if (!heatMapRef.value || typeof heatMapRef.value.syncUpload !== 'function') {
-      throw new Error('热力图组件未加载或未提供同步方法');
-    }
+//   try {
+//     // 直接通过ref引用调用HeatMap组件的syncUpload方法
+//     if (!heatMapRef.value || typeof heatMapRef.value.syncUpload !== 'function') {
+//       throw new Error('热力图组件未加载或未提供同步方法');
+//     }
 
-    // 调用热力图组件的syncUpload方法
-    await heatMapRef.value.syncUpload();
-    ElMessage.success('同步成功');
-  } catch (error) {
-    console.error('同步失败:', error);
-    ElMessage.error('同步失败: ' + error.message);
-  } finally {
-    loadingInstance.close();
-  }
-};
+//     // 调用热力图组件的syncUpload方法
+//     await heatMapRef.value.syncUpload();
+//     ElMessage.success('同步成功');
+//   } catch (error) {
+//     console.error('同步失败:', error);
+//     ElMessage.error('同步失败: ' + error.message);
+//   } finally {
+//     loadingInstance.close();
+//   }
+// };
 </script>
 
 <style scoped lang="scss">

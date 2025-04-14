@@ -16,10 +16,8 @@
           </el-dropdown-menu>
         </template>
       </el-dropdown>
-      <el-button type="primary" @click="syncUpload" v-if="store.state.authority != 0">
-        上传标注异常<el-icon class="el-icon--right">
-          <Upload />
-        </el-icon>
+      <el-button type="primary" @click="openBatchAdjustDialog" v-if="store.state.authority != 0">
+        批量删除/上传
       </el-button>
     </div>
   </span>
@@ -182,6 +180,80 @@
         </div>
       </div>
     </el-dialog>
+    
+    <!-- 批量调整异常对话框 -->
+    <el-dialog v-model="showBatchAdjustDialog" title="批量删除/上传异常" width="700px" :destroy-on-close="true">
+      <div class="batch-adjust-container">
+        <div v-if="batchAdjustData.channels.length === 0" class="empty-channels">
+          <el-empty description="没有选择通道或通道中无异常" />
+        </div>
+        <div v-else>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <div  class="selected-info">
+              已选择 <span class="selected-count">{{ selectedRows.length }}</span> 个通道
+            </div>
+            <div  class="top-batch-actions">
+              <el-button 
+                type="danger" 
+                size="small"
+                @click="batchDeleteNotUploaded"
+                :disabled="!hasSelectedNotUploaded"
+                style="margin-right: 10px;"
+              >
+                批量删除未上传
+              </el-button>
+              <el-button 
+                type="danger" 
+                size="small"
+                @click="batchDeleteUploaded"
+                :disabled="!hasSelectedUploaded"
+                style="margin-right: 10px;"
+              >
+                批量删除已上传
+              </el-button>
+              <el-button 
+                type="primary" 
+                size="small"
+                @click="batchUploadAnomalies"
+                :disabled="!hasSelectedNotUploaded"
+              >
+                批量上传异常
+              </el-button>
+            </div>
+          </div>
+          <el-table 
+            :data="batchAdjustData.channels" 
+            border 
+            style="width: 100%"
+            @selection-change="handleSelectionChange"
+          >
+            <el-table-column type="selection" width="55" />
+            <el-table-column label="炮号" prop="shotNumber" width="100" align="center" />
+            <el-table-column label="通道" prop="channelName" min-width="180" />
+            <el-table-column label="未上传异常" width="120" align="center">
+              <template #default="scope">
+                <div :class="['anomaly-count', scope.row.notUploadedCount === 0 ? 'zero-count' : '']">
+                  {{ scope.row.notUploadedCount }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="已上传异常" width="120" align="center">
+              <template #default="scope">
+                <div :class="['anomaly-count', scope.row.uploadedCount === 0 ? 'zero-count' : '']">
+                  {{ scope.row.uploadedCount }}
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showBatchAdjustDialog = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
+    
     <el-dialog v-if="showAnomalyForm && currentAnomaly.channelName" v-model="showAnomalyForm" title="编辑/修改异常信息" :destroy-on-close="true">
       <el-form :model="currentAnomaly" label-width="auto">
         <el-form-item label="通道名">
@@ -218,7 +290,10 @@ import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
-import { Search, Delete, Edit, InfoFilled, ArrowDown, ArrowUp } from '@element-plus/icons-vue';
+import { Search, Delete, Edit, InfoFilled, ArrowDown, ArrowUp, Upload } from '@element-plus/icons-vue';
+import { Highcharts } from 'highcharts';
+import { dataCache, cacheFactory } from '@/services/cacheManager';
+import indexedDBService from '@/services/indexedDBService';
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
@@ -1086,7 +1161,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
           if (error.error_name === 'NO ERROR') {
             // 更新进度
             completedRequests.value++;
-            loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
+            loadingPercentage.value = Math.min(100, Math.round((completedRequests.value / totalRequests.value) * 100));
             continue;
           }
 
@@ -1108,7 +1183,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
 
           // 更新进度
           completedRequests.value++;
-          loadingPercentage.value = Math.round((completedRequests.value / totalRequests.value) * 100);
+          loadingPercentage.value = Math.min(100, Math.round((completedRequests.value / totalRequests.value) * 100));
         }
       } catch (err) {
         console.warn(`Failed to fetch error data for channel ${channelKey}:`, err);
@@ -1219,84 +1294,11 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
       .attr(
         'y',
         (d, i) =>
-          rectH * 0.3 + XaxisH + i * (rectH + margin.top)
+          rectH * 0.65 + XaxisH + i * (rectH + margin.top)
       )
       .style('text-anchor', 'end')
+      .style('font-size', '18px')
       .text((d) => d);
-
-    // 为每个通道添加两个删除按钮
-    heatmap
-      .selectAll('.deleteChannelButtons')
-      .data(channelKeys)
-      .join('g')
-      .attr('class', 'deleteChannelButtons')
-      .attr(
-        'transform',
-        (d, i) => `translate(${YaxisW - 83}, ${XaxisH + i * (rectH + margin.top) + rectH * 0.4})`
-      )
-      .each(function(channelKey) {
-        // 删除未上传同步异常按钮
-        d3.select(this)
-          .append('rect')
-          .attr('x', -25)
-          .attr('y', 0)
-          .attr('width', 46)
-          .attr('height', 18)
-          .attr('rx', 4)
-          .attr('fill', '#ff9900')
-          .attr('cursor', 'pointer')
-          .attr('stroke', '#e67e00')
-          .attr('stroke-width', 1)
-          .on('click', (event) => {
-            event.stopPropagation();
-            deleteAllEditableAnomalies(channelKey);
-          });
-
-        d3.select(this)
-          .append('text')
-          .attr('x', -2)
-          .attr('y', 13)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '12px')
-          .text('未上传')
-          .attr('cursor', 'pointer')
-          .on('click', (event) => {
-            event.stopPropagation();
-            deleteAllEditableAnomalies(channelKey);
-          });
-
-        // 删除已上传同步异常按钮
-        d3.select(this)
-          .append('rect')
-          .attr('x', 30)
-          .attr('y', 0)
-          .attr('width', 46)
-          .attr('height', 18)
-          .attr('rx', 4)
-          .attr('fill', '#f56c6c')
-          .attr('cursor', 'pointer')
-          .attr('stroke', '#e45656')
-          .attr('stroke-width', 1)
-          .on('click', (event) => {
-            event.stopPropagation();
-            deleteAllNonEditableAnomalies(channelKey);
-          });
-
-        d3.select(this)
-          .append('text')
-          .attr('x', 53)
-          .attr('y', 13)
-          .attr('text-anchor', 'middle')
-          .attr('fill', 'white')
-          .attr('font-size', '12px')
-          .text('已上传')
-          .attr('cursor', 'pointer')
-          .on('click', (event) => {
-            event.stopPropagation();
-            deleteAllNonEditableAnomalies(channelKey);
-          });
-      });
 
     // 绘制X轴刻度
     heatmap
@@ -2472,11 +2474,13 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
         // 保存删除请求的结果
         const deleteResults = [];
 
-        // 遍历所有错误数据，处理每个机器识别的异常
+        // 遍历所有错误数据，处理人工标注的异常
         for (const error of channelErrors) {
           if (Array.isArray(error.errorData)) {
             // 处理人工标注的异常
-            const [manualErrors] = error.errorData;
+            const [manualErrors, machineErrors] = error.errorData;
+            
+            // 仅处理人工标注的错误，机器识别的错误不能通过前端删除
             if (manualErrors && manualErrors.length > 0) {
               for (const manualError of manualErrors) {
                 // 准备请求数据
@@ -2521,19 +2525,58 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
 
         // 删除成功后刷新数据
         await store.dispatch('refreshStructTreeData');
+        
+        // 强制清除缓存，确保重新获取最新数据
+        // 清除该通道的数据缓存
+        const [channelName, shotNumber] = channelKey.split('_');
+        const cacheKey = `${channelName}_${shotNumber}`;
+        
+        // 清除错误数据缓存
+        try {
+          // 直接使用dataCache处理缓存
+          const keys = Object.keys(dataCache)
+            .filter(key => key.startsWith(`error-${channelKey}`));
+          
+          // 逐个删除缓存项
+          keys.forEach(key => {
+            delete dataCache[key];
+          });
+          
+          // 清除通道数据缓存
+          if (dataCache[channelKey]) {
+            delete dataCache[channelKey];
+          }
+        } catch (error) {
+          console.warn('清除缓存失败:', error);
+        }
+        
+        // 从错误结果列表中移除该通道的所有非异常数据
+        errorResults = errorResults.filter(
+          result => !(result.channelKey === channelKey && !result.isAnomaly)
+        );
+        
+        // 根据结果关闭加载动画并显示提示
         loadingInstance.close();
 
         if (deleteResults.length === 0) {
           ElMessage.info('没有找到可删除的已上传异常');
         } else if (deleteResults.every(result => result)) {
           ElMessage.success('已成功删除所有不可编辑的异常');
+          
+          // 重新渲染热力图以更新显示
+          if (selectedChannels.value.length > 0) {
+            // 由于我们已经清除了缓存，需要强制刷新数据
+            // 强制重新获取所有数据并渲染
+            renderHeatmap(selectedChannels.value, true);
+          }
         } else {
           ElMessage.warning(`已删除部分不可编辑的异常，但有些删除失败`);
-        }
-
-        // 重新渲染热力图以更新显示
-        if (selectedChannels.value.length > 0) {
-          renderHeatmap(selectedChannels.value);
+          
+          // 重新渲染热力图以更新显示
+          if (selectedChannels.value.length > 0) {
+            // 强制重新获取所有数据并渲染
+            renderHeatmap(selectedChannels.value, true);
+          }
         }
       } catch (error) {
         console.error('批量删除失败:', error);
@@ -2544,6 +2587,718 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
     .catch(() => {
       // 用户取消删除操作
     });
+};
+
+// 添加处理异常操作的方法
+const handleAnomalyOperation = (command) => {
+  if (command === 'batchAdjust') {
+    openBatchAdjustDialog();
+  }
+}
+
+// 批量调整异常弹窗相关数据
+const showBatchAdjustDialog = ref(false);
+const batchAdjustData = ref({
+  channels: []
+});
+const selectedRows = ref([]);
+const hasSelectedNotUploaded = computed(() => 
+  selectedRows.value.some(row => row.notUploadedCount > 0)
+);
+const hasSelectedUploaded = computed(() => 
+  selectedRows.value.some(row => row.uploadedCount > 0)
+);
+
+// 处理表格多选变化
+const handleSelectionChange = (selection) => {
+  selectedRows.value = selection;
+};
+
+// 批量删除选中通道的未上传异常
+const batchDeleteNotUploaded = async () => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedRows.value.length} 个通道中的所有未上传异常标注吗？`,
+      '批量删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    // 记录处理结果
+    const results = [];
+    
+    // 依次处理每个选中的通道
+    for (const channel of selectedRows.value) {
+      // 如果该通道没有未上传异常，跳过
+      if (channel.notUploadedCount === 0) {
+        continue;
+      }
+      
+      const channelKey = channel.channelKey;
+      
+      // 从store获取该通道的所有未上传异常
+      const storedAnomalies = store.getters.getAnomaliesByChannel(channelKey);
+      if (!storedAnomalies || storedAnomalies.length === 0) {
+        continue;
+      }
+
+      // 批量删除所有未上传异常
+      storedAnomalies.forEach(anomaly => {
+        store.dispatch('deleteAnomaly', {
+          channelName: channelKey,
+          anomalyId: anomaly.id
+        });
+      });
+      
+      results.push({
+        channelName: channel.channelName,
+        count: storedAnomalies.length
+      });
+    }
+    
+    // 提示删除结果
+    if (results.length === 0) {
+      ElMessage.info('所选通道中没有可删除的未上传异常');
+    } else {
+      const totalCount = results.reduce((sum, item) => sum + item.count, 0);
+      ElMessage.success(`已成功删除 ${results.length} 个通道中的 ${totalCount} 个未上传异常`);
+      
+      // 重新渲染热力图以更新显示
+      if (selectedChannels.value.length > 0) {
+        renderHeatmap(selectedChannels.value, true);
+      }
+      
+      // 更新批量调整对话框数据
+      setTimeout(() => {
+        updateBatchAdjustData();
+      }, 300);
+    }
+  } catch (error) {
+    // 用户取消删除操作
+    console.log('用户取消批量删除操作');
+  }
+};
+
+// 批量删除选中通道的已上传异常
+const batchDeleteUploaded = async () => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedRows.value.length} 个通道中的所有已上传异常标注吗？这将调用后端接口批量删除`,
+      '批量删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    const loadingInstance = ElLoading.service({
+      lock: true,
+      text: '正在批量删除异常数据...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
+    
+    try {
+      // 处理结果统计
+      const results = [];
+      
+      // 依次处理每个选中的通道
+      for (const channel of selectedRows.value) {
+        // 如果该通道没有已上传异常，跳过
+        if (channel.uploadedCount === 0) {
+          continue;
+        }
+        
+        const channelKey = channel.channelKey;
+        
+        // 查找该通道的错误数据
+        const channelErrors = errorResults.filter(
+          result => result.channelKey === channelKey && !result.isAnomaly
+        );
+        
+        if (!channelErrors || channelErrors.length === 0) {
+          continue;
+        }
+        
+        // 跟踪已处理的异常类型，避免重复删除
+        const processedErrorTypes = new Set();
+        // 保存删除请求的结果
+        const deleteResults = [];
+        
+        // 遍历所有错误数据，处理人工标注的异常
+        for (const error of channelErrors) {
+          if (Array.isArray(error.errorData)) {
+            // 处理人工标注的异常
+            const [manualErrors, _] = error.errorData;
+            
+            // 仅处理人工标注的错误，机器识别的错误不能通过前端删除
+            if (manualErrors && manualErrors.length > 0) {
+              for (const manualError of manualErrors) {
+                // 获取异常类型
+                const errorType = manualError.error_type || manualError.错误类型;
+                
+                // 如果这个类型已经处理过，跳过
+                if (processedErrorTypes.has(errorType)) {
+                  continue;
+                }
+                
+                // 标记为已处理
+                processedErrorTypes.add(errorType);
+                
+                // 准备请求数据
+                const requestData = {
+                  diagnostic_name: manualError.diagnostic_name || manualError.诊断名称,
+                  channel_number: manualError.channel_number || manualError.通道编号,
+                  shot_number: manualError.shot_number || manualError.炮号,
+                  error_type: errorType
+                };
+                
+                // 确保所有必要字段都存在
+                if (!requestData.diagnostic_name || !requestData.channel_number ||
+                    !requestData.shot_number || !requestData.error_type) {
+                  console.error('删除失败: 缺少必要的字段', manualError);
+                  continue;
+                }
+                
+                try {
+                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                  });
+                  
+                  if (response.ok) {
+                    deleteResults.push(true);
+                  } else {
+                    const errorText = await response.text();
+                    console.error('服务器返回错误:', errorText);
+                    deleteResults.push(false);
+                  }
+                } catch (error) {
+                  console.error('删除请求失败:', error);
+                  deleteResults.push(false);
+                }
+              }
+            }
+          }
+        }
+        
+        // 如果有删除成功的请求，添加到结果中
+        if (deleteResults.some(result => result)) {
+          results.push({
+            channelName: channel.channelName,
+            count: processedErrorTypes.size
+          });
+          
+          // 清除通道数据缓存
+          const [channelName, shotNumber] = channelKey.split('_');
+          
+          // 清除错误数据缓存
+          try {
+            // 直接使用dataCache处理缓存
+            const keys = Object.keys(dataCache)
+              .filter(key => key.startsWith(`error-${channelKey}`));
+            
+            // 逐个删除缓存项
+            keys.forEach(key => {
+              delete dataCache[key];
+            });
+            
+            // 清除通道数据缓存
+            if (dataCache[channelKey]) {
+              delete dataCache[channelKey];
+            }
+          } catch (error) {
+            console.warn('清除缓存失败:', error);
+          }
+          
+          // 从错误结果列表中移除该通道的所有非异常数据
+          errorResults = errorResults.filter(
+            result => !(result.channelKey === channelKey && !result.isAnomaly)
+          );
+        }
+      }
+      
+      // 删除成功后刷新数据
+      await store.dispatch('refreshStructTreeData');
+      
+      // 关闭加载提示
+      loadingInstance.close();
+      
+      // 提示删除结果
+      if (results.length === 0) {
+        ElMessage.info('所选通道中没有可删除的已上传异常');
+      } else {
+        const totalCount = results.reduce((sum, item) => sum + item.count, 0);
+        ElMessage.success(`已成功删除 ${results.length} 个通道中的 ${totalCount} 种异常类别`);
+        
+        // 重新渲染热力图以更新显示
+        if (selectedChannels.value.length > 0) {
+          renderHeatmap(selectedChannels.value, true);
+        }
+        
+        // 更新批量调整对话框数据
+        setTimeout(() => {
+          updateBatchAdjustData();
+        }, 300);
+      }
+    } catch (error) {
+      console.error('批量删除失败:', error);
+      loadingInstance.close();
+      ElMessage.error('批量删除失败: ' + error.message);
+    }
+  } catch (error) {
+    // 用户取消删除操作
+    console.log('用户取消批量删除操作');
+  }
+};
+
+// 更新批量调整数据
+const updateBatchAdjustData = () => {
+  const channels = selectedChannels.value.map(channel => {
+    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+    
+    // 获取未上传的异常
+    const notUploadedAnomalies = store.getters.getAnomaliesByChannel(channelKey) || [];
+    
+    // 获取已上传的异常
+    let uploadedCount = 0;
+    
+    // 从errorResults中查找该通道的所有绘制出来的异常
+    const channelErrors = errorResults.filter(
+      result => result.channelKey === channelKey && !result.isAnomaly
+    );
+    
+    // 统计每个异常类别
+    const errorTypes = new Set();
+    
+    channelErrors.forEach(error => {
+      if (Array.isArray(error.errorData)) {
+        // 处理人工标注的异常和机器识别的异常
+        const [manualErrors, machineErrors] = error.errorData;
+        
+        // 从人工标注的异常中提取异常类别
+        if (manualErrors && manualErrors.length > 0) {
+          manualErrors.forEach(manualError => {
+            const errorType = manualError.error_type || manualError.错误类型;
+            if (errorType) {
+              errorTypes.add(errorType);
+            }
+          });
+        }
+        
+        // 从机器识别的异常中提取异常类别
+        if (machineErrors && machineErrors.length > 0) {
+          machineErrors.forEach(machineError => {
+            const errorType = machineError.error_type || machineError.错误类型;
+            if (errorType) {
+              errorTypes.add(errorType);
+            }
+          });
+        }
+      }
+    });
+    
+    // 已上传异常数量为不同异常类别的数量
+    uploadedCount = errorTypes.size;
+    
+    return {
+      channelKey,
+      channelName: channel.channel_name,
+      shotNumber: channel.shot_number,
+      notUploadedCount: notUploadedAnomalies.length,
+      uploadedCount: uploadedCount
+    };
+  });
+  
+  batchAdjustData.value = {
+    channels
+  };
+};
+
+// 显示批量调整异常弹窗
+const openBatchAdjustDialog = () => {
+  // 检查是否有选择的通道
+  if (!selectedChannels.value || selectedChannels.value.length === 0) {
+    ElMessage.warning('请先选择通道');
+    return;
+  }
+
+  // 清空现有数据
+  batchAdjustData.value = {
+    channels: []
+  };
+
+  // 获取当前显示的通道信息
+  const channels = selectedChannels.value.map(channel => {
+    const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+    
+    // 获取未上传的异常
+    const notUploadedAnomalies = store.getters.getAnomaliesByChannel(channelKey) || [];
+    
+    // 获取已上传的异常
+    let uploadedCount = 0;
+    
+    // 从errorResults中查找该通道的所有绘制出来的异常
+    const channelErrors = errorResults.filter(
+      result => result.channelKey === channelKey && !result.isAnomaly
+    );
+    
+    // 统计每个异常类别
+    const errorTypes = new Set();
+    
+    channelErrors.forEach(error => {
+      if (Array.isArray(error.errorData)) {
+        // 处理人工标注的异常
+        const [manualErrors, machineErrors] = error.errorData;
+        
+        // 从人工标注的异常中提取异常类别
+        if (manualErrors && manualErrors.length > 0) {
+          manualErrors.forEach(manualError => {
+            const errorType = manualError.error_type || manualError.错误类型;
+            if (errorType) {
+              errorTypes.add(errorType);
+            }
+          });
+        }
+        
+        // 从机器识别的异常中提取异常类别
+        if (machineErrors && machineErrors.length > 0) {
+          machineErrors.forEach(machineError => {
+            const errorType = machineError.error_type || machineError.错误类型;
+            if (errorType) {
+              errorTypes.add(errorType);
+            }
+          });
+        }
+      }
+    });
+    
+    // 已上传异常数量为不同异常类别的数量
+    uploadedCount = errorTypes.size;
+    
+    console.log(`通道 ${channelKey} 的异常类别:`, Array.from(errorTypes));
+    
+    return {
+      channelKey,
+      channelName: channel.channel_name,
+      shotNumber: channel.shot_number,
+      notUploadedCount: notUploadedAnomalies.length,
+      uploadedCount: uploadedCount
+    };
+  });
+  
+  // 更新数据
+  batchAdjustData.value = {
+    channels
+  };
+  
+  console.log('批量调整数据:', batchAdjustData.value);
+  
+  // 显示对话框
+  showBatchAdjustDialog.value = true;
+};
+
+// 删除通道未上传的异常
+const deleteBatchNotUploaded = (channelKey) => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
+  ElMessageBox.confirm(
+    '确定要删除该通道所有未上传的异常标注吗？',
+    '批量删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+    .then(() => {
+      // 从store获取该通道的所有未上传异常
+      const storedAnomalies = store.getters.getAnomaliesByChannel(channelKey);
+      if (!storedAnomalies || storedAnomalies.length === 0) {
+        ElMessage.info('该通道没有可编辑的异常');
+        return;
+      }
+
+      // 批量删除所有未上传异常
+      storedAnomalies.forEach(anomaly => {
+        store.dispatch('deleteAnomaly', {
+          channelName: channelKey,
+          anomalyId: anomaly.id
+        });
+      });
+
+      ElMessage.success(`已删除该通道所有 ${storedAnomalies.length} 个未上传异常`);
+      
+      // 重新渲染热力图以更新显示
+      if (selectedChannels.value.length > 0) {
+        renderHeatmap(selectedChannels.value, true);
+      }
+      
+      // 更新批量调整对话框数据
+      setTimeout(() => {
+        updateBatchAdjustData();
+      }, 300);
+    })
+    .catch(() => {
+      // 用户取消删除操作
+    });
+};
+
+// 删除通道已上传的异常
+const deleteBatchUploaded = async (channelKey) => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除该通道所有已上传的异常标注吗？这将调用后端接口批量删除',
+      '批量删除确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    const loadingInstance = ElLoading.service({
+      lock: true,
+      text: '正在批量删除异常数据...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
+
+    try {
+      // 查找该通道的错误数据
+      const channelErrors = errorResults.filter(
+        result => result.channelKey === channelKey && !result.isAnomaly
+      );
+
+      if (!channelErrors || channelErrors.length === 0) {
+        loadingInstance.close();
+        ElMessage.info('该通道没有已上传的异常');
+        return;
+      }
+
+      // 保存删除请求的结果
+      const deleteResults = [];
+      
+      // 跟踪已处理的异常类型，避免重复删除
+      const processedErrorTypes = new Set();
+
+      // 遍历所有错误数据，处理人工标注的异常
+      for (const error of channelErrors) {
+        if (Array.isArray(error.errorData)) {
+          // 处理人工标注的异常
+          const [manualErrors, _] = error.errorData;
+          
+          // 仅处理人工标注的错误，机器识别的错误不能通过前端删除
+          if (manualErrors && manualErrors.length > 0) {
+            for (const manualError of manualErrors) {
+              // 获取异常类型
+              const errorType = manualError.error_type || manualError.错误类型;
+              
+              // 如果这个类型已经处理过，跳过
+              if (processedErrorTypes.has(errorType)) {
+                continue;
+              }
+              
+              // 标记为已处理
+              processedErrorTypes.add(errorType);
+              
+              // 准备请求数据
+              const requestData = {
+                diagnostic_name: manualError.diagnostic_name || manualError.诊断名称,
+                channel_number: manualError.channel_number || manualError.通道编号,
+                shot_number: manualError.shot_number || manualError.炮号,
+                error_type: errorType
+              };
+
+              // 确保所有必要字段都存在
+              if (!requestData.diagnostic_name || !requestData.channel_number ||
+                  !requestData.shot_number || !requestData.error_type) {
+                console.error('删除失败: 缺少必要的字段', manualError);
+                continue;
+              }
+
+              try {
+                console.log(`删除异常类别: ${errorType}`, requestData);
+                const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(requestData)
+                });
+
+                if (response.ok) {
+                  deleteResults.push(true);
+                } else {
+                  const errorText = await response.text();
+                  console.error('服务器返回错误:', errorText);
+                  deleteResults.push(false);
+                }
+              } catch (error) {
+                console.error('删除请求失败:', error);
+                deleteResults.push(false);
+              }
+            }
+          }
+        }
+      }
+
+      // 删除成功后刷新数据
+      await store.dispatch('refreshStructTreeData');
+      
+      // 强制清除缓存，确保重新获取最新数据
+      // 清除该通道的数据缓存
+      const [channelName, shotNumber] = channelKey.split('_');
+      const cacheKey = `${channelName}_${shotNumber}`;
+      
+      // 清除错误数据缓存
+      try {
+        // 直接使用dataCache处理缓存
+        const keys = Object.keys(dataCache)
+          .filter(key => key.startsWith(`error-${channelKey}`));
+        
+        // 逐个删除缓存项
+        keys.forEach(key => {
+          delete dataCache[key];
+        });
+        
+        // 清除通道数据缓存
+        if (dataCache[channelKey]) {
+          delete dataCache[channelKey];
+        }
+      } catch (error) {
+        console.warn('清除缓存失败:', error);
+      }
+      
+      // 从错误结果列表中移除该通道的所有非异常数据
+      errorResults = errorResults.filter(
+        result => !(result.channelKey === channelKey && !result.isAnomaly)
+      );
+      
+      // 根据结果关闭加载动画并显示提示
+      loadingInstance.close();
+
+      if (deleteResults.length === 0) {
+        ElMessage.info('没有找到可删除的已上传异常');
+      } else if (deleteResults.every(result => result)) {
+        ElMessage.success(`已成功删除该通道所有 ${processedErrorTypes.size} 种异常类别`);
+        
+        // 重新渲染热力图以更新显示
+        if (selectedChannels.value.length > 0) {
+          // 由于我们已经清除了缓存，需要强制刷新数据
+          // 强制重新获取所有数据并渲染
+          renderHeatmap(selectedChannels.value, true);
+        }
+      } else {
+        ElMessage.warning(`已删除部分已上传的异常，但有些删除失败`);
+        
+        // 重新渲染热力图以更新显示
+        if (selectedChannels.value.length > 0) {
+          // 强制重新获取所有数据并渲染
+          renderHeatmap(selectedChannels.value, true);
+        }
+      }
+      
+      // 更新批量调整对话框数据
+      setTimeout(() => {
+        updateBatchAdjustData();
+      }, 300);
+      
+    } catch (error) {
+      console.error('批量删除失败:', error);
+      loadingInstance.close();
+      ElMessage.error('批量删除失败: ' + error.message);
+    }
+  } catch (error) {
+    // 用户取消删除操作
+    console.log('用户取消删除操作');
+  }
+};
+
+// 批量上传选中通道的未上传异常
+const batchUploadAnomalies = async () => {
+  try {
+    if (!selectedRows.value || selectedRows.value.length === 0) {
+      ElMessage.warning('请先选择需要上传异常的通道');
+      return;
+    }
+    
+    // 检查是否有选中的通道包含未上传异常
+    const hasUnuploaded = selectedRows.value.some(row => row.notUploadedCount > 0);
+    if (!hasUnuploaded) {
+      ElMessage.info('所选通道中没有未上传的异常标注');
+      return;
+    }
+    
+    // 确认上传
+    await ElMessageBox.confirm(
+      `确定要上传选中的 ${selectedRows.value.length} 个通道中的所有未上传异常标注吗？`,
+      '批量上传确认',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    // 显示加载提示
+    const loadingInstance = ElLoading.service({
+      lock: true,
+      text: '正在批量上传异常数据...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
+    
+    try {
+      // 调用syncUpload方法
+      await syncUpload();
+      
+      // 上传成功后关闭提示
+      loadingInstance.close();
+      ElMessage.success('批量上传成功');
+      
+      // 更新批量调整对话框数据
+      setTimeout(() => {
+        updateBatchAdjustData();
+      }, 300);
+      
+      // 关闭对话框
+      showBatchAdjustDialog.value = false;
+    } catch (error) {
+      console.error('批量上传失败:', error);
+      loadingInstance.close();
+      ElMessage.error('批量上传失败: ' + error.message);
+    }
+  } catch (error) {
+    // 用户取消上传操作
+    console.log('用户取消批量上传操作');
+  }
 };
 </script>
 
@@ -2822,6 +3577,16 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
 .channelName {
   font-size: 16px;
   fill: #333;
+}
+
+.channel-name {
+  font-size: 15px;
+  color: #303133;
+  font-weight: 500;
+  padding: 10px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .xTick {
@@ -3231,5 +3996,89 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
       transform: scale(1.1);
     }
   }
+}
+
+/* 批量调整异常对话框样式 */
+.batch-adjust-container {
+  padding: 5px;
+}
+
+.batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 8px 12px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  float: right;
+  min-width: 380px;
+}
+
+.selected-count {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
+}
+
+.channel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px 0;
+}
+
+.anomaly-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.empty-channels {
+  padding: 30px;
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+  background-color: #f9fafc;
+  border-radius: 12px;
+  border: 1px dashed #e0e0e0;
+  margin: 10px 0;
+}
+
+.top-batch-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.selected-info {
+  font-size: 14px;
+  color: #606266;
+}
+
+.selected-count {
+  font-size: 14px;
+  color: #409EFF;
+  font-weight: 600;
+  margin: 0 5px;
+}
+
+.anomaly-count {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 10px 0;
+  color: #303133;
+}
+
+.anomaly-count:empty::after {
+  content: "0";
+  color: #909399;
+  font-weight: normal;
+}
+
+.zero-count {
+  color: #909399 !important;
+  font-weight: normal;
 }
 </style>

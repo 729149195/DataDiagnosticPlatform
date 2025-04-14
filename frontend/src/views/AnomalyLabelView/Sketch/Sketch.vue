@@ -37,12 +37,43 @@
           <el-button type="danger" class="clear-button" @click="clearCanvas">
             清除
           </el-button>
-          <el-button type="success" :icon="Search" @click="submitData" class="search-button">
+          <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
             查询
           </el-button>
         </div>
+        <div class="zoom-button">
+          <el-button type="primary" :icon="FullScreen" circle @click="openFullscreenCanvas"></el-button>
+        </div>
       </div>
     </div>
+
+    <!-- 全屏绘图弹窗 -->
+    <el-dialog
+      v-model="dialogVisible"
+      title="放大绘图"
+      width="90%"
+      :before-close="closeFullscreenCanvas"
+      fullscreen
+      :destroy-on-close="false"
+      :close-on-click-modal="false"
+      :close-on-press-escape="true"
+    >
+      <div class="fullscreen-canvas-container">
+        <canvas ref="fullscreenCanvas" id="fullscreenCanvas" class="fullscreen-whiteboard-canvas" resize></canvas>
+        <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
+        <div class="fullscreen-buttons">
+          <el-button type="danger" @click="clearFullscreenCanvas">
+            清除
+          </el-button>
+          <el-button type="primary" @click="applyFullscreenDrawing">
+            应用
+          </el-button>
+          <el-button @click="closeFullscreenCanvas">
+            取消
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -54,7 +85,7 @@ import {
   onUnmounted,
   watch,
 } from 'vue';
-import { Search } from '@element-plus/icons-vue';
+import { Search, FullScreen } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
@@ -583,6 +614,292 @@ onUnmounted(() => {
   // 移除全局键盘事件监听器
   window.removeEventListener('keydown', handleKeyDown);
 });
+
+// 弹窗相关变量
+const dialogVisible = ref(false);
+const fullscreenCanvas = ref(null);
+let fullscreenPaperScope = null;
+let fullscreenPath = null;
+
+// 打开全屏绘图弹窗
+const openFullscreenCanvas = () => {
+  dialogVisible.value = true;
+  
+  // 弹窗打开后初始化全屏绘图区域
+  setTimeout(() => {
+    initFullscreenPaper();
+    
+    // 如果原画布有内容，复制到全屏画布
+    if (path && path.segments && path.segments.length > 0) {
+      copyPathToFullscreen();
+    }
+  }, 100);
+};
+
+// 初始化全屏Paper.js
+const initFullscreenPaper = () => {
+  if (!fullscreenCanvas.value) return;
+
+  // 确保Paper.js还没有初始化
+  if (fullscreenPaperScope) {
+    fullscreenPaperScope.remove();
+  }
+
+  // 初始化Paper.js
+  fullscreenPaperScope = new Paper.PaperScope();
+  fullscreenPaperScope.setup(fullscreenCanvas.value);
+
+  // 创建网格
+  createFullscreenGrid(fullscreenCanvas.value.offsetWidth, fullscreenCanvas.value.offsetHeight);
+
+  // 设置工具事件
+  const tool = new fullscreenPaperScope.Tool();
+
+  // 鼠标按下事件
+  tool.onMouseDown = (event) => {
+    let selectedSegment = null;
+    let selectedHandle = null;
+
+    // 检查是否点击了现有路径上的段点或手柄
+    if (fullscreenPath) {
+      const hitResult = fullscreenPath.hitTest(event.point, hitOptions);
+      if (hitResult) {
+        if (hitResult.type === 'segment') {
+          selectedSegment = hitResult.segment;
+          return;
+        } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
+          selectedHandle = hitResult;
+          return;
+        }
+      }
+    }
+
+    // 如果已有路径，先清除它
+    if (fullscreenPath) {
+      fullscreenPath.remove();
+      fullscreenPath = null;
+      segmentInfo.value = '';
+    }
+
+    // 创建新路径
+    fullscreenPath = new fullscreenPaperScope.Path({
+      segments: [event.point],
+      strokeColor: 'black',
+      strokeWidth: 2,
+      strokeCap: 'round',
+      strokeJoin: 'round'
+    });
+  };
+
+  // 鼠标拖动事件
+  tool.onMouseDrag = (event) => {
+    // 如果正在拖动段点
+    if (selectedSegment) {
+      selectedSegment.point = selectedSegment.point.add(event.delta);
+      return;
+    }
+
+    // 如果正在拖动手柄
+    if (selectedHandle) {
+      if (selectedHandle.type === 'handle-in') {
+        selectedHandle.segment.handleIn = selectedHandle.segment.handleIn.add(event.delta);
+      } else if (selectedHandle.type === 'handle-out') {
+        selectedHandle.segment.handleOut = selectedHandle.segment.handleOut.add(event.delta);
+      }
+      return;
+    }
+
+    // 否则绘制新路径
+    if (fullscreenPath && (!fullscreenPath.lastSegment || event.point.x >= fullscreenPath.lastSegment.point.x)) {
+      fullscreenPath.add(event.point);
+      segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
+    }
+  };
+
+  // 鼠标释放事件
+  tool.onMouseUp = (event) => {
+    // 如果是在拖动段点或手柄，不进行简化操作
+    if (selectedSegment || selectedHandle) {
+      selectedSegment = null;
+      selectedHandle = null;
+      return;
+    }
+
+    if (fullscreenPath && fullscreenPath.segments.length > 1) {
+      const segmentCount = fullscreenPath.segments.length;
+
+      // 只有在绘制新路径时才简化路径
+      if (!fullscreenPath.fullySelected) {
+        fullscreenPath.simplify(10);
+
+        // 设置路径为选中状态，显示控制点和手柄
+        fullscreenPath.fullySelected = true;
+
+        const newSegmentCount = fullscreenPath.segments.length;
+        const difference = segmentCount - newSegmentCount;
+        const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
+
+        segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
+      }
+    }
+  };
+};
+
+// 创建全屏网格
+const createFullscreenGrid = (width, height) => {
+  // 清除现有网格
+  if (fullscreenPaperScope.project.activeLayer.children.find(child => child.name === 'grid')) {
+    fullscreenPaperScope.project.activeLayer.children.find(child => child.name === 'grid').remove();
+  }
+
+  const grid = new fullscreenPaperScope.Group();
+  grid.name = 'grid';
+
+  // 网格间距
+  const gridSpacing = 50;
+
+  // 创建主网格
+  for (let x = 0; x <= width; x += gridSpacing) {
+    const line = new fullscreenPaperScope.Path.Line(
+      new fullscreenPaperScope.Point(x, 0),
+      new fullscreenPaperScope.Point(x, height)
+    );
+    line.strokeColor = '#e6e6e6';
+    line.strokeWidth = 0.8;
+    grid.addChild(line);
+  }
+
+  for (let y = 0; y <= height; y += gridSpacing) {
+    const line = new fullscreenPaperScope.Path.Line(
+      new fullscreenPaperScope.Point(0, y),
+      new fullscreenPaperScope.Point(width, y)
+    );
+    line.strokeColor = '#e6e6e6';
+    line.strokeWidth = 0.8;
+    grid.addChild(line);
+  }
+
+  // 将网格置于底层
+  grid.sendToBack();
+  return grid;
+};
+
+// 将原始画布的路径复制到全屏画布
+const copyPathToFullscreen = () => {
+  if (!path || !path.segments || !fullscreenPaperScope) return;
+  
+  // 删除现有路径
+  if (fullscreenPath) {
+    fullscreenPath.remove();
+  }
+  
+  // 计算缩放因子
+  const scaleX = fullscreenCanvas.value.offsetWidth / paperCanvas.value.offsetWidth;
+  const scaleY = fullscreenCanvas.value.offsetHeight / paperCanvas.value.offsetHeight;
+  
+  // 创建新路径
+  fullscreenPath = new fullscreenPaperScope.Path({
+    strokeColor: 'black',
+    strokeWidth: 2,
+    strokeCap: 'round',
+    strokeJoin: 'round',
+    fullySelected: true
+  });
+  
+  // 复制所有段点和手柄
+  path.segments.forEach(segment => {
+    const newSegment = new fullscreenPaperScope.Segment(
+      new fullscreenPaperScope.Point(segment.point.x * scaleX, segment.point.y * scaleY)
+    );
+    
+    if (segment.handleIn) {
+      newSegment.handleIn = new fullscreenPaperScope.Point(
+        segment.handleIn.x * scaleX,
+        segment.handleIn.y * scaleY
+      );
+    }
+    
+    if (segment.handleOut) {
+      newSegment.handleOut = new fullscreenPaperScope.Point(
+        segment.handleOut.x * scaleX,
+        segment.handleOut.y * scaleY
+      );
+    }
+    
+    fullscreenPath.add(newSegment);
+  });
+};
+
+// 将全屏画布的路径应用到原始画布
+const applyFullscreenDrawing = () => {
+  if (!fullscreenPath || !fullscreenPath.segments || !paperScope) {
+    closeFullscreenCanvas();
+    return;
+  }
+  
+  // 删除原始路径
+  if (path) {
+    path.remove();
+  }
+  
+  // 计算缩放因子
+  const scaleX = paperCanvas.value.offsetWidth / fullscreenCanvas.value.offsetWidth;
+  const scaleY = paperCanvas.value.offsetHeight / fullscreenCanvas.value.offsetHeight;
+  
+  // 创建新路径
+  path = new paperScope.Path({
+    strokeColor: 'black',
+    strokeWidth: 2,
+    strokeCap: 'round',
+    strokeJoin: 'round',
+    fullySelected: true
+  });
+  
+  // 复制所有段点和手柄
+  fullscreenPath.segments.forEach(segment => {
+    const newSegment = new paperScope.Segment(
+      new paperScope.Point(segment.point.x * scaleX, segment.point.y * scaleY)
+    );
+    
+    if (segment.handleIn) {
+      newSegment.handleIn = new paperScope.Point(
+        segment.handleIn.x * scaleX,
+        segment.handleIn.y * scaleY
+      );
+    }
+    
+    if (segment.handleOut) {
+      newSegment.handleOut = new paperScope.Point(
+        segment.handleOut.x * scaleX,
+        segment.handleOut.y * scaleY
+      );
+    }
+    
+    path.add(newSegment);
+  });
+  
+  // 更新段点信息
+  segmentInfo.value = `点数: ${path.segments.length}`;
+  
+  // 关闭弹窗
+  closeFullscreenCanvas();
+};
+
+// 清除全屏画布
+const clearFullscreenCanvas = () => {
+  if (fullscreenPaperScope) {
+    if (fullscreenPath) {
+      fullscreenPath.remove();
+      fullscreenPath = null;
+    }
+    segmentInfo.value = '';
+  }
+};
+
+// 关闭全屏绘图弹窗
+const closeFullscreenCanvas = () => {
+  dialogVisible.value = false;
+};
 </script>
 
 <style scoped>
@@ -679,5 +996,47 @@ onUnmounted(() => {
   font-weight: bold;
   font-size: 12pt;
   margin-left: 5px;
+}
+
+.zoom-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+}
+
+.fullscreen-canvas-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 120px);
+  background-color: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.fullscreen-whiteboard-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: white;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  isolation: isolate;
+}
+
+.fullscreen-buttons {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  gap: 10px;
 }
 </style>

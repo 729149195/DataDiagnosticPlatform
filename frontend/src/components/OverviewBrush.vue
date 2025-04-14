@@ -622,18 +622,6 @@ onBeforeUnmount(() => {
   cursor: ew-resize; /* 添加指针样式提示可点击 */
 }
 
-.overview-svg-container::after {
-  content: "双击重置";
-  position: absolute;
-  top: 2px;
-  right: 5px;
-  font-size: 10px;
-  color: #333;
-  opacity: 0.6;
-  z-index: 9999;
-  pointer-events: none; /* 确保文字不会干扰点击事件 */
-}
-
 .overview-chart {
   position: absolute;
   top: 0;

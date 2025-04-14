@@ -1367,17 +1367,26 @@ def delete_error_data(request):
         channel_number = data.get('channel_number')
         shot_number = data.get('shot_number')
         error_type = data.get('error_type')
+        
+        # 记录删除请求
+        print(f"收到删除请求: {data}")
 
         if not all([diagnostic_name, channel_number, shot_number, error_type]):
-            return JsonResponse({'error': '缺少必要参数'}, status=400)
+            return JsonResponse({'error': '缺少必要参数', 'data': data}, status=400)
 
         # 构建错误数据文件路径
         error_file_name = f"{shot_number}_{channel_number}_{error_type}.json"
         error_file_path = os.path.join('static', 'ErrorData', error_file_name)
+        
+        print(f"查找文件: {error_file_path}")
 
         # 检查文件是否存在
         if not os.path.exists(error_file_path):
-            return JsonResponse({'error': '未找到对应的错误数据文件'}, status=404)
+            # 尝试创建目录（如果不存在）
+            os.makedirs(os.path.join('static', 'ErrorData'), exist_ok=True)
+            
+            # 如果文件不存在，直接返回成功（可能已经被删除）
+            return JsonResponse({'message': '未找到文件，可能已被删除', 'file': error_file_name})
 
         # 读取错误数据文件
         with open(error_file_path, 'r', encoding='utf-8') as f:
@@ -1405,26 +1414,30 @@ def delete_error_data(request):
 
             # 更新 StructTree.json
             struct_tree_path = os.path.join('static', 'StructTree.json')
-            with open(struct_tree_path, 'r', encoding='utf-8') as f:
-                struct_tree = json.load(f)
+            if os.path.exists(struct_tree_path):
+                with open(struct_tree_path, 'r', encoding='utf-8') as f:
+                    struct_tree = json.load(f)
 
-            # 更新对应通道的 error_name
-            for item in struct_tree:
-                if (item['shot_number'] == shot_number and 
-                    item['channel_name'] == channel_number and 
-                    'error_name' in item):
-                    # 从 error_name 列表中移除对应的错误类型
-                    if error_type in item['error_name']:
-                        item['error_name'].remove(error_type)
-                    break
+                # 更新对应通道的 error_name
+                for item in struct_tree:
+                    if (str(item.get('shot_number')) == str(shot_number) and 
+                        item.get('channel_name') == channel_number and 
+                        'error_name' in item):
+                        # 从 error_name 列表中移除对应的错误类型
+                        if error_type in item['error_name']:
+                            item['error_name'].remove(error_type)
+                        break
 
-            # 保存更新后的 StructTree.json
-            with open(struct_tree_path, 'w', encoding='utf-8') as f:
-                json.dump(struct_tree, f, indent=2, ensure_ascii=False)
+                # 保存更新后的 StructTree.json
+                with open(struct_tree_path, 'w', encoding='utf-8') as f:
+                    json.dump(struct_tree, f, indent=2, ensure_ascii=False)
 
-        return JsonResponse({'message': '删除成功'})
+        return JsonResponse({'message': '删除成功', 'file': error_file_name})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        import traceback
+        print(f"删除错误数据时发生异常: {str(e)}")
+        traceback.print_exc()
+        return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=500)
 
 
 def bezier_to_points(bezier_segments, num_points=100):
