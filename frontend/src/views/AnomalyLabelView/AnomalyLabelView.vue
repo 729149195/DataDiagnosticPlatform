@@ -629,7 +629,7 @@ const updateSmoothness = (value) => {
 }
 
 .el-card {
-  --el-card-padding: 8px;
+  --el-card-padding: 6px;
 }
 
 .el-main {
@@ -683,7 +683,8 @@ const updateSmoothness = (value) => {
 }
 
 .filtandsearch {
-  margin-bottom: 5px;
+  margin-bottom: 2px;
+  flex-shrink: 0;
 }
 
 .table {
@@ -691,6 +692,8 @@ const updateSmoothness = (value) => {
   position: relative;
   display: flex;
   flex-direction: column;
+  overflow: auto;
+  margin-top: 0;
 
   .color_table_switch {
     position: absolute;

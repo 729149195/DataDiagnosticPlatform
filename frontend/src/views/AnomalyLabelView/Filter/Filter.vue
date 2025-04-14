@@ -1,76 +1,29 @@
 <template>
   <div class="filter-container">
-    <div class="two">
-      <div>
-        <span>炮号：</span>
-        <div class="gun-number-container">
-          <el-autocomplete
-              :model-value="gunNumberInput"
-              :fetch-suggestions="querySearchGunNumbers"
-              placeholder="请输入炮号，例如 1-5,7,9-12"
-              @select="handleGunNumberSelect"
-              @input="handleInput"
-              @clear="handleGunNumberClear"
-              @focus="handleGunNumberFocus"
-              @blur="handleGunNumberBlur"
-              clearable
-              class="gun-number-input"
-          ></el-autocomplete>
+    <div class="form-items">
+      <div class="form-item">
+        <span class="label">炮　号：</span>
+        <div class="input-container">
+          <el-autocomplete :model-value="gunNumberInput" :fetch-suggestions="querySearchGunNumbers" placeholder="请输入炮号，例如 1-5,7,9-12" @select="handleGunNumberSelect" @input="handleInput" @clear="handleGunNumberClear" @focus="handleGunNumberFocus" @blur="handleGunNumberBlur" clearable class="gun-number-input"></el-autocomplete>
         </div>
       </div>
-      <div>
-        <span>通道名：</span>
-        <el-select
-            v-model="selectedChannelNames"
-            filterable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="请输入通道名"
-            @clear="handleChannelNameClear"
-            clearable
-            :filter-method="filterChannelNameMethod"
-            reserve-keyword
-        >
-          <el-option
-              v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0"
-              key="select-search-results"
-              label="选择所有搜索结果"
-              value="select-search-results"
-          />
-          <el-option
-              v-for="item in filteredChannelNameOptionsList"
-              :key="item.value"
-              :label="item.value"
-              :value="item.value"
-          />
-        </el-select>
-        <span>异常名：</span>
-        <el-select
-            v-model="selectederrorsNames"
-            filterable
-            multiple
-            collapse-tags
-            collapse-tags-tooltip
-            placeholder="请输入异常名"
-            @clear="handleErrorsNameClear"
-            clearable
-            :filter-method="filterErrorsNameMethod"
-            reserve-keyword
-        >
-          <el-option
-              v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0"
-              key="select-search-results"
-              label="选择所有搜索结果"
-              value="select-search-results"
-          />
-          <el-option
-              v-for="item in filteredErrorsNameOptionsList"
-              :key="item.value"
-              :label="item.value"
-              :value="item.value"
-          />
-        </el-select>
+      <div class="form-item">
+        <span class="label">通道名：</span>
+        <div class="input-container">
+          <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword>
+            <el-option v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
+            <el-option v-for="item in filteredChannelNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
+          </el-select>
+        </div>
+      </div>
+      <div class="form-item">
+        <span class="label">异常名：</span>
+        <div class="input-container">
+          <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword>
+            <el-option v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
+            <el-option v-for="item in filteredErrorsNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
+          </el-select>
+        </div>
       </div>
     </div>
     <div class="buttons">
@@ -237,20 +190,20 @@ const parseGunNumberInput = () => {
   // 显示警告信息（如果有无效输入）
   if (invalidRanges.length > 0 || invalidNumbers.length > 0) {
     let warningMsg = '';
-    
+
     if (invalidRanges.length > 0) {
       warningMsg += `无效的范围: ${invalidRanges.join(', ')}`;
     }
-    
+
     if (invalidNumbers.length > 0) {
       if (warningMsg) warningMsg += '; ';
       // 限制显示的无效炮号数量，避免消息过长
-      const displayInvalidNumbers = invalidNumbers.length > 10 
+      const displayInvalidNumbers = invalidNumbers.length > 10
         ? invalidNumbers.slice(0, 10).join(', ') + `...等${invalidNumbers.length}个`
         : invalidNumbers.join(', ');
       warningMsg += `无效的炮号: ${displayInvalidNumbers}`;
     }
-    
+
     if (warningMsg) {
       ElMessage.warning(warningMsg);
     }
@@ -265,10 +218,10 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
     const initialSuggestions = gunNumberOptions.value
       .slice(0, 20)
       .map(item => ({ value: item.value }));
-    
+
     // 保存当前搜索结果
     gunNumberSearchResults.value = initialSuggestions;
-    
+
     // 如果有很多炮号，添加一个提示选项
     if (gunNumberOptions.value.length > 20) {
       initialSuggestions.push({
@@ -276,7 +229,7 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
         disabled: true
       });
     }
-    
+
     cb(initialSuggestions);
     return;
   }
@@ -298,29 +251,29 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
       if (partialEnd) {
         // 用户正在输入范围的结束部分，如 '1-5'
         suggestions = gunNumberOptions.value
-            .filter(item => item.value.startsWith(partialEnd) && parseInt(item.value, 10) >= start)
-            .slice(0, 10) // 限制最多10个建议
-            .map(item => ({value: item.value}));
+          .filter(item => item.value.startsWith(partialEnd) && parseInt(item.value, 10) >= start)
+          .slice(0, 10) // 限制最多10个建议
+          .map(item => ({ value: item.value }));
       } else {
         // 用户输入范围的起始部分，如 '1-'
         suggestions = gunNumberOptions.value
-            .filter(item => parseInt(item.value, 10) > start) // 确保建议的值大于起始值
-            .sort((a, b) => parseInt(a.value, 10) - parseInt(b.value, 10)) // 按数值排序
-            .slice(0, 10) // 限制最多10个建议
-            .map(item => ({value: item.value}));
+          .filter(item => parseInt(item.value, 10) > start) // 确保建议的值大于起始值
+          .sort((a, b) => parseInt(a.value, 10) - parseInt(b.value, 10)) // 按数值排序
+          .slice(0, 10) // 限制最多10个建议
+          .map(item => ({ value: item.value }));
       }
     }
   } else {
     // 普通建议，根据最后一个部分匹配
     suggestions = gunNumberOptions.value
-        .filter(item => item.value.startsWith(currentInput))
-        .slice(0, 10) // 限制最多10个建议
-        .map(item => ({value: item.value}));
+      .filter(item => item.value.startsWith(currentInput))
+      .slice(0, 10) // 限制最多10个建议
+      .map(item => ({ value: item.value }));
   }
 
   // 保存当前搜索结果
   gunNumberSearchResults.value = suggestions;
-  
+
   // 如果有搜索结果，添加"全选搜索结果"选项到第一位
   if (suggestions.length > 1) {
     suggestions.unshift({
@@ -354,7 +307,7 @@ const handleGunNumberSelect = (item) => {
     selectAllGunNumberResults();
     return;
   }
-  
+
   // 由于选择建议项时，输入框的值会被自动替换，所以需要使用之前的输入值
   const inputBeforeSelection = previousInput.value;
   const parts = inputBeforeSelection.split(',');
@@ -378,7 +331,7 @@ const handleGunNumberSelect = (item) => {
 
   // 重新组合输入字符串，添加逗号和空格以便用户继续输入
   gunNumberInput.value = parts.join(', ') + ', ';
-  
+
   // 选择后立即解析输入，因为这是用户的明确选择
   parseGunNumberInput();
 };
@@ -426,11 +379,11 @@ const selectederrorsNamesWithValues = computed(() => {
 // 计算属性：判断是否有任何选中的数据
 const hasSelectedData = computed(() => {
   return (
-      selectedGunNumbersWithValues.value.length ||
-      selectedChannelTypesWithValues.value.length ||
-      selectedChannelNamesWithValues.value.length ||
-      selectederrorsNamesWithValues.value.length
-      // selectederrorsOriginWithValues.value.length
+    selectedGunNumbersWithValues.value.length ||
+    selectedChannelTypesWithValues.value.length ||
+    selectedChannelNamesWithValues.value.length ||
+    selectederrorsNamesWithValues.value.length
+    // selectederrorsOriginWithValues.value.length
   );
 });
 
@@ -546,10 +499,10 @@ watch(selectedChannelTypes, (newTypes) => {
   selectederrorsNames.value = selectederrorsNames.value.filter(name => {
     return filteredErrorsNameOptions.value.some(option => option.value === name);
   });
-  
+
   // 更新通道名选项列表
   filteredChannelNameOptionsList.value = filteredChannelNameOptions.value;
-  
+
   // 更新异常名选项列表
   filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
 });
@@ -570,15 +523,15 @@ watch(selectedChannelNames, (newVal) => {
     // 如果选中了全选，则选中所有选项（除了全选选项本身）
     selectedChannelNames.value = filteredChannelNameOptions.value.map(option => option.value);
   }
-  
+
   // 清理无效的异常名选择
   selectederrorsNames.value = selectederrorsNames.value.filter(name => {
     return filteredErrorsNameOptions.value.some(option => option.value === name);
   });
-  
+
   // 通道名变更时，更新异常名的选项列表
   filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
-  
+
   // 如果当前有异常名搜索关键词，重新应用过滤
   if (filteredErrorsNameKeyword.value) {
     const filterOptions = filteredErrorsNameOptions.value.filter(
@@ -677,8 +630,8 @@ const handleErrorsNameClear = () => {
 const querySearchChannelTypes = debounce((queryString, cb) => {
   const results = queryString
     ? channelTypeOptions.value.filter(
-        item => item.value.toLowerCase().includes(queryString.toLowerCase())
-      )
+      item => item.value.toLowerCase().includes(queryString.toLowerCase())
+    )
     : channelTypeOptions.value;
   cb(results.map(item => ({ value: item.value })));
 }, 300);
@@ -687,8 +640,8 @@ const querySearchChannelTypes = debounce((queryString, cb) => {
 const querySearchChannelNames = debounce((queryString, cb) => {
   const results = queryString
     ? filteredChannelNameOptions.value.filter(
-        item => item.value.toLowerCase().includes(queryString.toLowerCase())
-      )
+      item => item.value.toLowerCase().includes(queryString.toLowerCase())
+    )
     : filteredChannelNameOptions.value;
   cb(results.map(item => ({ value: item.value })));
 }, 300);
@@ -697,8 +650,8 @@ const querySearchChannelNames = debounce((queryString, cb) => {
 const querySearchErrorNames = debounce((queryString, cb) => {
   const results = queryString
     ? filteredErrorsNameOptions.value.filter(
-        item => item.value.toLowerCase().includes(queryString.toLowerCase())
-      )
+      item => item.value.toLowerCase().includes(queryString.toLowerCase())
+    )
     : filteredErrorsNameOptions.value;
   cb(results.map(item => ({ value: item.value })));
 }, 300);
@@ -830,16 +783,16 @@ watch(filteredErrorsNameOptions, (newOptions) => {
 const selectAllGunNumberResults = () => {
   // 过滤掉特殊选项（如全选选项和提示选项）
   const validResults = gunNumberSearchResults.value.filter(item => !item.isSelectAll && !item.disabled);
-  
+
   if (validResults.length > 0) {
     const resultValues = validResults.map(item => item.value);
-    
+
     // 检查当前输入是否为范围格式
     const currentInput = gunNumberInput.value.trim();
     const parts = currentInput.split(',');
     const lastPart = parts[parts.length - 1].trim();
     const isRangeInput = lastPart.includes('-');
-    
+
     if (isRangeInput && resultValues.length > 1) {
       // 如果是范围输入，并且有多个结果，则使用范围格式
       const rangeMatch = lastPart.match(/^(\d+)-(\d*)$/);
@@ -848,11 +801,11 @@ const selectAllGunNumberResults = () => {
         // 找到结果中的最小值和最大值
         const min = Math.min(...resultValues.map(v => parseInt(v, 10)));
         const max = Math.max(...resultValues.map(v => parseInt(v, 10)));
-        
+
         // 替换最后一部分为完整范围
         parts.pop();
         parts.push(`${start}-${max}`);
-        
+
         // 更新输入
         gunNumberInput.value = parts.join(', ');
       }
@@ -861,13 +814,13 @@ const selectAllGunNumberResults = () => {
       // 将结果格式化为用户输入形式
       gunNumberInput.value = resultValues.join(', ');
     }
-    
+
     // 解析输入并更新选中的炮号
     parseGunNumberInput();
-    
+
     // 清空搜索结果
     gunNumberSearchResults.value = [];
-    
+
     ElMessage.success(`已选择 ${resultValues.length} 个炮号`);
   }
 };
@@ -880,7 +833,7 @@ const handleGunNumberFocus = () => {
     const initialSuggestions = gunNumberOptions.value
       .slice(0, 20)
       .map(item => ({ value: item.value }));
-    
+
     // 如果有多个选项，添加全选选项
     if (initialSuggestions.length > 1) {
       initialSuggestions.unshift({
@@ -888,10 +841,10 @@ const handleGunNumberFocus = () => {
         isSelectAll: true
       });
     }
-    
+
     // 保存当前搜索结果
     gunNumberSearchResults.value = initialSuggestions;
-    
+
     // 如果有很多炮号，添加一个提示选项
     if (gunNumberOptions.value.length > 20) {
       gunNumberSearchResults.value.push({
@@ -915,31 +868,64 @@ onMounted(async () => {
 
 <style scoped lang="scss">
 .filter-container {
-  padding-bottom: 10px;
-  height: auto;
-  min-height: 100%;
   width: 100%;
   display: flex;
   flex-direction: column;
 }
 
+.form-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-item {
+  display: flex;
+  align-items: center;
+  height: 32px;
+}
+
+.label {
+  min-width: 60px;
+  text-align: right;
+  margin-right: 5px;
+  margin-left: 5px;
+}
+
+.input-container {
+  flex: 1;
+}
+
 .buttons {
-  margin-top: 10px;
-  margin-bottom: 15px;
+  margin-top: -5px;
   width: 100%;
 }
 
-.gun-number-container {
-  display: flex;
-  align-items: center;
+.gun-number-input {
+  width: 100%;
 }
 
-.gun-number-input {
-  margin-right: 10px;
+/* 修改Element Plus组件样式 */
+:deep(.el-input__wrapper),
+:deep(.el-select .el-input__wrapper),
+:deep(.el-autocomplete .el-input__wrapper) {
+  height: 32px !important;
+  line-height: 32px !important;
+}
+
+:deep(.el-select),
+:deep(.el-autocomplete) {
+  width: 100%;
+}
+
+:deep(.el-button) {
+  height: 32px;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 .select-all-btn {
-  height: 32px;
+  height: 28px;
   padding: 0 12px;
   font-size: 12px;
 }
