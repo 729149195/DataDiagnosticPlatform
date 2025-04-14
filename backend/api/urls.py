@@ -7,6 +7,7 @@ urlpatterns = [
 
     path('channel-data/', views.get_channel_data),
     path('error-data/', views.get_error_data),
+    path('get-channels-errors/', views.get_channels_errors, name='get_channels_errors'),
 
     path('operator-strs/', views.operator_strs),
     path('operator-strs/init/', views.init_calculation, name='init_calculation'),

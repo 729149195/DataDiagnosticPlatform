@@ -693,12 +693,15 @@ const syncUpload = async () => {
     // 同步成功后清空 store 中的 anomalies
     await store.commit('clearAnomalies');
 
-    // 刷新数据
-    await store.dispatch('refreshStructTreeData');
+    // 使用新的action更新通道异常数据而不刷新整个表格
+    await store.dispatch('updateChannelErrorsData');
+    
     return true; // 返回成功状态
   } catch (error) {
-    console.error('同步失败:', error);
-    throw error; // 向上传递错误
+    console.error('同步失败：', error);
+    loadingInstance.close();
+    ElMessage.error('同步失败：' + error.message);
+    return false;
   } finally {
     loadingInstance.close();
   }
@@ -2190,7 +2193,7 @@ const deleteErrorData = (errorData, type) => {
         }
 
         // 删除成功后刷新数据
-        await store.dispatch('refreshStructTreeData');
+        await store.dispatch('updateChannelErrorsData');
         ElMessage.success('异常标注已删除');
 
         // 关闭对话框
@@ -2525,7 +2528,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
         }
 
         // 删除成功后刷新数据
-        await store.dispatch('refreshStructTreeData');
+        await store.dispatch('updateChannelErrorsData');
         
         // 强制清除缓存，确保重新获取最新数据
         // 清除该通道的数据缓存
@@ -2892,7 +2895,7 @@ const batchDeleteUploaded = async () => {
       }
       
       // 删除成功后刷新数据
-      await store.dispatch('refreshStructTreeData');
+      await store.dispatch('updateChannelErrorsData');
       
       // 关闭加载提示
       loadingInstance.close();
@@ -3234,7 +3237,7 @@ const deleteBatchUploaded = async (channelKey) => {
       }
 
       // 删除成功后刷新数据
-      await store.dispatch('refreshStructTreeData');
+      await store.dispatch('updateChannelErrorsData');
       
       // 强制清除缓存，确保重新获取最新数据
       // 清除该通道的数据缓存

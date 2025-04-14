@@ -13,6 +13,7 @@ import threading
 from django.utils import timezone
 from datetime import datetime
 import unicodedata  # 添加这一行来导入unicodedata模块
+from django.views.decorators.csrf import csrf_exempt  # 添加CSRF豁免
 
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
@@ -1564,6 +1565,84 @@ def sketch_query(request):
             'error': str(e),
             'message': f'处理查询时发生错误: {str(e)}'
         }, status=500)
+
+@csrf_exempt
+def get_channels_errors(request):
+    """
+    获取多个通道的异常数据，专门用于更新通道异常数据而不刷新整个列表
+    POST请求，参数格式：
+    {
+        "channels": [
+            {
+                "channel_name": "通道名",
+                "shot_number": "炮号",
+                "channel_type": "通道类型"
+            },
+            ...
+        ]
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
+    
+    try:
+        # 获取请求数据
+        data = json.loads(request.body)
+        channels = data.get('channels', [])
+        
+        if not channels:
+            return JsonResponse({'error': 'No channels provided'}, status=400)
+        
+        # 读取结构树数据
+        with open(os.path.join('static', 'StructTree.json'), encoding='unicode_escape') as f:
+            struct_tree = json.load(f)
+        
+        # 准备返回的结果
+        result = []
+        
+        # 遍历请求的通道，获取每个通道的异常数据
+        for channel_info in channels:
+            channel_name = channel_info.get('channel_name')
+            shot_number = channel_info.get('shot_number')
+            channel_type = channel_info.get('channel_type')
+            
+            if not channel_name or not shot_number:
+                continue
+            
+            # 查找通道在结构树中的数据
+            channel_errors = []
+            for item in struct_tree:
+                if (item.get('channel_type') == channel_type and 
+                    item.get('channel_name') == channel_name and 
+                    item.get('shot_number') == shot_number):
+                    # 找到匹配的通道，获取其异常数据
+                    error_names = item.get('error_name', [])
+                    if not error_names:
+                        error_names = ["NO ERROR"]
+                    
+                    # 构建异常数据
+                    channel_errors = [
+                        {
+                            "error_name": error_name,
+                            "color": "rgba(0, 0, 0, 0)" if error_name == "NO ERROR" else "rgba(220, 20, 60, 0.3)"
+                        }
+                        for error_name in error_names
+                    ]
+                    break
+            
+            # 添加到结果中
+            result.append({
+                "channel_name": channel_name,
+                "shot_number": shot_number,
+                "errors": channel_errors
+            })
+        
+        return JsonResponse(result, safe=False)
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({'error': str(e)}, status=500)
  
 
 

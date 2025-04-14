@@ -398,10 +398,10 @@ const store = createStore({
       state.userMessage = message;
     },
     refreshStructTree(state, data) {
-      // 保存当前选中状态
+      // 保存当前选中状态和异常展示状态
       const selectedStates = new Map();
       
-      // 1. 首先从displayedData中获取当前可见通道的选中状态
+      // 1. 首先从displayedData中获取当前可见通道的选中状态和异常展示状态
       if (state.displayedData) {
         state.displayedData.forEach((item) => {
           if (item.channels) {
@@ -411,6 +411,11 @@ const store = createStore({
                 channelChecked: channel.checked,
                 typeChecked: item.checked,
                 showAllErrors: channel.showAllErrors,
+                displayedErrors: channel.displayedErrors.map(e => e.error_name), // 保存显示的异常类别
+                errors: channel.errors.map(e => ({
+                  error_name: e.error_name,
+                  color: e.color
+                })) // 保存完整的异常信息
               });
             });
           }
@@ -427,7 +432,19 @@ const store = createStore({
               channelChecked: true, // 如果在selectedChannels中，那么它一定是选中的
               typeChecked: false, // 先设为false，后面会根据通道类型进行更新
               showAllErrors: false,
+              displayedErrors: [],
+              errors: channel.errors?.map(e => ({
+                error_name: e.error_name,
+                color: e.color
+              })) || []
             });
+          } else {
+            // 更新selectedStates中的errors，确保使用最新的错误数据
+            const stateEntry = selectedStates.get(key);
+            stateEntry.errors = channel.errors?.map(e => ({
+              error_name: e.error_name,
+              color: e.color
+            })) || [];
           }
         });
       }
@@ -447,16 +464,48 @@ const store = createStore({
               const key = `${channel.channel_name}_${channel.shot_number}`;
               const savedState = selectedStates.get(key);
               if (savedState) {
+                // 保留之前的选中状态
                 channel.checked = savedState.channelChecked;
                 if (channel.checked) {
                   checkedChannelsCount++;
                 }
+                
+                // 保留展开/折叠状态
                 channel.showAllErrors = savedState.showAllErrors;
+                
+                // 如果新数据中存在之前保存的错误，则优先使用新数据中的错误
+                // 否则保留原来的错误信息
+                if (savedState.errors && savedState.errors.length > 0) {
+                  // 查找新数据中相同名称的错误类别
+                  channel.errors.forEach((newError, index) => {
+                    const matchingError = savedState.errors.find(e => e.error_name === newError.error_name);
+                    if (matchingError) {
+                      // 保留颜色信息
+                      newError.color = matchingError.color;
+                    }
+                  });
+                }
+                
+                // 恢复显示的错误类别
                 if (channel.showAllErrors) {
                   channel.displayedErrors = channel.errors;
                 } else {
-                  channel.displayedErrors = channel.errors.slice(0, 1);
+                  // 如果之前有显示特定的错误，尝试恢复相同名称的错误
+                  if (savedState.displayedErrors && savedState.displayedErrors.length > 0) {
+                    channel.displayedErrors = channel.errors.filter(error => 
+                      savedState.displayedErrors.includes(error.error_name)
+                    );
+                    // 如果没有匹配的错误，显示第一个错误
+                    if (channel.displayedErrors.length === 0 && channel.errors.length > 0) {
+                      channel.displayedErrors = [channel.errors[0]];
+                    }
+                  } else {
+                    channel.displayedErrors = channel.errors.slice(0, 1);
+                  }
                 }
+              } else {
+                // 没有保存状态的新通道，默认只显示第一个错误
+                channel.displayedErrors = channel.errors.slice(0, 1);
               }
             });
             
@@ -531,6 +580,56 @@ const store = createStore({
     },
     setCalculatingProgress(state, { step, progress }) {
       state.calculatingProgress = { step, progress };
+    },
+    updateChannelErrors(state, { channelName, shotNumber, errors }) {
+      // 更新选中通道中的错误数据
+      if (state.selectedChannels && state.selectedChannels.length > 0) {
+        state.selectedChannels.forEach(channel => {
+          if (channel.channel_name === channelName && channel.shot_number === shotNumber) {
+            channel.errors = errors.map(error => ({
+              error_key: error.error_key || null,
+              error_name: error.error_name,
+              color: error.color || "rgba(220, 20, 60, 0.3)"
+            }));
+          }
+        });
+      }
+      
+      // 更新显示数据中的错误信息
+      if (state.displayedData && state.displayedData.length > 0) {
+        state.displayedData.forEach(item => {
+          if (item.channels && item.channels.length > 0) {
+            item.channels.forEach(channel => {
+              if (channel.channel_name === channelName && channel.shot_number === shotNumber) {
+                // 保存当前显示状态
+                const showAllErrors = channel.showAllErrors;
+                const oldDisplayedErrorNames = channel.displayedErrors.map(error => error.error_name);
+                
+                // 更新错误列表
+                channel.errors = errors.map(error => ({
+                  error_name: error.error_name,
+                  color: error.color || "rgba(220, 20, 60, 0.3)"
+                }));
+                
+                // 恢复显示状态
+                if (showAllErrors) {
+                  channel.displayedErrors = channel.errors;
+                } else {
+                  // 尝试保留之前显示的错误类别
+                  channel.displayedErrors = channel.errors.filter(error => 
+                    oldDisplayedErrorNames.includes(error.error_name)
+                  );
+                  
+                  // 如果没有匹配的错误，显示第一个错误
+                  if (channel.displayedErrors.length === 0 && channel.errors.length > 0) {
+                    channel.displayedErrors = [channel.errors[0]];
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
     },
   },
   actions: {
@@ -960,6 +1059,65 @@ const store = createStore({
     updateQueryPattern({ commit }, patternData) {
       commit("setQueryPattern", patternData);
     },
+    updateChannelErrors({ commit }, { channelName, shotNumber, errors }) {
+      commit('updateChannelErrors', { channelName, shotNumber, errors });
+    },
+    /**
+     * 更新通道异常数据而不刷新整个表格
+     * 这个方法用于异常添加/删除后只更新相关通道的异常数据
+     */
+    async updateChannelErrorsData({ commit, state }) {
+      try {
+        // 获取当前显示的所有通道
+        const displayedChannels = [];
+        if (state.displayedData) {
+          state.displayedData.forEach(item => {
+            if (item.channels) {
+              item.channels.forEach(channel => {
+                displayedChannels.push({
+                  channel_name: channel.channel_name,
+                  shot_number: channel.shot_number,
+                  channel_type: item.channel_type
+                });
+              });
+            }
+          });
+        }
+        
+        // 获取通道异常数据
+        if (displayedChannels.length > 0) {
+          const response = await fetch(
+            "https://10.1.108.231:5000/api/get-channels-errors/", 
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ channels: displayedChannels })
+            }
+          );
+          
+          if (!response.ok) {
+            throw new Error(`获取通道异常数据失败: ${response.statusText}`);
+          }
+          
+          const data = await response.json();
+          
+          // 更新每个通道的异常数据
+          data.forEach(channelData => {
+            const { channel_name, shot_number, errors } = channelData;
+            // 使用刚刚创建的updateChannelErrors操作更新异常数据
+            commit('updateChannelErrors', {
+              channelName: channel_name,
+              shotNumber: shot_number,
+              errors: errors || []
+            });
+          });
+        }
+      } catch (error) {
+        console.error("Failed to update channel errors:", error);
+      }
+    },
   },
 });
 
@@ -1030,6 +1188,26 @@ function processData(rawData) {
   const selectedChannelKeys = new Set(
     store.state.selectedChannels.map((channel) => channel.channel_key)
   );
+  
+  // 保存当前显示的通道的错误状态和颜色信息
+  const existingErrorStates = new Map();
+  if (store.state.displayedData) {
+    store.state.displayedData.forEach(item => {
+      if (item.channels) {
+        item.channels.forEach(channel => {
+          const key = `${channel.channel_name}_${channel.shot_number}`;
+          existingErrorStates.set(key, {
+            errors: channel.errors.map(e => ({ 
+              error_name: e.error_name, 
+              color: e.color 
+            })),
+            displayedErrors: channel.displayedErrors.map(e => e.error_name),
+            showAllErrors: channel.showAllErrors
+          });
+        });
+      }
+    });
+  }
 
   rawData.forEach((item) => {
     const channelType = item.channel_type;
@@ -1087,23 +1265,52 @@ function processData(rawData) {
       channelTypeEntry.channels.push(channelEntry);
     }
 
-    // 清空之前的错误
-    channelEntry.errors = [];
+    // 获取之前的错误状态
+    const existingErrorState = existingErrorStates.get(channelKey);
 
     // 处理错误
+    channelEntry.errors = [];
     errorNames.forEach((errorName) => {
+      // 查找之前相同错误名称的错误对象
+      let errorColor = "rgba(220, 20, 60, 0.3)";
+      if (errorName === "NO ERROR") {
+        errorColor = "rgba(0, 0, 0, 0)";
+      } else if (existingErrorState) {
+        const existingError = existingErrorState.errors.find(e => e.error_name === errorName);
+        if (existingError) {
+          errorColor = existingError.color;
+        }
+      }
+      
       const error = {
         error_name: errorName,
-        color:
-          errorName === "NO ERROR"
-            ? "rgba(0, 0, 0, 0)"
-            : "rgba(220, 20, 60, 0.3)",
+        color: errorColor
       };
       channelEntry.errors.push(error);
     });
 
-    // 更新 displayedErrors
-    channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
+    // 恢复之前的错误显示状态
+    if (existingErrorState) {
+      channelEntry.showAllErrors = existingErrorState.showAllErrors;
+      
+      if (channelEntry.showAllErrors) {
+        channelEntry.displayedErrors = channelEntry.errors;
+      } else {
+        // 尝试恢复之前显示的错误
+        const matchingErrors = channelEntry.errors.filter(error => 
+          existingErrorState.displayedErrors.includes(error.error_name)
+        );
+        
+        if (matchingErrors.length > 0) {
+          channelEntry.displayedErrors = matchingErrors;
+        } else {
+          channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
+        }
+      }
+    } else {
+      // 默认只显示第一个错误
+      channelEntry.displayedErrors = channelEntry.errors.slice(0, 1);
+    }
   });
 
   // 更新通道类型的选中状态
