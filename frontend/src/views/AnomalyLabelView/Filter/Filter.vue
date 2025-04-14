@@ -10,7 +10,7 @@
       <div class="form-item">
         <span class="label">通道名：</span>
         <div class="input-container">
-          <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword>
+          <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword class="tag-select">
             <el-option v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
             <el-option v-for="item in filteredChannelNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
           </el-select>
@@ -19,7 +19,7 @@
       <div class="form-item">
         <span class="label">异常名：</span>
         <div class="input-container">
-          <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword>
+          <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword class="tag-select">
             <el-option v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
             <el-option v-for="item in filteredErrorsNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
           </el-select>
@@ -897,7 +897,7 @@ onMounted(async () => {
 }
 
 .buttons {
-  margin-top: -5px;
+  margin-top: 8px;
   width: 100%;
 }
 
@@ -972,5 +972,108 @@ onMounted(async () => {
   color: #999;
   font-size: 12px;
   margin-left: 5px;
+}
+
+:deep(.tag-select) {
+  width: 100%; /* 确保选择器占满整行宽度 */
+  
+  /* 自定义宽度控制，基于容器宽度 */
+  &.el-select {
+    width: 100%;
+  }
+  
+  /* 整体标签容器 */
+  .el-select__tags {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: hidden;
+    max-width: calc(100% - 30px); /* 给下拉箭头留出空间 */
+    padding-right: 30px; /* 为下拉箭头留出空间 */
+    align-items: center;
+    min-height: 28px;
+  }
+  
+  /* 标签容器内部滚动区域 */
+  .el-select__tags-wrap {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: hidden;
+  }
+  
+  /* 输入框 */
+  .el-input__inner {
+    line-height: 28px;
+    height: 28px;
+  }
+  
+  /* 标签文字部分 */
+  .el-select__tags-text {
+    display: inline-block;
+    max-width: 100px; /* 标签默认最大宽度 */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+  
+  /* 标签基本样式 */
+  .el-tag {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-right: 2px;
+    max-width: fit-content;
+    padding: 0 2px 0 4px;
+    height: 20px;
+    line-height: 18px;
+    white-space: nowrap;
+  }
+  
+  /* 关闭按钮 */
+  .el-tag .el-tag__close {
+    margin-left: 1px;
+    width: 12px;
+    height: 12px;
+    line-height: 12px;
+    right: 0;
+    transform: translateY(0);
+  }
+  
+  /* 调整折叠标签的样式 */
+  .el-select__collapse-tags {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    margin-left: 2px;
+    height: 20px;
+    line-height: 18px;
+    flex-shrink: 0;
+  }
+  
+  /* 折叠标签样式 */
+  .el-select__collapse-tag,
+  .el-select__collapse-tags .el-tag {
+    height: 20px;
+    line-height: 18px;
+    padding: 0 4px;
+    font-size: 11px;
+    background-color: #f4f4f5;
+    border-color: #e9e9eb;
+    color: #909399;
+    margin-right: 0;
+  }
+  
+  /* 使折叠标签比其他标签更靠右显示 */
+  .el-select-dropdown__wrap {
+    max-width: 100%;
+  }
+  
+  /* 确保+N标签始终显示且位置正确 */
+  .el-select--collapse-tags {
+    .el-select__tags {
+      justify-content: flex-start;
+    }
+  }
 }
 </style>
