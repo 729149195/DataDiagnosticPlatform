@@ -50,14 +50,21 @@
     <!-- 全屏绘图弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      title="放大绘图"
       width="90%"
-      :before-close="closeFullscreenCanvas"
+      :show-close="false"
       fullscreen
       :destroy-on-close="false"
       :close-on-click-modal="false"
       :close-on-press-escape="true"
     >
+      <template #header>
+        <div class="custom-dialog-header">
+          <span class="title">手绘查询</span>
+          <el-button class="exit-fullscreen-btn" type="primary" @click="closeFullscreenCanvas">
+            退出全屏
+          </el-button>
+        </div>
+      </template>
       <div class="fullscreen-canvas-container">
         <canvas ref="fullscreenCanvas" id="fullscreenCanvas" class="fullscreen-whiteboard-canvas" resize></canvas>
         <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
@@ -67,9 +74,6 @@
           </el-button>
           <el-button type="primary" @click="applyFullscreenDrawing">
             应用
-          </el-button>
-          <el-button @click="closeFullscreenCanvas">
-            取消
           </el-button>
         </div>
       </div>
@@ -1038,5 +1042,24 @@ const closeFullscreenCanvas = () => {
   right: 20px;
   display: flex;
   gap: 10px;
+}
+
+.custom-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.custom-dialog-header .title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-left: 0;
+}
+
+.exit-fullscreen-btn {
+  margin-left: auto;
+  font-size: 14px;
 }
 </style>
