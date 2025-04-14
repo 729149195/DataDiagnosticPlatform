@@ -1764,14 +1764,19 @@ watch(() => store.state.anomalies, (newAnomalies) => {
 watch(isBoxSelect, (newValue) => {
   const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (chart) {
-    // 更新图表的缩放类型，但不触发重绘
-    chart.options.chart.zoomType = newValue ? 'x' : 'xy';
+    // 更新图表的缩放类型，使用chart.update替代直接修改内部属性
+    chart.update({
+      chart: {
+        zoomType: newValue ? 'x' : 'xy'
+      }
+    }, false);
     
-    // 直接更新内部属性，而不是调用 chart.update
-    if (chart.pointer) {
-      chart.pointer.zoomX = newValue;
-      chart.pointer.zoomY = !newValue;
-    }
+    // 确保图表正确响应尺寸变化
+    setTimeout(() => {
+      calculateChartHeight();
+      chart.reflow();
+      chart.redraw();
+    }, 10);
 
     // 如果开启框选模式，但没有选择通道，显示提示
     if (newValue && selectedChannels.value.length === 0) {
@@ -1782,8 +1787,6 @@ watch(isBoxSelect, (newValue) => {
       // 已开启框选模式，显示提示
       ElMessage.info('已开启框选模式，请在图表上框选区域进行标注');
     }
-    
-    // 不调用 chart.redraw()，避免重绘整个图表
   }
 });
 
@@ -2145,6 +2148,12 @@ const drawCombinedChart = () => {
                     drawHighlightRects(channel.channel_name, channelMatchedResults);
                   }
                 });
+                
+                // 确保图表尺寸正确
+                setTimeout(() => {
+                  calculateChartHeight();
+                  this.reflow();
+                }, 10);
               }
             } else if (event.xAxis) {
               // 如果是框选模式
@@ -2328,6 +2337,12 @@ const drawCombinedChart = () => {
                     drawHighlightRects(channel.channel_name, channelMatchedResults);
                   }
                 });
+                
+                // 确保图表尺寸正确
+                setTimeout(() => {
+                  calculateChartHeight();
+                  this.reflow();
+                }, 10);
               }
             }
             return false; // 阻止默认缩放行为
@@ -2370,6 +2385,18 @@ const drawCombinedChart = () => {
                     drawHighlightRects(channel.channel_name, channelMatchedResults);
                   }
                 });
+                
+                // 确保图表尺寸正确
+                setTimeout(() => {
+                  calculateChartHeight();
+                  this.reflow();
+                  // 确保缩放类型正确
+                  this.update({
+                    chart: {
+                      zoomType: isBoxSelect.value ? 'x' : 'xy'
+                    }
+                  }, false);
+                }, 10);
               }
             }
           }
@@ -2558,6 +2585,17 @@ const drawCombinedChart = () => {
           mainChartDimensions.value.width + 10, // 增加额外宽度
           mainChartDimensions.value.height
         );
+        
+        // 确保正确的缩放类型
+        chart.update({
+          chart: {
+            zoomType: isBoxSelect.value ? 'x' : 'xy'
+          }
+        }, false);
+        
+        // 确保高度自适应
+        calculateChartHeight();
+        chart.reflow();
       }
 
       // 标记渲染完成

@@ -69,10 +69,10 @@
 
                   <div class="control-item">
                     <el-button-group>
-                      <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)">
+                      <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 14px;">
                         框选标注/编辑
                       </el-button>
-                      <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)">
+                      <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)" style="font-size: 14px;">
                         局部缩放
                       </el-button>
                     </el-button-group>
@@ -80,10 +80,10 @@
 
                   <div class="control-item">
                     <el-button-group>
-                      <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)">
+                      <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)" style="font-size: 14px;">
                         单通道多行
                       </el-button>
-                      <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)">
+                      <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)" style="font-size: 14px;">
                         多通道单行
                       </el-button>
                     </el-button-group>
