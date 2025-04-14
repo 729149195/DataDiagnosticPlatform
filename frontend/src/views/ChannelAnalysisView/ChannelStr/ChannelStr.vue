@@ -125,14 +125,22 @@ const restoreCursorPosition = (element, cursorPosition) => {
 // 轮询后端进度的函数
 const pollCalculationProgress = async (taskId) => {
     try {
+        // 增加防抖处理，避免频繁请求
+        let isRequestPending = false;
         const progressCheckInterval = setInterval(async () => {
-            if (!store.state.isCalculating) {
-                clearInterval(progressCheckInterval);
+            // 如果计算已停止或正在等待请求响应，则跳过本次轮询
+            if (!store.state.isCalculating || isRequestPending) {
+                if (!store.state.isCalculating) {
+                    clearInterval(progressCheckInterval);
+                }
                 return;
             }
             
             try {
+                isRequestPending = true;
                 const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}/`);
+                isRequestPending = false;
+                
                 const { step, progress, status } = response.data;
                 
                 // 更新进度和步骤
@@ -163,10 +171,15 @@ const pollCalculationProgress = async (taskId) => {
                     }
                 }
             } catch (error) {
+                isRequestPending = false;
                 console.error('Error polling calculation progress:', error);
-                // 如果轮询失败，不要立即停止，可能是网络波动
+                // 如果连续多次轮询失败，停止轮询
+                if (error.response && error.response.status === 404) {
+                    clearInterval(progressCheckInterval);
+                    store.commit('setCalculatingStatus', false);
+                }
             }
-        }, 300); // 每300ms检查一次进度
+        }, 1000); // 将轮询间隔从300ms增加到1000ms
     } catch (error) {
         console.error('Error setting up progress polling:', error);
     }
@@ -183,7 +196,10 @@ const sendClickedChannelNames = async () => {
         
         // 使用axios的取消令牌
         const source = axios.CancelToken.source();
-        const timeoutId = setTimeout(() => source.cancel('操作超时'), 60000); // 60秒超时
+        const timeoutId = setTimeout(() => {
+            source.cancel('操作超时');
+            store.commit('setCalculatingStatus', false);
+        }, 60000); // 60秒超时
         
         try {
             // 发送计算请求，并获取后端返回的任务ID
@@ -201,7 +217,8 @@ const sendClickedChannelNames = async () => {
                 clickedChannelNames: formulasarea.value,
                 anomaly_func_str: formulasarea.value,
                 channel_mess: selectedChannels.value,
-                task_id: taskId
+                task_id: taskId,
+                sample_freq: store.state.unit_sampling
             }, {
                 cancelToken: source.token
             });

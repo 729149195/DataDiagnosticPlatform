@@ -705,13 +705,8 @@ class ExpressionParser:
                 # 获取通道数据
                 channel_key = token
                 
-                # 创建一个模拟请求对象
-                class MockRequest:
-                    def __init__(self, channel_key):
-                        self.GET = {'channel_key': channel_key, 'sample_mode': 'downsample'}
-                
-                mock_request = MockRequest(channel_key)
-                response = self.get_channel_data_func(mock_request, channel_key)
+                # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
+                response = self.get_channel_data_func(None, channel_key)
                 
                 if hasattr(response, 'content'):
                     # 对于HttpResponse对象
@@ -796,12 +791,15 @@ def operator_strs(request):
         anomaly_func_str = data.get('anomaly_func_str')
         channel_mess = data.get('channel_mess')
         task_id = data.get('task_id')
+        # 获取采样率参数，如果未提供则默认为1.0 KHz
+        sample_freq = data.get('sample_freq', 1.0)
         
         # 如果提供了任务ID，进行进度更新
         if task_id and task_id in calculation_tasks:
             update_calculation_progress(task_id, '解析表达式', 10)
         
         print(f"收到计算请求: {anomaly_func_str}")
+        print(f"采样率设置: {sample_freq} KHz")
         # print(f"通道数据: {len(channel_mess) if isinstance(channel_mess, list) else 1} 个通道")
 
         # 判定是否函数名是导入函数
@@ -939,7 +937,8 @@ def operator_strs(request):
                 if task_id and task_id in calculation_tasks:
                     update_calculation_progress(task_id, '解析复杂表达式', 50)
                     
-                parser = ExpressionParser(get_channel_data)
+                # 修改表达式解析器初始化，传入采样率
+                parser = ExpressionParser(lambda req, key: get_channel_data(create_mock_request(key, sample_freq), key))
                 
                 # 更新进度：获取通道数据
                 if task_id and task_id in calculation_tasks:
@@ -973,7 +972,9 @@ def operator_strs(request):
                         if task_id and task_id in calculation_tasks:
                             update_calculation_progress(task_id, f'获取通道数据: {channel_key}', 70)
                             
-                        response = get_channel_data('', channel_key)
+                        # 创建包含采样率的请求对象
+                        mock_request = create_mock_request(channel_key, sample_freq)
+                        response = get_channel_data(mock_request, channel_key)
                         channel_data = json.loads(response.content.decode('utf-8'))
                         
                         # 检查返回的数据是否有效
@@ -1026,6 +1027,18 @@ def operator_strs(request):
         traceback.print_exc()
         return JsonResponse({"error": str(e)}, status=500)
 
+# 添加一个创建模拟请求对象的辅助函数
+def create_mock_request(channel_key, sample_freq):
+    """创建一个包含采样率的模拟请求对象"""
+    class MockRequest:
+        def __init__(self, channel_key, sample_freq):
+            self.GET = {
+                'channel_key': channel_key,
+                'sample_mode': 'downsample',
+                'sample_freq': sample_freq
+            }
+    
+    return MockRequest(channel_key, sample_freq)
 
 import importlib.util
 import inspect
