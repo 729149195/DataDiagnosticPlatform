@@ -1219,10 +1219,84 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
       .attr(
         'y',
         (d, i) =>
-          rectH * 0.5 + 5 + XaxisH + i * (rectH + margin.top)
+          rectH * 0.3 + XaxisH + i * (rectH + margin.top)
       )
       .style('text-anchor', 'end')
       .text((d) => d);
+
+    // 为每个通道添加两个删除按钮
+    heatmap
+      .selectAll('.deleteChannelButtons')
+      .data(channelKeys)
+      .join('g')
+      .attr('class', 'deleteChannelButtons')
+      .attr(
+        'transform',
+        (d, i) => `translate(${YaxisW - 83}, ${XaxisH + i * (rectH + margin.top) + rectH * 0.4})`
+      )
+      .each(function(channelKey) {
+        // 删除未上传同步异常按钮
+        d3.select(this)
+          .append('rect')
+          .attr('x', -25)
+          .attr('y', 0)
+          .attr('width', 46)
+          .attr('height', 18)
+          .attr('rx', 4)
+          .attr('fill', '#ff9900')
+          .attr('cursor', 'pointer')
+          .attr('stroke', '#e67e00')
+          .attr('stroke-width', 1)
+          .on('click', (event) => {
+            event.stopPropagation();
+            deleteAllEditableAnomalies(channelKey);
+          });
+
+        d3.select(this)
+          .append('text')
+          .attr('x', -2)
+          .attr('y', 13)
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'white')
+          .attr('font-size', '12px')
+          .text('未上传')
+          .attr('cursor', 'pointer')
+          .on('click', (event) => {
+            event.stopPropagation();
+            deleteAllEditableAnomalies(channelKey);
+          });
+
+        // 删除已上传同步异常按钮
+        d3.select(this)
+          .append('rect')
+          .attr('x', 30)
+          .attr('y', 0)
+          .attr('width', 46)
+          .attr('height', 18)
+          .attr('rx', 4)
+          .attr('fill', '#f56c6c')
+          .attr('cursor', 'pointer')
+          .attr('stroke', '#e45656')
+          .attr('stroke-width', 1)
+          .on('click', (event) => {
+            event.stopPropagation();
+            deleteAllNonEditableAnomalies(channelKey);
+          });
+
+        d3.select(this)
+          .append('text')
+          .attr('x', 53)
+          .attr('y', 13)
+          .attr('text-anchor', 'middle')
+          .attr('fill', 'white')
+          .attr('font-size', '12px')
+          .text('已上传')
+          .attr('cursor', 'pointer')
+          .on('click', (event) => {
+            event.stopPropagation();
+            deleteAllNonEditableAnomalies(channelKey);
+          });
+      });
 
     // 绘制X轴刻度
     heatmap
@@ -2312,6 +2386,164 @@ const updateAnomalyDialogContent = () => {
       }
     }
   }
+};
+
+// 在 script setup 部分添加删除所有未上传异常的函数
+const deleteAllEditableAnomalies = (channelKey) => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
+  ElMessageBox.confirm(
+    '确定要删除该通道所有未上传的异常标注吗？',
+    '批量删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+    .then(() => {
+      // 从store获取该通道的所有未上传异常
+      const storedAnomalies = store.getters.getAnomaliesByChannel(channelKey);
+      if (!storedAnomalies || storedAnomalies.length === 0) {
+        ElMessage.info('该通道没有可编辑的异常');
+        return;
+      }
+
+      // 批量删除所有未上传异常
+      storedAnomalies.forEach(anomaly => {
+        store.dispatch('deleteAnomaly', {
+          channelName: channelKey,
+          anomalyId: anomaly.id
+        });
+      });
+
+      ElMessage.success('已删除该通道所有可编辑的异常标注');
+      
+      // 重新渲染热力图以更新显示
+      if (selectedChannels.value.length > 0) {
+        renderHeatmap(selectedChannels.value, true);
+      }
+    })
+    .catch(() => {
+      // 用户取消删除操作
+    });
+};
+
+// 添加删除所有已上传异常的函数
+const deleteAllNonEditableAnomalies = async (channelKey) => {
+  // 检查权限
+  if (store.state.authority == 0) {
+    ElMessage.warning('权限不足，无法删除异常标注');
+    return;
+  }
+
+  ElMessageBox.confirm(
+    '确定要删除该通道所有不可编辑的异常标注吗？这将调用后端接口批量删除',
+    '批量删除确认',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  )
+    .then(async () => {
+      const loadingInstance = ElLoading.service({
+        lock: true,
+        text: '正在批量删除异常数据...',
+        background: 'rgba(0, 0, 0, 0.7)'
+      });
+
+      try {
+        // 查找该通道的错误数据
+        const channelErrors = errorResults.filter(
+          result => result.channelKey === channelKey && !result.isAnomaly
+        );
+
+        if (!channelErrors || channelErrors.length === 0) {
+          loadingInstance.close();
+          ElMessage.info('该通道没有不可编辑的异常');
+          return;
+        }
+
+        // 保存删除请求的结果
+        const deleteResults = [];
+
+        // 遍历所有错误数据，处理每个机器识别的异常
+        for (const error of channelErrors) {
+          if (Array.isArray(error.errorData)) {
+            // 处理人工标注的异常
+            const [manualErrors] = error.errorData;
+            if (manualErrors && manualErrors.length > 0) {
+              for (const manualError of manualErrors) {
+                // 准备请求数据
+                const requestData = {
+                  diagnostic_name: manualError.diagnostic_name || manualError.诊断名称,
+                  channel_number: manualError.channel_number || manualError.通道编号,
+                  shot_number: manualError.shot_number || manualError.炮号,
+                  error_type: manualError.error_type || manualError.错误类型
+                };
+
+                // 确保所有必要字段都存在
+                if (!requestData.diagnostic_name || !requestData.channel_number ||
+                    !requestData.shot_number || !requestData.error_type) {
+                  console.error('删除失败: 缺少必要的字段', manualError);
+                  continue;
+                }
+
+                try {
+                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                  });
+
+                  if (response.ok) {
+                    deleteResults.push(true);
+                  } else {
+                    const errorText = await response.text();
+                    console.error('服务器返回错误:', errorText);
+                    deleteResults.push(false);
+                  }
+                } catch (error) {
+                  console.error('删除请求失败:', error);
+                  deleteResults.push(false);
+                }
+              }
+            }
+          }
+        }
+
+        // 删除成功后刷新数据
+        await store.dispatch('refreshStructTreeData');
+        loadingInstance.close();
+
+        if (deleteResults.length === 0) {
+          ElMessage.info('没有找到可删除的已上传异常');
+        } else if (deleteResults.every(result => result)) {
+          ElMessage.success('已成功删除所有不可编辑的异常');
+        } else {
+          ElMessage.warning(`已删除部分不可编辑的异常，但有些删除失败`);
+        }
+
+        // 重新渲染热力图以更新显示
+        if (selectedChannels.value.length > 0) {
+          renderHeatmap(selectedChannels.value);
+        }
+      } catch (error) {
+        console.error('批量删除失败:', error);
+        loadingInstance.close();
+        ElMessage.error('批量删除失败: ' + error.message);
+      }
+    })
+    .catch(() => {
+      // 用户取消删除操作
+    });
 };
 </script>
 
