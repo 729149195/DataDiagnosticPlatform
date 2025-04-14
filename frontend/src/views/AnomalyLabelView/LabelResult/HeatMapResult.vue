@@ -209,7 +209,7 @@
                 :disabled="!hasSelectedUploaded"
                 style="margin-right: 10px;"
               >
-                批量删除已上传(含机器识别)
+                批量删除已上传
               </el-button>
               <el-button 
                 type="primary" 
@@ -226,6 +226,7 @@
             border 
             style="width: 100%"
             @selection-change="handleSelectionChange"
+            ref="batchTableRef"
           >
             <el-table-column type="selection" width="55" />
             <el-table-column label="炮号" prop="shotNumber" width="100" align="center" />
@@ -2602,6 +2603,7 @@ const batchAdjustData = ref({
   channels: []
 });
 const selectedRows = ref([]);
+const batchTableRef = ref(null);
 const hasSelectedNotUploaded = computed(() => 
   selectedRows.value.some(row => row.notUploadedCount > 0)
 );
@@ -3066,6 +3068,15 @@ const openBatchAdjustDialog = () => {
   
   // 显示对话框
   showBatchAdjustDialog.value = true;
+  
+  // 在下一个渲染周期选中所有行
+  nextTick(() => {
+    if (batchTableRef.value && batchAdjustData.value.channels.length > 0) {
+      batchAdjustData.value.channels.forEach(row => {
+        batchTableRef.value.toggleRowSelection(row, true);
+      });
+    }
+  });
 };
 
 // 删除通道未上传的异常
