@@ -16,8 +16,8 @@
                 <span class="title">可视化配置</span>
                 <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" />
               </span>
-              <div>
-                <el-scrollbar height="60vh" :always="false">
+              <div class="scrollbar-container">
+                <el-scrollbar :always="false">
                   <div v-if="color_table_value === true">
                     <ChannelType />
                   </div>
@@ -31,11 +31,13 @@
               <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">可视化配置</span>
               </span>
-              <el-scrollbar height="60vh" :always="false">
-                <div>
-                  <ChannelTypeP />
-                </div>
-              </el-scrollbar>
+              <div class="scrollbar-container">
+                <el-scrollbar :always="false">
+                  <div>
+                    <ChannelTypeP />
+                  </div>
+                </el-scrollbar>
+              </div>
             </el-card>
           </div>
         </el-aside>
@@ -127,7 +129,6 @@
                 </el-icon>
               </div>
             </div>
-
             <div class="two" v-show="!isSecondSectionCollapsed" v-if="selectedButton === 'anay'">
               <el-card class="two_left" shadow="never">
                 <Sketch :key="selectedButton" />
@@ -196,8 +197,8 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
-import { FolderChecked, Upload, Menu, View, Hide } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
+import { FolderChecked, Upload, Menu } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import 'highcharts/modules/accessibility';
@@ -692,12 +693,29 @@ const updateSmoothness = (value) => {
   position: relative;
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  overflow: hidden;
   margin-top: 0;
 
   .color_table_switch {
     position: absolute;
     right: 10px;
+  }
+
+  .scrollbar-container {
+    flex: 1;
+    height: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.el-scrollbar) {
+    height: 100%;
+    flex: 1;
+
+    .el-scrollbar__wrap {
+      overflow-x: hidden;
+    }
   }
 
   .title-row {
@@ -713,14 +731,6 @@ const updateSmoothness = (value) => {
     display: flex;
     flex-direction: column;
     height: calc(100% - 32px); // 减去title-row的高度
-  }
-
-  :deep(.el-scrollbar) {
-    height: 100%;
-
-    .el-scrollbar__wrap {
-      overflow-x: hidden;
-    }
   }
 }
 
