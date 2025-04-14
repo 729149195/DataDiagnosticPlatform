@@ -581,6 +581,9 @@ const store = createStore({
     setCalculatingProgress(state, { step, progress }) {
       state.calculatingProgress = { step, progress };
     },
+    setUnitSampling(state, value) {
+      state.unit_sampling = value;
+    },
     updateChannelErrors(state, { channelName, shotNumber, errors }) {
       // 更新选中通道中的错误数据
       if (state.selectedChannels && state.selectedChannels.length > 0) {
@@ -720,6 +723,9 @@ const store = createStore({
     },
     updateSmoothness({ commit }, value) {
       commit("setSmoothness", value);
+    },
+    updateUnitSampling({ commit }, value) {
+      commit("setUnitSampling", value);
     },
     addAnomaly({ commit }, payload) {
       commit("addAnomaly", payload);

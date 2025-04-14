@@ -149,7 +149,7 @@
               <el-card class="two_left" shadow="never">
                 <span style="display: flex; justify-content: space-between;">
                   <span class="title">待选择通道</span>
-                  <span>统一频率 <el-input-number v-model="unit_sampling" :precision="0" :step="10" :max="100000" />
+                  <span>统一频率 <el-input-number v-model="unit_sampling" :precision="0.1" :step="10" :max="200" />
                     KHz</span>
                 </span>
                 <div style="display: flex; justify-content: center; align-items: center;">
@@ -234,6 +234,11 @@ const color_table_value = ref(true)
 const SingleChannelMultiRow_channel_number = ref(true)
 const unit_sampling = ref(10)
 const selectedButton = ref('anay');
+
+// 添加监听函数，当unit_sampling改变时更新store
+watch(unit_sampling, (newValue) => {
+  store.dispatch('updateUnitSampling', newValue);
+});
 
 const MultiChannelRef = ref(null)
 const resultRef = ref(null)
