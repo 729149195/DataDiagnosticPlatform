@@ -400,6 +400,8 @@ const store = createStore({
     refreshStructTree(state, data) {
       // 保存当前选中状态
       const selectedStates = new Map();
+      
+      // 1. 首先从displayedData中获取当前可见通道的选中状态
       if (state.displayedData) {
         state.displayedData.forEach((item) => {
           if (item.channels) {
@@ -414,6 +416,21 @@ const store = createStore({
           }
         });
       }
+      
+      // 2. 从selectedChannels中获取额外的选中状态信息
+      // 这确保了不在当前显示页面的选中通道信息也被保存
+      if (state.selectedChannels && state.selectedChannels.length > 0) {
+        state.selectedChannels.forEach((channel) => {
+          const key = `${channel.channel_name}_${channel.shot_number}`;
+          if (!selectedStates.has(key)) {
+            selectedStates.set(key, {
+              channelChecked: true, // 如果在selectedChannels中，那么它一定是选中的
+              typeChecked: false, // 先设为false，后面会根据通道类型进行更新
+              showAllErrors: false,
+            });
+          }
+        });
+      }
 
       // 更新数据
       state.rawData = data;
@@ -422,12 +439,18 @@ const store = createStore({
       if (state.displayedData) {
         state.displayedData.forEach((item) => {
           if (item.channels) {
+            // 记录该通道类型中有选中通道的数量
+            let checkedChannelsCount = 0;
+            let totalChannelsCount = item.channels.length;
+            
             item.channels.forEach((channel) => {
               const key = `${channel.channel_name}_${channel.shot_number}`;
               const savedState = selectedStates.get(key);
               if (savedState) {
                 channel.checked = savedState.channelChecked;
-                item.checked = savedState.typeChecked;
+                if (channel.checked) {
+                  checkedChannelsCount++;
+                }
                 channel.showAllErrors = savedState.showAllErrors;
                 if (channel.showAllErrors) {
                   channel.displayedErrors = channel.errors;
@@ -436,6 +459,13 @@ const store = createStore({
                 }
               }
             });
+            
+            // 如果该通道类型中所有通道都被选中，则该类型也被选中
+            if (checkedChannelsCount > 0) {
+              item.checked = (checkedChannelsCount === totalChannelsCount);
+            } else {
+              item.checked = false;
+            }
           }
         });
       }

@@ -209,7 +209,7 @@
                 :disabled="!hasSelectedUploaded"
                 style="margin-right: 10px;"
               >
-                批量删除已上传
+                批量删除已上传(含机器识别)
               </el-button>
               <el-button 
                 type="primary" 
@@ -2665,22 +2665,21 @@ const batchDeleteNotUploaded = async () => {
       });
     }
     
+    // 重新渲染热力图以更新显示
+    if (selectedChannels.value.length > 0) {
+      renderHeatmap(selectedChannels.value, true);
+    }
+    
+    // 更新批量调整对话框数据，确保在重新渲染后再次获取最新状态
+    await new Promise(resolve => setTimeout(resolve, 800));
+    updateBatchAdjustData();
+    
     // 提示删除结果
     if (results.length === 0) {
       ElMessage.info('所选通道中没有可删除的未上传异常');
     } else {
       const totalCount = results.reduce((sum, item) => sum + item.count, 0);
       ElMessage.success(`已成功删除 ${results.length} 个通道中的 ${totalCount} 个未上传异常`);
-      
-      // 重新渲染热力图以更新显示
-      if (selectedChannels.value.length > 0) {
-        renderHeatmap(selectedChannels.value, true);
-      }
-      
-      // 更新批量调整对话框数据
-      setTimeout(() => {
-        updateBatchAdjustData();
-      }, 300);
     }
   } catch (error) {
     // 用户取消删除操作
@@ -2743,10 +2742,10 @@ const batchDeleteUploaded = async () => {
         // 遍历所有错误数据，处理人工标注的异常
         for (const error of channelErrors) {
           if (Array.isArray(error.errorData)) {
-            // 处理人工标注的异常
-            const [manualErrors, _] = error.errorData;
+            // 获取人工标注和机器识别的异常
+            const [manualErrors, machineErrors] = error.errorData;
             
-            // 仅处理人工标注的错误，机器识别的错误不能通过前端删除
+            // 处理人工标注的错误
             if (manualErrors && manualErrors.length > 0) {
               for (const manualError of manualErrors) {
                 // 获取异常类型
@@ -2767,15 +2766,16 @@ const batchDeleteUploaded = async () => {
                   shot_number: manualError.shot_number || manualError.炮号,
                   error_type: errorType
                 };
-                
+
                 // 确保所有必要字段都存在
                 if (!requestData.diagnostic_name || !requestData.channel_number ||
                     !requestData.shot_number || !requestData.error_type) {
                   console.error('删除失败: 缺少必要的字段', manualError);
                   continue;
                 }
-                
+
                 try {
+                  console.log(`删除异常类别: ${errorType}`, requestData);
                   const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
                     method: 'POST',
                     headers: {
@@ -2783,7 +2783,60 @@ const batchDeleteUploaded = async () => {
                     },
                     body: JSON.stringify(requestData)
                   });
-                  
+
+                  if (response.ok) {
+                    deleteResults.push(true);
+                  } else {
+                    const errorText = await response.text();
+                    console.error('服务器返回错误:', errorText);
+                    deleteResults.push(false);
+                  }
+                } catch (error) {
+                  console.error('删除请求失败:', error);
+                  deleteResults.push(false);
+                }
+              }
+            }
+            
+            // 处理机器识别的错误
+            if (machineErrors && machineErrors.length > 0) {
+              for (const machineError of machineErrors) {
+                // 获取异常类型
+                const errorType = machineError.error_type || machineError.错误类型;
+                
+                // 如果这个类型已经处理过，跳过
+                if (processedErrorTypes.has(errorType)) {
+                  continue;
+                }
+                
+                // 标记为已处理
+                processedErrorTypes.add(errorType);
+                
+                // 准备请求数据
+                const requestData = {
+                  diagnostic_name: machineError.diagnostic_name || machineError.诊断名称,
+                  channel_number: machineError.channel_number || machineError.通道编号,
+                  shot_number: machineError.shot_number || machineError.炮号,
+                  error_type: errorType
+                };
+
+                // 确保所有必要字段都存在
+                if (!requestData.diagnostic_name || !requestData.channel_number ||
+                    !requestData.shot_number || !requestData.error_type) {
+                  console.error('删除失败: 缺少必要的字段', machineError);
+                  continue;
+                }
+
+                try {
+                  console.log(`删除异常类别: ${errorType}`, requestData);
+                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestData)
+                  });
+
                   if (response.ok) {
                     deleteResults.push(true);
                   } else {
@@ -2842,7 +2895,11 @@ const batchDeleteUploaded = async () => {
       // 关闭加载提示
       loadingInstance.close();
       
-      // 提示删除结果
+      // 更新批量调整对话框数据，确保在刷新数据后再次获取最新状态
+      await new Promise(resolve => setTimeout(resolve, 800));
+      updateBatchAdjustData();
+      
+      // 刷新后再检查结果
       if (results.length === 0) {
         ElMessage.info('所选通道中没有可删除的已上传异常');
       } else {
@@ -2853,11 +2910,6 @@ const batchDeleteUploaded = async () => {
         if (selectedChannels.value.length > 0) {
           renderHeatmap(selectedChannels.value, true);
         }
-        
-        // 更新批量调整对话框数据
-        setTimeout(() => {
-          updateBatchAdjustData();
-        }, 300);
       }
     } catch (error) {
       console.error('批量删除失败:', error);
@@ -3229,7 +3281,7 @@ const deleteBatchUploaded = async (channelKey) => {
       // 更新批量调整对话框数据
       setTimeout(() => {
         updateBatchAdjustData();
-      }, 300);
+      }, 500); // 延长等待时间，确保数据刷新完成
       
     } catch (error) {
       console.error('批量删除失败:', error);
