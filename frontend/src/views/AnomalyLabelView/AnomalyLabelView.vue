@@ -71,10 +71,10 @@
 
                   <div class="control-item">
                     <el-button-group>
-                      <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 14px;">
+                      <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 0.9em;">
                         框选标注/编辑
                       </el-button>
-                      <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)" style="font-size: 14px;">
+                      <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)" style="font-size: 0.9em;">
                         局部缩放
                       </el-button>
                     </el-button-group>
@@ -82,31 +82,32 @@
 
                   <div class="control-item">
                     <el-button-group>
-                      <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)" style="font-size: 14px;">
+                      <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)" style="font-size: 0.9em;">
                         单通道多行
                       </el-button>
-                      <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)" style="font-size: 14px;">
+                      <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)" style="font-size: 0.9em;">
                         多通道单行
                       </el-button>
                     </el-button-group>
                   </div>
 
-                  <div class="control-item">
+                  <!-- <div class="control-item">
                     <el-dropdown trigger="click" @command="handleExportCommand">
                       <el-button type="primary" class="menu-button" title="更多操作">
+                        导出
                         <el-icon>
-                          <Menu />
+                          <Download />
                         </el-icon>
                       </el-button>
                       <template #dropdown>
                         <el-dropdown-menu>
                           <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
                           <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
-                          <!-- <el-dropdown-item command="syncUpload" v-if="store.state.authority != 0">上传标注异常</el-dropdown-item> -->
+                          <el-dropdown-item command="syncUpload" v-if="store.state.authority != 0">上传标注异常</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
-                  </div>
+                  </div> -->
                 </div>
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
@@ -1006,14 +1007,14 @@ const updateSmoothness = (value) => {
 
 .control-label {
   margin-right: 8px;
-  font-size: 13px;
+  font-size: 1em;
   color: #606266;
   white-space: nowrap;
 }
 
 .control-unit {
   margin-left: 4px;
-  font-size: 13px;
+  font-size: 1em;
   color: #606266;
 }
 
