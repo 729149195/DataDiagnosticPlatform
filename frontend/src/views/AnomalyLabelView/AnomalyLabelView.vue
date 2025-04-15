@@ -47,16 +47,6 @@
               <span style="display: flex; align-items: center; justify-content: space-between; ">
                 <span class="title">实验数据探索</span>
                 <div class="control-panel">
-                  <div class="control-item">
-                    <span class="control-label">采样频率</span>
-                    <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
-                    <span class="control-unit">KHz</span>
-                  </div>
-
-                  <!-- <div class="control-item">
-                    <span class="control-label">平滑度</span>
-                    <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
-                  </div> -->
 
                   <!-- 是否显示异常区域的按钮 -->
                   <div class="control-item">
@@ -68,6 +58,17 @@
                       </el-button>
                     </el-tooltip>
                   </div>
+
+                  <div class="control-item">
+                    <span class="control-label">采样频率</span>
+                    <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
+                    <span class="control-unit">KHz</span>
+                  </div>
+
+                  <!-- <div class="control-item">
+                    <span class="control-label">平滑度</span>
+                    <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
+                  </div> -->
 
                   <div class="control-item">
                     <el-button-group>
@@ -91,7 +92,7 @@
                     </el-button-group>
                   </div>
 
-                  <!-- <div class="control-item">
+                  <div class="control-item">
                     <el-dropdown trigger="click" @command="handleExportCommand">
                       <el-button type="primary" class="menu-button" title="更多操作">
                         导出
@@ -103,11 +104,10 @@
                         <el-dropdown-menu>
                           <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
                           <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
-                          <el-dropdown-item command="syncUpload" v-if="store.state.authority != 0">上传标注异常</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
                     </el-dropdown>
-                  </div> -->
+                  </div>
                 </div>
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
@@ -995,7 +995,7 @@ const updateSmoothness = (value) => {
 .control-panel {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
