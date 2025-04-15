@@ -94,7 +94,7 @@
 
                   <div class="control-item">
                     <el-dropdown trigger="click" @command="handleExportCommand">
-                      <el-button type="primary" class="menu-button" title="更多操作">
+                      <el-button  type="primary" class="menu-button" title="更多操作">
                         导出
                         <el-icon>
                           <Download />
@@ -1002,7 +1002,6 @@ const updateSmoothness = (value) => {
 .control-item {
   display: flex;
   align-items: center;
-  margin-right: 5px;
 }
 
 .control-label {
