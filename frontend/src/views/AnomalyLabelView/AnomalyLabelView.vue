@@ -230,6 +230,7 @@ const sampling = ref(5)
 const smoothness = ref(0)
 const isSecondSectionCollapsed = ref(true) // 默认为折叠状态
 const showAnomaly = ref(true) // 是否显示异常区域，默认显示
+const chartObserver = ref(null) // 添加MutationObserver引用
 
 const color_table_value = ref(true)
 const SingleChannelMultiRow_channel_number = ref(true)
@@ -286,6 +287,15 @@ onMounted(() => {
   if (savedChannelMode !== null) {
     SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
   }
+  
+  // 恢复异常区域显示状态
+  const savedShowAnomaly = localStorage.getItem('showAnomaly');
+  if (savedShowAnomaly !== null) {
+    showAnomaly.value = savedShowAnomaly === 'true';
+  }
+  
+  // 创建并启动MutationObserver，监听图表变化
+  setupChartObserver();
 });
 
 const selectButton = (button) => {
@@ -361,11 +371,30 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
   }
 };
 
-const updateShowAnomaly = (value) => {
-  showAnomaly.value = value;
-  localStorage.setItem('showAnomaly', value.toString());
+// 添加设置MutationObserver的函数
+const setupChartObserver = () => {
+  // 如果已经存在观察者，先断开连接
+  if (chartObserver.value) {
+    chartObserver.value.disconnect();
+  }
+  
+  // 创建新的MutationObserver
+  chartObserver.value = new MutationObserver((mutations) => {
+    // 如果图表发生变化，应用当前的显示/隐藏状态到所有异常区域
+    applyAnomalyVisibility();
+  });
+  
+  // 开始观察整个文档，关注子节点的添加
+  chartObserver.value.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+};
 
-  // 实现异常区域透明度变化
+// 应用异常区域可见性的函数，可以单独调用
+const applyAnomalyVisibility = () => {
+  const currentVisibility = showAnomaly.value;
+  
   if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行模式
     const allCharts = document.querySelectorAll('[id^="chart-"]');
@@ -378,11 +407,10 @@ const updateShowAnomaly = (value) => {
             if (band.id.startsWith('band-') && !band.options.color.includes('255, 0, 0')) {
               return;
             }
-
             const element = band.svgElem;
             if (element) {
               element.attr({
-                fill: value ? (band.options.color || 'rgba(255, 0, 0, 0.2)') : 'rgba(0, 0, 0, 0)'
+                fill: currentVisibility ? (band.options.color || 'rgba(255, 0, 0, 0.2)') : 'rgba(0, 0, 0, 0)'
               });
             }
           }
@@ -394,8 +422,29 @@ const updateShowAnomaly = (value) => {
     const chartInstance = MultiChannelRef.value.chartInstance;
     if (chartInstance) {
       // 实现与单通道多行模式类似的透明度控制
+      chartInstance.xAxis[0].plotLinesAndBands.forEach(band => {
+        if (band.id && (band.id.startsWith('band-') || band.id.startsWith('error-band-'))) {
+          // 不影响现场标注的异常(橙色)
+          if (band.id.startsWith('band-') && !band.options.color.includes('255, 0, 0')) {
+            return;
+          }
+          const element = band.svgElem;
+          if (element) {
+            element.attr({
+              fill: currentVisibility ? (band.options.color || 'rgba(255, 0, 0, 0.2)') : 'rgba(0, 0, 0, 0)'
+            });
+          }
+        }
+      });
     }
   }
+};
+
+const updateShowAnomaly = (value) => {
+  showAnomaly.value = value;
+  localStorage.setItem('showAnomaly', value.toString());
+  // 调用统一的应用函数
+  applyAnomalyVisibility();
 };
 
 const exportChannelSVG = async () => {
