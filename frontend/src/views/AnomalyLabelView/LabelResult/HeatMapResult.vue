@@ -75,7 +75,7 @@
                         <Delete />
                       </el-icon>
                     </div>
-                    
+
                     <div class="statistic-layout">
                       <!-- 第一行：责任人和通道名称 -->
                       <div class="statistic-row">
@@ -98,7 +98,7 @@
                           </div>
                         </div>
                       </div>
-                      
+
                       <!-- 第二行：异常类别和诊断名 -->
                       <div class="statistic-row">
                         <div class="statistic-item">
@@ -116,7 +116,7 @@
                           </div>
                         </div>
                       </div>
-                      
+
                       <div class="statistic-row">
                         <div class="statistic-item full-width">
                           <div class="statistic-title">异常描述</div>
@@ -131,8 +131,8 @@
                         </div>
                       </div>
 
-                       <!-- 修改时间范围行，使标题和值在同一行 -->
-                       <div class="statistic-row time-row">
+                      <!-- 修改时间范围行，使标题和值在同一行 -->
+                      <div class="statistic-row time-row">
                         <div class="time-title">异常时间范围(s):</div>
                         <div class="time-value">
                           <!-- 处理对象类型的时间范围（可折叠的多个时间范围） -->
@@ -140,24 +140,18 @@
                             <div>
                               <span v-if="anomaly['时间范围'].collapsed">
                                 {{ anomaly['时间范围'].ranges.slice(0, anomaly['时间范围'].displayCount).join(', ') }}
-                                <el-button 
-                                  type="text" 
-                                  size="small" 
-                                  @click="anomaly['时间范围'].collapsed = false"
-                                  style="padding: 0 4px; margin-left: 4px;"
-                                >
-                                  <el-icon><ArrowDown /></el-icon> 展开(共{{ anomaly['时间范围'].ranges.length }}个)
+                                <el-button type="text" size="small" @click="anomaly['时间范围'].collapsed = false" style="padding: 0 4px; margin-left: 4px;">
+                                  <el-icon>
+                                    <ArrowDown />
+                                  </el-icon> 展开(共{{ anomaly['时间范围'].ranges.length }}个)
                                 </el-button>
                               </span>
                               <span v-else>
                                 {{ anomaly['时间范围'].ranges.join(', ') }}
-                                <el-button 
-                                  type="text" 
-                                  size="small" 
-                                  @click="anomaly['时间范围'].collapsed = true"
-                                  style="padding: 0 4px; margin-left: 4px;"
-                                >
-                                  <el-icon><ArrowUp /></el-icon> 折叠
+                                <el-button type="text" size="small" @click="anomaly['时间范围'].collapsed = true" style="padding: 0 4px; margin-left: 4px;">
+                                  <el-icon>
+                                    <ArrowUp />
+                                  </el-icon> 折叠
                                 </el-button>
                               </span>
                             </div>
@@ -180,7 +174,7 @@
         </div>
       </div>
     </el-dialog>
-    
+
     <!-- 批量调整异常对话框 -->
     <el-dialog v-model="showBatchAdjustDialog" title="批量删除/上传异常" width="700px" :destroy-on-close="true">
       <div class="batch-adjust-container">
@@ -189,45 +183,22 @@
         </div>
         <div v-else>
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <div  class="selected-info">
+            <div class="selected-info">
               已选择 <span class="selected-count">{{ selectedRows.length }}</span> 个通道
             </div>
-            <div  class="top-batch-actions">
-              <el-button 
-                type="danger" 
-                size="small"
-                @click="batchDeleteNotUploaded"
-                :disabled="!hasSelectedNotUploaded"
-                style="margin-right: 10px;"
-              >
+            <div class="top-batch-actions">
+              <el-button type="danger" size="small" @click="batchDeleteNotUploaded" :disabled="!hasSelectedNotUploaded" style="margin-right: 10px;">
                 批量删除未上传
               </el-button>
-              <el-button 
-                type="danger" 
-                size="small"
-                @click="batchDeleteUploaded"
-                :disabled="!hasSelectedUploaded"
-                style="margin-right: 10px;"
-              >
+              <el-button type="danger" size="small" @click="batchDeleteUploaded" :disabled="!hasSelectedUploaded" style="margin-right: 10px;">
                 批量删除已上传
               </el-button>
-              <el-button 
-                type="primary" 
-                size="small"
-                @click="batchUploadAnomalies"
-                :disabled="!hasSelectedNotUploaded"
-              >
+              <el-button type="primary" size="small" @click="batchUploadAnomalies" :disabled="!hasSelectedNotUploaded">
                 批量上传异常
               </el-button>
             </div>
           </div>
-          <el-table 
-            :data="batchAdjustData.channels" 
-            border 
-            style="width: 100%"
-            @selection-change="handleSelectionChange"
-            ref="batchTableRef"
-          >
+          <el-table :data="batchAdjustData.channels" border style="width: 100%" @selection-change="handleSelectionChange" ref="batchTableRef">
             <el-table-column type="selection" width="55" />
             <el-table-column label="炮号" prop="shotNumber" width="100" align="center" />
             <el-table-column label="通道" prop="channelName" min-width="180" />
@@ -254,7 +225,7 @@
         </span>
       </template>
     </el-dialog>
-    
+
     <el-dialog v-if="showAnomalyForm && currentAnomaly.channelName" v-model="showAnomalyForm" title="编辑/修改异常信息" :destroy-on-close="true">
       <el-form :model="currentAnomaly" label-width="auto">
         <el-form-item label="通道名">
@@ -398,33 +369,33 @@ const processObject = (obj) => {
         newObj[key] = processObject(value);
       }
     }
-    
+
     // 特殊处理某些字段，确保它们能正确显示
     if (obj.anomalyCategory) {
       newObj['异常类别'] = obj.anomalyCategory;
     }
-    
+
     if (obj.anomalyDiagnosisName) {
       newObj['诊断名称'] = obj.anomalyDiagnosisName;
     }
-    
+
     if (obj.anomalyDescription) {
       newObj['异常描述'] = obj.anomalyDescription;
     }
-    
+
     if (obj.channelName) {
       newObj['通道名称'] = obj.channelName;
     }
-    
+
     if (obj.diagnostic_name) {
       newObj['诊断名称'] = obj.diagnostic_name;
     }
-    
+
     // 处理时间范围
     if (obj.startX !== undefined && obj.endX !== undefined) {
       newObj['时间范围'] = `[ ${parseFloat(obj.startX).toFixed(4)} —— ${parseFloat(obj.endX).toFixed(4)} ]`;
     }
-    
+
     // 处理X_error字段，转换为时间范围
     if (obj.X_error && Array.isArray(obj.X_error) && obj.X_error.length > 0) {
       const timeRanges = obj.X_error.map(range => {
@@ -438,7 +409,7 @@ const processObject = (obj) => {
         newObj['时间范围'] = timeRanges.join(', ');
       }
     }
-    
+
     // 处理标注时间
     if (obj.annotationTime) {
       // 格式化时间为可读格式
@@ -449,7 +420,7 @@ const processObject = (obj) => {
       const date = new Date(obj.timestamp);
       newObj['标注时间'] = date.toLocaleString();
     }
-    
+
     // 处理诊断时间
     if (obj.diagnostic_time) {
       // 格式化时间为可读格式
@@ -460,7 +431,7 @@ const processObject = (obj) => {
       const date = new Date(obj.timestamp);
       newObj['诊断时间'] = date.toLocaleString();
     }
-    
+
     return newObj;
   }
 
@@ -695,7 +666,7 @@ const syncUpload = async () => {
 
     // 使用新的action更新通道异常数据而不刷新整个表格
     await store.dispatch('updateChannelErrorsData');
-    
+
     return true; // 返回成功状态
   } catch (error) {
     console.error('同步失败：', error);
@@ -755,13 +726,13 @@ function formatValue(value, key) {
     // 为了确保在JSON.stringify时能够正确处理，我们修改对象的toJSON方法
     if (!value.toJSON) {
       Object.defineProperty(value, 'toJSON', {
-        value: function() {
+        value: function () {
           return this.ranges.join(', ');
         },
         enumerable: false
       });
     }
-    
+
     if (value.collapsed) {
       return value.ranges.slice(0, value.displayCount).join(', ');
     } else {
@@ -1351,12 +1322,12 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             if (d.length > 1) {
               // 获取该区域内所有异常的类型
               const errorTypes = new Set();
-              
+
               for (const errorIdx of d) {
                 const errorData = errorResults.find(
                   (result) => result && result.errorIdx === errorIdx && result.channelKey === channelKey
                 );
-                
+
                 if (errorData) {
                   // 对于机器识别的异常，使用错误名称作为类型标识
                   if (!errorData.isAnomaly && Array.isArray(errorData.errorData)) {
@@ -1372,12 +1343,12 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                   }
                 }
               }
-              
+
               // 如果只有一种类型的异常，使用第一个异常的颜色
               if (errorTypes.size === 1) {
                 return errorColors[d[0]];
               }
-              
+
               // 如果有多种类型的异常，使用灰色
               return '#999999';
             }
@@ -1419,7 +1390,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
             const processErrorData = (errorData) => {
               // 创建一个新的处理后的数据对象
               const processedData = {};
-              
+
               // 深拷贝数据以避免引用问题
               const errorDataCopy = JSON.parse(JSON.stringify(errorData));
 
@@ -1480,26 +1451,26 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
               if (processedData['责任人'] !== 'machine' && processedData['标注时间']) {
                 processedData['标注时间'] = formatValue(processedData['标注时间'], 'annotationTime');
               }
-              
+
               // 确保异常类别和诊断名称正确显示
               if (errorDataCopy.anomalyCategory) {
                 processedData['异常类别'] = errorDataCopy.anomalyCategory;
               }
-              
+
               if (errorDataCopy.anomalyDiagnosisName) {
                 processedData['诊断名称'] = errorDataCopy.anomalyDiagnosisName;
               }
-              
+
               // 确保异常描述正确显示
               if (errorDataCopy.anomalyDescription) {
                 processedData['异常描述'] = errorDataCopy.anomalyDescription;
               }
-              
+
               // 确保通道名称正确显示
               if (errorDataCopy.channelName) {
                 processedData['通道名称'] = errorDataCopy.channelName;
               }
-              
+
               // 确保标注时间正确显示
               if (errorDataCopy.annotationTime) {
                 // 格式化时间为可读格式
@@ -1510,7 +1481,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 const date = new Date(errorDataCopy.timestamp);
                 processedData['标注时间'] = date.toLocaleString();
               }
-              
+
               // 确保诊断时间正确显示
               if (errorDataCopy.diagnostic_time) {
                 // 格式化时间为可读格式
@@ -1569,16 +1540,16 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                       if (machineError && Object.keys(machineError).length > 0) {
                         // 对机器识别的结果进行处理
                         const processedData = processErrorData(machineError);
-                        
+
                         // 确保通道名称正确显示
                         if (!processedData['通道名称']) {
                           processedData['通道名称'] = error.channelKey;
                         }
-                        
+
                         if (Object.keys(processedData).length > 0) {
                           // 使用时间范围作为唯一标识符
-                          const key = typeof processedData['时间范围'] === 'object' 
-                            ? JSON.stringify(processedData['时间范围'].ranges) 
+                          const key = typeof processedData['时间范围'] === 'object'
+                            ? JSON.stringify(processedData['时间范围'].ranges)
                             : (processedData['时间范围'] || JSON.stringify(error.errorData));
                           if (!machineAnomalyMap.has(key)) {
                             machineAnomalyMap.set(key, processedData);
@@ -1946,7 +1917,7 @@ const saveAnomaly = () => {
     Object.keys(currentAnomaly).forEach((key) => {
       delete currentAnomaly[key];
     });
-    
+
     // 如果异常列表对话框正在显示，立即更新其内容
     if (showAnomalyDialog.value) {
       // 延迟一点执行更新，确保store中的数据已更新
@@ -1954,7 +1925,7 @@ const saveAnomaly = () => {
         updateAnomalyDialogContent();
       }, 100);
     }
-    
+
     // 重新渲染热力图，确保显示最新数据
     if (selectedChannels.value.length > 0) {
       renderHeatmap(selectedChannels.value, true);
@@ -1967,13 +1938,13 @@ const deleteAnomaly = () => {
   if (currentAnomaly) {
     const anomalyId = currentAnomaly.id || currentAnomaly.ID;
     const channelName = currentAnomaly.channelName || currentAnomaly.通道名称;
-    
+
     if (!anomalyId || !channelName) {
       console.error('删除失败: 缺少必要的字段', currentAnomaly);
       ElMessage.error('删除失败: 缺少必要的字段');
       return;
     }
-    
+
     // 从 store 中删除异常数据
     store.dispatch('deleteAnomaly', {
       channelName: channelName,
@@ -1989,7 +1960,7 @@ const deleteAnomaly = () => {
     Object.keys(currentAnomaly).forEach((key) => {
       delete currentAnomaly[key];
     });
-    
+
     // 如果异常列表对话框正在显示，立即更新其内容
     if (showAnomalyDialog.value) {
       // 延迟一点执行更新，确保store中的数据已更新
@@ -1997,7 +1968,7 @@ const deleteAnomaly = () => {
         updateAnomalyDialogContent();
       }, 100);
     }
-    
+
     // 重新渲染热力图，确保显示最新数据
     if (selectedChannels.value.length > 0) {
       renderHeatmap(selectedChannels.value, true);
@@ -2052,7 +2023,7 @@ const editAnomaly = (anomaly, type) => {
     // 获取 ID 和通道名称
     const anomalyId = anomaly.id || anomaly.ID;
     const channelName = anomaly.channelName || anomaly.通道名称;
-    
+
     if (!anomalyId || !channelName) {
       console.error('编辑失败: 缺少必要的字段', anomaly);
       ElMessage.error('编辑失败: 缺少必要的字段');
@@ -2095,19 +2066,19 @@ const deleteAnomalyFromList = (anomaly, type) => {
         // 检查是否有 ID 字段
         const anomalyId = anomaly.id || anomaly.ID;
         const channelName = anomaly.channelName || anomaly.通道名称;
-        
+
         if (!anomalyId || !channelName) {
           console.error('删除失败: 缺少必要的字段', anomaly);
           ElMessage.error('删除失败: 缺少必要的字段');
           return;
         }
-        
+
         store.dispatch('deleteAnomaly', {
           channelName: channelName,
           anomalyId: anomalyId
         });
         ElMessage.success('异常标注已删除');
-        
+
         // 立即更新对话框内容
         updateAnomalyDialogContent();
       })
@@ -2160,7 +2131,7 @@ const deleteErrorData = (errorData, type) => {
       try {
         // 打印错误数据，帮助调试
         // console.log('要删除的异常数据:', errorData);
-        
+
         // 处理字段名称映射，确保使用正确的字段名
         const requestData = {
           diagnostic_name: errorData.diagnostic_name || errorData.诊断名称,
@@ -2168,12 +2139,12 @@ const deleteErrorData = (errorData, type) => {
           shot_number: errorData.shot_number || errorData.炮号,
           error_type: errorData.error_type || errorData.错误类型
         };
-        
+
         // console.log('处理后的请求数据:', requestData);
 
         // 检查是否所有必要字段都存在
         if (!requestData.diagnostic_name || !requestData.channel_number ||
-            !requestData.shot_number || !requestData.error_type) {
+          !requestData.shot_number || !requestData.error_type) {
           console.error('删除失败: 缺少必要的字段', errorData);
           throw new Error('删除失败: 缺少必要的字段');
         }
@@ -2198,7 +2169,7 @@ const deleteErrorData = (errorData, type) => {
 
         // 关闭对话框
         showAnomalyDialog.value = false;
-        
+
         // 立即更新对话框内容
         updateAnomalyDialogContent();
       } catch (error) {
@@ -2222,7 +2193,7 @@ const updateAnomalyDialogContent = () => {
     if (currentChannelData && (currentChannelData.channelName || currentChannelData.通道名称)) {
       // 获取通道名称
       const channelName = currentChannelData.channelName || currentChannelData.通道名称;
-      
+
       // 重新构建显示数据
       const manualAnomalies = [];
       const machineAnomalies = [];
@@ -2234,36 +2205,36 @@ const updateAnomalyDialogContent = () => {
           // 深拷贝异常数据，避免引用问题
           const anomalyCopy = JSON.parse(JSON.stringify(anomaly));
           const processedData = processObject(anomalyCopy);
-          
+
           // 确保时间范围格式正确
           if (anomalyCopy.startX !== undefined && anomalyCopy.endX !== undefined) {
             processedData['时间范围'] = `[ ${parseFloat(anomalyCopy.startX).toFixed(4)} —— ${parseFloat(anomalyCopy.endX).toFixed(4)} ]`;
           }
-          
+
           // 确保异常类别和诊断名称正确显示
           if (anomalyCopy.anomalyCategory) {
             processedData['异常类别'] = anomalyCopy.anomalyCategory;
           }
-          
+
           if (anomalyCopy.anomalyDiagnosisName) {
             processedData['诊断名称'] = anomalyCopy.anomalyDiagnosisName;
           }
-          
+
           // 确保异常描述正确显示
           if (anomalyCopy.anomalyDescription) {
             processedData['异常描述'] = anomalyCopy.anomalyDescription;
           }
-          
+
           // 确保通道名称正确显示
           if (anomalyCopy.channelName) {
             processedData['通道名称'] = anomalyCopy.channelName;
           }
-          
+
           // 确保责任人正确显示
           if (anomalyCopy.person) {
             processedData['责任人'] = anomalyCopy.person;
           }
-          
+
           // 确保标注时间正确显示
           if (anomalyCopy.annotationTime) {
             // 格式化时间为可读格式
@@ -2274,7 +2245,7 @@ const updateAnomalyDialogContent = () => {
             const date = new Date(anomalyCopy.timestamp);
             processedData['标注时间'] = date.toLocaleString();
           }
-          
+
           if (Object.keys(processedData).length > 0) {
             manualAnomalies.push(processedData);
           }
@@ -2284,7 +2255,7 @@ const updateAnomalyDialogContent = () => {
       // 从 errorResults 中获取机器识别的异常
       // 使用一个Map来存储唯一的机器识别异常，避免重复
       const machineAnomalyMap = new Map();
-      
+
       const channelErrors = errorResults.filter(
         result => result.channelKey === channelName && !result.isAnomaly
       );
@@ -2294,14 +2265,14 @@ const updateAnomalyDialogContent = () => {
           // 创建深拷贝以避免引用问题
           const errorDataCopy = JSON.parse(JSON.stringify(error.errorData));
           const [, machineErrors] = errorDataCopy;
-          
+
           if (machineErrors && machineErrors.length > 0) {
             machineErrors.forEach(machineError => {
               if (machineError && Object.keys(machineError).length > 0) {
                 // 深拷贝机器异常数据，避免引用问题
                 const machineErrorCopy = JSON.parse(JSON.stringify(machineError));
                 const processedData = processObject(machineErrorCopy);
-                
+
                 // 确保时间范围格式正确
                 if (machineErrorCopy.X_error && Array.isArray(machineErrorCopy.X_error) && machineErrorCopy.X_error.length > 0) {
                   const timeRanges = machineErrorCopy.X_error.map(range => {
@@ -2324,26 +2295,26 @@ const updateAnomalyDialogContent = () => {
                     }
                   }
                 }
-                
+
                 // 确保责任人正确显示
                 if (machineErrorCopy.person) {
                   processedData['责任人'] = machineErrorCopy.person;
                 } else {
                   processedData['责任人'] = 'machine';
                 }
-                
+
                 // 确保诊断名称正确显示
                 if (machineErrorCopy.diagnostic_name) {
                   processedData['诊断名称'] = machineErrorCopy.diagnostic_name;
                 }
-                
+
                 // 确保通道名称正确显示
                 if (machineErrorCopy.channelName) {
                   processedData['通道名称'] = machineErrorCopy.channelName;
                 } else {
                   processedData['通道名称'] = channelName;
                 }
-                
+
                 // 确保诊断时间正确显示
                 if (machineErrorCopy.diagnostic_time) {
                   // 格式化时间为可读格式
@@ -2354,11 +2325,11 @@ const updateAnomalyDialogContent = () => {
                   const date = new Date(machineErrorCopy.timestamp);
                   processedData['诊断时间'] = date.toLocaleString();
                 }
-                
+
                 if (Object.keys(processedData).length > 0) {
                   // 使用时间范围作为唯一标识符
-                  const key = typeof processedData['时间范围'] === 'object' 
-                    ? JSON.stringify(processedData['时间范围'].ranges) 
+                  const key = typeof processedData['时间范围'] === 'object'
+                    ? JSON.stringify(processedData['时间范围'].ranges)
                     : (processedData['时间范围'] || JSON.stringify(error.errorData));
                   if (!machineAnomalyMap.has(key)) {
                     machineAnomalyMap.set(key, processedData);
@@ -2369,7 +2340,7 @@ const updateAnomalyDialogContent = () => {
           }
         }
       });
-      
+
       // 将Map中的值转换为数组
       const uniqueMachineAnomalies = Array.from(machineAnomalyMap.values());
 
@@ -2428,7 +2399,7 @@ const deleteAllEditableAnomalies = (channelKey) => {
       });
 
       ElMessage.success('已删除该通道所有可编辑的异常标注');
-      
+
       // 重新渲染热力图以更新显示
       if (selectedChannels.value.length > 0) {
         renderHeatmap(selectedChannels.value, true);
@@ -2483,7 +2454,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
           if (Array.isArray(error.errorData)) {
             // 处理人工标注的异常
             const [manualErrors, machineErrors] = error.errorData;
-            
+
             // 仅处理人工标注的错误，机器识别的错误不能通过前端删除
             if (manualErrors && manualErrors.length > 0) {
               for (const manualError of manualErrors) {
@@ -2497,7 +2468,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
 
                 // 确保所有必要字段都存在
                 if (!requestData.diagnostic_name || !requestData.channel_number ||
-                    !requestData.shot_number || !requestData.error_type) {
+                  !requestData.shot_number || !requestData.error_type) {
                   console.error('删除失败: 缺少必要的字段', manualError);
                   continue;
                 }
@@ -2529,23 +2500,23 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
 
         // 删除成功后刷新数据
         await store.dispatch('updateChannelErrorsData');
-        
+
         // 强制清除缓存，确保重新获取最新数据
         // 清除该通道的数据缓存
         const [channelName, shotNumber] = channelKey.split('_');
         const cacheKey = `${channelName}_${shotNumber}`;
-        
+
         // 清除错误数据缓存
         try {
           // 直接使用dataCache处理缓存
           const keys = Object.keys(dataCache)
             .filter(key => key.startsWith(`error-${channelKey}`));
-          
+
           // 逐个删除缓存项
           keys.forEach(key => {
             delete dataCache[key];
           });
-          
+
           // 清除通道数据缓存
           if (dataCache[channelKey]) {
             delete dataCache[channelKey];
@@ -2553,12 +2524,12 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
         } catch (error) {
           console.warn('清除缓存失败:', error);
         }
-        
+
         // 从错误结果列表中移除该通道的所有非异常数据
         errorResults = errorResults.filter(
           result => !(result.channelKey === channelKey && !result.isAnomaly)
         );
-        
+
         // 根据结果关闭加载动画并显示提示
         loadingInstance.close();
 
@@ -2566,7 +2537,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
           ElMessage.info('没有找到可删除的已上传异常');
         } else if (deleteResults.every(result => result)) {
           ElMessage.success('已成功删除所有不可编辑的异常');
-          
+
           // 重新渲染热力图以更新显示
           if (selectedChannels.value.length > 0) {
             // 由于我们已经清除了缓存，需要强制刷新数据
@@ -2575,7 +2546,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
           }
         } else {
           ElMessage.warning(`已删除部分不可编辑的异常，但有些删除失败`);
-          
+
           // 重新渲染热力图以更新显示
           if (selectedChannels.value.length > 0) {
             // 强制重新获取所有数据并渲染
@@ -2607,10 +2578,10 @@ const batchAdjustData = ref({
 });
 const selectedRows = ref([]);
 const batchTableRef = ref(null);
-const hasSelectedNotUploaded = computed(() => 
+const hasSelectedNotUploaded = computed(() =>
   selectedRows.value.some(row => row.notUploadedCount > 0)
 );
-const hasSelectedUploaded = computed(() => 
+const hasSelectedUploaded = computed(() =>
   selectedRows.value.some(row => row.uploadedCount > 0)
 );
 
@@ -2640,16 +2611,16 @@ const batchDeleteNotUploaded = async () => {
 
     // 记录处理结果
     const results = [];
-    
+
     // 依次处理每个选中的通道
     for (const channel of selectedRows.value) {
       // 如果该通道没有未上传异常，跳过
       if (channel.notUploadedCount === 0) {
         continue;
       }
-      
+
       const channelKey = channel.channelKey;
-      
+
       // 从store获取该通道的所有未上传异常
       const storedAnomalies = store.getters.getAnomaliesByChannel(channelKey);
       if (!storedAnomalies || storedAnomalies.length === 0) {
@@ -2663,22 +2634,22 @@ const batchDeleteNotUploaded = async () => {
           anomalyId: anomaly.id
         });
       });
-      
+
       results.push({
         channelName: channel.channelName,
         count: storedAnomalies.length
       });
     }
-    
+
     // 重新渲染热力图以更新显示
     if (selectedChannels.value.length > 0) {
       renderHeatmap(selectedChannels.value, true);
     }
-    
+
     // 更新批量调整对话框数据，确保在重新渲染后再次获取最新状态
     await new Promise(resolve => setTimeout(resolve, 800));
     updateBatchAdjustData();
-    
+
     // 提示删除结果
     if (results.length === 0) {
       ElMessage.info('所选通道中没有可删除的未上传异常');
@@ -2710,60 +2681,60 @@ const batchDeleteUploaded = async () => {
         type: 'warning',
       }
     );
-    
+
     const loadingInstance = ElLoading.service({
       lock: true,
       text: '正在批量删除异常数据...',
       background: 'rgba(0, 0, 0, 0.7)'
     });
-    
+
     try {
       // 处理结果统计
       const results = [];
-      
+
       // 依次处理每个选中的通道
       for (const channel of selectedRows.value) {
         // 如果该通道没有已上传异常，跳过
         if (channel.uploadedCount === 0) {
           continue;
         }
-        
+
         const channelKey = channel.channelKey;
-        
+
         // 查找该通道的错误数据
         const channelErrors = errorResults.filter(
           result => result.channelKey === channelKey && !result.isAnomaly
         );
-        
+
         if (!channelErrors || channelErrors.length === 0) {
           continue;
         }
-        
+
         // 跟踪已处理的异常类型，避免重复删除
         const processedErrorTypes = new Set();
         // 保存删除请求的结果
         const deleteResults = [];
-        
+
         // 遍历所有错误数据，处理人工标注的异常
         for (const error of channelErrors) {
           if (Array.isArray(error.errorData)) {
             // 获取人工标注和机器识别的异常
             const [manualErrors, machineErrors] = error.errorData;
-            
+
             // 处理人工标注的错误
             if (manualErrors && manualErrors.length > 0) {
               for (const manualError of manualErrors) {
                 // 获取异常类型
                 const errorType = manualError.error_type || manualError.错误类型;
-                
+
                 // 如果这个类型已经处理过，跳过
                 if (processedErrorTypes.has(errorType)) {
                   continue;
                 }
-                
+
                 // 标记为已处理
                 processedErrorTypes.add(errorType);
-                
+
                 // 准备请求数据
                 const requestData = {
                   diagnostic_name: manualError.diagnostic_name || manualError.诊断名称,
@@ -2774,7 +2745,7 @@ const batchDeleteUploaded = async () => {
 
                 // 确保所有必要字段都存在
                 if (!requestData.diagnostic_name || !requestData.channel_number ||
-                    !requestData.shot_number || !requestData.error_type) {
+                  !requestData.shot_number || !requestData.error_type) {
                   console.error('删除失败: 缺少必要的字段', manualError);
                   continue;
                 }
@@ -2802,21 +2773,21 @@ const batchDeleteUploaded = async () => {
                 }
               }
             }
-            
+
             // 处理机器识别的错误
             if (machineErrors && machineErrors.length > 0) {
               for (const machineError of machineErrors) {
                 // 获取异常类型
                 const errorType = machineError.error_type || machineError.错误类型;
-                
+
                 // 如果这个类型已经处理过，跳过
                 if (processedErrorTypes.has(errorType)) {
                   continue;
                 }
-                
+
                 // 标记为已处理
                 processedErrorTypes.add(errorType);
-                
+
                 // 准备请求数据
                 const requestData = {
                   diagnostic_name: machineError.diagnostic_name || machineError.诊断名称,
@@ -2827,7 +2798,7 @@ const batchDeleteUploaded = async () => {
 
                 // 确保所有必要字段都存在
                 if (!requestData.diagnostic_name || !requestData.channel_number ||
-                    !requestData.shot_number || !requestData.error_type) {
+                  !requestData.shot_number || !requestData.error_type) {
                   console.error('删除失败: 缺少必要的字段', machineError);
                   continue;
                 }
@@ -2857,28 +2828,28 @@ const batchDeleteUploaded = async () => {
             }
           }
         }
-        
+
         // 如果有删除成功的请求，添加到结果中
         if (deleteResults.some(result => result)) {
           results.push({
             channelName: channel.channelName,
             count: processedErrorTypes.size
           });
-          
+
           // 清除通道数据缓存
           const [channelName, shotNumber] = channelKey.split('_');
-          
+
           // 清除错误数据缓存
           try {
             // 直接使用dataCache处理缓存
             const keys = Object.keys(dataCache)
               .filter(key => key.startsWith(`error-${channelKey}`));
-            
+
             // 逐个删除缓存项
             keys.forEach(key => {
               delete dataCache[key];
             });
-            
+
             // 清除通道数据缓存
             if (dataCache[channelKey]) {
               delete dataCache[channelKey];
@@ -2886,31 +2857,31 @@ const batchDeleteUploaded = async () => {
           } catch (error) {
             console.warn('清除缓存失败:', error);
           }
-          
+
           // 从错误结果列表中移除该通道的所有非异常数据
           errorResults = errorResults.filter(
             result => !(result.channelKey === channelKey && !result.isAnomaly)
           );
         }
       }
-      
+
       // 删除成功后刷新数据
       await store.dispatch('updateChannelErrorsData');
-      
+
       // 关闭加载提示
       loadingInstance.close();
-      
+
       // 更新批量调整对话框数据，确保在刷新数据后再次获取最新状态
       await new Promise(resolve => setTimeout(resolve, 800));
       updateBatchAdjustData();
-      
+
       // 刷新后再检查结果
       if (results.length === 0) {
         ElMessage.info('所选通道中没有可删除的已上传异常');
       } else {
         const totalCount = results.reduce((sum, item) => sum + item.count, 0);
         ElMessage.success(`已成功删除 ${results.length} 个通道中的 ${totalCount} 种异常类别`);
-        
+
         // 重新渲染热力图以更新显示
         if (selectedChannels.value.length > 0) {
           renderHeatmap(selectedChannels.value, true);
@@ -2931,26 +2902,26 @@ const batchDeleteUploaded = async () => {
 const updateBatchAdjustData = () => {
   const channels = selectedChannels.value.map(channel => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    
+
     // 获取未上传的异常
     const notUploadedAnomalies = store.getters.getAnomaliesByChannel(channelKey) || [];
-    
+
     // 获取已上传的异常
     let uploadedCount = 0;
-    
+
     // 从errorResults中查找该通道的所有绘制出来的异常
     const channelErrors = errorResults.filter(
       result => result.channelKey === channelKey && !result.isAnomaly
     );
-    
+
     // 统计每个异常类别
     const errorTypes = new Set();
-    
+
     channelErrors.forEach(error => {
       if (Array.isArray(error.errorData)) {
         // 处理人工标注的异常和机器识别的异常
         const [manualErrors, machineErrors] = error.errorData;
-        
+
         // 从人工标注的异常中提取异常类别
         if (manualErrors && manualErrors.length > 0) {
           manualErrors.forEach(manualError => {
@@ -2960,7 +2931,7 @@ const updateBatchAdjustData = () => {
             }
           });
         }
-        
+
         // 从机器识别的异常中提取异常类别
         if (machineErrors && machineErrors.length > 0) {
           machineErrors.forEach(machineError => {
@@ -2972,10 +2943,10 @@ const updateBatchAdjustData = () => {
         }
       }
     });
-    
+
     // 已上传异常数量为不同异常类别的数量
     uploadedCount = errorTypes.size;
-    
+
     return {
       channelKey,
       channelName: channel.channel_name,
@@ -2984,7 +2955,7 @@ const updateBatchAdjustData = () => {
       uploadedCount: uploadedCount
     };
   });
-  
+
   batchAdjustData.value = {
     channels
   };
@@ -3006,26 +2977,26 @@ const openBatchAdjustDialog = () => {
   // 获取当前显示的通道信息
   const channels = selectedChannels.value.map(channel => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-    
+
     // 获取未上传的异常
     const notUploadedAnomalies = store.getters.getAnomaliesByChannel(channelKey) || [];
-    
+
     // 获取已上传的异常
     let uploadedCount = 0;
-    
+
     // 从errorResults中查找该通道的所有绘制出来的异常
     const channelErrors = errorResults.filter(
       result => result.channelKey === channelKey && !result.isAnomaly
     );
-    
+
     // 统计每个异常类别
     const errorTypes = new Set();
-    
+
     channelErrors.forEach(error => {
       if (Array.isArray(error.errorData)) {
         // 处理人工标注的异常
         const [manualErrors, machineErrors] = error.errorData;
-        
+
         // 从人工标注的异常中提取异常类别
         if (manualErrors && manualErrors.length > 0) {
           manualErrors.forEach(manualError => {
@@ -3035,7 +3006,7 @@ const openBatchAdjustDialog = () => {
             }
           });
         }
-        
+
         // 从机器识别的异常中提取异常类别
         if (machineErrors && machineErrors.length > 0) {
           machineErrors.forEach(machineError => {
@@ -3047,12 +3018,12 @@ const openBatchAdjustDialog = () => {
         }
       }
     });
-    
+
     // 已上传异常数量为不同异常类别的数量
     uploadedCount = errorTypes.size;
-    
+
     console.log(`通道 ${channelKey} 的异常类别:`, Array.from(errorTypes));
-    
+
     return {
       channelKey,
       channelName: channel.channel_name,
@@ -3061,17 +3032,17 @@ const openBatchAdjustDialog = () => {
       uploadedCount: uploadedCount
     };
   });
-  
+
   // 更新数据
   batchAdjustData.value = {
     channels
   };
-  
+
   console.log('批量调整数据:', batchAdjustData.value);
-  
+
   // 显示对话框
   showBatchAdjustDialog.value = true;
-  
+
   // 在下一个渲染周期选中所有行
   nextTick(() => {
     if (batchTableRef.value && batchAdjustData.value.channels.length > 0) {
@@ -3116,12 +3087,12 @@ const deleteBatchNotUploaded = (channelKey) => {
       });
 
       ElMessage.success(`已删除该通道所有 ${storedAnomalies.length} 个未上传异常`);
-      
+
       // 重新渲染热力图以更新显示
       if (selectedChannels.value.length > 0) {
         renderHeatmap(selectedChannels.value, true);
       }
-      
+
       // 更新批量调整对话框数据
       setTimeout(() => {
         updateBatchAdjustData();
@@ -3150,7 +3121,7 @@ const deleteBatchUploaded = async (channelKey) => {
         type: 'warning',
       }
     );
-    
+
     const loadingInstance = ElLoading.service({
       lock: true,
       text: '正在批量删除异常数据...',
@@ -3171,7 +3142,7 @@ const deleteBatchUploaded = async (channelKey) => {
 
       // 保存删除请求的结果
       const deleteResults = [];
-      
+
       // 跟踪已处理的异常类型，避免重复删除
       const processedErrorTypes = new Set();
 
@@ -3180,21 +3151,21 @@ const deleteBatchUploaded = async (channelKey) => {
         if (Array.isArray(error.errorData)) {
           // 处理人工标注的异常
           const [manualErrors, _] = error.errorData;
-          
+
           // 仅处理人工标注的错误，机器识别的错误不能通过前端删除
           if (manualErrors && manualErrors.length > 0) {
             for (const manualError of manualErrors) {
               // 获取异常类型
               const errorType = manualError.error_type || manualError.错误类型;
-              
+
               // 如果这个类型已经处理过，跳过
               if (processedErrorTypes.has(errorType)) {
                 continue;
               }
-              
+
               // 标记为已处理
               processedErrorTypes.add(errorType);
-              
+
               // 准备请求数据
               const requestData = {
                 diagnostic_name: manualError.diagnostic_name || manualError.诊断名称,
@@ -3205,7 +3176,7 @@ const deleteBatchUploaded = async (channelKey) => {
 
               // 确保所有必要字段都存在
               if (!requestData.diagnostic_name || !requestData.channel_number ||
-                  !requestData.shot_number || !requestData.error_type) {
+                !requestData.shot_number || !requestData.error_type) {
                 console.error('删除失败: 缺少必要的字段', manualError);
                 continue;
               }
@@ -3238,23 +3209,23 @@ const deleteBatchUploaded = async (channelKey) => {
 
       // 删除成功后刷新数据
       await store.dispatch('updateChannelErrorsData');
-      
+
       // 强制清除缓存，确保重新获取最新数据
       // 清除该通道的数据缓存
       const [channelName, shotNumber] = channelKey.split('_');
       const cacheKey = `${channelName}_${shotNumber}`;
-      
+
       // 清除错误数据缓存
       try {
         // 直接使用dataCache处理缓存
         const keys = Object.keys(dataCache)
           .filter(key => key.startsWith(`error-${channelKey}`));
-        
+
         // 逐个删除缓存项
         keys.forEach(key => {
           delete dataCache[key];
         });
-        
+
         // 清除通道数据缓存
         if (dataCache[channelKey]) {
           delete dataCache[channelKey];
@@ -3262,12 +3233,12 @@ const deleteBatchUploaded = async (channelKey) => {
       } catch (error) {
         console.warn('清除缓存失败:', error);
       }
-      
+
       // 从错误结果列表中移除该通道的所有非异常数据
       errorResults = errorResults.filter(
         result => !(result.channelKey === channelKey && !result.isAnomaly)
       );
-      
+
       // 根据结果关闭加载动画并显示提示
       loadingInstance.close();
 
@@ -3275,7 +3246,7 @@ const deleteBatchUploaded = async (channelKey) => {
         ElMessage.info('没有找到可删除的已上传异常');
       } else if (deleteResults.every(result => result)) {
         ElMessage.success(`已成功删除该通道所有 ${processedErrorTypes.size} 种异常类别`);
-        
+
         // 重新渲染热力图以更新显示
         if (selectedChannels.value.length > 0) {
           // 由于我们已经清除了缓存，需要强制刷新数据
@@ -3284,19 +3255,19 @@ const deleteBatchUploaded = async (channelKey) => {
         }
       } else {
         ElMessage.warning(`已删除部分已上传的异常，但有些删除失败`);
-        
+
         // 重新渲染热力图以更新显示
         if (selectedChannels.value.length > 0) {
           // 强制重新获取所有数据并渲染
           renderHeatmap(selectedChannels.value, true);
         }
       }
-      
+
       // 更新批量调整对话框数据
       setTimeout(() => {
         updateBatchAdjustData();
       }, 500); // 延长等待时间，确保数据刷新完成
-      
+
     } catch (error) {
       console.error('批量删除失败:', error);
       loadingInstance.close();
@@ -3315,14 +3286,14 @@ const batchUploadAnomalies = async () => {
       ElMessage.warning('请先选择需要上传异常的通道');
       return;
     }
-    
+
     // 检查是否有选中的通道包含未上传异常
     const hasUnuploaded = selectedRows.value.some(row => row.notUploadedCount > 0);
     if (!hasUnuploaded) {
       ElMessage.info('所选通道中没有未上传的异常标注');
       return;
     }
-    
+
     // 确认上传
     await ElMessageBox.confirm(
       `确定要上传选中的 ${selectedRows.value.length} 个通道中的所有未上传异常标注吗？`,
@@ -3333,27 +3304,27 @@ const batchUploadAnomalies = async () => {
         type: 'warning',
       }
     );
-    
+
     // 显示加载提示
     const loadingInstance = ElLoading.service({
       lock: true,
       text: '正在批量上传异常数据...',
       background: 'rgba(0, 0, 0, 0.7)'
     });
-    
+
     try {
       // 调用syncUpload方法
       await syncUpload();
-      
+
       // 上传成功后关闭提示
       loadingInstance.close();
       ElMessage.success('批量上传成功');
-      
+
       // 更新批量调整对话框数据
       setTimeout(() => {
         updateBatchAdjustData();
       }, 300);
-      
+
       // 关闭对话框
       showBatchAdjustDialog.value = false;
     } catch (error) {
@@ -3959,7 +3930,7 @@ const batchUploadAnomalies = async () => {
 .statistic-row {
   display: flex;
   gap: 16px;
-  
+
   &.time-row {
     display: flex;
     align-items: center;
@@ -3989,7 +3960,7 @@ const batchUploadAnomalies = async () => {
 .statistic-item {
   flex: 1;
   min-width: 0;
-  
+
   &.full-width {
     width: 100%;
   }
@@ -4006,12 +3977,12 @@ const batchUploadAnomalies = async () => {
   color: #303133;
   font-weight: 500;
   word-break: break-word;
-  
+
   &.code-style {
     font-family: 'Consolas', 'Monaco', monospace;
     letter-spacing: 0.5px;
   }
-  
+
   &.description {
     font-size: 13px;
     font-weight: normal;
