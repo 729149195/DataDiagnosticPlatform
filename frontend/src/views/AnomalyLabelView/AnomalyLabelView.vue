@@ -150,7 +150,7 @@
               <el-card class="two_left" shadow="never">
                 <span style="display: flex; justify-content: space-between;">
                   <span class="title">待选择通道</span>
-                  <span>统一频率 <el-input-number v-model="unit_sampling" :precision="0.1" :step="10" :max="200" />
+                  <span>统一频率 <el-input-number v-model="unit_sampling" :precision="1" :step="10" :max="200" />
                     KHz</span>
                 </span>
                 <div style="display: flex; justify-content: center; align-items: center;">
@@ -179,7 +179,7 @@
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
-                  <el-button type="primary" :icon="FolderChecked">另存为新通道</el-button>
+                  <!-- <el-button type="primary" :icon="FolderChecked">另存为新通道</el-button> -->
                 </span>
               </span>
               <div style="display: flex; justify-content: center; align-items: center;">
