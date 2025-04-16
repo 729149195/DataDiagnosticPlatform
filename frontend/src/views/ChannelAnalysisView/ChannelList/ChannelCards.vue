@@ -149,6 +149,9 @@ const renderChannelChart = async (channel) => {
             credits: {
                 enabled: false // 禁用版权信息
             },
+            exporting: {
+                enabled: false // 禁用导出按钮
+            },
             boost: {
                 useGPUTranslations: true,
                 usePreallocated: true,

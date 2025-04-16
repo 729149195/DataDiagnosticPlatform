@@ -422,19 +422,75 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 添加导出结果图表配置对话框 -->
+    <el-dialog v-model="showResultSvgExportDialog" title="导出计算结果图表" width="600px" class="export-dialog">
+      <div class="dialog-layout">
+        <!-- 只保留参数配置部分 -->
+        <div class="param-form" style="width: 100%">
+          <el-form :model="resultSvgExportConfig" label-width="100px">
+            <!-- 图片尺寸设置 -->
+            <el-form-item label="图片尺寸" class="size-controls-container">
+              <div class="size-controls">
+                <div class="size-input-group">
+                  <span class="size-label">宽度:</span>
+                  <el-input-number v-model="resultSvgExportConfig.width" :min="300" :max="3000" :controls="false" size="small" />
+                  <span class="size-unit">px</span>
+                </div>
+                
+                <div class="size-input-group">
+                  <span class="size-label">高度:</span>
+                  <el-input-number v-model="resultSvgExportConfig.height" :min="200" :max="2000" :controls="false" size="small" />
+                  <span class="size-unit">px</span>
+                </div>
+              </div>
+            </el-form-item>
+
+            <!-- 文件名设置 -->
+            <el-form-item label="文件名" class="size-controls-container">
+              <div class="filename-input-container" style="width: 100%">
+                <el-input v-model="resultSvgExportConfig.fileName" placeholder="自定义文件名" />
+                <span class="file-extension">.png</span>
+              </div>
+            </el-form-item>
+          </el-form>
+        </div>
+          
+        <!-- 进度条 -->
+        <div v-if="resultSvgExportProgress.isExporting" class="export-progress">
+          <p>正在导出图表...</p>
+          <el-progress :percentage="resultSvgExportProgress.percentage" :format="percentageFormat"></el-progress>
+        </div>
+      </div>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showResultSvgExportDialog = false">取消</el-button>
+          <el-button type="primary" @click="startExportResultSvg" :loading="resultSvgExportProgress.isExporting">
+            导出
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, reactive } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, reactive, unref, provide, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
+import { useRouter } from 'vue-router';
 import { FolderChecked, Upload, Menu, Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElLoading } from 'element-plus'
+import { ElMessage, ElLoading, ElMessageBox } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import 'highcharts/modules/accessibility';
+import 'highcharts/modules/exporting';
 import JSZip from 'jszip'; // 导入JSZip库
 import { CacheFactory } from "cachefactory"; // 导入CacheFactory
+import * as d3 from "d3";
+import dayjs from "dayjs";
+import isBetween from "dayjs/plugin/isBetween";
+dayjs.extend(isBetween);
 // 导入AppHeader组件
 import AppHeader from '@/components/AppHeader.vue';
 // 颜色配置及通道选取组件
@@ -1212,7 +1268,7 @@ const handleExportCommand = (command) => {
 
 const handleResultExportCommand = (command) => {
   if (command === 'exportSvg') {
-    exportChannelSVG();
+    exportResultSVG();
   } else if (command === 'exportData') {
     // 检查是否有通道被选中
     if (!selectedChannels.value || selectedChannels.value.length === 0) {
@@ -1220,7 +1276,38 @@ const handleResultExportCommand = (command) => {
       return
     }
     
-    exportResultSVG();
+    // 获取计算结果数据
+    const calculationResult = store.state.CalculateResult
+    if (!calculationResult) {
+      ElMessage.warning('没有找到计算结果数据')
+      return
+    }
+    
+    try {
+      // 将计算结果数据转换为JSON
+      const jsonData = JSON.stringify(calculationResult, null, 2)
+      
+      // 创建Blob
+      const blob = new Blob([jsonData], { type: 'application/json' })
+      
+      // 生成文件名
+      const now = new Date()
+      const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`
+      
+      // 生成计算结果的文件名
+      let fileName = 'calculation_result'
+      if (calculationResult.channel_name) {
+        fileName = `${calculationResult.channel_name}_calculation_result`
+      }
+      
+      // 下载文件
+      downloadFile(blob, `${fileName}_${timestamp}.json`, 'json')
+      
+      ElMessage.success('计算结果数据导出成功')
+    } catch (error) {
+      console.error('导出计算结果数据失败:', error)
+      ElMessage.error('导出计算结果数据失败，请重试')
+    }
   }
 }
 
@@ -1649,6 +1736,290 @@ const startExportSvg = async () => {
     console.error('导出通道图片失败:', error)
     ElMessage.error('导出通道图片失败，请重试')
     svgExportProgress.isExporting = false
+  }
+}
+
+// 导出结果图表配置对话框状态
+const showResultSvgExportDialog = ref(false)
+const resultSvgExportConfig = reactive({
+  width: 1200, // 默认宽度，像素
+  height: 600, // 默认高度，像素
+  fileName: 'calculation_result_image' // 默认文件名
+})
+
+// 导出结果图表进度状态
+const resultSvgExportProgress = reactive({
+  isExporting: false,
+  percentage: 0,
+  stage: 'rendering' // 'rendering' 或 'saving'
+})
+
+const exportResultSVG = () => {
+  // 初始化配置并打开对话框
+  initResultSvgExportConfig()
+  showResultSvgExportDialog.value = true
+}
+
+// 初始化结果SVG导出配置
+const initResultSvgExportConfig = () => {
+  // 设置默认尺寸和文件名
+  resultSvgExportConfig.width = 1200
+  resultSvgExportConfig.height = 600
+  
+  // 如果有计算结果，可以设置更有意义的默认文件名
+  const calculationResult = store.state.CalculateResult
+  if (calculationResult && calculationResult.channel_name) {
+    resultSvgExportConfig.fileName = `${calculationResult.channel_name}_calculation_result`
+  } else {
+    resultSvgExportConfig.fileName = `calculation_result_${new Date().getTime()}`
+  }
+}
+
+// 开始导出结果SVG为PNG
+const startExportResultSvg = async () => {
+  try {
+    // 获取计算结果数据
+    const calculationResult = store.state.CalculateResult
+    if (!calculationResult) {
+      ElMessage.warning('没有找到计算结果数据')
+      return
+    }
+
+    // 设置进度状态
+    resultSvgExportProgress.isExporting = true
+    resultSvgExportProgress.percentage = 0
+    resultSvgExportProgress.stage = 'rendering'
+
+    // 更新进度到10%
+    resultSvgExportProgress.percentage = 10
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 准备渲染高质量的图表
+    // 创建临时容器
+    const container = document.createElement('div')
+    container.style.width = `${resultSvgExportConfig.width}px`
+    container.style.height = `${resultSvgExportConfig.height}px`
+    container.style.visibility = 'hidden'
+    document.body.appendChild(container)
+
+    // 更新进度到20%
+    resultSvgExportProgress.percentage = 20
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 为导出创建一个新的Highcharts图表
+    const chart = new Highcharts.Chart({
+      chart: {
+        renderTo: container,
+        type: 'line',
+        animation: false,
+        style: {
+          fontFamily: 'Arial, Helvetica, sans-serif'
+        }
+      },
+      title: {
+        text: calculationResult.channel_name || '计算结果',
+        style: {
+          fontSize: '16px',
+          fontWeight: 'bold',
+          color: '#333333'
+        }
+      },
+      credits: {
+        enabled: false
+      },
+      // 禁用Highcharts自带的导出按钮
+      exporting: {
+        enabled: false
+      },
+      xAxis: {
+        title: {
+          text: 'Time (s)',
+          style: {
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#000000'
+          },
+          margin: 15
+        },
+        lineWidth: 2,
+        lineColor: '#000000',
+        gridLineWidth: 1,
+        gridLineColor: '#E0E0E0',
+        tickWidth: 2,
+        tickLength: 6,
+        tickColor: '#000000',
+        labels: {
+          style: {
+            fontSize: '12px',
+            color: '#000000'
+          }
+        }
+      },
+      yAxis: {
+        title: {
+          text: calculationResult.Y_unit || 'Value',
+          style: {
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#000000'
+          },
+          margin: 15
+        },
+        lineWidth: 2,
+        lineColor: '#000000',
+        gridLineWidth: 1,
+        gridLineColor: '#E0E0E0',
+        tickWidth: 2,
+        tickLength: 6,
+        tickColor: '#000000',
+        labels: {
+          style: {
+            fontSize: '12px',
+            color: '#000000'
+          }
+        }
+      },
+      legend: {
+        enabled: true,
+        align: 'right',
+        verticalAlign: 'top',
+        layout: 'vertical',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 5,
+        itemStyle: {
+          fontSize: '12px',
+          fontWeight: 'normal',
+          color: '#000000'
+        },
+        itemHoverStyle: {
+          color: '#4572A7'
+        }
+      },
+      tooltip: {
+        enabled: false
+      },
+      plotOptions: {
+        series: {
+          animation: false,
+          marker: {
+            enabled: false
+          },
+          states: {
+            hover: {
+              enabled: false
+            }
+          },
+          stickyTracking: false,
+          turboThreshold: 0
+        }
+      },
+      series: [{
+        name: calculationResult.channel_name || '计算结果',
+        data: calculationResult.X_value.map((x, i) => [x, calculationResult.Y_value[i]]),
+        color: '#4572A7',
+        lineWidth: 1.5,
+        marker: {
+          enabled: false
+        }
+      }]
+    })
+
+    // 更新进度到40%
+    resultSvgExportProgress.percentage = 40
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 绘制异常区域（如果有）
+    if (calculationResult.X_range && calculationResult.X_range.length > 0) {
+      calculationResult.X_range.forEach((xRange, index) => {
+        // 为每个异常区域创建一个新系列
+        chart.addSeries({
+          name: `异常区域 ${index + 1}`,
+          data: calculationResult.X_value
+            .map((x, i) => [x, calculationResult.Y_value[i]])
+            .filter(([x]) => x >= xRange[0] && x <= xRange[1]),
+          lineWidth: 2,
+          color: '#FF6767',
+          marker: {
+            enabled: false
+          }
+        }, false)
+      })
+      
+      // 重绘图表
+      chart.redraw()
+    }
+
+    // 更新进度到60%
+    resultSvgExportProgress.percentage = 60
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 导出为SVG并处理
+    const svgData = chart.getSVG({
+      exporting: {
+        sourceWidth: resultSvgExportConfig.width,
+        sourceHeight: resultSvgExportConfig.height
+      }
+    })
+
+    // 更新进度到70%
+    resultSvgExportProgress.percentage = 70
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 将SVG转换为图像
+    const img = new Image()
+    const canvas = document.createElement('canvas')
+    const width = resultSvgExportConfig.width
+    const height = resultSvgExportConfig.height
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+
+    // 将SVG转换为PNG
+    const pngBlob = await new Promise((resolve, reject) => {
+      img.onload = () => {
+        // 清理背景
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        
+        // 绘制图表
+        ctx.drawImage(img, 0, 0, width, height)
+        
+        // 转换为blob
+        canvas.toBlob(blob => resolve(blob), 'image/png')
+      }
+      img.onerror = reject
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData)
+    })
+
+    // 清理
+    chart.destroy()
+    document.body.removeChild(container)
+
+    // 更新进度到90%
+    resultSvgExportProgress.percentage = 90
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    // 生成文件名
+    const fileName = `${resultSvgExportConfig.fileName}.png`
+    
+    // 下载文件
+    await downloadFile(pngBlob, fileName, 'png')
+
+    // 完成进度
+    resultSvgExportProgress.percentage = 100
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    // 重置导出状态
+    resultSvgExportProgress.isExporting = false
+    showResultSvgExportDialog.value = false
+
+    ElMessage.success('计算结果图表导出成功')
+  } catch (error) {
+    console.error('导出计算结果图表失败:', error)
+    ElMessage.error('导出计算结果图表失败，请重试')
+    resultSvgExportProgress.isExporting = false
   }
 }
 </script>
