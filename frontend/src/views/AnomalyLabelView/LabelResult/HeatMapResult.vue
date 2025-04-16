@@ -140,7 +140,7 @@
                             <div>
                               <span v-if="anomaly['时间范围'].collapsed">
                                 {{ anomaly['时间范围'].ranges.slice(0, anomaly['时间范围'].displayCount).join(', ') }}
-                                <el-button type="text" size="small" @click="anomaly['时间范围'].collapsed = false" style="padding: 0 4px; margin-left: 4px;">
+                                <el-button :link="true" size="small" @click="anomaly['时间范围'].collapsed = false" style="padding: 0 4px; margin-left: 4px;">
                                   <el-icon>
                                     <ArrowDown />
                                   </el-icon> 展开(共{{ anomaly['时间范围'].ranges.length }}个)
@@ -148,7 +148,7 @@
                               </span>
                               <span v-else>
                                 {{ anomaly['时间范围'].ranges.join(', ') }}
-                                <el-button type="text" size="small" @click="anomaly['时间范围'].collapsed = true" style="padding: 0 4px; margin-left: 4px;">
+                                <el-button :link="true" size="small" @click="anomaly['时间范围'].collapsed = true" style="padding: 0 4px; margin-left: 4px;">
                                   <el-icon>
                                     <ArrowUp />
                                   </el-icon> 折叠

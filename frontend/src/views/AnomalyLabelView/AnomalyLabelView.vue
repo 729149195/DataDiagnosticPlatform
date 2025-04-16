@@ -200,7 +200,7 @@
           <div class="channel-selection">
             <div class="channel-header">
               <el-checkbox v-model="allChannelsSelected" @change="toggleAllChannels">全选</el-checkbox>
-              <el-button size="small" @click="resetChannelNames" :icon="Refresh" type="text">重置名称</el-button>
+              <el-button size="small" @click="resetChannelNames" :icon="Refresh" :link="true">重置名称</el-button>
             </div>
             <el-scrollbar height="250px">
               <div v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`" class="channel-item">
@@ -224,22 +224,27 @@
             </div>
 
             <div class="radio-option">
-              <el-radio v-model="exportConfig.frequencyMode" label="original">
-                使用原始频率<el-tag type="warning" size="small">需要重新请求数据，可能需要一定耗时</el-tag>
-              </el-radio>
+              <div class="radio-with-tag">
+                <el-radio v-model="exportConfig.frequencyMode" label="original">
+                  使用原始频率
+                </el-radio>
+                <el-tag type="warning" size="small">需要一定耗时</el-tag>
+              </div>
             </div>
 
             <div class="radio-option">
-              <el-radio v-model="exportConfig.frequencyMode" label="custom">
-                使用自定义频率<el-tag type="warning" size="small">需要重新请求数据，可能需要一定耗时</el-tag>
-              </el-radio>
+              <div class="radio-with-tag">
+                <el-radio v-model="exportConfig.frequencyMode" label="custom">
+                  使用自定义频率
+                </el-radio>
+                <el-tag type="warning" size="small">需要一定耗时</el-tag>
+              </div>
 
               <div class="custom-frequency-control">
                 <el-input-number v-model="exportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="exportConfig.frequencyMode !== 'custom'" />
                 <span class="unit-label">KHz</span>
               </div>
             </div>
-
           </div>
         </el-form-item>
       </el-form>
@@ -794,6 +799,12 @@ const handleExportCommand = (command) => {
   if (command === 'exportSvg') {
     exportChannelSVG()
   } else if (command === 'exportData') {
+    // 检查是否有通道被选中
+    if (!selectedChannels.value || selectedChannels.value.length === 0) {
+      ElMessage.warning('请先选择至少一个通道')
+      return
+    }
+    
     // 打开导出配置对话框
     initExportConfig()
     showExportDialog.value = true
@@ -804,6 +815,12 @@ const handleResultExportCommand = (command) => {
   if (command === 'exportSvg') {
     exportChannelSVG();
   } else if (command === 'exportData') {
+    // 检查是否有通道被选中
+    if (!selectedChannels.value || selectedChannels.value.length === 0) {
+      ElMessage.warning('请先选择至少一个通道')
+      return
+    }
+    
     exportResultSVG();
   }
 }
@@ -1297,17 +1314,20 @@ const updateSmoothness = (value) => {
   display: flex;
   flex-direction: column;
   margin-bottom: 15px;
-  text-align: center;
 
   &:last-child {
     margin-bottom: 0;
   }
+}
+
+.radio-with-tag {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  line-height: 32px;
 
   .el-radio {
-    height: 32px;
-    line-height: 32px;
-    margin-right: 0;
-    white-space: nowrap;
+    margin-right: 8px;
   }
 
   .el-tag {
