@@ -216,9 +216,22 @@
         </el-form-item>
 
         <el-form-item label="数据频率">
-          <el-radio-group v-model="exportConfig.useOriginalFrequency">
-            <el-radio :value="false">使用当前采样频率 ({{ sampling }}KHz)</el-radio>
-            <el-radio :value="true">使用原始频率 <el-tag type="warning" size="small">需要重新请求数据，耗时较长</el-tag></el-radio>
+          <el-radio-group v-model="exportConfig.frequencyMode">
+            <el-radio :value="'current'">使用当前采样频率 ({{ sampling }}KHz)</el-radio>
+            <el-radio :value="'original'">使用原始频率 <el-tag type="warning" size="small">需要重新请求数据，耗时较长</el-tag></el-radio>
+            <el-radio :value="'custom'">使用自定义频率 
+              <el-input-number 
+                v-if="exportConfig.frequencyMode === 'custom'"
+                v-model="exportConfig.customFrequency" 
+                :precision="2" 
+                :step="0.5" 
+                :min="0.1" 
+                :max="1000" 
+                style="width: 120px; margin-left: 10px;"
+                size="small"
+              />
+              <span v-if="exportConfig.frequencyMode === 'custom'">KHz</span>
+            </el-radio>
           </el-radio-group>
         </el-form-item>
       </el-form>
@@ -337,13 +350,13 @@ onMounted(() => {
   if (savedChannelMode !== null) {
     SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
   }
-
+  
   // 恢复异常区域显示状态
   const savedShowAnomaly = localStorage.getItem('showAnomaly');
   if (savedShowAnomaly !== null) {
     showAnomaly.value = savedShowAnomaly === 'true';
   }
-
+  
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
 });
@@ -412,13 +425,13 @@ const setupChartObserver = () => {
   if (chartObserver.value) {
     chartObserver.value.disconnect();
   }
-
+  
   // 创建新的MutationObserver
   chartObserver.value = new MutationObserver((mutations) => {
     // 如果图表发生变化，应用当前的显示/隐藏状态到所有异常区域
     applyAnomalyVisibility();
   });
-
+  
   // 开始观察整个文档，关注子节点的添加
   chartObserver.value.observe(document.body, {
     childList: true,
@@ -429,7 +442,7 @@ const setupChartObserver = () => {
 // 应用异常区域可见性的函数，可以单独调用
 const applyAnomalyVisibility = () => {
   const currentVisibility = showAnomaly.value;
-
+  
   if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行模式
     const allCharts = document.querySelectorAll('[id^="chart-"]');
@@ -578,7 +591,8 @@ const showExportDialog = ref(false)
 const exportConfig = reactive({
   selectedChannelIndices: [],
   channelRenames: [],
-  useOriginalFrequency: false
+  frequencyMode: 'current', // 改为三种模式：'current', 'original', 'custom'
+  customFrequency: 10.0 // 默认自定义频率10KHz
 })
 
 // 导出进度状态
@@ -609,6 +623,8 @@ const initExportConfig = () => {
     exportConfig.channelRenames = selectedChannels.value.map((channel) =>
       `${channel.channel_name}_${channel.shot_number}_data`
     )
+    exportConfig.frequencyMode = 'current'
+    exportConfig.customFrequency = 10.0 // 默认值重置为10kHz
   }
 }
 
@@ -675,12 +691,16 @@ const startExportData = async () => {
       exportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
 
       try {
-        // 根据配置决定是否获取原始频率数据
+        // 根据频率模式设置参数
         const params = { channel }
-        if (exportConfig.useOriginalFrequency) {
+        
+        if (exportConfig.frequencyMode === 'original') {
           params.sample_mode = 'full'
+        } else if (exportConfig.frequencyMode === 'custom') {
+          params.sample_mode = 'downsample'  // 修改为downsample，后端只支持full和downsample
+          params.sample_freq = exportConfig.customFrequency // 使用sample_freq参数传递自定义频率
         }
-
+        
         // 获取通道数据
         const data = await store.dispatch('fetchChannelData', params)
 
@@ -691,7 +711,7 @@ const startExportData = async () => {
         } else {
           missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
         }
-      } catch (error) {
+    } catch (error) {
         console.error(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error)
         missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
       }
@@ -726,6 +746,16 @@ const startExportData = async () => {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
 
+    // 生成文件名中包含频率信息
+    let frequencyInfo = '';
+    if (exportConfig.frequencyMode === 'current') {
+      frequencyInfo = `_${sampling.value}kHz`;
+    } else if (exportConfig.frequencyMode === 'custom') {
+      frequencyInfo = `_${exportConfig.customFrequency}kHz`;
+    } else {
+      frequencyInfo = '_originalFrequency';
+    }
+
     // 生成时间戳文件名并下载
     const now = new Date()
     const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`
@@ -738,7 +768,7 @@ const startExportData = async () => {
     exportProgress.percentage = 100
 
     // 下载文件
-    await downloadFile(content, `channel_data_${timestamp}.zip`, 'zip')
+    await downloadFile(content, `channel_data${frequencyInfo}_${timestamp}.zip`, 'zip')
 
     // 重置导出状态
     exportProgress.isExporting = false

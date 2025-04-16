@@ -786,13 +786,16 @@ const store = createStore({
     },
     async fetchChannelData(
       { state, commit },
-      { channel, forceRefresh = false, sample_mode = 'downsample' }
+      { channel, forceRefresh = false, sample_mode = 'downsample', sample_freq = null }
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
       // 如果需要原始频率数据，使用新的缓存键
       const useOriginalFrequency = sample_mode === 'full';
-      const cacheKey = useOriginalFrequency ? `original_${channelKey}` : channelKey;
+      // 为自定义频率创建特定的缓存键
+      const hasCustomFreq = sample_freq !== null && sample_mode === 'downsample';
+      const cacheKey = useOriginalFrequency ? `original_${channelKey}` : 
+                      (hasCustomFreq ? `custom_${sample_freq}_${channelKey}` : channelKey);
 
       // 如果强制刷新，跳过所有缓存检查
       if (forceRefresh) {
@@ -854,9 +857,15 @@ const store = createStore({
       const params = {
         channel_key: channelKey,
         channel_type: channel.channel_type,
-        sample_freq: state.sampling, // 传递当前的采样率设置
         sample_mode: sample_mode // 添加采样模式参数
       };
+
+      // 使用传入的自定义频率或当前状态的采样率
+      if (sample_freq !== null) {
+        params.sample_freq = sample_freq;
+      } else {
+        params.sample_freq = state.sampling;
+      }
 
       // 创建请求的 Promise 并将其存储
       const requestPromise = new Promise(async (resolve, reject) => {
