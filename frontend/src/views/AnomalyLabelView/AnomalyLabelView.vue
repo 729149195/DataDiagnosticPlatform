@@ -94,7 +94,7 @@
 
                   <div class="control-item">
                     <el-dropdown trigger="click" @command="handleExportCommand">
-                      <el-button  type="primary" class="menu-button" title="更多操作">
+                      <el-button type="primary" class="menu-button" title="更多操作">
                         导出
                         <el-icon>
                           <Download />
@@ -192,13 +192,59 @@
         </el-container>
       </el-container>
     </el-container>
+
+    <!-- 添加导出配置对话框 -->
+    <el-dialog v-model="showExportDialog" title="导出通道数据配置" width="600px">
+      <el-form :model="exportConfig" label-width="120px">
+        <el-form-item label="选择通道">
+          <div class="channel-selection">
+            <div class="channel-header">
+              <el-checkbox v-model="allChannelsSelected" @change="toggleAllChannels">全选</el-checkbox>
+              <el-button size="small" @click="resetChannelNames" :icon="Refresh" type="text">重置名称</el-button>
+            </div>
+            <el-scrollbar height="250px">
+              <div v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`" class="channel-item">
+                <el-checkbox v-model="exportConfig.selectedChannelIndices[index]"></el-checkbox>
+                <span class="channel-name">{{ channel.channel_name }}_{{ channel.shot_number }}</span>
+                <div class="filename-input-container">
+                  <el-input v-model="exportConfig.channelRenames[index]" placeholder="自定义文件名" size="small"></el-input>
+                  <span class="file-extension">.json</span>
+                </div>
+              </div>
+            </el-scrollbar>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="数据频率">
+          <el-radio-group v-model="exportConfig.useOriginalFrequency">
+            <el-radio :value="false">使用当前采样频率 ({{ sampling }}KHz)</el-radio>
+            <el-radio :value="true">使用原始频率 <el-tag type="warning" size="small">需要重新请求数据，耗时较长</el-tag></el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+
+      <!-- 进度条 -->
+      <div v-if="exportProgress.isExporting" class="export-progress">
+        <p>{{ exportProgress.stage === 'downloading' ? '正在下载数据' : '正在打包数据' }}: {{ exportProgress.currentChannel }} ({{ exportProgress.current }}/{{ exportProgress.total }})</p>
+        <el-progress :percentage="exportProgress.percentage" :format="percentageFormat"></el-progress>
+      </div>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showExportDialog = false">取消</el-button>
+          <el-button type="primary" @click="startExportData" :loading="exportProgress.isExporting">
+            导出
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, reactive } from 'vue';
 import { useStore } from 'vuex';
-import { FolderChecked, Upload, Menu } from '@element-plus/icons-vue'
+import { FolderChecked, Upload, Menu, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElLoading } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
@@ -226,6 +272,8 @@ import ChannelStr from '../ChannelAnalysisView/ChannelStr/ChannelStr.vue';
 import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalculation/ChannelCalculationResults.vue';
 
 import OverviewBrush from '@/components/OverviewBrush.vue';
+
+import { ElDialog, ElForm, ElFormItem, ElCheckbox, ElRadioGroup, ElRadio, ElTag, ElScrollbar, ElProgress } from 'element-plus'
 
 const store = useStore()
 const sampling = ref(5)
@@ -289,13 +337,13 @@ onMounted(() => {
   if (savedChannelMode !== null) {
     SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
   }
-  
+
   // 恢复异常区域显示状态
   const savedShowAnomaly = localStorage.getItem('showAnomaly');
   if (savedShowAnomaly !== null) {
     showAnomaly.value = savedShowAnomaly === 'true';
   }
-  
+
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
 });
@@ -325,38 +373,24 @@ const updateBoxSelect = (value) => {
 
 const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
 
-// 修改通用的下载函数以使用现代的文件系统API
+// 修改通用的下载函数以使用传统的文件下载方式
 const downloadFile = async (blob, suggestedName, fileType = 'json') => {
   try {
-    // 根据文件类型设置accept选项
-    const acceptOptions = {
-      'json': {
-        'application/json': ['.json'],
-      },
-      'png': {
-        'image/png': ['.png'],
-      },
-      'svg': {
-        'image/svg+xml': ['.svg'],
-      },
-      'zip': {
-        'application/zip': ['.zip'],
-      }
-    };
-
-    // 使用 showSaveFilePicker API 来显示保存对话框
-    const handle = await window.showSaveFilePicker({
-      suggestedName: suggestedName,
-      types: [{
-        description: '导出文件',
-        accept: acceptOptions[fileType] || acceptOptions['json'],
-      }],
-    });
-
-    // 创建 FileSystemWritableFileStream 来写入数据
-    const writable = await handle.createWritable();
-    await writable.write(blob);
-    await writable.close();
+    // 创建一个下载链接
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = suggestedName;
+    
+    // 模拟点击链接进行下载
+    document.body.appendChild(link);
+    link.click();
+    
+    // 清理
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 100);
 
     // 显示成功提示
     ElMessage({
@@ -364,10 +398,6 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
       type: 'success',
     });
   } catch (err) {
-    if (err.name === 'AbortError') {
-      // 用户取消保存，不显示错误
-      return;
-    }
     console.error('保存文件时出错:', err);
     ElMessage({
       message: '保存文件失败，请重试',
@@ -382,13 +412,13 @@ const setupChartObserver = () => {
   if (chartObserver.value) {
     chartObserver.value.disconnect();
   }
-  
+
   // 创建新的MutationObserver
   chartObserver.value = new MutationObserver((mutations) => {
     // 如果图表发生变化，应用当前的显示/隐藏状态到所有异常区域
     applyAnomalyVisibility();
   });
-  
+
   // 开始观察整个文档，关注子节点的添加
   chartObserver.value.observe(document.body, {
     childList: true,
@@ -399,7 +429,7 @@ const setupChartObserver = () => {
 // 应用异常区域可见性的函数，可以单独调用
 const applyAnomalyVisibility = () => {
   const currentVisibility = showAnomaly.value;
-  
+
   if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行模式
     const allCharts = document.querySelectorAll('[id^="chart-"]');
@@ -543,136 +573,200 @@ const exportChannelSVG = async () => {
   }
 };
 
-const exportChannelData = async () => {
+// 导出配置对话框状态
+const showExportDialog = ref(false)
+const exportConfig = reactive({
+  selectedChannelIndices: [],
+  channelRenames: [],
+  useOriginalFrequency: false
+})
+
+// 导出进度状态
+const exportProgress = reactive({
+  isExporting: false,
+  current: 0,
+  total: 0,
+  percentage: 0,
+  currentChannel: '',
+  stage: 'downloading' // 添加阶段标识: 'downloading' 或 'packaging'
+})
+
+// 全选状态
+const allChannelsSelected = computed({
+  get: () => {
+    if (!selectedChannels.value || selectedChannels.value.length === 0) return false
+    return exportConfig.selectedChannelIndices.every(selected => selected)
+  },
+  set: (value) => {
+    toggleAllChannels(value)
+  }
+})
+
+// 初始化导出配置
+const initExportConfig = () => {
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    exportConfig.selectedChannelIndices = selectedChannels.value.map(() => true)
+    exportConfig.channelRenames = selectedChannels.value.map((channel) =>
+      `${channel.channel_name}_${channel.shot_number}_data`
+    )
+  }
+}
+
+// 全选/取消全选
+const toggleAllChannels = (value) => {
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    exportConfig.selectedChannelIndices = selectedChannels.value.map(() => value)
+  }
+}
+
+// 重置通道名称
+const resetChannelNames = () => {
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    exportConfig.channelRenames = selectedChannels.value.map((channel) =>
+      `${channel.channel_name}_${channel.shot_number}_data`
+    )
+  }
+}
+
+// 格式化百分比显示
+const percentageFormat = (percentage) => {
+  return percentage === 100 ? '完成' : `${percentage}%`
+}
+
+// 开始导出数据
+const startExportData = async () => {
   try {
-    // 检查是否有选中的通道
-    if (!selectedChannels.value || selectedChannels.value.length === 0) {
-      ElMessage.warning('请先选择需要导出的通道');
-      return;
+    // 获取选中的通道
+    const channelsToExport = []
+    const fileNames = []
+
+    selectedChannels.value.forEach((channel, index) => {
+      if (exportConfig.selectedChannelIndices[index]) {
+        channelsToExport.push(channel)
+        fileNames.push(exportConfig.channelRenames[index] || `${channel.channel_name}_${channel.shot_number}_data`)
+      }
+    })
+
+    if (channelsToExport.length === 0) {
+      ElMessage.warning('请至少选择一个通道进行导出')
+      return
     }
-    
-    // 创建zip实例并添加加载提示
-    const zip = new JSZip();
-    const loadingInstance = ElLoading.service({
-      text: '正在打包通道数据...',
-      background: 'rgba(0, 0, 0, 0.7)'
-    });
-    
-    // 遍历所有选中的通道，获取数据并添加到zip
-    const missingChannels = [];
-    for (const channel of selectedChannels.value) {
+
+    // 创建新的zip实例
+    const zip = new JSZip()
+
+    // 设置进度状态
+    exportProgress.isExporting = true
+    exportProgress.current = 0
+    exportProgress.total = channelsToExport.length
+    exportProgress.percentage = 0
+    exportProgress.stage = 'downloading'
+
+    // 获取通道数据并添加到zip
+    const missingChannels = []
+
+    for (let i = 0; i < channelsToExport.length; i++) {
+      const channel = channelsToExport[i]
+      const fileName = fileNames[i]
+
+      // 更新进度
+      exportProgress.current = i + 1
+      exportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
+      exportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
+
       try {
-        const data = await store.dispatch('fetchChannelData', { channel });
+        // 根据配置决定是否获取原始频率数据
+        const params = { channel }
+        if (exportConfig.useOriginalFrequency) {
+          params.sample_mode = 'full'
+        }
+
+        // 获取通道数据
+        const data = await store.dispatch('fetchChannelData', params)
+
         if (data) {
-          const fileName = `${channel.channel_name}_${channel.shot_number}_data.json`;
-          zip.file(fileName, JSON.stringify(data, null, 2));
+          // 添加到zip
+          const jsonData = JSON.stringify(data, null, 2)
+          zip.file(`${fileName}.json`, jsonData)
         } else {
-          missingChannels.push(`${channel.channel_name}_${channel.shot_number}`);
+          missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
         }
       } catch (error) {
-        missingChannels.push(`${channel.channel_name}_${channel.shot_number}`);
+        console.error(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error)
+        missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
+      }
+
+      // 等待一点时间以更新UI
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    // 完成下载阶段
+    exportProgress.percentage = 100
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 开始打包阶段
+    exportProgress.stage = 'packaging'
+    exportProgress.percentage = 0
+    exportProgress.currentChannel = '所有通道'
+
+    // 检查是否有缺失的通道
+    if (missingChannels.length > 0) {
+      if (missingChannels.length === channelsToExport.length) {
+        ElMessage.error('所有选中通道的数据都无法获取，导出取消')
+        exportProgress.isExporting = false
+        return
+      } else {
+        ElMessage.warning(`部分通道数据无法获取: ${missingChannels.join(', ')}`)
       }
     }
-    
-    // 关闭加载提示
-    loadingInstance.close();
-    
-    // 检查是否所有通道都缺失
-    if (missingChannels.length === selectedChannels.value.length) {
-      ElMessage.error('所有选中通道的数据都无法获取，导出取消');
-      return;
-    } else if (missingChannels.length > 0) {
-      ElMessage.warning(`部分通道数据无法获取: ${missingChannels.join(', ')}`);
+
+    // 显示打包进度
+    for (let i = 0; i <= 90; i += 10) {
+      exportProgress.percentage = i;
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     // 生成时间戳文件名并下载
-    const now = new Date();
-    const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}`
     const content = await zip.generateAsync({
       type: 'blob',
       compression: 'DEFLATE',
       compressionOptions: { level: 6 }
-    });
-    
-    await downloadFile(content, `channel_data_${timestamp}.zip`, 'zip');
+    })
+
+    exportProgress.percentage = 100
+
+    // 下载文件
+    await downloadFile(content, `channel_data_${timestamp}.zip`, 'zip')
+
+    // 重置导出状态
+    exportProgress.isExporting = false
+    showExportDialog.value = false
+
   } catch (error) {
-    console.error('导出通道数据失败:', error);
-    ElMessage.error('导出通道数据失败，请重试');
+    console.error('导出通道数据失败:', error)
+    ElMessage.error('导出通道数据失败，请重试')
+    exportProgress.isExporting = false
   }
-};
+}
 
-const exportResultSVG = async () => {
-  let svg = resultRef.value.resultSvgRef;
-  if (svg) {
-    try {
-      const clonedSvgElement = svg.cloneNode(true);
-      const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-
-      // 创建 canvas
-      const canvas = document.createElement('canvas');
-      canvas.width = svg.width.baseVal.value;
-      canvas.height = svg.height.baseVal.value;
-      const ctx = canvas.getContext('2d');
-
-      // 创建图像并等待加载
-      const img = new Image();
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
-      });
-
-      // 绘制SVG
-      ctx.drawImage(img, 0, 0);
-
-      // 转换为blob并保存
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      await downloadFile(blob, 'analysis_result.png', 'png');
-    } catch (error) {
-      console.error('导出SVG时出错:', error);
-      ElMessage({
-        message: '导出图像失败，请重试',
-        type: 'error',
-      });
-    }
-  }
-};
-
-const exportResultData = async () => {
-  let data = resultRef.value.resultData;
-  if (data) {
-    const jsonData = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonData], { type: "application/json" });
-    await downloadFile(blob, "analysis_result.json", 'json');
-  }
-};
-
-// 修改 updateSelectedChannels mutation 的调用时机
-watch(selectedChannels, async (newChannels, oldChannels) => {
-  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
-    // 确保在更新 selectedChannels 之前重置进度状态
-    await nextTick();
-    if (MultiChannelRef.value &&
-      !SingleChannelMultiRow_channel_number.value &&
-      MultiChannelRef.value.resetProgress) {
-      MultiChannelRef.value.resetProgress();
-    }
-  }
-}, { deep: true });
-
+// 修改handleExportCommand函数以显示配置对话框
 const handleExportCommand = (command) => {
   if (command === 'exportSvg') {
-    exportChannelSVG();
+    exportChannelSVG()
   } else if (command === 'exportData') {
-    exportChannelData();
+    // 打开导出配置对话框
+    initExportConfig()
+    showExportDialog.value = true
   }
 }
 
 const handleResultExportCommand = (command) => {
   if (command === 'exportSvg') {
-    exportResultSVG();
+    exportChannelSVG();
   } else if (command === 'exportData') {
-    exportResultData();
+    exportResultSVG();
   }
 }
 
@@ -688,30 +782,6 @@ const updateSmoothness = (value) => {
   store.dispatch('updateSmoothness', value)
 }
 
-// 实现上传同步功能
-// const syncUpload = async () => {
-//   const loadingInstance = ElLoading.service({
-//     lock: true,
-//     text: '正在同步数据...',
-//     background: 'rgba(0, 0, 0, 0.7)'
-//   });
-
-//   try {
-//     // 直接通过ref引用调用HeatMap组件的syncUpload方法
-//     if (!heatMapRef.value || typeof heatMapRef.value.syncUpload !== 'function') {
-//       throw new Error('热力图组件未加载或未提供同步方法');
-//     }
-
-//     // 调用热力图组件的syncUpload方法
-//     await heatMapRef.value.syncUpload();
-//     ElMessage.success('同步成功');
-//   } catch (error) {
-//     console.error('同步失败:', error);
-//     ElMessage.error('同步失败: ' + error.message);
-//   } finally {
-//     loadingInstance.close();
-//   }
-// };
 </script>
 
 <style scoped lang="scss">
@@ -1118,5 +1188,63 @@ const updateSmoothness = (value) => {
 :deep(.el-button-group .el-button) {
   font-size: 12px;
   padding: 6px 12px;
+}
+
+/* 导出配置对话框样式 */
+.channel-selection {
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.channel-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.channel-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #ebeef5;
+}
+
+.channel-name {
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 180px;
+}
+
+.filename-input-container {
+  position: relative;
+  margin-left: 10px;
+  width: 180px;
+  
+  .el-input {
+    width: 100%;
+  }
+  
+  .file-extension {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #909399;
+    pointer-events: none;
+  }
+}
+
+.export-progress {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
 }
 </style>

@@ -786,16 +786,20 @@ const store = createStore({
     },
     async fetchChannelData(
       { state, commit },
-      { channel, forceRefresh = false }
+      { channel, forceRefresh = false, sample_mode = 'downsample' }
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+
+      // 如果需要原始频率数据，使用新的缓存键
+      const useOriginalFrequency = sample_mode === 'full';
+      const cacheKey = useOriginalFrequency ? `original_${channelKey}` : channelKey;
 
       // 如果强制刷新，跳过所有缓存检查
       if (forceRefresh) {
         // console.log(`强制刷新通道数据: ${channelKey}`);
       } else {
         // 首先检查内存缓存 - 内存缓存是最快的
-        const cached = dataCache.get(channelKey);
+        const cached = dataCache.get(cacheKey);
         if (cached) {
           // 内存缓存存在，检查是否在有效期内（30分钟）
           if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
@@ -808,7 +812,7 @@ const store = createStore({
 
         // 内存缓存不存在或已过期，尝试从IndexedDB获取
         try {
-          const dbCached = await indexedDBService.getChannelData(channelKey);
+          const dbCached = await indexedDBService.getChannelData(cacheKey);
           if (dbCached && dbCached.data) {
             // 检查IndexedDB缓存是否在有效期内（7天）
             if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
@@ -823,7 +827,7 @@ const store = createStore({
               
               // 异步更新内存缓存，不阻塞主流程
               setTimeout(() => {
-                dataCache.put(channelKey, {
+                dataCache.put(cacheKey, {
                   data: reactiveData,
                   timestamp: Date.now()
                 });
@@ -840,9 +844,10 @@ const store = createStore({
       }
 
       // 检查是否有相同的请求正在进行中
-      if (pendingRequests.has(channelKey)) {
+      const pendingKey = `${cacheKey}_${sample_mode}`;
+      if (pendingRequests.has(pendingKey)) {
         // console.log(`复用进行中的请求: ${channelKey}`);
-        return pendingRequests.get(channelKey);
+        return pendingRequests.get(pendingKey);
       }
 
       // console.log(`从服务器获取通道数据: ${channelKey}`);
@@ -850,6 +855,7 @@ const store = createStore({
         channel_key: channelKey,
         channel_type: channel.channel_type,
         sample_freq: state.sampling, // 传递当前的采样率设置
+        sample_mode: sample_mode // 添加采样模式参数
       };
 
       // 创建请求的 Promise 并将其存储
@@ -891,7 +897,7 @@ const store = createStore({
           
           // 异步存储到缓存，不阻塞主流程
           setTimeout(() => {
-            commit("updateChannelDataCache", { channelKey, data: enhancedData });
+            commit("updateChannelDataCache", { channelKey: cacheKey, data: enhancedData });
           }, 0);
           
           resolve(enhancedData);
@@ -899,12 +905,12 @@ const store = createStore({
           reject(error);
         } finally {
           // 无论成功或失败，都从进行中的请求映射中移除
-          pendingRequests.delete(channelKey);
+          pendingRequests.delete(pendingKey);
         }
       });
 
       // 将请求存储到进行中的请求映射
-      pendingRequests.set(channelKey, requestPromise);
+      pendingRequests.set(pendingKey, requestPromise);
 
       return requestPromise;
     },
