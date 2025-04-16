@@ -1216,14 +1216,14 @@ const updateSmoothness = (value) => {
 
 .control-label {
   margin-right: 8px;
-  font-size: 1em;
+  font-size: 0.9em;
   color: #606266;
   white-space: nowrap;
 }
 
 .control-unit {
   margin-left: 4px;
-  font-size: 1em;
+  font-size: 0.9em;
   color: #606266;
 }
 
