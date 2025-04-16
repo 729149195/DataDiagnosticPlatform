@@ -194,7 +194,7 @@
     </el-container>
 
     <!-- 添加导出配置对话框 -->
-    <el-dialog v-model="showExportDialog" title="导出通道数据配置" width="600px">
+    <el-dialog v-model="showExportDialog" title="导出通道数据配置" width="600px" class="export-dialog">
       <el-form :model="exportConfig" label-width="120px">
         <el-form-item label="选择通道">
           <div class="channel-selection">
@@ -215,24 +215,32 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="数据频率">
-          <el-radio-group v-model="exportConfig.frequencyMode">
-            <el-radio :value="'current'">使用当前采样频率 ({{ sampling }}KHz)</el-radio>
-            <el-radio :value="'original'">使用原始频率 <el-tag type="warning" size="small">需要重新请求数据，耗时较长</el-tag></el-radio>
-            <el-radio :value="'custom'">使用自定义频率 
-              <el-input-number 
-                v-if="exportConfig.frequencyMode === 'custom'"
-                v-model="exportConfig.customFrequency" 
-                :precision="2" 
-                :step="0.5" 
-                :min="0.1" 
-                :max="1000" 
-                style="width: 120px; margin-left: 10px;"
-                size="small"
-              />
-              <span v-if="exportConfig.frequencyMode === 'custom'">KHz</span>
-            </el-radio>
-          </el-radio-group>
+        <el-form-item label="数据频率" class="frequency-options">
+          <div class="frequency-radio-container">
+            <div class="radio-option">
+              <el-radio v-model="exportConfig.frequencyMode" label="current">
+                使用当前采样频率 ({{ sampling }}KHz)
+              </el-radio>
+            </div>
+
+            <div class="radio-option">
+              <el-radio v-model="exportConfig.frequencyMode" label="original">
+                使用原始频率<el-tag type="warning" size="small">需要重新请求数据，可能需要一定耗时</el-tag>
+              </el-radio>
+            </div>
+
+            <div class="radio-option">
+              <el-radio v-model="exportConfig.frequencyMode" label="custom">
+                使用自定义频率<el-tag type="warning" size="small">需要重新请求数据，可能需要一定耗时</el-tag>
+              </el-radio>
+
+              <div class="custom-frequency-control">
+                <el-input-number v-model="exportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="exportConfig.frequencyMode !== 'custom'" />
+                <span class="unit-label">KHz</span>
+              </div>
+            </div>
+
+          </div>
         </el-form-item>
       </el-form>
 
@@ -350,13 +358,13 @@ onMounted(() => {
   if (savedChannelMode !== null) {
     SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
   }
-  
+
   // 恢复异常区域显示状态
   const savedShowAnomaly = localStorage.getItem('showAnomaly');
   if (savedShowAnomaly !== null) {
     showAnomaly.value = savedShowAnomaly === 'true';
   }
-  
+
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
 });
@@ -394,11 +402,11 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
     const link = document.createElement('a');
     link.href = url;
     link.download = suggestedName;
-    
+
     // 模拟点击链接进行下载
     document.body.appendChild(link);
     link.click();
-    
+
     // 清理
     setTimeout(() => {
       document.body.removeChild(link);
@@ -425,13 +433,13 @@ const setupChartObserver = () => {
   if (chartObserver.value) {
     chartObserver.value.disconnect();
   }
-  
+
   // 创建新的MutationObserver
   chartObserver.value = new MutationObserver((mutations) => {
     // 如果图表发生变化，应用当前的显示/隐藏状态到所有异常区域
     applyAnomalyVisibility();
   });
-  
+
   // 开始观察整个文档，关注子节点的添加
   chartObserver.value.observe(document.body, {
     childList: true,
@@ -442,7 +450,7 @@ const setupChartObserver = () => {
 // 应用异常区域可见性的函数，可以单独调用
 const applyAnomalyVisibility = () => {
   const currentVisibility = showAnomaly.value;
-  
+
   if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行模式
     const allCharts = document.querySelectorAll('[id^="chart-"]');
@@ -693,14 +701,14 @@ const startExportData = async () => {
       try {
         // 根据频率模式设置参数
         const params = { channel }
-        
+
         if (exportConfig.frequencyMode === 'original') {
           params.sample_mode = 'full'
         } else if (exportConfig.frequencyMode === 'custom') {
           params.sample_mode = 'downsample'  // 修改为downsample，后端只支持full和downsample
           params.sample_freq = exportConfig.customFrequency // 使用sample_freq参数传递自定义频率
         }
-        
+
         // 获取通道数据
         const data = await store.dispatch('fetchChannelData', params)
 
@@ -711,7 +719,7 @@ const startExportData = async () => {
         } else {
           missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
         }
-    } catch (error) {
+      } catch (error) {
         console.error(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error)
         missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
       }
@@ -723,7 +731,7 @@ const startExportData = async () => {
     // 完成下载阶段
     exportProgress.percentage = 100
     await new Promise(resolve => setTimeout(resolve, 500))
-    
+
     // 开始打包阶段
     exportProgress.stage = 'packaging'
     exportProgress.percentage = 0
@@ -1119,7 +1127,6 @@ const updateSmoothness = (value) => {
   top: -20px;
   padding: 3px 20px 5px 20px;
   background-color: #f2f6fc;
-  border: 1px solid #dcdfe6;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
   border-top: none;
@@ -1131,7 +1138,6 @@ const updateSmoothness = (value) => {
   transition: all 0.2s ease;
 
   &:hover {
-    background-color: #ecf5ff;
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
     transform: translateY(1px);
   }
@@ -1144,7 +1150,6 @@ const updateSmoothness = (value) => {
 
   .arc-toggle-text {
     font-size: 12px;
-    color: #606266;
     white-space: nowrap;
     /* 防止文本换行 */
   }
@@ -1221,31 +1226,38 @@ const updateSmoothness = (value) => {
 }
 
 /* 导出配置对话框样式 */
+.export-dialog {
+  :deep(.el-dialog__body) {
+    padding: 20px 25px;
+  }
+}
+
 .channel-selection {
   border: 1px solid #e4e7ed;
   border-radius: 4px;
-  padding: 10px;
-  margin-bottom: 10px;
+  padding: 15px;
+  margin-bottom: 15px;
+  background-color: #f8f9fa;
 }
 
 .channel-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #e4e7ed;
 }
 
 .channel-item {
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
   border-bottom: 1px dashed #ebeef5;
 }
 
 .channel-name {
-  margin-left: 8px;
+  margin-left: 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1256,18 +1268,66 @@ const updateSmoothness = (value) => {
   position: relative;
   margin-left: 10px;
   width: 180px;
-  
+
   .el-input {
     width: 100%;
   }
-  
+
   .file-extension {
     position: absolute;
     right: 8px;
     top: 50%;
     transform: translateY(-50%);
-    color: #909399;
     pointer-events: none;
+  }
+}
+
+/* 频率选项样式 */
+.frequency-options {
+  margin-top: 10px;
+}
+
+.frequency-radio-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.radio-option {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 15px;
+  text-align: center;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  .el-radio {
+    height: 32px;
+    line-height: 32px;
+    margin-right: 0;
+    white-space: nowrap;
+  }
+
+  .el-tag {
+    margin-left: 8px;
+  }
+}
+
+.custom-frequency-control {
+  margin-top: 8px;
+  margin-left: 23px;
+  display: flex;
+  align-items: center;
+
+  .el-input-number {
+    width: 140px;
+  }
+
+  .unit-label {
+    margin-left: 8px;
+    color: #606266;
   }
 }
 
@@ -1276,5 +1336,19 @@ const updateSmoothness = (value) => {
   padding: 15px;
   background-color: #f5f7fa;
   border-radius: 4px;
+
+  p {
+    margin-bottom: 10px;
+    color: #606266;
+  }
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+
+  .el-button+.el-button {
+    margin-left: 12px;
+  }
 }
 </style>
