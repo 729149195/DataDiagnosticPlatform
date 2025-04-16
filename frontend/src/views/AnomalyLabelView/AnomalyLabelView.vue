@@ -425,39 +425,39 @@
 
     <!-- 添加导出结果图表配置对话框 -->
     <el-dialog v-model="showResultSvgExportDialog" title="导出计算结果图表" width="600px" class="export-dialog">
-      <div class="dialog-layout">
+      <div class="dialog-layout" style="display: flex; flex-direction: column;">
         <!-- 只保留参数配置部分 -->
         <div class="param-form" style="width: 100%">
           <el-form :model="resultSvgExportConfig" label-width="100px">
             <!-- 图片尺寸设置 -->
             <el-form-item label="图片尺寸" class="size-controls-container">
-              <div class="size-controls">
-                <div class="size-input-group">
-                  <span class="size-label">宽度:</span>
-                  <el-input-number v-model="resultSvgExportConfig.width" :min="300" :max="3000" :controls="false" size="small" />
-                  <span class="size-unit">px</span>
+              <div class="size-controls" style="display: flex; flex-direction: column; align-items: flex-start;">
+                <div class="size-input-group" style="margin-bottom: 10px; display: flex; align-items: center;">
+                  <span class="size-label" style="width: 50px; text-align: left;">宽度:</span>
+                  <el-input-number v-model="resultSvgExportConfig.width" :min="300" :max="3000" :controls="false" size="small" style="width: 120px;" />
+                  <span class="size-unit" style="margin-left: 5px;">px</span>
                 </div>
                 
-                <div class="size-input-group">
-                  <span class="size-label">高度:</span>
-                  <el-input-number v-model="resultSvgExportConfig.height" :min="200" :max="2000" :controls="false" size="small" />
-                  <span class="size-unit">px</span>
+                <div class="size-input-group" style="display: flex; align-items: center;">
+                  <span class="size-label" style="width: 50px; text-align: left;">高度:</span>
+                  <el-input-number v-model="resultSvgExportConfig.height" :min="200" :max="2000" :controls="false" size="small" style="width: 120px;" />
+                  <span class="size-unit" style="margin-left: 5px;">px</span>
                 </div>
               </div>
             </el-form-item>
 
             <!-- 文件名设置 -->
             <el-form-item label="文件名" class="size-controls-container">
-              <div class="filename-input-container" style="width: 100%">
-                <el-input v-model="resultSvgExportConfig.fileName" placeholder="自定义文件名" />
-                <span class="file-extension">.png</span>
+              <div class="filename-input-container" style="width: 100%; position: relative;">
+                <el-input v-model="resultSvgExportConfig.fileName" placeholder="自定义文件名" style="width: 100%;" />
+                <span class="file-extension" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%);">.png</span>
               </div>
             </el-form-item>
           </el-form>
         </div>
           
         <!-- 进度条 -->
-        <div v-if="resultSvgExportProgress.isExporting" class="export-progress">
+        <div v-if="resultSvgExportProgress.isExporting" class="export-progress" style="margin-top: 15px; width: 100%;">
           <p>正在导出图表...</p>
           <el-progress :percentage="resultSvgExportProgress.percentage" :format="percentageFormat"></el-progress>
         </div>
@@ -922,7 +922,11 @@ const renderChannelToPng = async (channel, fileName, width, height, frequencyPar
         },
         itemHoverStyle: {
           color: '#4572A7'
-        }
+        },
+        // 将图例放置在图表内部
+        floating: true,
+        x: -30,
+        y: 60
       },
       series: [{
         name: channel.channel_name,
@@ -1154,7 +1158,11 @@ const renderMultiChannelToPng = async (channels, width, height, frequencyParams,
         },
         itemHoverStyle: {
           color: '#4572A7'
-        }
+        },
+        // 将图例放置在图表内部
+        floating: true,
+        x: -30,
+        y: 60
       },
       series: seriesData,
       plotOptions: {
@@ -1207,7 +1215,7 @@ const renderMultiChannelToPng = async (channels, width, height, frequencyParams,
         ctx.fillRect(0, 0, width, height)
         
         // 绘制图表
-        ctx.drawImage(img, 0, 0)
+        ctx.drawImage(img, 0, 0, width, height)
         
         // 转换为blob
         canvas.toBlob(blob => resolve(blob), 'image/png')
@@ -1284,8 +1292,16 @@ const handleResultExportCommand = (command) => {
     }
     
     try {
-      // 将计算结果数据转换为JSON
-      const jsonData = JSON.stringify(calculationResult, null, 2)
+      // 获取计算结果数据的副本
+      const calculationResultCopy = JSON.parse(JSON.stringify(calculationResult))
+      
+      // 移除channel_number字段
+      if (calculationResultCopy.hasOwnProperty('channel_number')) {
+        delete calculationResultCopy.channel_number
+      }
+      
+      // 将处理后的计算结果数据转换为JSON
+      const jsonData = JSON.stringify(calculationResultCopy, null, 2)
       
       // 创建Blob
       const blob = new Blob([jsonData], { type: 'application/json' })
@@ -1763,7 +1779,7 @@ const exportResultSVG = () => {
 // 初始化结果SVG导出配置
 const initResultSvgExportConfig = () => {
   // 设置默认尺寸和文件名
-  resultSvgExportConfig.width = 1200
+  resultSvgExportConfig.width = 2400
   resultSvgExportConfig.height = 600
   
   // 如果有计算结果，可以设置更有意义的默认文件名
@@ -1819,7 +1835,7 @@ const startExportResultSvg = async () => {
       title: {
         text: calculationResult.channel_name || '计算结果',
         style: {
-          fontSize: '16px',
+          fontSize: '20px',
           fontWeight: 'bold',
           color: '#333333'
         }
@@ -1835,11 +1851,11 @@ const startExportResultSvg = async () => {
         title: {
           text: 'Time (s)',
           style: {
-            fontSize: '14px',
+            fontSize: '18px',
             fontWeight: 'bold',
             color: '#000000'
           },
-          margin: 15
+          margin: 20
         },
         lineWidth: 2,
         lineColor: '#000000',
@@ -1850,7 +1866,7 @@ const startExportResultSvg = async () => {
         tickColor: '#000000',
         labels: {
           style: {
-            fontSize: '12px',
+            fontSize: '16px',
             color: '#000000'
           }
         }
@@ -1859,11 +1875,11 @@ const startExportResultSvg = async () => {
         title: {
           text: calculationResult.Y_unit || 'Value',
           style: {
-            fontSize: '14px',
+            fontSize: '18px',
             fontWeight: 'bold',
             color: '#000000'
           },
-          margin: 15
+          margin: 20
         },
         lineWidth: 2,
         lineColor: '#000000',
@@ -1874,7 +1890,7 @@ const startExportResultSvg = async () => {
         tickColor: '#000000',
         labels: {
           style: {
-            fontSize: '12px',
+            fontSize: '16px',
             color: '#000000'
           }
         }
@@ -1884,12 +1900,16 @@ const startExportResultSvg = async () => {
         align: 'right',
         verticalAlign: 'top',
         layout: 'vertical',
-        backgroundColor: '#FFFFFF',
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
         borderWidth: 1,
         borderColor: '#E0E0E0',
         borderRadius: 5,
+        // 将图例放置在图表内部
+        x: -30,
+        y: 50,
+        floating: true,
         itemStyle: {
-          fontSize: '12px',
+          fontSize: '16px',
           fontWeight: 'normal',
           color: '#000000'
         },
