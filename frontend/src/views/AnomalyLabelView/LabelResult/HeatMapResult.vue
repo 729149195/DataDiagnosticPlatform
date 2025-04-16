@@ -496,55 +496,178 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
 // 修改导出SVG功能
 const exportHeatMapSvg = async () => {
   let HeatMap = HeatMapRef.value;
-  if (HeatMap) {
-    try {
-      // 克隆 SVG 元素并创建一个新的 XML 序列化器
-      const clonedSvgElement = HeatMap.cloneNode(true);
-      const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
+  if (!HeatMap) {
+    ElMessage.warning('热力图元素未找到，无法导出');
+    return;
+  }
 
-      // 创建一个新的 Image 对象用于 SVG
-      const svgImg = new Image();
-      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const svgUrl = URL.createObjectURL(svgBlob);
+  try {
+    // 获取热力图容器和实际内容尺寸
+    const heatmapContainer = document.querySelector('.heatmap-container');
+    
+    // 获取完整热力图的尺寸，包括可能被滚动隐藏的部分
+    // SVG的宽度可能小于实际需要显示的内容宽度
+    const cells = HeatMap.querySelectorAll('rect.heatmap-cell');
+    let maxX = 0, maxY = 0;
+    cells.forEach(cell => {
+      const x = parseFloat(cell.getAttribute('x')) + parseFloat(cell.getAttribute('width'));
+      const y = parseFloat(cell.getAttribute('y')) + parseFloat(cell.getAttribute('height'));
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    });
 
-      // 获取图例图片
-      const legendImg = document.getElementById('heatmapLegend');
+    // 获取所有文本元素的位置，确保它们也被包含
+    const textElements = HeatMap.querySelectorAll('text');
+    textElements.forEach(text => {
+      if (text.getAttribute('x')) {
+        const x = parseFloat(text.getAttribute('x')) + text.getBBox().width;
+        maxX = Math.max(maxX, x);
+      }
+      if (text.getAttribute('y')) {
+        const y = parseFloat(text.getAttribute('y')) + text.getBBox().height;
+        maxY = Math.max(maxY, y);
+      }
+    });
 
-      // 创建一个 canvas 元素
-      const canvas = document.createElement('canvas');
-      const legendWidth = legendImg.width;  // 缩小一半
-      const legendHeight = legendImg.height; // 缩小一半
-      const padding = 30;
-      const canvasWidth = Math.max(HeatMap.width.baseVal.value, legendImg.width);
-      const canvasHeight = HeatMap.height.baseVal.value + legendImg.height + padding;
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
-      const ctx = canvas.getContext('2d');
+    // 使用getBoundingClientRect获取基础尺寸
+    const bbox = HeatMap.getBoundingClientRect();
+    
+    // 确保我们使用最大的尺寸
+    const svgWidth = Math.max(Math.ceil(bbox.width), maxX + 50); // 添加一些边距
+    const svgHeight = Math.max(Math.ceil(bbox.height), maxY + 50);
 
-      // 等待SVG图像加载
-      await new Promise((resolve, reject) => {
-        svgImg.onload = resolve;
-        svgImg.onerror = reject;
-        svgImg.src = svgUrl;
-      });
+    // 克隆 SVG 元素
+    const clonedSvgElement = HeatMap.cloneNode(true);
+    
+    // 设置明确的宽高和viewBox，确保包含所有内容
+    clonedSvgElement.setAttribute('width', svgWidth);
+    clonedSvgElement.setAttribute('height', svgHeight);
+    clonedSvgElement.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+    clonedSvgElement.style.overflow = 'visible'; // 确保所有内容可见
+    
+    // 修复SVG中的字体样式，确保文本不变形
+    const clonedTextElements = clonedSvgElement.querySelectorAll('text');
+    clonedTextElements.forEach(text => {
+      // 确保字体样式正确
+      text.style.fontFamily = '"Arial", "Helvetica", sans-serif';
+      text.style.fontWeight = 'normal';
+      text.style.fontSize = '12px'; // 固定字体大小
+      // 移除可能导致变形的transform属性
+      if (text.hasAttribute('transform')) {
+        const transform = text.getAttribute('transform');
+        if (transform.includes('scale')) {
+          text.removeAttribute('transform');
+        }
+      }
+    });
+    
+    // 确保所有热力图单元格都可见
+    const clonedCells = clonedSvgElement.querySelectorAll('rect.heatmap-cell');
+    clonedCells.forEach(cell => {
+      cell.style.visibility = 'visible';
+      // 确保边框可见
+      cell.setAttribute('stroke', '#ddd');
+      cell.setAttribute('stroke-width', '1');
+    });
+    
+    const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
 
-      // 绘制图例图片和SVG到canvas上
-      ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
-      ctx.drawImage(svgImg, 0, legendHeight + padding);
+    // 创建完整的SVG文档，包含所需的命名空间
+    const svgContent = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+      <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+      <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
+           width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}" 
+           style="overflow:visible">
+        ${svgData.replace(/<svg[^>]*>|<\/svg>/g, '')}
+      </svg>`;
+    
+    // 创建一个新的 Image 对象用于 SVG
+    const svgImg = new Image();
+    const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+    const svgUrl = URL.createObjectURL(svgBlob);
 
-      // 转换为blob并保存
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-      await downloadFile(blob, 'heatmap_with_legend.png', 'png');
-
-      // 释放 URL 对象
-      URL.revokeObjectURL(svgUrl);
-    } catch (error) {
-      console.error('导出SVG时出错:', error);
-      ElMessage({
-        message: '导出图像失败，请重试',
-        type: 'error',
-      });
+    // 获取图例图片 - 检查是否存在
+    const legendImg = document.getElementById('heatmapLegend');
+    
+    // 创建一个 canvas 元素 - 根据SVG的尺寸
+    const canvas = document.createElement('canvas');
+    
+    // 设置画布尺寸，添加额外空间以确保完整捕获
+    const canvasWidth = svgWidth + 100; // 添加额外的边距
+    let canvasHeight = svgHeight + 100;
+    let legendHeight = 0;
+    let padding = 30;
+    
+    // 如果有图例，计算额外需要的空间
+    if (legendImg && legendImg.complete && legendImg.width > 0) {
+      legendHeight = legendImg.height || 50;
+      canvasHeight += (legendHeight + padding);
     }
+    
+    // 设置画布大小
+    canvas.width = canvasWidth;
+    canvas.height = canvasHeight;
+    
+    const ctx = canvas.getContext('2d');
+
+    // 设置背景色为白色
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+    
+    // 画布上下文设置，改善文本渲染
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // 等待SVG图像加载
+    await new Promise((resolve, reject) => {
+      svgImg.onload = resolve;
+      svgImg.onerror = (e) => {
+        reject(new Error('SVG加载失败: ' + e.message));
+      };
+      svgImg.src = svgUrl;
+    });
+
+    // 给SVG绘制添加50px的边距，确保内容不会被裁剪
+    const svgDrawX = 50;
+    const svgDrawY = 50;
+    const svgDrawWidth = svgWidth;
+    const svgDrawHeight = svgHeight;
+
+    // 绘制SVG到canvas上 - 保持原始比例
+    ctx.drawImage(svgImg, svgDrawX, svgDrawY, svgDrawWidth, svgDrawHeight);
+    
+    // 如果有图例，在底部绘制图例
+    if (legendImg && legendImg.complete && legendImg.width > 0) {
+      const legendX = (canvasWidth - legendImg.width) / 2; // 水平居中
+      const legendY = svgDrawY + svgDrawHeight + padding; // 在SVG下方
+      ctx.drawImage(legendImg, legendX, legendY, legendImg.width, legendHeight);
+    }
+
+    // 转换为blob并保存
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1.0)); // 1.0表示最高质量
+    
+    if (!blob) {
+      throw new Error('转换为PNG失败');
+    }
+    
+    // 生成当前时间戳
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+    
+    await downloadFile(blob, `heatmap_${timestamp}.png`, 'png');
+
+    // 释放 URL 对象
+    URL.revokeObjectURL(svgUrl);
+    
+    ElMessage.success('热力图导出成功');
+  } catch (error) {
+    console.error('导出热力图时出错:', error);
+    ElMessage({
+      message: '导出热力图失败，请重试: ' + error.message,
+      type: 'error',
+    });
   }
 };
 
