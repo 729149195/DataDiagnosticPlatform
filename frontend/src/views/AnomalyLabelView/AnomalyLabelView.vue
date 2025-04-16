@@ -174,8 +174,8 @@
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="exportSvg">导出图片</el-dropdown-item>
-                        <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
+                        <el-dropdown-item command="exportSvg">导出计算图片</el-dropdown-item>
+                        <el-dropdown-item command="exportData">导出计算数据</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
                   </el-dropdown>
