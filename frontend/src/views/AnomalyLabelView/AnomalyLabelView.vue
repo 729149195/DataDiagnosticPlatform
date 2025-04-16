@@ -199,10 +199,12 @@
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { useStore } from 'vuex';
 import { FolderChecked, Upload, Menu } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElLoading } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import 'highcharts/modules/accessibility';
+import JSZip from 'jszip'; // 导入JSZip库
+import { CacheFactory } from "cachefactory"; // 导入CacheFactory
 // 导入AppHeader组件
 import AppHeader from '@/components/AppHeader.vue';
 // 颜色配置及通道选取组件
@@ -336,6 +338,9 @@ const downloadFile = async (blob, suggestedName, fileType = 'json') => {
       },
       'svg': {
         'image/svg+xml': ['.svg'],
+      },
+      'zip': {
+        'application/zip': ['.zip'],
       }
     };
 
@@ -539,23 +544,60 @@ const exportChannelSVG = async () => {
 };
 
 const exportChannelData = async () => {
-  if (SingleChannelMultiRow_channel_number.value) {
-    // 单通道多行的情况
-    for (let [index, svgElement] of channelSvgElementsRefs.value.entries()) {
-      let channel = selectedChannels.value[index];
-      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      let data = channelDataCache.value[channelKey];
-      const jsonData = JSON.stringify(data, null, 2);
-      const blob = new Blob([jsonData], { type: "application/json" });
-      await downloadFile(blob, `${channel.channel_name}_${channel.shot_number}_data.json`, 'json');
+  try {
+    // 检查是否有选中的通道
+    if (!selectedChannels.value || selectedChannels.value.length === 0) {
+      ElMessage.warning('请先选择需要导出的通道');
+      return;
     }
-  } else {
-    let channelsData = MultiChannelRef.value.channelsData;
-    if (channelsData) {
-      const jsonData = JSON.stringify(channelsData, null, 2);
-      const blob = new Blob([jsonData], { type: "application/json" });
-      await downloadFile(blob, "multi_channel_data.json", 'json');
+    
+    // 创建zip实例并添加加载提示
+    const zip = new JSZip();
+    const loadingInstance = ElLoading.service({
+      text: '正在打包通道数据...',
+      background: 'rgba(0, 0, 0, 0.7)'
+    });
+    
+    // 遍历所有选中的通道，获取数据并添加到zip
+    const missingChannels = [];
+    for (const channel of selectedChannels.value) {
+      try {
+        const data = await store.dispatch('fetchChannelData', { channel });
+        if (data) {
+          const fileName = `${channel.channel_name}_${channel.shot_number}_data.json`;
+          zip.file(fileName, JSON.stringify(data, null, 2));
+        } else {
+          missingChannels.push(`${channel.channel_name}_${channel.shot_number}`);
+        }
+      } catch (error) {
+        missingChannels.push(`${channel.channel_name}_${channel.shot_number}`);
+      }
     }
+    
+    // 关闭加载提示
+    loadingInstance.close();
+    
+    // 检查是否所有通道都缺失
+    if (missingChannels.length === selectedChannels.value.length) {
+      ElMessage.error('所有选中通道的数据都无法获取，导出取消');
+      return;
+    } else if (missingChannels.length > 0) {
+      ElMessage.warning(`部分通道数据无法获取: ${missingChannels.join(', ')}`);
+    }
+    
+    // 生成时间戳文件名并下载
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2,'0')}${now.getDate().toString().padStart(2,'0')}_${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}`;
+    const content = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+    
+    await downloadFile(content, `channel_data_${timestamp}.zip`, 'zip');
+  } catch (error) {
+    console.error('导出通道数据失败:', error);
+    ElMessage.error('导出通道数据失败，请重试');
   }
 };
 
@@ -624,9 +666,6 @@ const handleExportCommand = (command) => {
   } else if (command === 'exportData') {
     exportChannelData();
   }
-  // } else if (command === 'syncUpload') {
-  //   syncUpload();
-  // }
 }
 
 const handleResultExportCommand = (command) => {
