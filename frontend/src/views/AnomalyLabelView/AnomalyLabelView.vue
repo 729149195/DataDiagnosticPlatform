@@ -264,6 +264,93 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- 添加导出SVG配置对话框 -->
+    <el-dialog v-model="showSvgExportDialog" title="导出通道图片配置" width="600px" class="export-dialog">
+      <el-form :model="svgExportConfig" label-width="120px">
+        <el-form-item label="选择通道">
+          <div class="channel-selection">
+            <div class="channel-header">
+              <el-checkbox v-model="allSvgChannelsSelected" @change="toggleAllSvgChannels">全选</el-checkbox>
+              <el-button size="small" @click="resetSvgChannelNames" :icon="Refresh" :link="true">重置名称</el-button>
+            </div>
+            <el-scrollbar height="250px">
+              <div v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`" class="channel-item">
+                <el-checkbox v-model="svgExportConfig.selectedChannelIndices[index]"></el-checkbox>
+                <span class="channel-name">{{ channel.channel_name }}_{{ channel.shot_number }}</span>
+                <div class="filename-input-container">
+                  <el-input v-model="svgExportConfig.channelRenames[index]" placeholder="自定义文件名" size="small"></el-input>
+                  <span class="file-extension">.png</span>
+                </div>
+              </div>
+            </el-scrollbar>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="图片尺寸">
+          <div class="size-controls">
+            <div class="size-input-group">
+              <span class="size-label">宽度:</span>
+              <el-input-number v-model="svgExportConfig.width" :min="300" :max="3000" :step="100" size="small" />
+              <span class="size-unit">px</span>
+            </div>
+            <div class="size-input-group">
+              <span class="size-label">高度:</span>
+              <el-input-number v-model="svgExportConfig.height" :min="200" :max="2000" :step="100" size="small" />
+              <span class="size-unit">px</span>
+            </div>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="数据频率" class="frequency-options">
+          <div class="frequency-radio-container">
+            <div class="radio-option">
+              <el-radio v-model="svgExportConfig.frequencyMode" label="current">
+                使用当前采样频率 ({{ sampling }}KHz)
+              </el-radio>
+            </div>
+
+            <div class="radio-option">
+              <div class="radio-with-tag">
+                <el-radio v-model="svgExportConfig.frequencyMode" label="original">
+                  使用原始频率
+                </el-radio>
+                <el-tag type="warning" size="small">需要一定耗时</el-tag>
+              </div>
+            </div>
+
+            <div class="radio-option">
+              <div class="radio-with-tag">
+                <el-radio v-model="svgExportConfig.frequencyMode" label="custom">
+                  使用自定义频率
+                </el-radio>
+                <el-tag type="warning" size="small">需要一定耗时</el-tag>
+              </div>
+
+              <div class="custom-frequency-control">
+                <el-input-number v-model="svgExportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="svgExportConfig.frequencyMode !== 'custom'" />
+                <span class="unit-label">KHz</span>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <!-- 进度条 -->
+      <div v-if="svgExportProgress.isExporting" class="export-progress">
+        <p>{{ svgExportProgress.stage === 'rendering' ? '正在渲染图表' : '正在打包图片' }}: {{ svgExportProgress.currentChannel }} ({{ svgExportProgress.current }}/{{ svgExportProgress.total }})</p>
+        <el-progress :percentage="svgExportProgress.percentage" :format="percentageFormat"></el-progress>
+      </div>
+
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showSvgExportDialog = false">取消</el-button>
+          <el-button type="primary" @click="startExportSvg" :loading="svgExportProgress.isExporting">
+            导出
+          </el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -508,96 +595,553 @@ const updateShowAnomaly = (value) => {
   applyAnomalyVisibility();
 };
 
-const exportChannelSVG = async () => {
-  if (SingleChannelMultiRow_channel_number.value) {
-    // 单通道多行的情况
-    for (let [index, svgElement] of channelSvgElementsRefs.value.entries()) {
-      if (svgElement) {
-        try {
-          // 克隆 SVG 元素并创建一个新的 XML 序列化器
-          const clonedSvgElement = svgElement.cloneNode(true);
-          const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-          const legendImg = document.getElementById('channelLegendImage');
+const exportChannelSVG = () => {
+  // 检查是否有通道被选中
+  if (!selectedChannels.value || selectedChannels.value.length === 0) {
+    ElMessage.warning('请先选择至少一个通道')
+    return
+  }
+  
+  // 初始化配置并打开对话框
+  initSvgExportConfig()
+  showSvgExportDialog.value = true
+}
 
-          // 创建 canvas
-          const canvas = document.createElement('canvas');
-          const legendWidth = legendImg.width;
-          const legendHeight = legendImg.height;
-          const padding = 30;
-          const canvasWidth = Math.max(svgElement.width.baseVal.value, legendImg.width);
-          const canvasHeight = svgElement.height.baseVal.value + legendImg.height + padding;
-          canvas.width = canvasWidth;
-          canvas.height = canvasHeight;
-          const ctx = canvas.getContext('2d');
+// 导出SVG配置对话框状态
+const showSvgExportDialog = ref(false)
+const svgExportConfig = reactive({
+  selectedChannelIndices: [],
+  channelRenames: [],
+  frequencyMode: 'current',
+  customFrequency: 10.0,
+  width: 1200, // 默认宽度，像素
+  height: 600  // 默认高度，像素
+})
 
-          // 创建图像并等待加载
-          const svgImg = new Image();
-          await new Promise((resolve, reject) => {
-            svgImg.onload = resolve;
-            svgImg.onerror = reject;
-            svgImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
-          });
+// 导出SVG进度状态
+const svgExportProgress = reactive({
+  isExporting: false,
+  current: 0,
+  total: 0,
+  percentage: 0,
+  currentChannel: '',
+  stage: 'rendering' // 'rendering' 或 'packaging'
+})
 
-          // 绘制图例和SVG
-          ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
-          ctx.drawImage(svgImg, 0, legendHeight + padding);
+// 全选SVG通道状态
+const allSvgChannelsSelected = computed({
+  get: () => {
+    if (!selectedChannels.value || selectedChannels.value.length === 0) return false
+    return svgExportConfig.selectedChannelIndices.every(selected => selected)
+  },
+  set: (value) => {
+    toggleAllSvgChannels(value)
+  }
+})
 
-          // 转换为blob并保存
-          const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-          await downloadFile(blob, `channel_${index + 1}_image.png`, 'png');
-        } catch (error) {
-          console.error('导出SVG时出错:', error);
-          ElMessage({
-            message: '导出图像失败，请重试',
-            type: 'error',
-          });
-        }
-      }
-    }
-  } else {
-    let svgRef = MultiChannelRef.value.channelsSvgRef;
-    if (svgRef) {
-      try {
-        const clonedSvgElement = svgRef.cloneNode(true);
-        const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
-        const legendImg = document.getElementById('channelLegendImage');
+// 全选/取消全选SVG通道
+const toggleAllSvgChannels = (value) => {
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    svgExportConfig.selectedChannelIndices = selectedChannels.value.map(() => value)
+  }
+}
 
-        // 创建 canvas
-        const canvas = document.createElement('canvas');
-        const legendWidth = legendImg.width;
-        const legendHeight = legendImg.height;
-        const padding = 30;
-        const canvasWidth = Math.max(svgRef.width.baseVal.value, legendImg.width);
-        const canvasHeight = svgRef.height.baseVal.value + legendImg.height + padding;
-        canvas.width = canvasWidth;
-        canvas.height = canvasHeight;
-        const ctx = canvas.getContext('2d');
+// 重置SVG通道名称
+const resetSvgChannelNames = () => {
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    svgExportConfig.channelRenames = selectedChannels.value.map((channel) =>
+      `${channel.channel_name}_${channel.shot_number}_image`
+    )
+  }
+}
 
-        // 创建图像并等待加载
-        const svgImg = new Image();
-        await new Promise((resolve, reject) => {
-          svgImg.onload = resolve;
-          svgImg.onerror = reject;
-          svgImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
-        });
-
-        // 绘制图例和SVG
-        ctx.drawImage(legendImg, canvasWidth - legendWidth - 30, 0, legendWidth, legendHeight);
-        ctx.drawImage(svgImg, 0, legendHeight + padding);
-
-        // 转换为blob并保存
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        await downloadFile(blob, 'multi_channel_image.png', 'png');
-      } catch (error) {
-        console.error('导出SVG时出错:', error);
-        ElMessage({
-          message: '导出图像失败，请重试',
-          type: 'error',
-        });
-      }
+// 初始化SVG导出配置
+const initSvgExportConfig = () => {
+  if (selectedChannels.value && selectedChannels.value.length > 0) {
+    svgExportConfig.selectedChannelIndices = selectedChannels.value.map(() => true)
+    svgExportConfig.channelRenames = selectedChannels.value.map((channel) =>
+      `${channel.channel_name}_${channel.shot_number}_image`
+    )
+    svgExportConfig.frequencyMode = 'current'
+    svgExportConfig.customFrequency = 10.0
+    
+    // 根据当前显示模式设置默认尺寸
+    if (SingleChannelMultiRow_channel_number.value) {
+      // 单通道多行模式
+      svgExportConfig.width = 1200
+      svgExportConfig.height = 600
+    } else {
+      // 多通道单行模式
+      svgExportConfig.width = 1600
+      svgExportConfig.height = 800
     }
   }
-};
+}
+
+// 修复renderChannelToPng函数，使用正确的方法导出图表为图片
+const renderChannelToPng = async (channel, fileName, width, height, frequencyParams) => {
+  try {
+    // 获取指定频率的通道数据
+    const data = await store.dispatch('fetchChannelData', { 
+      channel, 
+      ...frequencyParams 
+    })
+    
+    // 创建临时容器来渲染图表
+    const container = document.createElement('div')
+    container.style.width = `${width}px`
+    container.style.height = `${height}px`
+    container.style.position = 'absolute'
+    container.style.top = '-9999px'
+    container.style.left = '-9999px'
+    container.style.zIndex = '-1000'
+    container.style.opacity = '0'
+    container.style.pointerEvents = 'none'
+    document.body.appendChild(container)
+    
+    // 创建图表配置
+    const options = {
+      chart: {
+        type: 'line',
+        width: width,
+        height: height,
+        animation: false,
+        backgroundColor: '#ffffff'
+      },
+      title: {
+        text: `${channel.channel_name}_${channel.shot_number}`,
+        style: {
+          fontSize: '16px'
+        }
+      },
+      credits: {
+        enabled: false
+      },
+      xAxis: {
+        title: {
+          text: 'Time (s)'
+        },
+        min: data.X_value[0],
+        max: data.X_value[data.X_value.length - 1]
+      },
+      yAxis: {
+        title: {
+          text: data.Y_unit || 'Value'
+        }
+      },
+      series: [{
+        name: channel.channel_name,
+        data: data.X_value.map((x, i) => [x, data.Y_value[i]]),
+        color: channel.color || '#409EFF',
+        lineWidth: 1,
+        marker: {
+          enabled: false
+        },
+        states: {
+          hover: {
+            lineWidth: 1
+          }
+        },
+        boostThreshold: 1000
+      }],
+      plotOptions: {
+        series: {
+          animation: false,
+          turboThreshold: 0
+        }
+      },
+      boost: {
+        useGPUTranslations: true,
+        seriesThreshold: 1
+      },
+      exporting: {
+        enabled: false // 确保不显示导出按钮
+      }
+    }
+    
+    // 渲染图表
+    const chart = Highcharts.chart(container, options)
+    
+    // 等待图表渲染完成
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 使用canvas直接从DOM中获取图表并转换为PNG
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    
+    // 使用html2canvas或相似技术从DOM获取图表
+    // 由于直接获取SVG有问题，我们使用canvas直接绘制DOM元素
+    const svgElement = container.querySelector('svg')
+    const serializedSvg = new XMLSerializer().serializeToString(svgElement)
+    const img = new Image()
+    
+    // 使用Promise包装图像加载
+    const pngBlob = await new Promise((resolve, reject) => {
+      img.onload = () => {
+        // 清理背景
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        
+        // 绘制图表
+        ctx.drawImage(img, 0, 0)
+        
+        // 转换为blob
+        canvas.toBlob(blob => resolve(blob), 'image/png')
+      }
+      img.onerror = reject
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(serializedSvg)
+    })
+    
+    // 清理
+    chart.destroy()
+    document.body.removeChild(container)
+    
+    return pngBlob
+  } catch (error) {
+    console.error('渲染通道图片失败:', error)
+    throw error
+  }
+}
+
+// 修复renderMultiChannelToPng函数，使用正确的方法导出图表为图片
+const renderMultiChannelToPng = async (channels, width, height, frequencyParams) => {
+  try {
+    // 创建临时容器
+    const container = document.createElement('div')
+    container.style.width = `${width}px`
+    container.style.height = `${height}px`
+    container.style.position = 'absolute'
+    container.style.top = '-9999px'
+    container.style.left = '-9999px'
+    container.style.zIndex = '-1000'
+    container.style.opacity = '0'
+    container.style.pointerEvents = 'none'
+    document.body.appendChild(container)
+    
+    // 获取所有通道数据并准备系列
+    const seriesData = []
+    const xMin = [], xMax = []
+    
+    for (const channel of channels) {
+      // 获取通道数据
+      const data = await store.dispatch('fetchChannelData', { 
+        channel, 
+        ...frequencyParams 
+      })
+      
+      // 记录x轴范围
+      xMin.push(data.X_value[0])
+      xMax.push(data.X_value[data.X_value.length - 1])
+      
+      // 添加系列
+      seriesData.push({
+        name: `${channel.channel_name}_${channel.shot_number}`,
+        data: data.X_value.map((x, i) => [x, data.Y_value[i]]),
+        color: channel.color || '#409EFF',
+        lineWidth: 1,
+        marker: {
+          enabled: false
+        },
+        states: {
+          hover: {
+            lineWidth: 1
+          }
+        },
+        boostThreshold: 1000
+      })
+    }
+    
+    // 创建图表配置
+    const options = {
+      chart: {
+        type: 'line',
+        width: width,
+        height: height,
+        animation: false,
+        backgroundColor: '#ffffff'
+      },
+      title: {
+        text: '多通道数据视图',
+        style: {
+          fontSize: '16px'
+        }
+      },
+      credits: {
+        enabled: false
+      },
+      xAxis: {
+        title: {
+          text: 'Time (s)'
+        },
+        min: Math.min(...xMin),
+        max: Math.max(...xMax)
+      },
+      yAxis: {
+        title: {
+          text: 'Value'
+        }
+      },
+      legend: {
+        enabled: true,
+        itemStyle: {
+          fontSize: '12px'
+        }
+      },
+      series: seriesData,
+      plotOptions: {
+        series: {
+          animation: false,
+          turboThreshold: 0
+        }
+      },
+      boost: {
+        useGPUTranslations: true,
+        seriesThreshold: 1
+      },
+      exporting: {
+        enabled: false // 确保不显示导出按钮
+      }
+    }
+    
+    // 渲染图表
+    const chart = Highcharts.chart(container, options)
+    
+    // 等待图表渲染完成
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    // 使用canvas直接从DOM中获取图表并转换为PNG
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    
+    // 获取SVG并转换为PNG
+    const svgElement = container.querySelector('svg')
+    const serializedSvg = new XMLSerializer().serializeToString(svgElement)
+    const img = new Image()
+    
+    // 使用Promise包装图像加载
+    const pngBlob = await new Promise((resolve, reject) => {
+      img.onload = () => {
+        // 清理背景
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, width, height)
+        
+        // 绘制图表
+        ctx.drawImage(img, 0, 0)
+        
+        // 转换为blob
+        canvas.toBlob(blob => resolve(blob), 'image/png')
+      }
+      img.onerror = reject
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(serializedSvg)
+    })
+    
+    // 清理
+    chart.destroy()
+    document.body.removeChild(container)
+    
+    return pngBlob
+  } catch (error) {
+    console.error('渲染多通道图片失败:', error)
+    throw error
+  }
+}
+
+// 开始导出SVG为PNG
+const startExportSvg = async () => {
+  try {
+    // 获取选中的通道
+    const channelsToExport = []
+    const fileNames = []
+
+    selectedChannels.value.forEach((channel, index) => {
+      if (svgExportConfig.selectedChannelIndices[index]) {
+        channelsToExport.push(channel)
+        fileNames.push(svgExportConfig.channelRenames[index] || `${channel.channel_name}_${channel.shot_number}_image`)
+      }
+    })
+
+    if (channelsToExport.length === 0) {
+      ElMessage.warning('请至少选择一个通道进行导出')
+      return
+    }
+
+    // 创建新的zip实例
+    const zip = new JSZip()
+
+    // 设置进度状态
+    svgExportProgress.isExporting = true
+    svgExportProgress.current = 0
+    svgExportProgress.total = SingleChannelMultiRow_channel_number.value ? channelsToExport.length : 1
+    svgExportProgress.percentage = 0
+    svgExportProgress.stage = 'rendering'
+
+    // 设置频率参数
+    const frequencyParams = {}
+    if (svgExportConfig.frequencyMode === 'original') {
+      frequencyParams.sample_mode = 'full'
+    } else if (svgExportConfig.frequencyMode === 'custom') {
+      frequencyParams.sample_mode = 'downsample'
+      frequencyParams.sample_freq = svgExportConfig.customFrequency
+    }
+
+    // 根据当前显示模式选择导出方式
+    if (SingleChannelMultiRow_channel_number.value) {
+      // 单通道多行模式：每个通道单独导出
+      for (let i = 0; i < channelsToExport.length; i++) {
+        const channel = channelsToExport[i]
+        const fileName = fileNames[i]
+
+        // 更新进度
+        svgExportProgress.current = i + 1
+        svgExportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
+        svgExportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
+
+        try {
+          // 渲染并获取PNG
+          const pngBlob = await renderChannelToPng(
+            channel, 
+            fileName, 
+            svgExportConfig.width, 
+            svgExportConfig.height,
+            frequencyParams
+          )
+
+          // 添加到zip
+          zip.file(`${fileName}.png`, pngBlob)
+        } catch (error) {
+          console.error(`导出通道 ${channel.channel_name}_${channel.shot_number} 图片失败:`, error)
+          ElMessage.warning(`导出通道 ${channel.channel_name}_${channel.shot_number} 图片失败`)
+        }
+
+        // 等待一点时间以更新UI
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    } else {
+      // 多通道单行模式：将所有通道一起导出为一个图片
+      svgExportProgress.currentChannel = '多通道视图'
+      svgExportProgress.percentage = 30
+
+      try {
+        // 渲染并获取PNG
+        const pngBlob = await renderMultiChannelToPng(
+          channelsToExport, 
+          svgExportConfig.width, 
+          svgExportConfig.height,
+          frequencyParams
+        )
+
+        // 直接下载多通道图像
+        if (channelsToExport.length === 1) {
+          // 如果只有一个通道，使用通道名称
+          await downloadFile(pngBlob, `${fileNames[0]}.png`, 'png')
+          
+          // 更新进度
+          svgExportProgress.percentage = 100
+          
+          // 重置导出状态
+          setTimeout(() => {
+            svgExportProgress.isExporting = false
+            showSvgExportDialog.value = false
+          }, 500)
+          
+          return
+        } else {
+          // 如果有多个通道，添加到zip
+          zip.file('multi_channel_image.png', pngBlob)
+        }
+      } catch (error) {
+        console.error('导出多通道图片失败:', error)
+        ElMessage.error('导出多通道图片失败，请重试')
+        svgExportProgress.isExporting = false
+        return
+      }
+    }
+
+    // 切换到打包阶段
+    svgExportProgress.percentage = 70
+    svgExportProgress.stage = 'packaging'
+    await new Promise(resolve => setTimeout(resolve, 300))
+    svgExportProgress.percentage = 85
+
+    // 生成频率信息
+    let frequencyInfo = ''
+    if (svgExportConfig.frequencyMode === 'current') {
+      frequencyInfo = `_${sampling.value}kHz`
+    } else if (svgExportConfig.frequencyMode === 'custom') {
+      frequencyInfo = `_${svgExportConfig.customFrequency}kHz`
+    } else {
+      frequencyInfo = '_originalFrequency'
+    }
+
+    // 生成时间戳
+    const now = new Date()
+    const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`
+    
+    // 生成zip包
+    const content = await zip.generateAsync({
+      type: 'blob'
+    })
+
+    svgExportProgress.percentage = 100
+
+    // 下载文件
+    await downloadFile(content, `channel_images${frequencyInfo}_${timestamp}.zip`, 'zip')
+
+    // 重置导出状态
+    svgExportProgress.isExporting = false
+    showSvgExportDialog.value = false
+  } catch (error) {
+    console.error('导出通道图片失败:', error)
+    ElMessage.error('导出通道图片失败，请重试')
+    svgExportProgress.isExporting = false
+  }
+}
+
+const handleExportCommand = (command) => {
+  if (command === 'exportSvg') {
+    exportChannelSVG()
+  } else if (command === 'exportData') {
+    // 检查是否有通道被选中
+    if (!selectedChannels.value || selectedChannels.value.length === 0) {
+      ElMessage.warning('请先选择至少一个通道')
+      return
+    }
+    
+    // 打开导出配置对话框
+    initExportConfig()
+    showExportDialog.value = true
+  }
+}
+
+const handleResultExportCommand = (command) => {
+  if (command === 'exportSvg') {
+    exportChannelSVG();
+  } else if (command === 'exportData') {
+    // 检查是否有通道被选中
+    if (!selectedChannels.value || selectedChannels.value.length === 0) {
+      ElMessage.warning('请先选择至少一个通道')
+      return
+    }
+    
+    exportResultSVG();
+  }
+}
+
+const toggleCollapse = () => {
+  isSecondSectionCollapsed.value = !isSecondSectionCollapsed.value
+}
+
+const updateSampling = (value) => {
+  store.dispatch('updateSampling', value)
+}
+
+const updateSmoothness = (value) => {
+  store.dispatch('updateSmoothness', value)
+}
 
 // 导出配置对话框状态
 const showExportDialog = ref(false)
@@ -792,49 +1336,6 @@ const startExportData = async () => {
     ElMessage.error('导出通道数据失败，请重试')
     exportProgress.isExporting = false
   }
-}
-
-// 修改handleExportCommand函数以显示配置对话框
-const handleExportCommand = (command) => {
-  if (command === 'exportSvg') {
-    exportChannelSVG()
-  } else if (command === 'exportData') {
-    // 检查是否有通道被选中
-    if (!selectedChannels.value || selectedChannels.value.length === 0) {
-      ElMessage.warning('请先选择至少一个通道')
-      return
-    }
-    
-    // 打开导出配置对话框
-    initExportConfig()
-    showExportDialog.value = true
-  }
-}
-
-const handleResultExportCommand = (command) => {
-  if (command === 'exportSvg') {
-    exportChannelSVG();
-  } else if (command === 'exportData') {
-    // 检查是否有通道被选中
-    if (!selectedChannels.value || selectedChannels.value.length === 0) {
-      ElMessage.warning('请先选择至少一个通道')
-      return
-    }
-    
-    exportResultSVG();
-  }
-}
-
-const toggleCollapse = () => {
-  isSecondSectionCollapsed.value = !isSecondSectionCollapsed.value
-}
-
-const updateSampling = (value) => {
-  store.dispatch('updateSampling', value)
-}
-
-const updateSmoothness = (value) => {
-  store.dispatch('updateSmoothness', value)
 }
 
 </script>
@@ -1369,6 +1870,27 @@ const updateSmoothness = (value) => {
 
   .el-button+.el-button {
     margin-left: 12px;
+  }
+}
+
+/* 添加SVG导出对话框相关样式 */
+.size-controls {
+  display: flex;
+  gap: 20px;
+}
+
+.size-input-group {
+  display: flex;
+  align-items: center;
+  
+  .size-label {
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+  
+  .size-unit {
+    margin-left: 8px;
+    color: #606266;
   }
 }
 </style>
