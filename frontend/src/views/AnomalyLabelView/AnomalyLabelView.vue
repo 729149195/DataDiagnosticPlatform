@@ -102,7 +102,7 @@
                       </el-button>
                       <template #dropdown>
                         <el-dropdown-menu>
-                          <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
+                          <el-dropdown-item command="exportSvg">导出图片</el-dropdown-item>
                           <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
                         </el-dropdown-menu>
                       </template>
@@ -174,7 +174,7 @@
                     </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item command="exportSvg">导出SVG</el-dropdown-item>
+                        <el-dropdown-item command="exportSvg">导出图片</el-dropdown-item>
                         <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -194,15 +194,17 @@
     </el-container>
 
     <!-- 添加导出配置对话框 -->
-    <el-dialog v-model="showExportDialog" title="导出通道数据配置" width="600px" class="export-dialog">
-      <el-form :model="exportConfig" label-width="120px">
-        <el-form-item label="选择通道">
+    <el-dialog v-model="showExportDialog" title="导出通道数据配置" width="900px" class="export-dialog">
+      <div class="dialog-layout">
+        <!-- 左侧：通道选择 -->
+        <div class="left-section">
+          <div class="section-title">选择通道</div>
           <div class="channel-selection">
             <div class="channel-header">
               <el-checkbox v-model="allChannelsSelected" @change="toggleAllChannels">全选</el-checkbox>
               <el-button size="small" @click="resetChannelNames" :icon="Refresh" :link="true">重置名称</el-button>
-            </div>
-            <el-scrollbar height="250px">
+  </div>
+            <el-scrollbar height="350px">
               <div v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`" class="channel-item">
                 <el-checkbox v-model="exportConfig.selectedChannelIndices[index]"></el-checkbox>
                 <span class="channel-name">{{ channel.channel_name }}_{{ channel.shot_number }}</span>
@@ -213,46 +215,68 @@
               </div>
             </el-scrollbar>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item label="数据频率" class="frequency-options">
-          <div class="frequency-radio-container">
-            <div class="radio-option">
-              <el-radio v-model="exportConfig.frequencyMode" label="current">
-                使用当前采样频率 ({{ sampling }}KHz)
-              </el-radio>
-            </div>
+        <!-- 右侧：参数配置和进度条 -->
+        <div class="right-section">
+          <div>
+            <div class="section-title">导出参数</div>
+            <div class="param-form">
+              <el-form :model="exportConfig" label-width="100px">
+                <!-- 频率设置 -->
+                <el-form-item label="数据频率" class="frequency-options">
+                  <div class="frequency-radio-container">
+                    <div class="radio-option">
+                      <el-radio v-model="exportConfig.frequencyMode" label="current">
+                        使用当前采样频率 ({{ sampling }}KHz)
+                      </el-radio>
+                    </div>
 
-            <div class="radio-option">
-              <div class="radio-with-tag">
-                <el-radio v-model="exportConfig.frequencyMode" label="original">
-                  使用原始频率
-                </el-radio>
-                <el-tag type="warning" size="small">需要一定耗时</el-tag>
-              </div>
-            </div>
+                    <div class="radio-option">
+                      <div class="radio-with-tag">
+                        <el-radio v-model="exportConfig.frequencyMode" label="original">
+                          使用原始频率
+                        </el-radio>
+                        <el-tag type="warning" size="small">需要更多耗时</el-tag>
+                      </div>
+                    </div>
 
-            <div class="radio-option">
-              <div class="radio-with-tag">
-                <el-radio v-model="exportConfig.frequencyMode" label="custom">
-                  使用自定义频率
-                </el-radio>
-                <el-tag type="warning" size="small">需要一定耗时</el-tag>
-              </div>
+                    <div class="radio-option">
+                      <div class="radio-with-tag">
+                        <el-radio v-model="exportConfig.frequencyMode" label="custom">
+                          使用自定义频率
+                        </el-radio>
+                        <el-tag type="warning" size="small">需要更多耗时</el-tag>
+                      </div>
 
-              <div class="custom-frequency-control">
-                <el-input-number v-model="exportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="exportConfig.frequencyMode !== 'custom'" />
-                <span class="unit-label">KHz</span>
-              </div>
+                      <div class="custom-frequency-control">
+                        <el-input-number v-model="exportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="exportConfig.frequencyMode !== 'custom'" />
+                        <span class="unit-label">KHz</span>
+                      </div>
+                    </div>
+                  </div>
+                </el-form-item>
+              </el-form>
             </div>
           </div>
-        </el-form-item>
-      </el-form>
 
-      <!-- 进度条 -->
-      <div v-if="exportProgress.isExporting" class="export-progress">
-        <p>{{ exportProgress.stage === 'downloading' ? '正在下载数据' : '正在打包数据' }}: {{ exportProgress.currentChannel }} ({{ exportProgress.current }}/{{ exportProgress.total }})</p>
-        <el-progress :percentage="exportProgress.percentage" :format="percentageFormat"></el-progress>
+          <div class="progress-container">
+            <!-- 进度条 -->
+            <div v-if="exportProgress.isExporting" class="export-progress">
+              <p>
+                <template v-if="exportProgress.stage === 'downloading'">
+                  正在下载数据: {{ exportProgress.currentChannel }} ({{ exportProgress.current }}/{{ exportProgress.total }})
+                </template>
+                <template v-else>
+                  正在打包数据: {{ exportProgress.currentChannel }} ({{ exportProgress.current }}/{{ exportProgress.total }})
+                </template>
+              </p>
+              <el-progress :percentage="exportProgress.percentage" :format="percentageFormat"></el-progress>
+            </div>
+            <!-- 占位容器，当没有进度条时占据空间，保持对齐 -->
+            <div v-else class="export-progress-placeholder"></div>
+          </div>
+        </div>
       </div>
 
       <template #footer>
@@ -266,15 +290,17 @@
     </el-dialog>
 
     <!-- 添加导出SVG配置对话框 -->
-    <el-dialog v-model="showSvgExportDialog" title="导出通道图片配置" width="600px" class="export-dialog">
-      <el-form :model="svgExportConfig" label-width="120px">
-        <el-form-item label="选择通道">
+    <el-dialog v-model="showSvgExportDialog" title="导出通道图片配置" width="900px" class="export-dialog">
+      <div class="dialog-layout">
+        <!-- 左侧：通道选择 -->
+        <div class="left-section">
+          <div class="section-title">选择通道</div>
           <div class="channel-selection">
             <div class="channel-header">
               <el-checkbox v-model="allSvgChannelsSelected" @change="toggleAllSvgChannels">全选</el-checkbox>
               <el-button size="small" @click="resetSvgChannelNames" :icon="Refresh" :link="true">重置名称</el-button>
             </div>
-            <el-scrollbar height="250px">
+            <el-scrollbar height="350px">
               <div v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`" class="channel-item">
                 <el-checkbox v-model="svgExportConfig.selectedChannelIndices[index]"></el-checkbox>
                 <span class="channel-name">{{ channel.channel_name }}_{{ channel.shot_number }}</span>
@@ -285,61 +311,106 @@
               </div>
             </el-scrollbar>
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item label="图片尺寸">
-          <div class="size-controls">
-            <div class="size-input-group">
-              <span class="size-label">宽度:</span>
-              <el-input-number v-model="svgExportConfig.width" :min="300" :max="3000" :step="100" size="small" />
-              <span class="size-unit">px</span>
-            </div>
-            <div class="size-input-group">
-              <span class="size-label">高度:</span>
-              <el-input-number v-model="svgExportConfig.height" :min="200" :max="2000" :step="100" size="small" />
-              <span class="size-unit">px</span>
+        <!-- 右侧：参数配置和进度条 -->
+        <div class="right-section">
+          <div>
+            <div class="section-title">导出参数</div>
+            <div class="param-form">
+              <el-form :model="svgExportConfig" label-width="100px">
+                <!-- 导出模式选择 -->
+                <el-form-item label="导出模式" class="mode-selection">
+                  <div class="mode-radio-container">
+                    <div class="radio-option">
+                      <el-radio v-model="svgExportConfig.exportMode" label="singleChannel">
+                        单通道多图（每个通道单独导出）
+                      </el-radio>
+                    </div>
+                    <div class="radio-option">
+                      <el-radio v-model="svgExportConfig.exportMode" label="multiChannel">
+                        多通道单图（所有通道合并导出）
+                      </el-radio>
+                    </div>
+                  </div>
+                </el-form-item>
+
+                <!-- 图片尺寸设置 -->
+                <el-form-item label="图片尺寸" class="size-controls-container">
+                  <div class="size-controls">
+                    <div class="size-input-group">
+                      <span class="size-label">宽度:</span>
+                      <el-input-number v-model="svgExportConfig.width" :min="300" :max="3000" :controls="false" size="small" />
+                      <span class="size-unit">px</span>
+                    </div>
+                    
+                    <div class="size-input-group">
+                      <span class="size-label">高度:</span>
+                      <el-input-number v-model="svgExportConfig.height" :min="200" :max="2000" :controls="false" size="small" />
+                      <span class="size-unit">px</span>
+                    </div>
+                  </div>
+                </el-form-item>
+
+                <!-- 频率设置 -->
+                <el-form-item label="数据频率" class="frequency-options">
+                  <div class="frequency-radio-container">
+                    <div class="radio-option">
+                      <el-radio v-model="svgExportConfig.frequencyMode" label="current">
+                        使用当前采样频率 ({{ sampling }}KHz)
+                      </el-radio>
+                    </div>
+
+                    <div class="radio-option">
+                      <div class="radio-with-tag">
+                        <el-radio v-model="svgExportConfig.frequencyMode" label="original">
+                          使用原始频率
+                        </el-radio>
+                        <el-tag type="warning" size="small">需要更多耗时</el-tag>
+                      </div>
+                    </div>
+
+                    <div class="radio-option">
+                      <div class="radio-with-tag">
+                        <el-radio v-model="svgExportConfig.frequencyMode" label="custom">
+                          使用自定义频率
+                        </el-radio>
+                        <el-tag type="warning" size="small">需要更多耗时</el-tag>
+                      </div>
+
+                      <div class="custom-frequency-control">
+                        <el-input-number v-model="svgExportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="svgExportConfig.frequencyMode !== 'custom'" />
+                        <span class="unit-label">KHz</span>
+                      </div>
+                    </div>
+                  </div>
+                </el-form-item>
+              </el-form>
             </div>
           </div>
-        </el-form-item>
+          
+          <!-- 其他内容保持不变 -->
 
-        <el-form-item label="数据频率" class="frequency-options">
-          <div class="frequency-radio-container">
-            <div class="radio-option">
-              <el-radio v-model="svgExportConfig.frequencyMode" label="current">
-                使用当前采样频率 ({{ sampling }}KHz)
-              </el-radio>
+          <div class="progress-container">
+            <!-- 进度条 -->
+            <div v-if="svgExportProgress.isExporting" class="export-progress">
+              <p>
+                <template v-if="svgExportProgress.stage === 'downloading'">
+                  正在下载数据: {{ svgExportProgress.currentChannel }} ({{ svgExportProgress.current }}/{{ svgExportProgress.total }})
+                </template>
+                <template v-else-if="svgExportProgress.stage === 'rendering'">
+                  正在渲染图表: {{ svgExportProgress.currentChannel }} ({{ svgExportProgress.current }}/{{ svgExportProgress.total }})
+                </template>
+                <template v-else>
+                  正在打包图片: {{ svgExportProgress.currentChannel }} ({{ svgExportProgress.current }}/{{ svgExportProgress.total }})
+                </template>
+              </p>
+              <el-progress :percentage="svgExportProgress.percentage" :format="percentageFormat"></el-progress>
             </div>
-
-            <div class="radio-option">
-              <div class="radio-with-tag">
-                <el-radio v-model="svgExportConfig.frequencyMode" label="original">
-                  使用原始频率
-                </el-radio>
-                <el-tag type="warning" size="small">需要一定耗时</el-tag>
-              </div>
-            </div>
-
-            <div class="radio-option">
-              <div class="radio-with-tag">
-                <el-radio v-model="svgExportConfig.frequencyMode" label="custom">
-                  使用自定义频率
-                </el-radio>
-                <el-tag type="warning" size="small">需要一定耗时</el-tag>
-              </div>
-
-              <div class="custom-frequency-control">
-                <el-input-number v-model="svgExportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="svgExportConfig.frequencyMode !== 'custom'" />
-                <span class="unit-label">KHz</span>
-              </div>
-            </div>
+            <!-- 占位容器，当没有进度条时占据空间，保持对齐 -->
+            <div v-else class="export-progress-placeholder"></div>
           </div>
-        </el-form-item>
-      </el-form>
-
-      <!-- 进度条 -->
-      <div v-if="svgExportProgress.isExporting" class="export-progress">
-        <p>{{ svgExportProgress.stage === 'rendering' ? '正在渲染图表' : '正在打包图片' }}: {{ svgExportProgress.currentChannel }} ({{ svgExportProgress.current }}/{{ svgExportProgress.total }})</p>
-        <el-progress :percentage="svgExportProgress.percentage" :format="percentageFormat"></el-progress>
+        </div>
       </div>
 
       <template #footer>
@@ -450,13 +521,13 @@ onMounted(() => {
   if (savedChannelMode !== null) {
     SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
   }
-
+  
   // 恢复异常区域显示状态
   const savedShowAnomaly = localStorage.getItem('showAnomaly');
   if (savedShowAnomaly !== null) {
     showAnomaly.value = savedShowAnomaly === 'true';
   }
-
+  
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
 });
@@ -525,13 +596,13 @@ const setupChartObserver = () => {
   if (chartObserver.value) {
     chartObserver.value.disconnect();
   }
-
+  
   // 创建新的MutationObserver
   chartObserver.value = new MutationObserver((mutations) => {
     // 如果图表发生变化，应用当前的显示/隐藏状态到所有异常区域
     applyAnomalyVisibility();
   });
-
+  
   // 开始观察整个文档，关注子节点的添加
   chartObserver.value.observe(document.body, {
     childList: true,
@@ -542,7 +613,7 @@ const setupChartObserver = () => {
 // 应用异常区域可见性的函数，可以单独调用
 const applyAnomalyVisibility = () => {
   const currentVisibility = showAnomaly.value;
-
+  
   if (SingleChannelMultiRow_channel_number.value) {
     // 单通道多行模式
     const allCharts = document.querySelectorAll('[id^="chart-"]');
@@ -615,7 +686,8 @@ const svgExportConfig = reactive({
   frequencyMode: 'current',
   customFrequency: 10.0,
   width: 1200, // 默认宽度，像素
-  height: 600  // 默认高度，像素
+  height: 600,  // 默认高度，像素
+  exportMode: 'singleChannel' // 默认为单通道多图模式
 })
 
 // 导出SVG进度状态
@@ -670,19 +742,22 @@ const initSvgExportConfig = () => {
       // 单通道多行模式
       svgExportConfig.width = 1200
       svgExportConfig.height = 600
-    } else {
+  } else {
       // 多通道单行模式
       svgExportConfig.width = 1600
       svgExportConfig.height = 800
     }
+    
+    // 设置默认导出模式为当前显示模式
+    svgExportConfig.exportMode = SingleChannelMultiRow_channel_number.value ? 'singleChannel' : 'multiChannel'
   }
 }
 
 // 修复renderChannelToPng函数，使用正确的方法导出图表为图片
-const renderChannelToPng = async (channel, fileName, width, height, frequencyParams) => {
+const renderChannelToPng = async (channel, fileName, width, height, frequencyParams, channelData = null) => {
   try {
-    // 获取指定频率的通道数据
-    const data = await store.dispatch('fetchChannelData', { 
+    // 使用预先获取的数据或者重新获取
+    const data = channelData || await store.dispatch('fetchChannelData', { 
       channel, 
       ...frequencyParams 
     })
@@ -706,40 +781,106 @@ const renderChannelToPng = async (channel, fileName, width, height, frequencyPar
         width: width,
         height: height,
         animation: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        style: {
+          fontFamily: 'Arial, Helvetica, sans-serif'
+        },
+        spacing: [30, 10, 30, 60] // 上、右、下、左的边距
       },
       title: {
         text: `${channel.channel_name}_${channel.shot_number}`,
+        align: 'center',
         style: {
-          fontSize: '16px'
-        }
+          fontSize: '18px',
+          fontWeight: 'bold',
+          color: '#000000'
+        },
+        margin: 20
       },
       credits: {
         enabled: false
       },
       xAxis: {
         title: {
-          text: 'Time (s)'
+          text: 'Time (s)',
+          style: {
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#000000'
+          },
+          margin: 15
         },
         min: data.X_value[0],
-        max: data.X_value[data.X_value.length - 1]
+        max: data.X_value[data.X_value.length - 1],
+        lineWidth: 2,
+        lineColor: '#000000',
+        gridLineWidth: 1,
+        gridLineColor: '#E0E0E0',
+        tickWidth: 2,
+        tickLength: 6,
+        tickColor: '#000000',
+        labels: {
+          style: {
+            fontSize: '12px',
+            color: '#000000'
+          }
+        }
       },
       yAxis: {
         title: {
-          text: data.Y_unit || 'Value'
+          text: data.Y_unit || 'Value',
+          style: {
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#000000'
+          },
+          margin: 15
+        },
+        lineWidth: 2,
+        lineColor: '#000000',
+        gridLineWidth: 1,
+        gridLineColor: '#E0E0E0',
+        tickWidth: 2,
+        tickLength: 6,
+        tickColor: '#000000',
+        labels: {
+          style: {
+            fontSize: '12px',
+            color: '#000000'
+          }
+        }
+      },
+      legend: {
+        enabled: true,
+        align: 'right',
+        verticalAlign: 'top',
+        layout: 'vertical',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 5,
+        itemStyle: {
+          fontSize: '12px',
+          fontWeight: 'normal',
+          color: '#000000'
+        },
+        itemHoverStyle: {
+          color: '#4572A7'
         }
       },
       series: [{
         name: channel.channel_name,
         data: data.X_value.map((x, i) => [x, data.Y_value[i]]),
-        color: channel.color || '#409EFF',
-        lineWidth: 1,
+        color: channel.color || '#4572A7',
+        lineWidth: 1.5,
         marker: {
-          enabled: false
+          enabled: false,
+          radius: 3,
+          symbol: 'circle'
         },
         states: {
           hover: {
-            lineWidth: 1
+            lineWidth: 2
           }
         },
         boostThreshold: 1000
@@ -747,8 +888,18 @@ const renderChannelToPng = async (channel, fileName, width, height, frequencyPar
       plotOptions: {
         series: {
           animation: false,
-          turboThreshold: 0
+          turboThreshold: 0,
+          shadow: false,
+          stickyTracking: false
+        },
+        line: {
+          marker: {
+            enabled: false
+          }
         }
+      },
+      tooltip: {
+        enabled: false
       },
       boost: {
         useGPUTranslations: true,
@@ -799,14 +950,14 @@ const renderChannelToPng = async (channel, fileName, width, height, frequencyPar
     document.body.removeChild(container)
     
     return pngBlob
-  } catch (error) {
+      } catch (error) {
     console.error('渲染通道图片失败:', error)
     throw error
   }
 }
 
 // 修复renderMultiChannelToPng函数，使用正确的方法导出图表为图片
-const renderMultiChannelToPng = async (channels, width, height, frequencyParams) => {
+const renderMultiChannelToPng = async (channels, width, height, frequencyParams, channelDataMap = null) => {
   try {
     // 创建临时容器
     const container = document.createElement('div')
@@ -825,8 +976,8 @@ const renderMultiChannelToPng = async (channels, width, height, frequencyParams)
     const xMin = [], xMax = []
     
     for (const channel of channels) {
-      // 获取通道数据
-      const data = await store.dispatch('fetchChannelData', { 
+      // 获取通道数据，优先使用预先获取的数据
+      const data = channelDataMap ? channelDataMap.get(channel) : await store.dispatch('fetchChannelData', { 
         channel, 
         ...frequencyParams 
       })
@@ -839,14 +990,16 @@ const renderMultiChannelToPng = async (channels, width, height, frequencyParams)
       seriesData.push({
         name: `${channel.channel_name}_${channel.shot_number}`,
         data: data.X_value.map((x, i) => [x, data.Y_value[i]]),
-        color: channel.color || '#409EFF',
-        lineWidth: 1,
+        color: channel.color || getRandomColor(channel.channel_name),
+        lineWidth: 1.5,
         marker: {
-          enabled: false
+          enabled: false,
+          radius: 3,
+          symbol: 'circle'
         },
         states: {
           hover: {
-            lineWidth: 1
+            lineWidth: 2
           }
         },
         boostThreshold: 1000
@@ -860,41 +1013,109 @@ const renderMultiChannelToPng = async (channels, width, height, frequencyParams)
         width: width,
         height: height,
         animation: false,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        style: {
+          fontFamily: 'Arial, Helvetica, sans-serif'
+        },
+        spacing: [30, 10, 30, 60] // 上、右、下、左的边距
       },
       title: {
         text: '多通道数据视图',
+        align: 'center',
         style: {
-          fontSize: '16px'
-        }
+          fontSize: '18px',
+          fontWeight: 'bold',
+          color: '#000000'
+        },
+        margin: 20
       },
       credits: {
         enabled: false
       },
       xAxis: {
         title: {
-          text: 'Time (s)'
+          text: 'Time (s)',
+          style: {
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#000000'
+          },
+          margin: 15
         },
         min: Math.min(...xMin),
-        max: Math.max(...xMax)
+        max: Math.max(...xMax),
+        lineWidth: 2,
+        lineColor: '#000000',
+        gridLineWidth: 1,
+        gridLineColor: '#E0E0E0',
+        tickWidth: 2,
+        tickLength: 6,
+        tickColor: '#000000',
+        labels: {
+          style: {
+            fontSize: '12px',
+            color: '#000000'
+          }
+        }
       },
       yAxis: {
         title: {
-          text: 'Value'
+          text: 'Value',
+          style: {
+            fontSize: '14px',
+            fontWeight: 'bold',
+            color: '#000000'
+          },
+          margin: 15
+        },
+        lineWidth: 2,
+        lineColor: '#000000',
+        gridLineWidth: 1,
+        gridLineColor: '#E0E0E0',
+        tickWidth: 2,
+        tickLength: 6,
+        tickColor: '#000000',
+        labels: {
+          style: {
+            fontSize: '12px',
+            color: '#000000'
+          }
         }
       },
       legend: {
         enabled: true,
+        align: 'right',
+        verticalAlign: 'top',
+        layout: 'vertical',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 5,
         itemStyle: {
-          fontSize: '12px'
+          fontSize: '12px',
+          fontWeight: 'normal',
+          color: '#000000'
+        },
+        itemHoverStyle: {
+          color: '#4572A7'
         }
       },
       series: seriesData,
       plotOptions: {
         series: {
           animation: false,
-          turboThreshold: 0
+          turboThreshold: 0,
+          shadow: false,
+          stickyTracking: false
+        },
+        line: {
+          marker: {
+            enabled: false
+          }
         }
+      },
+      tooltip: {
+        enabled: false
       },
       boost: {
         useGPUTranslations: true,
@@ -944,161 +1165,33 @@ const renderMultiChannelToPng = async (channels, width, height, frequencyParams)
     document.body.removeChild(container)
     
     return pngBlob
-  } catch (error) {
+    } catch (error) {
     console.error('渲染多通道图片失败:', error)
     throw error
   }
 }
 
-// 开始导出SVG为PNG
-const startExportSvg = async () => {
-  try {
-    // 获取选中的通道
-    const channelsToExport = []
-    const fileNames = []
-
-    selectedChannels.value.forEach((channel, index) => {
-      if (svgExportConfig.selectedChannelIndices[index]) {
-        channelsToExport.push(channel)
-        fileNames.push(svgExportConfig.channelRenames[index] || `${channel.channel_name}_${channel.shot_number}_image`)
-      }
-    })
-
-    if (channelsToExport.length === 0) {
-      ElMessage.warning('请至少选择一个通道进行导出')
-      return
-    }
-
-    // 创建新的zip实例
-    const zip = new JSZip()
-
-    // 设置进度状态
-    svgExportProgress.isExporting = true
-    svgExportProgress.current = 0
-    svgExportProgress.total = SingleChannelMultiRow_channel_number.value ? channelsToExport.length : 1
-    svgExportProgress.percentage = 0
-    svgExportProgress.stage = 'rendering'
-
-    // 设置频率参数
-    const frequencyParams = {}
-    if (svgExportConfig.frequencyMode === 'original') {
-      frequencyParams.sample_mode = 'full'
-    } else if (svgExportConfig.frequencyMode === 'custom') {
-      frequencyParams.sample_mode = 'downsample'
-      frequencyParams.sample_freq = svgExportConfig.customFrequency
-    }
-
-    // 根据当前显示模式选择导出方式
-    if (SingleChannelMultiRow_channel_number.value) {
-      // 单通道多行模式：每个通道单独导出
-      for (let i = 0; i < channelsToExport.length; i++) {
-        const channel = channelsToExport[i]
-        const fileName = fileNames[i]
-
-        // 更新进度
-        svgExportProgress.current = i + 1
-        svgExportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
-        svgExportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
-
-        try {
-          // 渲染并获取PNG
-          const pngBlob = await renderChannelToPng(
-            channel, 
-            fileName, 
-            svgExportConfig.width, 
-            svgExportConfig.height,
-            frequencyParams
-          )
-
-          // 添加到zip
-          zip.file(`${fileName}.png`, pngBlob)
-        } catch (error) {
-          console.error(`导出通道 ${channel.channel_name}_${channel.shot_number} 图片失败:`, error)
-          ElMessage.warning(`导出通道 ${channel.channel_name}_${channel.shot_number} 图片失败`)
-        }
-
-        // 等待一点时间以更新UI
-        await new Promise(resolve => setTimeout(resolve, 100))
-      }
-    } else {
-      // 多通道单行模式：将所有通道一起导出为一个图片
-      svgExportProgress.currentChannel = '多通道视图'
-      svgExportProgress.percentage = 30
-
-      try {
-        // 渲染并获取PNG
-        const pngBlob = await renderMultiChannelToPng(
-          channelsToExport, 
-          svgExportConfig.width, 
-          svgExportConfig.height,
-          frequencyParams
-        )
-
-        // 直接下载多通道图像
-        if (channelsToExport.length === 1) {
-          // 如果只有一个通道，使用通道名称
-          await downloadFile(pngBlob, `${fileNames[0]}.png`, 'png')
-          
-          // 更新进度
-          svgExportProgress.percentage = 100
-          
-          // 重置导出状态
-          setTimeout(() => {
-            svgExportProgress.isExporting = false
-            showSvgExportDialog.value = false
-          }, 500)
-          
-          return
-        } else {
-          // 如果有多个通道，添加到zip
-          zip.file('multi_channel_image.png', pngBlob)
-        }
-      } catch (error) {
-        console.error('导出多通道图片失败:', error)
-        ElMessage.error('导出多通道图片失败，请重试')
-        svgExportProgress.isExporting = false
-        return
-      }
-    }
-
-    // 切换到打包阶段
-    svgExportProgress.percentage = 70
-    svgExportProgress.stage = 'packaging'
-    await new Promise(resolve => setTimeout(resolve, 300))
-    svgExportProgress.percentage = 85
-
-    // 生成频率信息
-    let frequencyInfo = ''
-    if (svgExportConfig.frequencyMode === 'current') {
-      frequencyInfo = `_${sampling.value}kHz`
-    } else if (svgExportConfig.frequencyMode === 'custom') {
-      frequencyInfo = `_${svgExportConfig.customFrequency}kHz`
-    } else {
-      frequencyInfo = '_originalFrequency'
-    }
-
-    // 生成时间戳
-    const now = new Date()
-    const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`
-    
-    // 生成zip包
-    const content = await zip.generateAsync({
-      type: 'blob'
-    })
-
-    svgExportProgress.percentage = 100
-
-    // 下载文件
-    await downloadFile(content, `channel_images${frequencyInfo}_${timestamp}.zip`, 'zip')
-
-    // 重置导出状态
-    svgExportProgress.isExporting = false
-    showSvgExportDialog.value = false
-  } catch (error) {
-    console.error('导出通道图片失败:', error)
-    ElMessage.error('导出通道图片失败，请重试')
-    svgExportProgress.isExporting = false
+// 为多通道视图生成一致的颜色
+const getRandomColor = (seed) => {
+  // 使用简单的字符串哈希算法为通道名生成一致的颜色
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
   }
+  
+  // 预定义的MATLAB风格颜色
+  const matlabColors = [
+    '#0072BD', // 蓝色
+    '#D95319', // 橙色
+    '#EDB120', // 黄色
+    '#7E2F8E', // 紫色
+    '#77AC30', // 绿色
+    '#4DBEEE', // 浅蓝色
+    '#A2142F'  // 红褐色
+  ];
+  
+  // 根据哈希值选择颜色
+  return matlabColors[Math.abs(hash) % matlabColors.length];
 }
 
 const handleExportCommand = (command) => {
@@ -1338,6 +1431,226 @@ const startExportData = async () => {
   }
 }
 
+// 开始导出SVG为PNG
+const startExportSvg = async () => {
+  try {
+    // 获取选中的通道
+    const channelsToExport = []
+    const fileNames = []
+
+    selectedChannels.value.forEach((channel, index) => {
+      if (svgExportConfig.selectedChannelIndices[index]) {
+        channelsToExport.push(channel)
+        fileNames.push(svgExportConfig.channelRenames[index] || `${channel.channel_name}_${channel.shot_number}_image`)
+      }
+    })
+
+    if (channelsToExport.length === 0) {
+      ElMessage.warning('请至少选择一个通道进行导出')
+      return
+    }
+
+    // 创建新的zip实例（仅在单通道多图模式下使用）
+    const zip = new JSZip()
+
+    // 设置进度状态 - 首先是下载数据阶段
+    svgExportProgress.isExporting = true
+    svgExportProgress.current = 0
+    svgExportProgress.total = channelsToExport.length
+    svgExportProgress.percentage = 0
+    svgExportProgress.stage = 'downloading'
+
+    // 设置频率参数
+    const frequencyParams = {}
+    if (svgExportConfig.frequencyMode === 'original') {
+      frequencyParams.sample_mode = 'full'
+    } else if (svgExportConfig.frequencyMode === 'custom') {
+      frequencyParams.sample_mode = 'downsample'
+      frequencyParams.sample_freq = svgExportConfig.customFrequency
+    }
+    
+    // 下载所有需要的通道数据
+    const channelDataMap = new Map()
+    for (let i = 0; i < channelsToExport.length; i++) {
+      const channel = channelsToExport[i]
+      
+      // 更新进度
+      svgExportProgress.current = i + 1
+      svgExportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
+      svgExportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
+      
+      try {
+        // 获取通道数据
+        const data = await store.dispatch('fetchChannelData', { 
+          channel, 
+          ...frequencyParams 
+        })
+        
+        // 存储数据以便后续渲染使用
+        channelDataMap.set(channel, data)
+      } catch (error) {
+        console.error(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error)
+        ElMessage.warning(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败，将跳过此通道`)
+      }
+      
+      // 等待一点时间以更新UI
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    
+    // 完成下载阶段，进入渲染阶段
+    svgExportProgress.percentage = 100
+    await new Promise(resolve => setTimeout(resolve, 300))
+    
+    // 开始渲染阶段
+    svgExportProgress.current = 0
+    svgExportProgress.percentage = 0
+    svgExportProgress.stage = 'rendering'
+    
+    // 根据选择的导出模式决定导出方式，而不是根据当前显示模式
+    if (svgExportConfig.exportMode === 'singleChannel') {
+      // 单通道多图模式：每个通道单独导出
+      const validChannels = channelsToExport.filter(channel => channelDataMap.has(channel))
+      svgExportProgress.total = validChannels.length
+      
+      for (let i = 0; i < validChannels.length; i++) {
+        const channel = validChannels[i]
+        const fileName = fileNames[channelsToExport.indexOf(channel)]
+
+        // 更新进度
+        svgExportProgress.current = i + 1
+        svgExportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
+        svgExportProgress.percentage = Math.floor((i / validChannels.length) * 100)
+
+        try {
+          // 渲染并获取PNG
+          const channelData = channelDataMap.get(channel)
+          const pngBlob = await renderChannelToPng(
+            channel, 
+            fileName, 
+            svgExportConfig.width, 
+            svgExportConfig.height,
+            frequencyParams,
+            channelData
+          )
+
+          // 添加到zip
+          zip.file(`${fileName}.png`, pngBlob)
+        } catch (error) {
+          console.error(`导出通道 ${channel.channel_name}_${channel.shot_number} 图片失败:`, error)
+          ElMessage.warning(`导出通道 ${channel.channel_name}_${channel.shot_number} 图片失败`)
+        }
+
+        // 等待一点时间以更新UI
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+      
+      // 切换到打包阶段
+      svgExportProgress.percentage = 100
+      await new Promise(resolve => setTimeout(resolve, 300))
+      
+      svgExportProgress.current = 0
+      svgExportProgress.percentage = 0
+      svgExportProgress.stage = 'packaging'
+      svgExportProgress.currentChannel = '所有通道'
+      await new Promise(resolve => setTimeout(resolve, 300))
+      svgExportProgress.percentage = 50
+
+      // 生成频率信息
+      let frequencyInfo = ''
+      if (svgExportConfig.frequencyMode === 'current') {
+        frequencyInfo = `_${sampling.value}kHz`
+      } else if (svgExportConfig.frequencyMode === 'custom') {
+        frequencyInfo = `_${svgExportConfig.customFrequency}kHz`
+      } else {
+        frequencyInfo = '_originalFrequency'
+      }
+
+      // 生成时间戳
+      const now = new Date()
+      const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`
+      
+      // 生成zip包
+      const content = await zip.generateAsync({
+        type: 'blob'
+      })
+
+      svgExportProgress.percentage = 100
+
+      // 下载文件
+      await downloadFile(content, `channel_images${frequencyInfo}_${timestamp}.zip`, 'zip')
+      
+    } else {
+      // 多通道单图模式：将所有通道一起导出为一个图片
+      svgExportProgress.currentChannel = '多通道视图'
+      svgExportProgress.percentage = 30
+      svgExportProgress.total = 1
+      svgExportProgress.current = 0
+
+      try {
+        // 过滤出有效的通道(已成功下载数据的)
+        const validChannels = channelsToExport.filter(channel => channelDataMap.has(channel))
+        
+        if (validChannels.length === 0) {
+          ElMessage.error('没有有效的通道数据可以导出')
+          svgExportProgress.isExporting = false
+          return
+        }
+        
+        // 更新进度
+        svgExportProgress.current = 1
+        
+        // 渲染并获取PNG
+        const pngBlob = await renderMultiChannelToPng(
+          validChannels, 
+          svgExportConfig.width, 
+          svgExportConfig.height,
+          frequencyParams,
+          channelDataMap
+        )
+
+        // 多通道单图模式：直接导出图片，不打包
+        svgExportProgress.percentage = 100
+        svgExportProgress.stage = 'packaging'
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+        // 生成频率信息用于文件名
+        let frequencyInfo = ''
+        if (svgExportConfig.frequencyMode === 'current') {
+          frequencyInfo = `_${sampling.value}kHz`
+        } else if (svgExportConfig.frequencyMode === 'custom') {
+          frequencyInfo = `_${svgExportConfig.customFrequency}kHz`
+        } else {
+          frequencyInfo = '_originalFrequency'
+        }
+        
+        // 生成时间戳
+        const now = new Date()
+        const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`
+        
+        // 为多通道图片生成文件名
+        const fileName = validChannels.length === 1 
+          ? fileNames[channelsToExport.indexOf(validChannels[0])]
+          : `multi_channel_image${frequencyInfo}_${timestamp}`
+          
+        // 直接下载PNG文件
+        await downloadFile(pngBlob, `${fileName}.png`, 'png')
+      } catch (error) {
+        console.error('导出多通道图片失败:', error)
+        ElMessage.error('导出多通道图片失败，请重试')
+        svgExportProgress.isExporting = false
+        return
+      }
+    }
+
+    // 重置导出状态
+    svgExportProgress.isExporting = false
+    showSvgExportDialog.value = false
+  } catch (error) {
+    console.error('导出通道图片失败:', error)
+    ElMessage.error('导出通道图片失败，请重试')
+    svgExportProgress.isExporting = false
+  }
+}
 </script>
 
 <style scoped lang="scss">
@@ -1802,7 +2115,7 @@ const startExportData = async () => {
 
 /* 频率选项样式 */
 .frequency-options {
-  margin-top: 10px;
+  margin-top: 5px;
 }
 
 .frequency-radio-container {
@@ -1814,7 +2127,7 @@ const startExportData = async () => {
 .radio-option {
   display: flex;
   flex-direction: column;
-  margin-bottom: 15px;
+  margin-bottom: 10px;
 
   &:last-child {
     margin-bottom: 0;
@@ -1824,8 +2137,8 @@ const startExportData = async () => {
 .radio-with-tag {
   display: flex;
   align-items: center;
-  height: 32px;
-  line-height: 32px;
+  height: 28px;
+  line-height: 28px;
 
   .el-radio {
     margin-right: 8px;
@@ -1837,46 +2150,111 @@ const startExportData = async () => {
 }
 
 .custom-frequency-control {
-  margin-top: 8px;
+  margin-top: 5px;
   margin-left: 23px;
   display: flex;
   align-items: center;
 
   .el-input-number {
-    width: 140px;
+    width: 110px;
   }
 
   .unit-label {
-    margin-left: 8px;
+    margin-left: 5px;
     color: #606266;
   }
 }
 
 .export-progress {
-  margin-top: 20px;
-  padding: 15px;
+  padding: 12px;
   background-color: #f5f7fa;
   border-radius: 4px;
+  border: 1px solid #e4e7ed;
+  min-height: 70px; /* 减小最小高度 */
 
   p {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
     color: #606266;
   }
 }
 
-.dialog-footer {
-  display: flex;
-  justify-content: flex-end;
-
-  .el-button+.el-button {
-    margin-left: 12px;
-  }
+/* 添加导出模式相关样式 */
+.mode-selection {
+  margin-bottom: 10px;
 }
 
-/* 添加SVG导出对话框相关样式 */
-.size-controls {
+.mode-radio-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.mode-radio-container .radio-option {
+  margin-bottom: 8px;
+}
+
+/* 导出对话框左右布局样式 */
+.dialog-layout {
   display: flex;
   gap: 20px;
+  max-height: 500px; /* 设置最大高度 */
+}
+
+.left-section {
+  flex: 1;
+  min-width: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-section {
+  flex: 1;
+  min-width: 400px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.section-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.param-form {
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  margin-bottom: 15px;
+}
+
+.progress-container {
+  margin-top: 20px; /* 确保进度条区域位于底部 */
+  margin-bottom: 10px;
+}
+
+/* 添加新的占位容器样式，用于保持对齐 */
+.export-progress-placeholder {
+  height: 70px; /* 与进度条区域高度一致 */
+  border: 1px solid transparent; /* 透明边框，保持尺寸一致 */
+}
+
+/* 添加上边距类 */
+.mt-10 {
+  margin-top: 10px;
+}
+
+/* 调整尺寸控件容器 */
+.size-controls-container {
+  margin-bottom: 8px;
+}
+
+/* SVG导出对话框尺寸控件 */
+.size-controls {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
 }
 
 .size-input-group {
@@ -1884,13 +2262,17 @@ const startExportData = async () => {
   align-items: center;
   
   .size-label {
-    margin-right: 8px;
+    margin-right: 5px;
     white-space: nowrap;
   }
   
   .size-unit {
-    margin-left: 8px;
+    margin-left: 5px;
     color: #606266;
+  }
+
+  :deep(.el-input-number) {
+    width: 80px;
   }
 }
 </style>
