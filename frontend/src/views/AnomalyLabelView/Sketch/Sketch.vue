@@ -94,6 +94,56 @@ import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
 
+// 在导入Paper.js后立即添加猴子补丁，修改原生addEventListener方法
+// 这个补丁会确保所有的touchstart事件都是passive的
+(function patchAddEventListener() {
+  // 保存原始方法
+  const originalAddEventListener = EventTarget.prototype.addEventListener;
+  
+  // 替换为我们的修改版本
+  EventTarget.prototype.addEventListener = function(type, listener, options) {
+    // 对于touchstart事件，强制使用passive: true
+    if (type === 'touchstart') {
+      let newOptions = options;
+      if (typeof options === 'boolean') {
+        // 如果options是布尔值（表示useCapture），创建一个新的对象
+        newOptions = { capture: options, passive: true };
+      } else if (typeof options === 'object') {
+        // 如果options是对象，确保passive为true
+        newOptions = { ...options, passive: true };
+      } else {
+        // 如果options未定义，使用默认的passive: true
+        newOptions = { passive: true };
+      }
+      // 调用原始方法，但使用修改后的选项
+      return originalAddEventListener.call(this, type, listener, newOptions);
+    }
+    
+    // 对于其他事件类型，使用原始行为
+    return originalAddEventListener.call(this, type, listener, options);
+  };
+})();
+
+// 全局修复Paper.js的DomEvent.add方法，确保所有实例都使用相同的修复
+const originalAdd = Paper.DomEvent.add;
+Paper.DomEvent.add = function(element, events, handler) {
+  if (typeof events === 'string' && events.includes('touchstart')) {
+    // 分离事件字符串
+    const eventArray = events.split(/\s+/);
+    // 单独处理每个事件
+    for (const event of eventArray) {
+      if (event === 'touchstart') {
+        element.addEventListener('touchstart', handler, { passive: true });
+      } else if (event) {
+        // 对非touchstart事件使用原始方法
+        originalAdd.call(this, element, event, handler);
+      }
+    }
+    return;
+  }
+  return originalAdd.call(this, element, events, handler);
+};
+
 // 使用 Vuex store
 const store = useStore();
 
@@ -219,23 +269,6 @@ const initPaperJs = () => {
 
   // 初始化Paper.js
   paperScope = new Paper.PaperScope();
-  
-  // 修复touchstart事件的passive警告
-  const originalAdd = paperScope.DomEvent.add;
-  paperScope.DomEvent.add = function(element, events, handler) {
-    if (typeof events === 'string' && events.includes('touchstart')) {
-      // 为touchstart事件添加passive选项
-      element.addEventListener('touchstart', handler, { passive: true });
-      // 从events中移除touchstart
-      events = events.replace(/touchstart\s*/, '');
-      // 如果还有其他事件，则使用原始方法处理
-      if (events.trim() !== '') {
-        return originalAdd.call(this, element, events, handler);
-      }
-      return;
-    }
-    return originalAdd.call(this, element, events, handler);
-  };
   
   paperScope.setup(paperCanvas.value);
 
@@ -481,7 +514,7 @@ const submitData = async () => {
       // 将结果存储到Vuex
       store.dispatch('updateMatchedResults', data.results);
 
-      console.log(store.state.matchedResults);
+      // console.log(store.state.matchedResults);
 
     } catch (error) {
       ElMessage.error(error.message || '查询过程中发生错误');
@@ -568,6 +601,10 @@ onMounted(() => {
     // 初始化Paper.js
     initPaperJs();
 
+    // 给canvas元素添加passive触摸事件处理
+    const passiveTouchHandler = () => {};
+    paperCanvas.value.addEventListener('touchstart', passiveTouchHandler, { passive: true });
+    
     // 设置ResizeObserver监听容器大小变化
     if (window.ResizeObserver) {
       resizeObserver = new ResizeObserver(() => {
@@ -651,6 +688,12 @@ const openFullscreenCanvas = () => {
   setTimeout(() => {
     initFullscreenPaper();
     
+    // 给全屏canvas元素添加passive触摸事件处理
+    if (fullscreenCanvas.value) {
+      const passiveTouchHandler = () => {};
+      fullscreenCanvas.value.addEventListener('touchstart', passiveTouchHandler, { passive: true });
+    }
+    
     // 如果原画布有内容，复制到全屏画布
     if (path && path.segments && path.segments.length > 0) {
       copyPathToFullscreen();
@@ -669,6 +712,7 @@ const initFullscreenPaper = () => {
 
   // 初始化Paper.js
   fullscreenPaperScope = new Paper.PaperScope();
+  
   fullscreenPaperScope.setup(fullscreenCanvas.value);
 
   // 创建网格
@@ -986,7 +1030,7 @@ const closeFullscreenCanvas = () => {
   width: 100%;
   height: 100%;
   background-color: white;
-  touch-action: none;
+  touch-action: none !important;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -1044,7 +1088,7 @@ const closeFullscreenCanvas = () => {
   width: 100%;
   height: 100%;
   background-color: white;
-  touch-action: none;
+  touch-action: none !important;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
