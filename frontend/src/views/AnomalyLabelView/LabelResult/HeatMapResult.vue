@@ -2789,7 +2789,7 @@ const batchDeleteNotUploaded = async () => {
     }
   } catch (error) {
     // 用户取消删除操作
-    console.log('用户取消批量删除操作');
+    // console.log('用户取消批量删除操作');
   }
 };
 
@@ -2881,7 +2881,7 @@ const batchDeleteUploaded = async () => {
                 }
 
                 try {
-                  console.log(`删除异常类别: ${errorType}`, requestData);
+                  // console.log(`删除异常类别: ${errorType}`, requestData);
                   const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
                     method: 'POST',
                     headers: {
@@ -2934,7 +2934,7 @@ const batchDeleteUploaded = async () => {
                 }
 
                 try {
-                  console.log(`删除异常类别: ${errorType}`, requestData);
+                  // console.log(`删除异常类别: ${errorType}`, requestData);
                   const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
                     method: 'POST',
                     headers: {
@@ -3024,7 +3024,7 @@ const batchDeleteUploaded = async () => {
     }
   } catch (error) {
     // 用户取消删除操作
-    console.log('用户取消批量删除操作');
+    // console.log('用户取消批量删除操作');
   }
 };
 
@@ -3152,7 +3152,7 @@ const openBatchAdjustDialog = () => {
     // 已上传异常数量为不同异常类别的数量
     uploadedCount = errorTypes.size;
 
-    console.log(`通道 ${channelKey} 的异常类别:`, Array.from(errorTypes));
+    // console.log(`通道 ${channelKey} 的异常类别:`, Array.from(errorTypes));
 
     return {
       channelKey,
@@ -3168,7 +3168,7 @@ const openBatchAdjustDialog = () => {
     channels
   };
 
-  console.log('批量调整数据:', batchAdjustData.value);
+  // console.log('批量调整数据:', batchAdjustData.value);
 
   // 显示对话框
   showBatchAdjustDialog.value = true;
@@ -3312,7 +3312,7 @@ const deleteBatchUploaded = async (channelKey) => {
               }
 
               try {
-                console.log(`删除异常类别: ${errorType}`, requestData);
+                // console.log(`删除异常类别: ${errorType}`, requestData);
                 const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
                   method: 'POST',
                   headers: {
@@ -3405,7 +3405,7 @@ const deleteBatchUploaded = async (channelKey) => {
     }
   } catch (error) {
     // 用户取消删除操作
-    console.log('用户取消删除操作');
+    // console.log('用户取消删除操作');
   }
 };
 
@@ -3464,7 +3464,7 @@ const batchUploadAnomalies = async () => {
     }
   } catch (error) {
     // 用户取消上传操作
-    console.log('用户取消批量上传操作');
+    // console.log('用户取消批量上传操作');
   }
 };
 </script>
