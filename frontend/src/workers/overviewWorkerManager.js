@@ -164,13 +164,35 @@ class OverviewWorkerManager {
       this.worker.onmessage = (event) => {
         const { type, messageId, data, error, channelKey } = event.data;
         
-        // 避免在渲染帧中处理过多任务
+        // 对于轻量级消息类型，直接处理
+        if (type === 'processingStarted' || error) {
+          this.handleWorkerMessageLight(event);
+          return;
+        }
+        
+        // 对于重量级消息，使用时间切片处理
         if (window.requestIdleCallback) {
-          // 使用requestIdleCallback而不是requestAnimationFrame，更适合后台处理
-          window.requestIdleCallback(() => this.handleWorkerMessage(event), { timeout: 500 });
+          // 使用时间切片将消息处理拆分为更小的任务
+          window.requestIdleCallback((deadline) => {
+            // 如果有足够时间，才执行完整处理
+            if (deadline.timeRemaining() > 10) {
+              this.handleWorkerMessageSliced(event);
+            } else {
+              // 没有足够时间，延迟到下一个空闲时段
+              setTimeout(() => {
+                requestAnimationFrame(() => {
+                  this.handleWorkerMessageSliced(event);
+                });
+              }, 0);
+            }
+          }, { timeout: 50 }); // 进一步降低timeout
         } else {
-          // 降级使用setTimeout
-          setTimeout(() => this.handleWorkerMessage(event), 0);
+          // 降级使用setTimeout和rAF组合
+          setTimeout(() => {
+            requestAnimationFrame(() => {
+              this.handleWorkerMessageSliced(event);
+            });
+          }, 0);
         }
       };
 
@@ -205,27 +227,23 @@ class OverviewWorkerManager {
     
     // 防止积压，每次处理最多批量启动2个任务
     const batchProcess = () => {
-      // 延迟执行，避免连续处理多个任务导致阻塞
-      setTimeout(() => {
-        this.actuallyProcessData(task.options, task.resolve, task.reject);
+      // 直接执行第一个任务，避免无谓的timeout
+      this.actuallyProcessData(task.options, task.resolve, task.reject);
+      
+      // 如果队列中还有任务且处理中任务少于限制，延迟处理下一个
+      if (this.pendingTasks.size > 0 && this.callbacks.size < this.processingLimit) {
+        const [nextKey, nextTask] = this.pendingTasks.entries().next().value;
+        this.pendingTasks.delete(nextKey);
         
-        // 如果队列中还有任务且处理中任务少于限制，继续处理下一个
-        if (this.pendingTasks.size > 0 && this.callbacks.size < this.processingLimit) {
-          const [nextKey, nextTask] = this.pendingTasks.entries().next().value;
-          this.pendingTasks.delete(nextKey);
-          setTimeout(() => {
-            this.actuallyProcessData(nextTask.options, nextTask.resolve, nextTask.reject);
-          }, 50); // 小延迟，避免同时启动太多任务
-        }
-      }, 0);
+        // 使用rAF而不是setTimeout，更合理调度后续任务
+        window.requestAnimationFrame(() => {
+          this.actuallyProcessData(nextTask.options, nextTask.resolve, nextTask.reject);
+        });
+      }
     };
     
-    // 使用requestIdleCallback来调度任务处理
-    if (window.requestIdleCallback) {
-      window.requestIdleCallback(batchProcess, { timeout: 200 });
-    } else {
-      batchProcess();
-    }
+    // 直接执行处理，避免嵌套requestIdleCallback
+    batchProcess();
   }
 
   /**
@@ -308,44 +326,111 @@ class OverviewWorkerManager {
   }
 
   /**
-   * 处理Worker消息
+   * 轻量级消息处理（针对无需复杂计算的消息类型）
    * @private
    */
-  handleWorkerMessage(event) {
-    const { type, messageId, data, error, channelKey } = event.data;
+  handleWorkerMessageLight(event) {
+    const { type, messageId, error } = event.data;
+    
+    // 执行自定义消息处理
+    if (this.onmessage) {
+      this.onmessage(event);
+    }
+    
+    if (type === 'processingStarted') {
+      return; // 不需要进一步处理
+    }
+    
+    // 对于错误消息，只需要执行错误回调
+    if (error) {
+      const callback = this.callbacks.get(messageId);
+      if (callback) {
+        try {
+          callback(null, error);
+        } catch (err) {
+          console.error('执行错误回调时出错:', err);
+        } finally {
+          this.callbacks.delete(messageId);
+          // 异步处理下一个任务
+          setTimeout(() => this.processNextPendingTask(), 0);
+        }
+      }
+    }
+  }
+  
+  /**
+   * 使用时间切片的消息处理
+   * @private
+   */
+  handleWorkerMessageSliced(event) {
+    const { type, messageId, data, channelKey } = event.data;
     
     // 先执行任何自定义消息处理
     if (this.onmessage) {
       this.onmessage(event);
     }
     
-    if (type === 'processingStarted') {
-      // 处理已开始，不执行回调
-      return;
-    }
-    
-    // 查找并执行对应的回调函数
+    // 查找对应的回调函数
     const callback = this.callbacks.get(messageId);
-    if (callback) {
+    if (!callback) return;
+    
+    // 第一步：执行回调（通常是UI更新相关）
+    requestAnimationFrame(() => {
       try {
-        if (error) {
-          callback(null, error);
-        } else {
-          // 如果数据很大，考虑使用缓存策略
-          if (data && channelKey) {
-            const cacheKey = `overviewData-${channelKey}-${data.X.length}`;
-            dataCache.put(cacheKey, { data, timestamp: Date.now() });
-          }
-          callback(data);
-        }
-      } catch (err) {
-        console.error('处理Worker响应时出错:', err);
-      } finally {
+        this.executeCallback(callback, data);
         this.callbacks.delete(messageId);
-        // 处理完一个任务后，尝试处理等待队列
-        this.processNextPendingTask();
+      } catch (err) {
+        console.error('执行回调时出错:', err);
+        this.callbacks.delete(messageId);
       }
+      
+      // 第二步：延迟进行缓存操作
+      setTimeout(() => {
+        if (data && channelKey) {
+          this.delayedCacheOperation(channelKey, data);
+        }
+        
+        // 第三步：处理下一个任务
+        requestAnimationFrame(() => {
+          this.processNextPendingTask();
+        });
+      }, 0);
+    });
+  }
+  
+  /**
+   * 执行回调
+   * @private
+   */
+  executeCallback(callback, data) {
+    try {
+      callback(data);
+    } catch (err) {
+      console.error('执行回调时出错:', err);
     }
+  }
+  
+  /**
+   * 延迟执行缓存操作
+   * @private
+   */
+  delayedCacheOperation(channelKey, data) {
+    setTimeout(() => {
+      try {
+        const cacheKey = `overviewData-${channelKey}-${data.X.length}`;
+        dataCache.put(cacheKey, { data, timestamp: Date.now() });
+      } catch (err) {
+        console.error('缓存数据时出错:', err);
+      }
+    }, 0);
+  }
+
+  /**
+   * 原始的消息处理方法（为了兼容性保留）
+   * @private
+   */
+  handleWorkerMessage(event) {
+    this.handleWorkerMessageSliced(event);
   }
 }
 

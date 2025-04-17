@@ -890,27 +890,39 @@ const calculateChartHeight = () => {
 
 // 添加窗口大小变化的处理函数，减少debounce时间提高响应速度
 const handleResize = debounce(() => {
-  // 重新计算图表高度
-  calculateChartHeight();
+  // 使用requestAnimationFrame调度UI更新，避免阻塞主线程
+  requestAnimationFrame(() => {
+    // 重新计算图表高度
+    calculateChartHeight();
 
-  const container = document.querySelector('.chart-container');
-  if (container) {
-    const containerWidth = container.offsetWidth;
-    const newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 70; // 增加额外宽度
+    const container = document.querySelector('.chart-container');
+    if (container) {
+      const containerWidth = container.offsetWidth;
+      const newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 70; // 增加额外宽度
 
-    // 更新宽度
-    mainChartDimensions.value.width = newWidth;
+      // 更新宽度
+      mainChartDimensions.value.width = newWidth;
 
-    // 更新已存在的图表
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (chart) {
-      chart.setSize(newWidth, mainChartDimensions.value.height);
-      chart.redraw();
-    } else if (channelsData.value && channelsData.value.length > 0) {
-      drawCombinedChart(); // 如果图表不存在，重新绘制
+      // 使用requestAnimationFrame更新图表，避免在同一帧内执行重绘
+      requestAnimationFrame(() => {
+        // 更新已存在的图表
+        const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+        if (chart) {
+          chart.setSize(newWidth, mainChartDimensions.value.height);
+          // 使用requestAnimationFrame调度重绘操作
+          requestAnimationFrame(() => {
+            chart.redraw();
+          });
+        } else if (channelsData.value && channelsData.value.length > 0) {
+          // 如果图表不存在，使用requestAnimationFrame重新绘制
+          requestAnimationFrame(() => {
+            drawCombinedChart(); // 如果图表不存在，重新绘制
+          });
+        }
+      });
     }
-  }
-}, 50); // 进一步降低debounce时间以提高响应速度
+  });
+}, 30); // 减少debounce时间以提高响应速度
 
 // 创建一个ResizeObserver来监听容器大小变化
 const resizeObserver = ref(null);
@@ -926,21 +938,27 @@ onMounted(async () => {
   });
 
   // 延迟一下以确保DOM完全渲染
-  setTimeout(() => {
-    const container = document.querySelector('.chart-container');
-    if (container) {
-      const containerWidth = container.offsetWidth;
-
-      // 计算适当的图表高度
-      calculateChartHeight();
-
-      mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10; // 增加额外宽度
-    }
-
-    if (selectedChannels.value.length > 0) {
-      renderCharts();
-    }
-  }, 100);
+  requestAnimationFrame(() => {
+    // 使用requestAnimationFrame替代setTimeout，避免长时间阻塞
+    requestAnimationFrame(() => {
+      const container = document.querySelector('.chart-container');
+      if (container) {
+        const containerWidth = container.offsetWidth;
+  
+        // 计算适当的图表高度
+        calculateChartHeight();
+  
+        mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10; // 增加额外宽度
+      }
+  
+      // 将渲染操作放入另一个动画帧中执行
+      if (selectedChannels.value.length > 0) {
+        requestAnimationFrame(() => {
+          renderCharts();
+        });
+      }
+    });
+  });
 
   // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);

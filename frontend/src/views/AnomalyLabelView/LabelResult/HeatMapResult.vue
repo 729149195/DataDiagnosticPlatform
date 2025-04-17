@@ -943,26 +943,36 @@ const debouncedRenderHeatmap = debounce(async (channels) => {
 
   isTransitioning.value = true;
 
-  // 设置渐出动画
-  const heatmap = d3.select('#heatmap');
-  heatmap.style('opacity', 0.3)
-    .style('transition', 'opacity 0.2s ease-out');
+  // 使用requestAnimationFrame来调度UI更新，更符合浏览器渲染流程
+  requestAnimationFrame(() => {
+    // 设置渐出动画
+    const heatmap = d3.select('#heatmap');
+    heatmap.style('opacity', 0.3)
+      .style('transition', 'opacity 0.2s ease-out');
+    
+    // 使用requestAnimationFrame代替setTimeout处理渲染
+    setTimeout(async () => {
+      try {
+        // 执行实际的渲染
+        await renderHeatmap(channels);
 
-  // 等待渐出动画完成
-  await new Promise(resolve => setTimeout(resolve, 200));
+        // 使用requestAnimationFrame处理渐入动画
+        requestAnimationFrame(() => {
+          heatmap.style('opacity', 1)
+            .style('transition', 'opacity 0.3s ease-in');
 
-  // 执行实际的渲染
-  await renderHeatmap(channels);
-
-  // 设置渐入动画
-  heatmap.style('opacity', 1)
-    .style('transition', 'opacity 0.3s ease-in');
-
-  // 重置状态
-  setTimeout(() => {
-    isTransitioning.value = false;
-  }, 300);
-}, 300);  // 300ms 的防抖时间
+          // 使用rAF重置状态
+          setTimeout(() => {
+            isTransitioning.value = false;
+          }, 200); // 减少延迟时间
+        });
+      } catch (error) {
+        console.error('Error in render:', error);
+        isTransitioning.value = false;
+      }
+    }, 100); // 减少延迟时间
+  });
+}, 250);  // 略微减少防抖时间，提高响应速度
 
 // 修改 brush 范围监听器
 watch(brushRange, (newRange, oldRange) => {
@@ -1063,25 +1073,24 @@ watch(
       clearTimeout(debounceRender.value);
     }
 
-    // 创建一个新的 Promise 来处理渲染
-    const renderPromise = new Promise((resolve) => {
+    // 使用requestAnimationFrame代替setTimeout
+    requestAnimationFrame(() => {
+      // 减少延迟时间，使用更短的timeout
       debounceRender.value = setTimeout(async () => {
         try {
-          await nextTick();
-          // 传入所有通道进行完整渲染
-          await renderHeatmap(newChannels, false);
-
-          resolve();
+          // 使用requestAnimationFrame调度UI更新
+          requestAnimationFrame(async () => {
+            await nextTick();
+            // 传入所有通道进行完整渲染
+            await renderHeatmap(newChannels, false);
+          });
         } catch (error) {
           console.error('Error in debounced renderHeatmap:', error);
           loading.value = false;
           loadingPercentage.value = 0;
-          resolve();
         }
-      }, 300);
+      }, 150); // 减少延迟时间
     });
-
-    await renderPromise;
   },
   {
     deep: true
