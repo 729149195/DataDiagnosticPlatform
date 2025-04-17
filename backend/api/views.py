@@ -90,7 +90,7 @@ def get_error_origin_index(request):
     
 def downsample_to_frequency(x_values, y_values, target_freq=1000):
     """
-    对数据进行高效降采样到指定频率
+    对数据进行高效降采样到指定频率，同时保留信号特征
     
     Args:
         x_values: 时间序列数据的X值（时间值）
@@ -118,29 +118,82 @@ def downsample_to_frequency(x_values, y_values, target_freq=1000):
     # 计算降采样比例
     sample_ratio = len(x_values) // n_samples
     
-    # 使用高效的矢量化操作进行降采样
-    # 方法一：直接等间隔抽样（速度最快）
-    if sample_ratio > 10:  # 对于高降采样比率，使用混合策略
-        # 方法：先等距离取固定点，加上局部极值点
-        # 计算每个区间的索引
-        indices = np.arange(0, len(x_values), sample_ratio)[:n_samples]
+    # 增强的特征保留降采样
+    if sample_ratio > 10:  # 对于高降采样比率
+        # 步骤1: 先进行均匀采样作为基础点集
+        base_indices = np.arange(0, len(x_values), sample_ratio)
+        if len(base_indices) > n_samples:
+            base_indices = base_indices[:n_samples]
         
-        # 确保长度匹配
-        if len(indices) > n_samples:
-            indices = indices[:n_samples]
-        elif len(indices) < n_samples:
-            # 补足点数
-            extra_indices = np.linspace(0, len(x_values)-1, n_samples-len(indices)).astype(int)
-            indices = np.sort(np.concatenate([indices, extra_indices]))
+        # 步骤2: 识别关键特征点 - 寻找局部极值
+        # 使用滑动窗口检测局部极值点，窗口大小根据降采样比例自适应调整
+        window_size = min(sample_ratio // 2, 20)  # 避免窗口过大
+        if window_size < 2:
+            window_size = 2
             
+        # 计算局部极值点
+        extrema_indices = []
+        for i in range(window_size, len(y_values) - window_size, window_size):
+            window = y_values[i-window_size:i+window_size]
+            if y_values[i] == max(window) or y_values[i] == min(window):
+                # 如果是窗口内的极值点，添加到特征点列表
+                extrema_indices.append(i)
+        
+        # 步骤3: 合并基础点集和特征点集，确保不超过目标点数
+        all_indices = np.unique(np.concatenate([base_indices, extrema_indices]))
+        
+        # 如果合并后点数超过目标点数，优先保留特征点并进行下采样
+        if len(all_indices) > n_samples:
+            # 保留所有特征点
+            kept_extrema = np.array(extrema_indices)
+            # 计算剩余可用的点数
+            remaining_slots = n_samples - len(kept_extrema)
+            if remaining_slots > 0:
+                # 从基础点集中抽样填充剩余点位
+                mask = np.isin(base_indices, kept_extrema, invert=True)
+                candidates = base_indices[mask]
+                if len(candidates) > remaining_slots:
+                    # 均匀抽取剩余点位
+                    step = len(candidates) // remaining_slots
+                    base_selection = candidates[::step][:remaining_slots]
+                else:
+                    base_selection = candidates
+                # 合并特征点和基础点，并排序
+                final_indices = np.sort(np.concatenate([kept_extrema, base_selection]))
+            else:
+                # 如果特征点已经超过了目标点数，则进行均匀下采样
+                step = len(kept_extrema) // n_samples
+                final_indices = kept_extrema[::step][:n_samples]
+        else:
+            final_indices = all_indices
+            
+            # 如果点数仍不足，可以补充一些点
+            if len(final_indices) < n_samples:
+                # 创建掩码，标记未选中的点
+                mask = np.ones(len(x_values), dtype=bool)
+                mask[final_indices] = False
+                remaining_indices = np.arange(len(x_values))[mask]
+                
+                # 确定需要补充的点数
+                to_add = n_samples - len(final_indices)
+                if len(remaining_indices) > to_add:
+                    # 均匀选择额外点
+                    step = len(remaining_indices) // to_add
+                    extra_indices = remaining_indices[::step][:to_add]
+                    # 合并并排序
+                    final_indices = np.sort(np.concatenate([final_indices, extra_indices]))
+        
+        # 提取最终的采样点
+        new_times = x_values[final_indices]
+        new_values = y_values[final_indices]
+    else:
+        # 对于小幅度降采样，使用更简单的方法以保持速度
+        # 结合等间隔采样和线性插值，兼顾准确性和效率
+        indices = np.linspace(0, len(x_values)-1, n_samples).astype(int)
         new_times = x_values[indices]
         new_values = y_values[indices]
-    else:
-        # 方法二：对于降采样程度不高的情况，使用线性插值（平滑且快速）
-        new_times = np.linspace(time_start, time_end, n_samples)
-        new_values = np.interp(new_times, x_values, y_values)
     
-    print(f"高效降采样: 从 {len(x_values)} 点 降至 {len(new_times)} 点")
+    print(f"特征保留降采样: 从 {len(x_values)} 点 降至 {len(new_times)} 点")
     return new_times, new_values
 
 def compress_response(view_func):
