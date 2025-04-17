@@ -1488,7 +1488,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           color: color
         },
         title: {
-          text: `${channelType || channelName.split('_')[0]} | ${shotNumber} (${freqValue ? freqValue.toFixed(2) : '?'}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+          text: `${channelName || channelName.split('_')[0]} (${freqValue ? freqValue.toFixed(2) : '?'}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
           align: 'right',
           x: -10, // 向左偏移10像素，使其位于右上角
           y: 60,  // 向下偏移20像素，确保在图表内部
