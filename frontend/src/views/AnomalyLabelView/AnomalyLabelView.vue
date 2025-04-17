@@ -649,21 +649,37 @@ watch(() => store.state.authority, (newValue) => {
   }
 });
 
+// 监听框选状态变化，保存到localStorage
+watch(boxSelect, (newValue) => {
+  localStorage.setItem('boxSelectEnabled', newValue.toString());
+}, { immediate: true });
+
 // 确保在组件挂载时设置正确的初始状态
 onMounted(() => {
-  // 如果有需要，可以从localStorage或其他地方恢复上次的状态
+  // 恢复框选状态（默认禁用）
+  const savedBoxSelect = localStorage.getItem('boxSelectEnabled');
+  if (savedBoxSelect !== null) {
+    // 使用dispatch更新框选状态
+    store.dispatch('updateIsBoxSelect', savedBoxSelect === 'true');
+  } else {
+    // 默认禁用框选功能（禁用Violation）
+    store.dispatch('updateIsBoxSelect', false);
+  }
+  
+  // 恢复之前的按钮选择
   const savedButton = localStorage.getItem('selectedButton');
   if (savedButton) {
     selectedButton.value = savedButton;
   }
 
-  // 恢复通道显示模式
-  const savedChannelMode = localStorage.getItem('channelDisplayMode');
-  if (savedChannelMode !== null) {
-    SingleChannelMultiRow_channel_number.value = savedChannelMode === 'true';
+  // 从localStorage恢复通道显示模式设置
+  const savedMode = localStorage.getItem('channelDisplayMode');
+  if (savedMode !== null) {
+    // 使用 === 'true' 将字符串转换为布尔值
+    SingleChannelMultiRow_channel_number.value = savedMode === 'true';
   }
 
-  // 恢复异常区域显示状态
+  // 从localStorage获取是否显示异常设置
   const savedShowAnomaly = localStorage.getItem('showAnomaly');
   if (savedShowAnomaly !== null) {
     showAnomaly.value = savedShowAnomaly === 'true';
