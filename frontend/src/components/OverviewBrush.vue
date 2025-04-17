@@ -238,16 +238,16 @@ const collectData = async () => {
         isLoading.value = false;
         // 优化处理逻辑，减少执行时间
         if (Object.keys(processedDataCache.value).length > 0) {
-          // 将复杂的数据处理放到下一个事件循环中，避免阻塞UI线程
-          requestAnimationFrame(() => {
+          // 将数据处理分解为较小的批次
+          setTimeout(() => {
+            // 使用setTimeout替代requestAnimationFrame，更适合非视觉更新任务
+            // 将数据准备与渲染分开处理
             prepareDataForChart();
-          });
+          }, 0);
         } else {
           console.warn('数据处理超时，尝试使用可用数据渲染');
-          // 直接使用requestAnimationFrame来分离渲染操作
-          requestAnimationFrame(() => {
-            renderChart(true);
-          });
+          // 没有数据时直接渲染空图表
+          renderChart(true);
         }
       }
     }, 5000);
@@ -266,20 +266,28 @@ const prepareDataForChart = () => {
     return;
   }
 
-  // 将处理后的数据转换为图表可用格式
-  const chartData = [];
-
-  // 首先计算全局数据范围，用于智能降采样
+  // 先处理全局范围数据，然后在requestAnimationFrame中处理图表数据
+  // 这分解了繁重的计算工作
+  
+  // 计算全局数据范围，用于智能降采样
   let globalYMin = Infinity;
   let globalYMax = -Infinity;
 
   // 预处理：计算全局Y值范围
   Object.entries(processedDataCache.value).forEach(([channelKey, data]) => {
     if (data && data.Y) {
-      for (let i = 0; i < data.Y.length; i++) {
-        const y = data.Y[i];
-        if (y < globalYMin) globalYMin = y;
-        if (y > globalYMax) globalYMax = y;
+      // 优化循环，使用批量处理
+      const yValues = data.Y;
+      const length = yValues.length;
+      
+      // 分批处理Y值以减少计算负担
+      for (let i = 0; i < length; i += 100) {
+        const endIdx = Math.min(i + 100, length);
+        for (let j = i; j < endIdx; j++) {
+          const y = yValues[j];
+          if (y < globalYMin) globalYMin = y;
+          if (y > globalYMax) globalYMax = y;
+        }
       }
     }
   });
@@ -290,18 +298,50 @@ const prepareDataForChart = () => {
   globalYMin = globalYMin - globalYPadding;
   globalYMax = globalYMax + globalYPadding;
 
-  Object.entries(processedDataCache.value).forEach(([channelKey, data]) => {
+  // 在下一帧中完成剩余的数据准备
+  requestAnimationFrame(() => {
+    prepareChartDataInBatches(globalYMin, globalYMax);
+  });
+};
+
+// 分批处理图表数据
+const prepareChartDataInBatches = (globalYMin, globalYMax) => {
+  const chartData = [];
+  const channels = Object.entries(processedDataCache.value);
+  
+  // 处理第一批通道数据
+  processBatch(chartData, channels, 0, Math.min(3, channels.length), globalYMin, globalYMax, () => {
+    // 完成数据处理后渲染图表
+    overviewData.value = chartData;
+    
+    if (chartData.length > 0) {
+      renderChart(false);
+    } else {
+      isLoading.value = false;
+      console.warn('没有有效数据用于渲染');
+    }
+  });
+};
+
+// 批处理函数，每次处理少量通道数据
+const processBatch = (chartData, channels, startIdx, endIdx, globalYMin, globalYMax, onComplete) => {
+  // 处理当前批次的通道
+  for (let i = startIdx; i < endIdx; i++) {
+    const [channelKey, data] = channels[i];
+    
     const channel = selectedChannels.value.find(
       ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
     );
 
     if (channel && data && data.X && data.Y) {
-      // 为Highcharts准备数据
-      const seriesData = [];
-
-      // 将X和Y值组合成Highcharts需要的格式
-      for (let i = 0; i < data.X.length; i++) {
-        seriesData.push([data.X[i], data.Y[i]]);
+      // 为Highcharts准备数据，使用更高效的数组构建方式
+      const xData = data.X;
+      const yData = data.Y;
+      const seriesData = new Array(xData.length);
+      
+      // 批量构建数据点
+      for (let j = 0; j < xData.length; j++) {
+        seriesData[j] = [xData[j], yData[j]];
       }
 
       chartData.push({
@@ -309,20 +349,28 @@ const prepareDataForChart = () => {
         name: channel.channel_name,
         data: seriesData,
         color: channel.color || '#7cb5ec',
-        boostThreshold: 1000, // 启用boost的阈值
+        boostThreshold: 500, // 降低boost阈值以提高性能
         turboThreshold: 0 // 禁用turboThreshold限制
       });
     }
-  });
-
-  overviewData.value = chartData;
-
-  // 渲染图表
-  if (chartData.length > 0) {
-    renderChart(false);
+  }
+  
+  // 如果还有更多批次要处理
+  if (endIdx < channels.length) {
+    setTimeout(() => {
+      processBatch(
+        chartData, 
+        channels, 
+        endIdx, 
+        Math.min(endIdx + 3, channels.length), 
+        globalYMin, 
+        globalYMax, 
+        onComplete
+      );
+    }, 0);
   } else {
-    isLoading.value = false;
-    console.warn('没有有效数据用于渲染');
+    // 所有批次处理完成
+    onComplete();
   }
 };
 

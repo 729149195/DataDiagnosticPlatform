@@ -180,8 +180,12 @@ class OverviewWorkerManager {
             } else {
               // 没有足够时间，延迟到下一个空闲时段
               setTimeout(() => {
+                // 使用更高效的批处理方式替代单一requestAnimationFrame调用
+                const messageData = event.data;
+                // 轻量预处理，避免在rAF回调中处理过重的计算
+                const preProcessed = this.preProcessMessage(messageData);
                 requestAnimationFrame(() => {
-                  this.handleWorkerMessageSliced(event);
+                  this.handleWorkerMessageSliced(event, preProcessed);
                 });
               }, 0);
             }
@@ -431,6 +435,17 @@ class OverviewWorkerManager {
    */
   handleWorkerMessage(event) {
     this.handleWorkerMessageSliced(event);
+  }
+
+  /**
+   * 预处理消息数据，在主线程空闲时进行
+   * @private
+   */
+  preProcessMessage(messageData) {
+    // 执行一些轻量级的预处理工作，将重型计算拆分
+    // 这里只做基础数据提取和轻量级转换
+    const { type, messageId, data } = messageData;
+    return { type, messageId, data };
   }
 }
 
