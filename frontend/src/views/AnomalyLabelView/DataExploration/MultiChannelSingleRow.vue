@@ -897,26 +897,28 @@ const handleResize = debounce(() => {
     newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 70;
   }
   
-  // 拆分计算和UI更新，减少rAF回调的工作量
-  calculateChartHeight();
-  
-  // 更新宽度
-  if (containerWidth > 0) {
-    mainChartDimensions.value.width = newWidth;
-  }
-  
-  // 使用requestAnimationFrame只处理UI更新操作
+  // 使用单一requestAnimationFrame调度UI更新，避免嵌套rAF
   requestAnimationFrame(() => {
+    // 重新计算图表高度
+    calculateChartHeight();
+
+    // 更新宽度
+    if (containerWidth > 0) {
+      mainChartDimensions.value.width = newWidth;
+    }
+
     // 更新已存在的图表
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
+      // 批量更新图表属性，避免多次触发重绘
       chart.setSize(newWidth, mainChartDimensions.value.height);
       chart.redraw();
     } else if (channelsData.value && channelsData.value.length > 0) {
+      // 如果图表不存在，直接绘制
       drawCombinedChart();
     }
   });
-}, 100); // 增加debounce时间，减少触发频率
+}, 50); // 适当增加debounce时间以减少触发频率
 
 // 创建一个ResizeObserver来监听容器大小变化
 const resizeObserver = ref(null);
@@ -926,32 +928,34 @@ onMounted(async () => {
   // 设置Highcharts全局配置
   Highcharts.setOptions({
     chart: {
-      reflow: true, 
-      animation: false, 
+      reflow: true, // 确保所有图表都会重新计算尺寸
+      animation: false, // 禁用动画以提高性能
       boost: {
-        useGPUTranslations: true,
-        usePreallocated: true
+        useGPUTranslations: true, // 启用GPU加速
+        usePreallocated: true // 预分配内存
       }
     },
     plotOptions: {
       series: {
-        animation: false,
-        boostThreshold: 1000,
-        turboThreshold: 5000
+        animation: false, // 禁用系列动画
+        boostThreshold: 1000, // 降低boost阈值
+        turboThreshold: 5000 // 提高turboThreshold
       }
     }
   });
 
-  // 预先计算尺寸，减少rAF回调中的计算
-  const chartContainer = document.querySelector('.chart-container');
-  if (chartContainer) {
-    const containerWidth = chartContainer.offsetWidth;
-    calculateChartHeight();
-    mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10;
-  }
-  
-  // 使用requestAnimationFrame只处理UI渲染部分
+  // 使用单个requestAnimationFrame避免嵌套
   requestAnimationFrame(() => {
+    const container = document.querySelector('.chart-container');
+    if (container) {
+      const containerWidth = container.offsetWidth;
+  
+      // 计算适当的图表高度
+      calculateChartHeight();
+  
+      mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10;
+    }
+  
     // 只有在有选中通道时才渲染图表
     if (selectedChannels.value.length > 0) {
       renderCharts();
