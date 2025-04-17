@@ -849,13 +849,10 @@ const prepareAndRenderChart = async () => {
 
     // 平滑过渡到100%
     const finalizeProgress = () => {
-      const currentProgress = loadingState.progress;
-      if (currentProgress < 100) {
-        loadingState.progress = Math.min(currentProgress + 1, 100);
-        if (loadingState.progress < 100) {
-          setTimeout(finalizeProgress, 20);
-        }
-      }
+      requestAnimationFrame(() => {
+        loadingState.progress = 100;
+        loadingState.isLoading = false;
+      });
     };
 
     finalizeProgress();
@@ -1188,10 +1185,10 @@ watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
   
   // 清空已处理的数据缓存
   processedDataCache.value.clear();
-  // 使用setTimeout确保状态完全更新后再渲染
-  setTimeout(() => {
+  // 使用requestAnimationFrame替代setTimeout，更适合UI渲染
+  requestAnimationFrame(() => {
     renderCharts();
-  }, 300);
+  });
 });
 
 watch(smoothnessValue, () => {
@@ -1829,13 +1826,10 @@ const drawCombinedChart = () => {
 
       // 平滑过渡到100%
       const finalizeProgress = () => {
-        const currentProgress = loadingState.progress;
-        if (currentProgress < 100) {
-          loadingState.progress = Math.min(currentProgress + 1, 100);
-          if (loadingState.progress < 100) {
-            setTimeout(finalizeProgress, 20);
-          }
-        }
+        requestAnimationFrame(() => {
+          loadingState.progress = 100;
+          loadingState.isLoading = false;
+        });
       };
 
       finalizeProgress();
@@ -1856,13 +1850,10 @@ const drawCombinedChart = () => {
 
       // 平滑过渡到100%
       const finalizeProgress = () => {
-        const currentProgress = loadingState.progress;
-        if (currentProgress < 100) {
-          loadingState.progress = Math.min(currentProgress + 1, 100);
-          if (loadingState.progress < 100) {
-            setTimeout(finalizeProgress, 20);
-          }
-        }
+        requestAnimationFrame(() => {
+          loadingState.progress = 100;
+          loadingState.isLoading = false;
+        });
       };
 
       finalizeProgress();
@@ -2554,6 +2545,7 @@ const drawCombinedChart = () => {
             findNearestPointBy: 'x' // 按X轴查找最近点，提高连接精度
           },
           line: {
+            lineWidth: 1.5, // 全局线宽设置
             connectNulls: true, // 连接空值点
             marker: {
               enabled: false // 禁用标记点
@@ -2633,13 +2625,10 @@ const drawCombinedChart = () => {
 
       // 平滑过渡到100%
       const finalizeProgress = () => {
-        const currentProgress = loadingState.progress;
-        if (currentProgress < 100) {
-          loadingState.progress = Math.min(currentProgress + 1, 100);
-          if (loadingState.progress < 100) {
-            setTimeout(finalizeProgress, 20);
-          }
-        }
+        requestAnimationFrame(() => {
+          loadingState.progress = 100;
+          loadingState.isLoading = false;
+        });
       };
 
       finalizeProgress();
@@ -2708,13 +2697,10 @@ const drawCombinedChart = () => {
 
     // 平滑过渡到100%
     const finalizeProgress = () => {
-      const currentProgress = loadingState.progress;
-      if (currentProgress < 100) {
-        loadingState.progress = Math.min(currentProgress + 1, 100);
-        if (loadingState.progress < 100) {
-          setTimeout(finalizeProgress, 20);
-        }
-      }
+      requestAnimationFrame(() => {
+        loadingState.progress = 100;
+        loadingState.isLoading = false;
+      });
     };
 
     finalizeProgress();

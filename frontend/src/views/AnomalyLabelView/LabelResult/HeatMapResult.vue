@@ -1075,21 +1075,19 @@ watch(
 
     // 使用requestAnimationFrame代替setTimeout
     requestAnimationFrame(() => {
-      // 减少延迟时间，使用更短的timeout
-      debounceRender.value = setTimeout(async () => {
+      // 使用requestAnimationFrame完全替代setTimeout
+      requestAnimationFrame(async () => {
         try {
           // 使用requestAnimationFrame调度UI更新
-          requestAnimationFrame(async () => {
-            await nextTick();
-            // 传入所有通道进行完整渲染
-            await renderHeatmap(newChannels, false);
-          });
+          await nextTick();
+          // 传入所有通道进行完整渲染
+          await renderHeatmap(newChannels, false);
         } catch (error) {
           console.error('Error in debounced renderHeatmap:', error);
           loading.value = false;
           loadingPercentage.value = 0;
         }
-      }, 150); // 减少延迟时间
+      });
     });
   },
   {

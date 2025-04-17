@@ -7,7 +7,14 @@ import path from 'path'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      template: {
+        compilerOptions: {
+          // 减少编译警告
+          whitespace: 'condense'
+        }
+      }
+    }),
   ],
   resolve: {
     alias: {
@@ -31,10 +38,7 @@ export default defineConfig({
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Resource-Policy': 'cross-origin'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     }
   },
   worker: {
@@ -43,5 +47,27 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['d3']
+  },
+  build: {
+    // 性能优化选项
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        // 移除控制台日志和警告
+        drop_console: true,
+        drop_debugger: true
+      }
+    },
+    // 分割代码块以提高性能
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'highcharts': ['highcharts'],
+          'd3': ['d3'],
+          'vue-vendor': ['vue', 'vue-router', 'vuex'],
+          'element-plus': ['element-plus']
+        }
+      }
+    }
   }
 })

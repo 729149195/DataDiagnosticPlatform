@@ -357,7 +357,8 @@ const processBatch = (chartData, channels, startIdx, endIdx, globalYMin, globalY
   
   // 如果还有更多批次要处理
   if (endIdx < channels.length) {
-    setTimeout(() => {
+    // 使用requestAnimationFrame替代setTimeout，更适合UI渲染周期
+    requestAnimationFrame(() => {
       processBatch(
         chartData, 
         channels, 
@@ -367,7 +368,7 @@ const processBatch = (chartData, channels, startIdx, endIdx, globalYMin, globalY
         globalYMax, 
         onComplete
       );
-    }, 0);
+    });
   } else {
     // 所有批次处理完成
     onComplete();
