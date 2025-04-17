@@ -70,21 +70,22 @@ const handleResize = debounce(() => {
     // 记住当前的刷选状态
     const currentExtreme = extremes.value;
 
-    // 重新渲染图表
-    chartInstance.value.reflow();
+    // 使用requestAnimationFrame优化重绘流程
+    requestAnimationFrame(() => {
+      // 重新渲染图表
+      chartInstance.value.reflow();
 
-    // 如果原来有滑动块选择，重新设置
-    if (currentExtreme) {
-      nextTick(() => {
+      // 如果原来有滑动块选择，重新设置
+      if (currentExtreme) {
         try {
           updateBrush(currentExtreme.min, currentExtreme.max);
         } catch (error) {
           console.warn('窗口大小变化时更新遮罩区域出错:', error);
         }
-      });
-    }
+      }
+    });
   }
-}, 300);
+}, 150); // 减少debounce时间，提高响应速度
 
 // 组件挂载和卸载
 onMounted(() => {
@@ -235,11 +236,18 @@ const collectData = async () => {
     setTimeout(() => {
       if (isLoading.value) {
         isLoading.value = false;
+        // 优化处理逻辑，减少执行时间
         if (Object.keys(processedDataCache.value).length > 0) {
-          prepareDataForChart();
+          // 将复杂的数据处理放到下一个事件循环中，避免阻塞UI线程
+          requestAnimationFrame(() => {
+            prepareDataForChart();
+          });
         } else {
           console.warn('数据处理超时，尝试使用可用数据渲染');
-          renderChart(true);
+          // 直接使用requestAnimationFrame来分离渲染操作
+          requestAnimationFrame(() => {
+            renderChart(true);
+          });
         }
       }
     }, 5000);

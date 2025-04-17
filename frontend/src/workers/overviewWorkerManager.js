@@ -142,21 +142,24 @@ class OverviewWorkerManager {
       this.worker.onmessage = (event) => {
         const { type, messageId, data, error, channelKey } = event.data;
         
-        if (this.onmessage) {
-          // 如果设置了外部消息处理函数，直接转发
-          this.onmessage(event);
-        }
-        
-        // 查找并执行对应的回调函数
-        const callback = this.callbacks.get(messageId);
-        if (callback) {
-          if (error) {
-            callback(null, error);
-          } else {
-            callback(data);
+        // 使用微任务来处理消息回调，避免长时间阻塞主线程
+        queueMicrotask(() => {
+          if (this.onmessage) {
+            // 如果设置了外部消息处理函数，直接转发
+            this.onmessage(event);
           }
-          this.callbacks.delete(messageId);
-        }
+          
+          // 查找并执行对应的回调函数
+          const callback = this.callbacks.get(messageId);
+          if (callback) {
+            if (error) {
+              callback(null, error);
+            } else {
+              callback(data);
+            }
+            this.callbacks.delete(messageId);
+          }
+        });
       };
 
       this.worker.onerror = (error) => {

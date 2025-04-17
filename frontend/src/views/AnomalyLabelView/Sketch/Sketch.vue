@@ -219,6 +219,24 @@ const initPaperJs = () => {
 
   // 初始化Paper.js
   paperScope = new Paper.PaperScope();
+  
+  // 修复touchstart事件的passive警告
+  const originalAdd = paperScope.DomEvent.add;
+  paperScope.DomEvent.add = function(element, events, handler) {
+    if (typeof events === 'string' && events.includes('touchstart')) {
+      // 为touchstart事件添加passive选项
+      element.addEventListener('touchstart', handler, { passive: true });
+      // 从events中移除touchstart
+      events = events.replace(/touchstart\s*/, '');
+      // 如果还有其他事件，则使用原始方法处理
+      if (events.trim() !== '') {
+        return originalAdd.call(this, element, events, handler);
+      }
+      return;
+    }
+    return originalAdd.call(this, element, events, handler);
+  };
+  
   paperScope.setup(paperCanvas.value);
 
   // 创建网格
