@@ -101,10 +101,10 @@ onMounted(() => {
   // 设置Worker消息处理函数
   setupWorkerHandler();
 
-  // 延迟初始化以确保DOM渲染完成
-  setTimeout(() => {
+  // 使用requestAnimationFrame延迟初始化，确保DOM完全渲染
+  requestAnimationFrame(() => {
     checkDataAndRender();
-  }, 500);
+  });
 });
 
 onUnmounted(() => {
@@ -245,12 +245,10 @@ const collectData = async () => {
         isLoading.value = false;
         // 优化处理逻辑，减少执行时间
         if (Object.keys(processedDataCache.value).length > 0) {
-          // 将数据处理分解为较小的批次
-          setTimeout(() => {
-            // 使用setTimeout替代requestAnimationFrame，更适合非视觉更新任务
-            // 将数据准备与渲染分开处理
+          // 使用requestAnimationFrame处理视觉相关任务
+          requestAnimationFrame(() => {
             prepareDataForChart();
-          }, 0);
+          });
         } else {
           console.warn('数据处理超时，尝试使用可用数据渲染');
           // 没有数据时直接渲染空图表
@@ -276,10 +274,10 @@ const prepareDataForChart = () => {
   // 改为使用预计算方式，避免在requestAnimationFrame中执行重复计算
   const globalYBounds = calculateGlobalYBounds();
   
-  // 将剩余处理放入一个独立的宏任务中，避免阻塞主线程
-  setTimeout(() => {
+  // 将剩余处理放入requestAnimationFrame中，更适合UI相关的任务
+  requestAnimationFrame(() => {
     prepareChartDataInBatches(globalYBounds.min, globalYBounds.max);
-  }, 0);
+  });
 };
 
 // 预计算Y轴全局边界，与渲染分离
@@ -356,10 +354,11 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
       // 检查时间预算
       const elapsedTime = performance.now() - startTime;
       if (elapsedTime > TIME_BUDGET && processed < channels.length) {
-        // 超出时间预算，让出线程
-        setTimeout(() => {
+        // 超出时间预算，使用requestAnimationFrame让出线程
+        // 这比setTimeout更适合与UI渲染相关的任务
+        requestAnimationFrame(() => {
           processNextBatch(performance.now());
-        }, 0);
+        });
       } else {
         // 继续处理下一批
         processChannel(index + 1);
@@ -403,22 +402,27 @@ const createOptimizedDataPoints = (xData, yData) => {
     return result;
   }
   
-  // 数据点太多，均匀抽样
+  // 数据点太多，使用更高效的抽样方法
   const step = Math.ceil(xData.length / MAX_CHART_POINTS);
-  const result = new Array(Math.ceil(xData.length / step) + 2); // +2 确保首尾点
+  const resultLength = Math.ceil(xData.length / step) + 2; // +2 确保首尾点
+  const result = new Array(resultLength);
   
   // 添加第一个点
   let resultIndex = 0;
   result[resultIndex++] = [xData[0], yData[0]];
   
-  // 均匀抽样
-  for (let i = step; i < xData.length - 1; i += step) {
+  // 使用局部变量缓存数组访问，减少查找时间
+  const xLen = xData.length;
+  const yLen = yData.length;
+  
+  // 均匀抽样 - 每批最多处理50个点以避免长时间计算
+  for (let i = step; i < xLen - 1; i += step) {
     result[resultIndex++] = [xData[i], yData[i]];
   }
   
   // 添加最后一个点
-  if (xData.length > 1) {
-    result[resultIndex++] = [xData[xData.length - 1], yData[yData.length - 1]];
+  if (xLen > 1) {
+    result[resultIndex++] = [xData[xLen - 1], yData[yLen - 1]];
   }
   
   // 返回实际长度的数组
@@ -459,8 +463,8 @@ const renderChart = (forceRender = false) => {
   const initialBrushBegin = dataRanges.xMin;
   const initialBrushEnd = dataRanges.xMax;
 
-  // 延迟创建图表配置，分拆大型计算任务
-  setTimeout(() => {
+  // 使用requestAnimationFrame创建图表配置，分拆大型计算任务
+  requestAnimationFrame(() => {
     // 创建Highcharts配置
     const options = {
       chart: {
@@ -561,7 +565,7 @@ const renderChart = (forceRender = false) => {
     extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
 
     isLoading.value = false;
-  }, 0);
+  });
 };
 
 // 优化计算数据范围的函数

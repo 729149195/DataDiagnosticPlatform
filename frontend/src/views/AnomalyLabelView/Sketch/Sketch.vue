@@ -181,6 +181,8 @@ let path = null;
 let grid = null;
 let paperScope = null;
 const segmentInfo = ref('');
+// 添加清除状态标记
+const isClearing = ref(false);
 
 // Paper.js canvas元素引用
 const paperCanvas = ref(null);
@@ -280,6 +282,9 @@ const initPaperJs = () => {
 
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
+    // 如果正在清除过程中，忽略鼠标按下事件
+    if (isClearing.value) return;
+    
     selectedSegment = null;
     selectedHandle = null;
 
@@ -528,10 +533,13 @@ const submitData = async () => {
 
 // 修改清除画布函数
 const clearCanvas = () => {
-  // 同时清除匹配结果和路径
+  // 设置清除状态为true
+  isClearing.value = true;
+  
+  // 清除匹配结果
   store.dispatch('clearMatchedResults');
   
-  // 立即清除路径，不需要等待
+  // 立即清除路径
   if (paperScope) {
     if (path) {
       path.remove();
@@ -540,10 +548,13 @@ const clearCanvas = () => {
     segmentInfo.value = '';
   }
   
-  // 再次确认匹配结果已被清除（只需一次额外调用即可）
-  setTimeout(() => {
-    store.dispatch('clearMatchedResults');
-  }, 50);
+  // 使用requestAnimationFrame确保UI更新完成后再允许新绘制
+  requestAnimationFrame(() => {
+    // 延迟一帧后再设置为false，确保清除操作和UI更新完成
+    requestAnimationFrame(() => {
+      isClearing.value = false;
+    });
+  });
 };
 
 // 添加全选状态处理
