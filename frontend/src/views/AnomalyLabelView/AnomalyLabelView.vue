@@ -561,17 +561,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, reactive, unref, provide, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, reactive } from 'vue';
 import { useStore } from 'vuex';
-import { useRouter } from 'vue-router';
-import { FolderChecked, Upload, Menu, Refresh } from '@element-plus/icons-vue'
-import { ElMessage, ElLoading, ElMessageBox } from 'element-plus'
+import { Upload, Refresh } from '@element-plus/icons-vue'
+import { ElMessage} from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import 'highcharts/modules/exporting';
 import JSZip from 'jszip'; // 导入JSZip库
-import { CacheFactory } from "cachefactory"; // 导入CacheFactory
-import * as d3 from "d3";
 import dayjs from "dayjs";
 import isBetween from "dayjs/plugin/isBetween";
 dayjs.extend(isBetween);
@@ -700,8 +697,6 @@ const updateBoxSelect = (value) => {
   }
   store.dispatch('updateIsBoxSelect', value);
 };
-
-const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
 
 // 修改通用的下载函数以使用传统的文件下载方式
 const downloadFile = async (blob, suggestedName, fileType = 'json') => {

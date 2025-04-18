@@ -12,7 +12,6 @@
             <Loading />
           </el-icon>
           <span>加载中...</span>
-          <el-progress :percentage="progress" style="width: 80px; margin-top: 8px;" />
         </div>
         <div id="overview-chart" class="overview-chart" @dblclick="handleDblClick"></div>
       </div>
@@ -30,7 +29,7 @@ import { useStore } from 'vuex';
 import * as Highcharts from 'highcharts';
 import 'highcharts/modules/boost';  // 使用官方的boost模块
 import debounce from 'lodash/debounce';
-import { ElMessage, ElProgress } from 'element-plus';
+import { ElMessage } from 'element-plus';
 import { Loading } from '@element-plus/icons-vue';
 import overviewWorkerManager from '@/workers/overviewWorkerManager'; // 引入专用的Worker管理器
 
@@ -53,7 +52,6 @@ const originalDomains = ref({});
 const isLoading = ref(false);
 const extremes = ref(null);
 const processedDataCache = ref({}); // 缓存处理后的数据
-const progress = ref(0); // 渲染进度百分比
 
 // 从store获取数据
 const brush_begin = computed({
@@ -317,10 +315,9 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
   const chartData = [];
   const channels = Object.entries(processedDataCache.value);
   let currentIndex = 0;
-  const BATCH_SIZE = 1; // 每帧只处理1个series
-  const total = channels.length;
-  progress.value = 0;
+  const BATCH_SIZE = 5; // 每帧处理5个series
 
+  // 处理完成时的回调
   const finishProcessing = () => {
     overviewData.value = chartData;
     if (chartData.length > 0) {
@@ -329,11 +326,11 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
       });
     } else {
       isLoading.value = false;
-      progress.value = 0;
       console.warn('没有有效数据用于渲染');
     }
   };
 
+  // 每帧处理BATCH_SIZE个通道
   const processNext = () => {
     let processed = 0;
     while (currentIndex < channels.length && processed < BATCH_SIZE) {
@@ -353,14 +350,15 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
       }
       currentIndex++;
       processed++;
-      progress.value = Math.round((currentIndex / total) * 100);
     }
     if (currentIndex < channels.length) {
-      setTimeout(processNext, 0); // 让出主线程
+      requestAnimationFrame(processNext);
     } else {
       finishProcessing();
     }
   };
+
+  // 启动处理
   processNext();
 };
 
@@ -370,25 +368,33 @@ const renderChart = (forceRender = false) => {
     console.warn('无数据可渲染');
     clearChart();
     isLoading.value = false;
-    progress.value = 0;
     return;
   }
+
+  // 确保容器存在
   if (!chartContainer.value) {
     console.error('图表容器不存在');
     isLoading.value = false;
-    progress.value = 0;
     return;
   }
+
+  // 如果已有图表实例，先销毁
   if (chartInstance.value) {
     chartInstance.value.destroy();
   }
+
+  // 使用优化的方式计算数据范围
   const dataRanges = calculateDataRanges();
+  // 保存原始数据范围
   originalDomains.value = {
     x: [dataRanges.xMin, dataRanges.xMax],
     y: { min: dataRanges.yMin, max: dataRanges.yMax }
   };
+  // 设置初始刷选范围
   const initialBrushBegin = dataRanges.xMin;
   const initialBrushEnd = dataRanges.xMax;
+
+  // 创建Highcharts配置（不带series）
   const options = {
     chart: {
       renderTo: 'overview-chart',
@@ -406,7 +412,7 @@ const renderChart = (forceRender = false) => {
             const max = event.xAxis[0].max;
             updateBrush(min, max);
           }
-          return false;
+          return false; // 阻止默认缩放行为
         }
       }
     },
@@ -450,13 +456,14 @@ const renderChart = (forceRender = false) => {
       usePreAllocated: true,
       seriesThreshold: 1
     },
-    series: []
+    series: [] // 先不传数据
   };
+
   chartInstance.value = Highcharts.chart(options);
+
+  // 分批addSeries
   let idx = 0;
   const BATCH_SIZE = 1;
-  const total = overviewData.value.length;
-  progress.value = 0;
   function addSeriesBatch() {
     let count = 0;
     while (idx < overviewData.value.length && count < BATCH_SIZE) {
@@ -467,20 +474,20 @@ const renderChart = (forceRender = false) => {
       }
       idx++;
       count++;
-      progress.value = Math.round((idx / total) * 100);
     }
     if (idx < overviewData.value.length) {
-      setTimeout(addSeriesBatch, 0); // 让出主线程
+      requestAnimationFrame(addSeriesBatch);
     } else {
-      chartInstance.value.redraw();
+      chartInstance.value.redraw(); // 最后一次性重绘
+      // 更新brush值到store
       updatingBrush.value = true;
       brush_begin.value = initialBrushBegin.toFixed(4);
       brush_end.value = initialBrushEnd.toFixed(4);
       store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
       updatingBrush.value = false;
+      // 保存初始极值
       extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
       isLoading.value = false;
-      progress.value = 0;
     }
   }
   addSeriesBatch();
