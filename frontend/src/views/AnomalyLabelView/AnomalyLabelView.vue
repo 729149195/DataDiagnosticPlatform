@@ -116,7 +116,7 @@
                     <SingleChannelMultiRow v-show="selectedChannels.length > 0" />
                   </div>
                   <div v-show="SingleChannelMultiRow_channel_number === false">
-                    <!-- <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" /> -->
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
                   </div>
                 </el-scrollbar>
                 <OverviewBrush />
@@ -597,7 +597,7 @@ import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalcul
 
 import OverviewBrush from '@/components/OverviewBrush.vue';
 
-import { ElDialog, ElForm, ElFormItem, ElCheckbox, ElRadioGroup, ElRadio, ElTag, ElScrollbar, ElProgress } from 'element-plus'
+import { ElDialog, ElForm, ElFormItem, ElCheckbox, ElRadio, ElTag, ElScrollbar, ElProgress } from 'element-plus'
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
@@ -626,7 +626,6 @@ watch(unit_sampling, (newValue) => {
 const MultiChannelRef = ref(null)
 const resultRef = ref(null)
 const heatMapRef = ref(null)
-const channelDataCache = computed(() => store.state.channelDataCache);
 const selectedChannels = computed(() => store.state.selectedChannels);
 
 const boxSelect = computed({
