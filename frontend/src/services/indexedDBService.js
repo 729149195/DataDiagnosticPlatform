@@ -1,33 +1,35 @@
 // indexedDBService.js
-// 用于持久化缓存数据到IndexedDB
-
-const DB_NAME = "channelDataCache";
-const DB_VERSION = 1;
-const STORE_NAME = "channelData";
+// 用于持久化缓存数据到IndexedDB，通过Web Worker实现
 
 class IndexedDBService {
   constructor() {
-    this.db = null;
+    this.worker = null;
     this.isInitialized = false;
-    this.initPromise = null;
+    this.pendingRequests = new Map();
+    this.requestId = 0;
     this.isSupported = this.checkSupport();
+    this.initPromise = null;
+    this.logListeners = [];
+    this.errorListeners = [];
   }
 
   /**
-   * 检查浏览器是否支持IndexedDB
+   * 检查浏览器是否支持IndexedDB和Web Worker
    * @returns {boolean} 是否支持
    */
   checkSupport() {
-    return window && "indexedDB" in window;
+    return typeof window !== 'undefined' && 
+           'indexedDB' in window && 
+           'Worker' in window;
   }
 
   /**
-   * 初始化数据库
+   * 初始化Worker
    * @returns {Promise} 初始化完成的Promise
    */
   init() {
     if (!this.isSupported) {
-      return Promise.reject(new Error("浏览器不支持IndexedDB"));
+      return Promise.reject(new Error("浏览器不支持IndexedDB或Web Worker"));
     }
 
     if (this.initPromise) {
@@ -35,41 +37,128 @@ class IndexedDBService {
     }
 
     this.initPromise = new Promise((resolve, reject) => {
-      if (!window.indexedDB) {
-        console.error("您的浏览器不支持IndexedDB");
-        reject(new Error("浏览器不支持IndexedDB"));
-        return;
+      try {
+        // 创建Web Worker实例
+        const workerUrl = new URL('../workers/indexedDBWorker.js', import.meta.url);
+        this.worker = new Worker(workerUrl, { type: 'module' });
+        
+        // 设置消息处理
+        this.worker.onmessage = this.handleWorkerMessage.bind(this);
+        this.worker.onerror = (error) => {
+          console.error('IndexedDB Worker错误:', error);
+          reject(error);
+          
+          // 通知所有等待中的请求
+          this.pendingRequests.forEach((callback, id) => {
+            callback.reject(new Error('Worker错误: ' + (error.message || '未知错误')));
+          });
+          this.pendingRequests.clear();
+        };
+        
+        // 发送初始化请求
+        this.sendToWorker('init')
+          .then(() => {
+            this.isInitialized = true;
+            resolve();
+          })
+          .catch(error => {
+            console.error('初始化IndexedDB Worker失败:', error);
+            reject(error);
+          });
+      } catch (error) {
+        console.error('创建IndexedDB Worker失败:', error);
+        reject(error);
       }
-
-      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onerror = (event) => {
-        console.error("打开数据库失败:", event.target.error);
-        reject(event.target.error);
-      };
-
-      request.onsuccess = (event) => {
-        this.db = event.target.result;
-        this.isInitialized = true;
-        console.log("数据库初始化成功");
-        resolve(this.db);
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-
-        // 创建对象存储空间
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: "key" });
-
-          // 创建索引
-          store.createIndex("timestamp", "timestamp", { unique: false });
-          console.log("创建数据存储空间成功");
-        }
-      };
     });
 
     return this.initPromise;
+  }
+
+  /**
+   * 处理Worker消息
+   * @private
+   */
+  handleWorkerMessage(event) {
+    const { id, type, success, result, error } = event.data;
+    
+    if (type === 'log') {
+      // 处理日志消息
+      console.log('IndexedDB Worker:', event.data.message);
+      this.logListeners.forEach(listener => listener(event.data.message));
+      return;
+    }
+    
+    if (type === 'error' || type === 'warn') {
+      // 处理错误/警告消息
+      const method = type === 'error' ? console.error : console.warn;
+      method('IndexedDB Worker:', event.data.operation, event.data.error);
+      this.errorListeners.forEach(listener => 
+        listener({
+          type, 
+          operation: event.data.operation,
+          message: event.data.error
+        })
+      );
+      return;
+    }
+    
+    // 处理响应消息
+    if (type === 'response' && id !== undefined) {
+      const pendingRequest = this.pendingRequests.get(id);
+      if (pendingRequest) {
+        if (success) {
+          pendingRequest.resolve(result);
+        } else {
+          pendingRequest.reject(new Error(error || '操作失败'));
+        }
+        this.pendingRequests.delete(id);
+      }
+    }
+  }
+
+  /**
+   * 发送消息到Worker
+   * @private
+   */
+  sendToWorker(action, params = {}) {
+    return new Promise(async (resolve, reject) => {
+      if (!this.isInitialized && action !== 'init') {
+        try {
+          await this.init();
+        } catch (error) {
+          return reject(error);
+        }
+      }
+      
+      const id = this.requestId++;
+      this.pendingRequests.set(id, { resolve, reject });
+      
+      this.worker.postMessage({
+        id,
+        action,
+        params
+      });
+    });
+  }
+
+  /**
+   * 添加日志监听器
+   * @param {Function} listener 日志监听函数
+   */
+  addLogListener(listener) {
+    if (typeof listener === 'function') {
+      this.logListeners.push(listener);
+    }
+  }
+
+  /**
+   * 添加错误监听器
+   * @param {Function} listener 错误监听函数
+   */
+  addErrorListener(listener) {
+    if (typeof listener === 'function') {
+      this.errorListeners.push(listener);
+    }
   }
 
   /**
@@ -85,107 +174,16 @@ class IndexedDBService {
     }
 
     try {
-      await this.init();
-
-      // 深度克隆数据，移除不可序列化的内容
-      const safeData = this.makeDataSafeForIndexedDB(data);
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readwrite");
-          const store = transaction.objectStore(STORE_NAME);
-
-          const record = {
-            key,
-            data: safeData,
-            timestamp,
-          };
-
-          const request = store.put(record);
-
-          request.onsuccess = () => {
-            resolve(true);
-          };
-
-          request.onerror = (event) => {
-            console.error("保存数据失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("保存数据出错:", error);
-          reject(error);
-        }
+      const result = await this.sendToWorker('saveChannelData', {
+        key,
+        data,
+        timestamp
       });
+      return result;
     } catch (error) {
-      console.error("保存数据到IndexedDB失败:", error);
+      console.error('保存数据到IndexedDB失败:', error);
       return false;
     }
-  }
-
-  /**
-   * 使数据安全可序列化，移除循环引用和不可序列化的内容
-   * @param {Object} data - 原始数据
-   * @returns {Object} 安全的可序列化数据
-   */
-  makeDataSafeForIndexedDB(data) {
-    try {
-      // 尝试使用JSON序列化和反序列化来移除不可序列化的内容
-      return JSON.parse(JSON.stringify(data));
-    } catch (error) {
-      console.error("数据序列化失败，尝试手动清理:", error);
-
-      // 如果JSON序列化失败，尝试手动清理
-      return this.manuallyCleanData(data);
-    }
-  }
-
-  /**
-   * 手动清理数据，移除不可序列化的内容
-   * @param {any} data - 需要清理的数据
-   * @returns {any} 清理后的数据
-   */
-  manuallyCleanData(data) {
-    if (data === null || data === undefined) {
-      return data;
-    }
-
-    // 处理基本类型
-    if (typeof data !== "object") {
-      return data;
-    }
-
-    // 处理数组
-    if (Array.isArray(data)) {
-      return data.map((item) => this.manuallyCleanData(item));
-    }
-
-    // 处理对象
-    const cleanedData = {};
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        try {
-          // 跳过函数、Symbol等不可序列化的属性
-          const value = data[key];
-          if (typeof value !== "function" && typeof value !== "symbol") {
-            // 检查是否为Vue的响应式对象
-            if (value && typeof value === "object" && value.__v_isRef) {
-              cleanedData[key] = this.manuallyCleanData(value.value);
-            } else if (
-              value &&
-              typeof value === "object" &&
-              value.__v_isReactive
-            ) {
-              cleanedData[key] = this.manuallyCleanData({ ...value });
-            } else {
-              cleanedData[key] = this.manuallyCleanData(value);
-            }
-          }
-        } catch (error) {
-          console.warn(`清理属性 ${key} 时出错，已跳过:`, error);
-        }
-      }
-    }
-    return cleanedData;
   }
 
   /**
@@ -199,30 +197,10 @@ class IndexedDBService {
     }
 
     try {
-      await this.init();
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readonly");
-          const store = transaction.objectStore(STORE_NAME);
-          const request = store.get(key);
-
-          request.onsuccess = (event) => {
-            const result = event.target.result;
-            resolve(result ? result : null);
-          };
-
-          request.onerror = (event) => {
-            console.error("获取数据失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("获取数据出错:", error);
-          reject(error);
-        }
-      });
+      const result = await this.sendToWorker('getChannelData', { key });
+      return result;
     } catch (error) {
-      console.error("从IndexedDB获取数据失败:", error);
+      console.error('从IndexedDB获取数据失败:', error);
       return null;
     }
   }
@@ -238,29 +216,10 @@ class IndexedDBService {
     }
 
     try {
-      await this.init();
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readwrite");
-          const store = transaction.objectStore(STORE_NAME);
-          const request = store.delete(key);
-
-          request.onsuccess = () => {
-            resolve(true);
-          };
-
-          request.onerror = (event) => {
-            console.error("删除数据失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("删除数据出错:", error);
-          reject(error);
-        }
-      });
+      const result = await this.sendToWorker('deleteChannelData', { key });
+      return result;
     } catch (error) {
-      console.error("从IndexedDB删除数据失败:", error);
+      console.error('从IndexedDB删除数据失败:', error);
       return false;
     }
   }
@@ -275,29 +234,10 @@ class IndexedDBService {
     }
 
     try {
-      await this.init();
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readwrite");
-          const store = transaction.objectStore(STORE_NAME);
-          const request = store.clear();
-
-          request.onsuccess = () => {
-            resolve(true);
-          };
-
-          request.onerror = (event) => {
-            console.error("清空数据失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("清空数据出错:", error);
-          reject(error);
-        }
-      });
+      const result = await this.sendToWorker('clearAllChannelData');
+      return result;
     } catch (error) {
-      console.error("清空IndexedDB数据失败:", error);
+      console.error('清空IndexedDB数据失败:', error);
       return false;
     }
   }
@@ -312,29 +252,10 @@ class IndexedDBService {
     }
 
     try {
-      await this.init();
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readonly");
-          const store = transaction.objectStore(STORE_NAME);
-          const request = store.getAllKeys();
-
-          request.onsuccess = (event) => {
-            resolve(event.target.result);
-          };
-
-          request.onerror = (event) => {
-            console.error("获取所有键失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("获取所有键出错:", error);
-          reject(error);
-        }
-      });
+      const result = await this.sendToWorker('getAllKeys');
+      return result;
     } catch (error) {
-      console.error("从IndexedDB获取所有键失败:", error);
+      console.error('从IndexedDB获取所有键失败:', error);
       return [];
     }
   }
@@ -345,49 +266,15 @@ class IndexedDBService {
    * @returns {Promise<number>} 清理的数据条数
    */
   async cleanupExpiredData(maxAge = 7 * 24 * 60 * 60 * 1000) {
-    // 默认7天
     if (!this.isSupported) {
       return Promise.resolve(0);
     }
 
     try {
-      await this.init();
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readwrite");
-          const store = transaction.objectStore(STORE_NAME);
-          const index = store.index("timestamp");
-
-          const now = Date.now();
-          const range = IDBKeyRange.upperBound(now - maxAge);
-
-          let deleteCount = 0;
-          const request = index.openCursor(range);
-
-          request.onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (cursor) {
-              cursor.delete();
-              deleteCount++;
-              cursor.continue();
-            } else {
-              console.log(`清理了 ${deleteCount} 条过期数据`);
-              resolve(deleteCount);
-            }
-          };
-
-          request.onerror = (event) => {
-            console.error("清理过期数据失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("清理过期数据出错:", error);
-          reject(error);
-        }
-      });
+      const result = await this.sendToWorker('cleanupExpiredData', { maxAge });
+      return result;
     } catch (error) {
-      console.error("清理IndexedDB过期数据失败:", error);
+      console.error('清理IndexedDB过期数据失败:', error);
       return 0;
     }
   }
@@ -402,59 +289,24 @@ class IndexedDBService {
     }
 
     try {
-      await this.init();
-
-      return new Promise((resolve, reject) => {
-        try {
-          const transaction = this.db.transaction([STORE_NAME], "readonly");
-          const store = transaction.objectStore(STORE_NAME);
-          const countRequest = store.count();
-
-          countRequest.onsuccess = () => {
-            const count = countRequest.result;
-
-            // 估算大小
-            const getAllRequest = store.getAll();
-            getAllRequest.onsuccess = () => {
-              const items = getAllRequest.result;
-              let totalSize = 0;
-
-              // 使用JSON.stringify来估算每个项目的大小
-              items.forEach((item) => {
-                try {
-                  const jsonSize = JSON.stringify(item).length;
-                  totalSize += jsonSize;
-                } catch (e) {
-                  // 忽略无法序列化的项目
-                }
-              });
-
-              resolve({
-                count,
-                size: totalSize,
-                sizeInMB: (totalSize / (1024 * 1024)).toFixed(2),
-              });
-            };
-
-            getAllRequest.onerror = (event) => {
-              console.error("获取所有数据失败:", event.target.error);
-              // 仍然返回计数
-              resolve({ count, size: 0 });
-            };
-          };
-
-          countRequest.onerror = (event) => {
-            console.error("获取数据计数失败:", event.target.error);
-            reject(event.target.error);
-          };
-        } catch (error) {
-          console.error("获取存储使用情况出错:", error);
-          reject(error);
-        }
-      });
+      const result = await this.sendToWorker('getStorageUsage');
+      return result;
     } catch (error) {
-      console.error("获取IndexedDB存储使用情况失败:", error);
+      console.error('获取IndexedDB存储使用情况失败:', error);
       return { count: 0, size: 0 };
+    }
+  }
+
+  /**
+   * 终止Worker
+   */
+  terminate() {
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+      this.pendingRequests.clear();
+      this.isInitialized = false;
+      this.initPromise = null;
     }
   }
 }
@@ -462,11 +314,14 @@ class IndexedDBService {
 // 创建单例实例
 const indexedDBService = new IndexedDBService();
 
-// 定期清理过期数据（每天一次）
-setInterval(() => {
-  indexedDBService.cleanupExpiredData().catch((err) => {
-    console.error("定期清理过期数据失败:", err);
-  });
-}, 24 * 60 * 60 * 1000);
+// 应用加载时预初始化Worker
+if (typeof window !== 'undefined') {
+  // 使用setTimeout延迟初始化，避免阻塞应用启动
+  setTimeout(() => {
+    indexedDBService.init().catch(err => {
+      console.warn('IndexedDB Worker预初始化失败，将在首次使用时重试:', err);
+    });
+  }, 1000);
+}
 
 export default indexedDBService;

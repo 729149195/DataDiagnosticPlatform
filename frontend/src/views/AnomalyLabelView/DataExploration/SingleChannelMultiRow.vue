@@ -2316,17 +2316,15 @@ svg {
 /* 添加耗时显示样式 */
 .timing-info {
   position: absolute;
-  top: 0px;
+  top: 10px;
   right: 10px;
   background-color: rgba(255, 255, 255, 0.8);
   padding: 3px 8px;
   border-radius: 4px;
   font-size: 12px;
-  color: #303133;
-  font-weight: bold;
+  color: #666;
   z-index: 10;
   border: 1px solid #e4e7ed;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 
 .color-picker-container {
