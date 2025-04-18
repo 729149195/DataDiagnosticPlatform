@@ -225,16 +225,44 @@ watch(() => store.state.anomalies, (newAnomalies) => {
   }
 }, { deep: true });
 
+// 引入Web Worker
+let channelDataWorker = null;
+if (window.Worker) {
+  if (!window._channelDataWorkerInstance) {
+    window._channelDataWorkerInstance = new Worker(new URL('./channelDataWorker.js', import.meta.url), { type: 'module' });
+  }
+  channelDataWorker = window._channelDataWorkerInstance;
+}
+
+// 用Web Worker处理数据部分
+function processChannelDataWithWorker(data, channel) {
+  return new Promise((resolve, reject) => {
+    if (!channelDataWorker) {
+      // 不支持worker时，直接返回原始数据
+      resolve({ ...data });
+      return;
+    }
+    const handleMessage = (e) => {
+      channelDataWorker.removeEventListener('message', handleMessage);
+      if (e.data && !e.data.error) {
+        resolve(e.data);
+      } else {
+        reject(e.data.error || 'Worker error');
+      }
+    };
+    channelDataWorker.addEventListener('message', handleMessage);
+    // 这里做深拷贝，去除响应式/Proxy
+    const plainData = JSON.parse(JSON.stringify(data));
+    const plainChannel = JSON.parse(JSON.stringify(channel));
+    channelDataWorker.postMessage({ data: plainData, channel: plainChannel });
+  });
+}
+
+// 修改processChannelData，数据处理部分用worker
 const processChannelData = async (data, channel) => {
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
   try {
     renderingStates[channelKey] = 0;
-    // 添加调试日志
-    // console.log(`处理通道数据 ${channelKey}:`, {
-    //   originalFrequency: data.originalFrequency || '未知',
-    //   stats: data.stats || '未提供统计数据'
-    // });
-
     // 标记渲染开始
     renderingStates[channelKey] = 25;
 
@@ -248,29 +276,32 @@ const processChannelData = async (data, channel) => {
 
     renderingStates[channelKey] = 40;
 
-    // 获取错误数据，这是唯一需要的异步操作
+    // 用worker处理数据
+    const processedData = await processChannelDataWithWorker(data, channel);
+
+    // 获取错误数据
     const errorDataResults = await errorDataPromise;
 
     renderingStates[channelKey] = 75; // 更新渲染状态
 
-    // 绘制图表，直接使用后端处理好的数据
+    // 绘制图表，直接使用worker处理好的数据
     await nextTick();
     await drawChart(
       {
-        X_value: data.X_value,
-        Y_value: data.Y_value,
-        originalFrequency: data.originalFrequency,
-        stats: data.stats, // 使用后端预计算的统计数据
-        is_digital: data.is_digital, // 使用后端判断的数字信号类型
-        Y_normalized: data.Y_normalized, // 使用后端归一化的Y值
-        channel_type: data.channel_type // 使用后端判断的通道类型
+        X_value: processedData.X_value,
+        Y_value: processedData.Y_value,
+        originalFrequency: processedData.originalFrequency,
+        stats: processedData.stats,
+        is_digital: processedData.is_digital,
+        Y_normalized: processedData.Y_normalized,
+        channel_type: processedData.channel_type
       },
       errorDataResults,
       channelKey,
       channel.color,
-      data.X_unit || 's',
-      data.Y_unit || 'Y',
-      data.channel_type || channel.channel_type,
+      processedData.X_unit || 's',
+      processedData.Y_unit || 'Y',
+      processedData.channel_type || channel.channel_type,
       channel.shot_number
     );
 
@@ -279,22 +310,16 @@ const processChannelData = async (data, channel) => {
     // 记录结束时间和计算耗时
     channelTimings[channelKey].endTime = performance.now();
     channelTimings[channelKey].duration = ((channelTimings[channelKey].endTime - channelTimings[channelKey].startTime) / 1000).toFixed(2);
-    
     // 在渲染完成后，确保再次调整颜色选择器位置
     const chart = window.chartInstances?.[channelKey];
     if (chart) {
-      // 使用两次调用，确保有足够时间让DOM更新
       adjustColorPickerPosition(chart, channel);
-      // 使用requestAnimationFrame代替setTimeout
       requestAnimationFrame(() => adjustColorPickerPosition(chart, channel));
     }
-
   } catch (error) {
     console.error(`Error processing channel data for ${channel.channel_name}:`, error);
     ElMessage.error(`处理通道数据错误: ${error.message}`);
-    renderingStates[channelKey] = 100; // 确保错误时也更新状态
-    
-    // 即使出错也记录耗时
+    renderingStates[channelKey] = 100;
     if (channelTimings[channelKey]) {
       channelTimings[channelKey].endTime = performance.now();
       channelTimings[channelKey].duration = ((channelTimings[channelKey].endTime - channelTimings[channelKey].startTime) / 1000).toFixed(2);
