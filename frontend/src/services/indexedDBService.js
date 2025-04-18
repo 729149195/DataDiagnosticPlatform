@@ -1,9 +1,9 @@
 // indexedDBService.js
 // 用于持久化缓存数据到IndexedDB
 
-const DB_NAME = 'channelDataCache';
+const DB_NAME = "channelDataCache";
 const DB_VERSION = 1;
-const STORE_NAME = 'channelData';
+const STORE_NAME = "channelData";
 
 class IndexedDBService {
   constructor() {
@@ -18,7 +18,7 @@ class IndexedDBService {
    * @returns {boolean} 是否支持
    */
   checkSupport() {
-    return window && 'indexedDB' in window;
+    return window && "indexedDB" in window;
   }
 
   /**
@@ -27,7 +27,7 @@ class IndexedDBService {
    */
   init() {
     if (!this.isSupported) {
-      return Promise.reject(new Error('浏览器不支持IndexedDB'));
+      return Promise.reject(new Error("浏览器不支持IndexedDB"));
     }
 
     if (this.initPromise) {
@@ -36,35 +36,35 @@ class IndexedDBService {
 
     this.initPromise = new Promise((resolve, reject) => {
       if (!window.indexedDB) {
-        console.error('您的浏览器不支持IndexedDB');
-        reject(new Error('浏览器不支持IndexedDB'));
+        console.error("您的浏览器不支持IndexedDB");
+        reject(new Error("浏览器不支持IndexedDB"));
         return;
       }
 
       const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = (event) => {
-        console.error('打开数据库失败:', event.target.error);
+        console.error("打开数据库失败:", event.target.error);
         reject(event.target.error);
       };
 
       request.onsuccess = (event) => {
         this.db = event.target.result;
         this.isInitialized = true;
-        console.log('数据库初始化成功');
+        console.log("数据库初始化成功");
         resolve(this.db);
       };
 
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
-        
+
         // 创建对象存储空间
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'key' });
-          
+          const store = db.createObjectStore(STORE_NAME, { keyPath: "key" });
+
           // 创建索引
-          store.createIndex('timestamp', 'timestamp', { unique: false });
-          console.log('创建数据存储空间成功');
+          store.createIndex("timestamp", "timestamp", { unique: false });
+          console.log("创建数据存储空间成功");
         }
       };
     });
@@ -83,7 +83,7 @@ class IndexedDBService {
     if (!this.isSupported) {
       return Promise.resolve(false);
     }
-    
+
     try {
       await this.init();
 
@@ -92,13 +92,13 @@ class IndexedDBService {
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+          const transaction = this.db.transaction([STORE_NAME], "readwrite");
           const store = transaction.objectStore(STORE_NAME);
 
           const record = {
             key,
             data: safeData,
-            timestamp
+            timestamp,
           };
 
           const request = store.put(record);
@@ -108,16 +108,16 @@ class IndexedDBService {
           };
 
           request.onerror = (event) => {
-            console.error('保存数据失败:', event.target.error);
+            console.error("保存数据失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('保存数据出错:', error);
+          console.error("保存数据出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('保存数据到IndexedDB失败:', error);
+      console.error("保存数据到IndexedDB失败:", error);
       return false;
     }
   }
@@ -132,8 +132,8 @@ class IndexedDBService {
       // 尝试使用JSON序列化和反序列化来移除不可序列化的内容
       return JSON.parse(JSON.stringify(data));
     } catch (error) {
-      console.error('数据序列化失败，尝试手动清理:', error);
-      
+      console.error("数据序列化失败，尝试手动清理:", error);
+
       // 如果JSON序列化失败，尝试手动清理
       return this.manuallyCleanData(data);
     }
@@ -150,13 +150,13 @@ class IndexedDBService {
     }
 
     // 处理基本类型
-    if (typeof data !== 'object') {
+    if (typeof data !== "object") {
       return data;
     }
 
     // 处理数组
     if (Array.isArray(data)) {
-      return data.map(item => this.manuallyCleanData(item));
+      return data.map((item) => this.manuallyCleanData(item));
     }
 
     // 处理对象
@@ -166,11 +166,15 @@ class IndexedDBService {
         try {
           // 跳过函数、Symbol等不可序列化的属性
           const value = data[key];
-          if (typeof value !== 'function' && typeof value !== 'symbol') {
+          if (typeof value !== "function" && typeof value !== "symbol") {
             // 检查是否为Vue的响应式对象
-            if (value && typeof value === 'object' && value.__v_isRef) {
+            if (value && typeof value === "object" && value.__v_isRef) {
               cleanedData[key] = this.manuallyCleanData(value.value);
-            } else if (value && typeof value === 'object' && value.__v_isReactive) {
+            } else if (
+              value &&
+              typeof value === "object" &&
+              value.__v_isReactive
+            ) {
               cleanedData[key] = this.manuallyCleanData({ ...value });
             } else {
               cleanedData[key] = this.manuallyCleanData(value);
@@ -193,13 +197,13 @@ class IndexedDBService {
     if (!this.isSupported) {
       return Promise.resolve(null);
     }
-    
+
     try {
       await this.init();
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readonly');
+          const transaction = this.db.transaction([STORE_NAME], "readonly");
           const store = transaction.objectStore(STORE_NAME);
           const request = store.get(key);
 
@@ -209,16 +213,16 @@ class IndexedDBService {
           };
 
           request.onerror = (event) => {
-            console.error('获取数据失败:', event.target.error);
+            console.error("获取数据失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('获取数据出错:', error);
+          console.error("获取数据出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('从IndexedDB获取数据失败:', error);
+      console.error("从IndexedDB获取数据失败:", error);
       return null;
     }
   }
@@ -232,13 +236,13 @@ class IndexedDBService {
     if (!this.isSupported) {
       return Promise.resolve(false);
     }
-    
+
     try {
       await this.init();
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+          const transaction = this.db.transaction([STORE_NAME], "readwrite");
           const store = transaction.objectStore(STORE_NAME);
           const request = store.delete(key);
 
@@ -247,16 +251,16 @@ class IndexedDBService {
           };
 
           request.onerror = (event) => {
-            console.error('删除数据失败:', event.target.error);
+            console.error("删除数据失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('删除数据出错:', error);
+          console.error("删除数据出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('从IndexedDB删除数据失败:', error);
+      console.error("从IndexedDB删除数据失败:", error);
       return false;
     }
   }
@@ -269,13 +273,13 @@ class IndexedDBService {
     if (!this.isSupported) {
       return Promise.resolve(false);
     }
-    
+
     try {
       await this.init();
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+          const transaction = this.db.transaction([STORE_NAME], "readwrite");
           const store = transaction.objectStore(STORE_NAME);
           const request = store.clear();
 
@@ -284,16 +288,16 @@ class IndexedDBService {
           };
 
           request.onerror = (event) => {
-            console.error('清空数据失败:', event.target.error);
+            console.error("清空数据失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('清空数据出错:', error);
+          console.error("清空数据出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('清空IndexedDB数据失败:', error);
+      console.error("清空IndexedDB数据失败:", error);
       return false;
     }
   }
@@ -306,13 +310,13 @@ class IndexedDBService {
     if (!this.isSupported) {
       return Promise.resolve([]);
     }
-    
+
     try {
       await this.init();
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readonly');
+          const transaction = this.db.transaction([STORE_NAME], "readonly");
           const store = transaction.objectStore(STORE_NAME);
           const request = store.getAllKeys();
 
@@ -321,16 +325,16 @@ class IndexedDBService {
           };
 
           request.onerror = (event) => {
-            console.error('获取所有键失败:', event.target.error);
+            console.error("获取所有键失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('获取所有键出错:', error);
+          console.error("获取所有键出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('从IndexedDB获取所有键失败:', error);
+      console.error("从IndexedDB获取所有键失败:", error);
       return [];
     }
   }
@@ -340,26 +344,27 @@ class IndexedDBService {
    * @param {number} maxAge - 最大缓存时间（毫秒）
    * @returns {Promise<number>} 清理的数据条数
    */
-  async cleanupExpiredData(maxAge = 7 * 24 * 60 * 60 * 1000) { // 默认7天
+  async cleanupExpiredData(maxAge = 7 * 24 * 60 * 60 * 1000) {
+    // 默认7天
     if (!this.isSupported) {
       return Promise.resolve(0);
     }
-    
+
     try {
       await this.init();
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+          const transaction = this.db.transaction([STORE_NAME], "readwrite");
           const store = transaction.objectStore(STORE_NAME);
-          const index = store.index('timestamp');
-          
+          const index = store.index("timestamp");
+
           const now = Date.now();
           const range = IDBKeyRange.upperBound(now - maxAge);
-          
+
           let deleteCount = 0;
           const request = index.openCursor(range);
-          
+
           request.onsuccess = (event) => {
             const cursor = event.target.result;
             if (cursor) {
@@ -371,18 +376,18 @@ class IndexedDBService {
               resolve(deleteCount);
             }
           };
-          
+
           request.onerror = (event) => {
-            console.error('清理过期数据失败:', event.target.error);
+            console.error("清理过期数据失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('清理过期数据出错:', error);
+          console.error("清理过期数据出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('清理IndexedDB过期数据失败:', error);
+      console.error("清理IndexedDB过期数据失败:", error);
       return 0;
     }
   }
@@ -395,27 +400,27 @@ class IndexedDBService {
     if (!this.isSupported) {
       return Promise.resolve({ count: 0, size: 0 });
     }
-    
+
     try {
       await this.init();
 
       return new Promise((resolve, reject) => {
         try {
-          const transaction = this.db.transaction([STORE_NAME], 'readonly');
+          const transaction = this.db.transaction([STORE_NAME], "readonly");
           const store = transaction.objectStore(STORE_NAME);
           const countRequest = store.count();
-          
+
           countRequest.onsuccess = () => {
             const count = countRequest.result;
-            
+
             // 估算大小
             const getAllRequest = store.getAll();
             getAllRequest.onsuccess = () => {
               const items = getAllRequest.result;
               let totalSize = 0;
-              
+
               // 使用JSON.stringify来估算每个项目的大小
-              items.forEach(item => {
+              items.forEach((item) => {
                 try {
                   const jsonSize = JSON.stringify(item).length;
                   totalSize += jsonSize;
@@ -423,32 +428,32 @@ class IndexedDBService {
                   // 忽略无法序列化的项目
                 }
               });
-              
+
               resolve({
                 count,
                 size: totalSize,
-                sizeInMB: (totalSize / (1024 * 1024)).toFixed(2)
+                sizeInMB: (totalSize / (1024 * 1024)).toFixed(2),
               });
             };
-            
+
             getAllRequest.onerror = (event) => {
-              console.error('获取所有数据失败:', event.target.error);
+              console.error("获取所有数据失败:", event.target.error);
               // 仍然返回计数
               resolve({ count, size: 0 });
             };
           };
-          
+
           countRequest.onerror = (event) => {
-            console.error('获取数据计数失败:', event.target.error);
+            console.error("获取数据计数失败:", event.target.error);
             reject(event.target.error);
           };
         } catch (error) {
-          console.error('获取存储使用情况出错:', error);
+          console.error("获取存储使用情况出错:", error);
           reject(error);
         }
       });
     } catch (error) {
-      console.error('获取IndexedDB存储使用情况失败:', error);
+      console.error("获取IndexedDB存储使用情况失败:", error);
       return { count: 0, size: 0 };
     }
   }
@@ -459,9 +464,9 @@ const indexedDBService = new IndexedDBService();
 
 // 定期清理过期数据（每天一次）
 setInterval(() => {
-  indexedDBService.cleanupExpiredData().catch(err => {
-    console.error('定期清理过期数据失败:', err);
+  indexedDBService.cleanupExpiredData().catch((err) => {
+    console.error("定期清理过期数据失败:", err);
   });
 }, 24 * 60 * 60 * 1000);
 
-export default indexedDBService; 
+export default indexedDBService;
