@@ -4,14 +4,7 @@
       <!-- 移除 LegendComponent，改为直接使用 ChannelColorPicker -->
       <div class="legend" id="channelLegendContainer">
         <div class="legend-item" v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`">
-          <ChannelColorPicker 
-            :color="channel.color" 
-            :predefineColors="predefineColors"
-            @change="updateChannelColor({ channelKey: `${channel.channel_name}_${channel.shot_number}`, color: $event })"
-            @update:color="updateChartColor(channel, $event)"
-            :channelName="channel.channel_name"
-            :shotNumber="channel.shot_number"
-          />
+          <ChannelColorPicker :color="channel.color" :predefineColors="predefineColors" @change="updateChannelColor({ channelKey: `${channel.channel_name}_${channel.shot_number}`, color: $event })" @update:color="updateChartColor(channel, $event)" :channelName="channel.channel_name" :shotNumber="channel.shot_number" />
           <span :style="{ color: channel.color }" class="legend-text" :data-channel="`${channel.channel_name}_${channel.shot_number}`">
             {{ channel.shot_number }}_{{ channel.channel_name }}
           </span>
@@ -102,57 +95,6 @@ Highcharts.setOptions({
   }
 });
 
-
-// 平滑数据函数
-const interpolateData = (data, factor) => {
-  if (!data || !Array.isArray(data) || data.length < 2) {
-    return [...data]; // 返回原始数据的副本
-  }
-
-  try {
-    // 如果平滑因子为0或不在有效范围内，返回原始数据
-    if (factor <= 0 || factor > 1) {
-      return [...data];
-    }
-
-    const result = [...data]; // 创建数据副本
-    const windowSize = Math.ceil(data.length * factor * 0.1); // 根据平滑因子计算窗口大小
-
-    if (windowSize < 2) {
-      return result; // 窗口过小，不执行平滑
-    }
-
-    // 使用简单的移动平均算法
-    for (let i = 0; i < data.length; i++) {
-      let sum = 0;
-      let count = 0;
-
-      // 计算当前点周围的窗口范围
-      const start = Math.max(0, i - windowSize);
-      const end = Math.min(data.length - 1, i + windowSize);
-
-      // 对窗口内的所有点求和
-      for (let j = start; j <= end; j++) {
-        // 只考虑有效数值
-        if (typeof data[j] === 'number' && !isNaN(data[j])) {
-          sum += data[j];
-          count++;
-        }
-      }
-
-      // 计算平均值
-      if (count > 0) {
-        result[i] = sum / count;
-      }
-    }
-
-    return result;
-  } catch (error) {
-    console.error('数据平滑处理出错:', error);
-    return [...data]; // 出错时返回原始数据的副本
-  }
-};
-
 // Reactive references
 const xDomains = ref({ global: null });
 // 从store获取数据
@@ -205,60 +147,60 @@ const matchedResults = computed(() => store.getters.getMatchedResults);
 // 添加 updateChartColor 函数，直接更新图表颜色而不触发重绘
 const updateChartColor = (channel, newColor) => {
   if (!channel || !newColor) return;
-  
+
   // console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
-  
+
   // 更新本地数据
   channel.color = newColor;
-  
+
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-  
+
   // 获取当前图表实例
   const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (!chart) {
     // console.warn(`找不到图表实例`);
     return;
   }
-  
+
   try {
     let seriesUpdated = false;
-    
+
     // 更新特定通道的线条颜色
     chart.series.forEach(series => {
       if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
         // 更新线条颜色属性
         series.color = newColor;
         series.options.color = newColor;
-        
+
         // 使用update方法更新图表系列
         series.update({
           color: newColor
         }, false); // 不立即重绘
-        
+
         seriesUpdated = true;
       }
     });
-    
+
     // 更新图例文字颜色
     const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
     if (legendText) {
       legendText.style.color = newColor;
     }
-    
+
     // 更新 channelsData 中的颜色 
     const channelDataIndex = channelsData.value.findIndex(
       d => d.channelName === channel.channel_name && d.channelshotnumber === channel.shot_number
     );
-    
+
     if (channelDataIndex !== -1) {
       channelsData.value[channelDataIndex].color = newColor;
     }
-    
+
     // 只有在实际更新了系列时才重绘图表
     if (seriesUpdated) {
       chart.redraw();
     }
-    
+
     // 确保 Vuex 存储中的颜色也被更新
     store.commit('updateChannelColor', { channel_key: channelKey, color: newColor });
   } catch (error) {
@@ -274,7 +216,7 @@ const updateChannelColor = ({ channelKey, color }) => {
   if (channel) {
     // 更新本地数据
     channel.color = color;
-    
+
     // 更新 Vuex 存储
     store.commit('updateChannelColor', { channel_key: channelKey, color });
 
@@ -282,23 +224,23 @@ const updateChannelColor = ({ channelKey, color }) => {
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
       let seriesUpdated = false;
-      
+
       // 更新特定通道的线条颜色
       chart.series.forEach(series => {
         if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
           // 更新线条颜色属性
           series.color = color;
           series.options.color = color;
-          
+
           // 使用update方法更新图表系列
           series.update({
             color: color
           }, false); // 不立即重绘
-          
+
           seriesUpdated = true;
         }
       });
-      
+
       // 只有在实际更新了系列时才重绘图表
       if (seriesUpdated) {
         chart.redraw();
@@ -317,7 +259,7 @@ const updateChannelColor = ({ channelKey, color }) => {
         channelsData.value[channelDataIndex].color = color;
       }
     }
-    
+
     // 更新图例文字颜色
     const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
     if (legendText) {
@@ -559,10 +501,10 @@ const renderCharts = debounce(async () => {
     // console.log('图表正在渲染中，跳过重复渲染请求');
     return;
   }
-  
+
   // 锁定渲染过程
   isRenderingLocked.value = true;
-  
+
   try {
     // 重置状态
     resetProgress();
@@ -605,34 +547,34 @@ const renderCharts = debounce(async () => {
     // 顺序处理通道数据，而不是并行处理
     const totalChannels = selectedChannels.value.length;
     const progressStep = 50 / totalChannels; // 数据处理阶段占50%进度
-    
+
     // console.log(`开始加载 ${totalChannels} 个通道的数据，采样率: ${sampling.value} kHz`);
-    
+
     for (let i = 0; i < totalChannels; i++) {
       const channel = selectedChannels.value[i];
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         // console.log(`正在加载通道 ${channelKey} 的数据，采样率: ${sampling.value} kHz`);
-        
+
         // 获取通道数据，不再强制刷新，直接从缓存获取
-        const data = await store.dispatch('fetchChannelData', { 
+        const data = await store.dispatch('fetchChannelData', {
           channel,
           forceRefresh: false // 不再强制刷新，依赖采样率变化时的全局刷新机制
         });
-        
+
         if (!data) {
           throw new Error(`Failed to fetch data for channel ${channelKey}`);
         }
-        
+
         // console.log(`已成功加载通道 ${channelKey} 的数据，数据点数: ${data.X_value?.length || 0}`);
-        
+
         // 处理通道数据
         const processedData = await processChannelDataAsync(data, channel);
         processedDataCache.value.set(channelKey, processedData);
-        
+
         // 更新进度
         loadingState.progress = (i + 1) * progressStep;
-        
+
         // 让UI线程有机会更新
         await new Promise(resolve => setTimeout(resolve, 0));
       } catch (error) {
@@ -653,13 +595,13 @@ const renderCharts = debounce(async () => {
       ElMessage.error(`准备渲染图表时出错: ${error.message}`);
       loadingState.isLoading = false;
       loadingState.error = error.message;
-      
+
       // 清除进度更新定时器
       if (loadingState.progressInterval) {
         clearInterval(loadingState.progressInterval);
         loadingState.progressInterval = null;
       }
-      
+
       // 平滑过渡到100%
       const finalizeProgress = () => {
         const currentProgress = loadingState.progress;
@@ -670,7 +612,7 @@ const renderCharts = debounce(async () => {
           }
         }
       };
-      
+
       finalizeProgress();
     }
   } catch (error) {
@@ -763,22 +705,15 @@ const prepareAndRenderChart = async () => {
 
     // 创建一个函数来按顺序一个一个处理通道数据
     const processChannelsSequentially = async () => {
-      // 将 Map 转换为数组以便按顺序处理
       const channelEntries = Array.from(processedDataCache.value.entries());
-      
-      // 设置进度范围
       const progressStart = 50;
       const progressEnd = 95;
       const progressStep = (progressEnd - progressStart) / (channelEntries.length || 1);
-      
-      // 按顺序处理每个通道
-      for (let i = 0; i < channelEntries.length; i++) {
+      let i = 0;
+      function processNext() {
+        if (i >= channelEntries.length) return Promise.resolve();
         const [channelKey, processedData] = channelEntries[i];
-        
-        // 将处理后的数据添加到数组中
         channelsData.value.push(processedData);
-
-        // 更新导出数据
         exposeData.value.push({
           channel_type: processedData.channel.channelType,
           channel_name: processedData.channel.channelName,
@@ -789,13 +724,12 @@ const prepareAndRenderChart = async () => {
           errorsData: processedData.errorData,
           shot_number: processedData.channel.shotNumber
         });
-        
-        // 更新进度
         loadingState.progress = progressStart + (i + 1) * progressStep;
-        
-        // 每处理完一个通道后，等待一小段时间，避免阻塞主线程
-        await new Promise(resolve => setTimeout(resolve, 0));
+        i++;
+        // 用 setTimeout 分片，避免阻塞
+        return new Promise(resolve => setTimeout(resolve, 0)).then(processNext);
       }
+      await processNext();
     };
 
     // 按顺序处理通道数据
@@ -884,34 +818,23 @@ const calculateChartHeight = () => {
 
 // 添加窗口大小变化的处理函数，减少debounce时间提高响应速度
 const handleResize = debounce(() => {
-  // 预计算需要的尺寸值，减少在rAF回调中的计算量
   const container = document.querySelector('.chart-container');
   let containerWidth = 0;
   let newWidth = 0;
-  
   if (container) {
     containerWidth = container.offsetWidth;
     newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 70;
   }
-  
-  // 使用单一requestAnimationFrame调度UI更新，避免嵌套rAF
   requestAnimationFrame(() => {
-    // 重新计算图表高度
     calculateChartHeight();
-
-    // 更新宽度
     if (containerWidth > 0) {
       mainChartDimensions.value.width = newWidth;
     }
-
-    // 更新已存在的图表
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
-      // 批量更新图表属性，避免多次触发重绘
       chart.setSize(newWidth, mainChartDimensions.value.height);
       chart.redraw();
     } else if (channelsData.value && channelsData.value.length > 0) {
-      // 如果图表不存在，直接绘制
       drawCombinedChart();
     }
   });
@@ -946,13 +869,13 @@ onMounted(async () => {
     const container = document.querySelector('.chart-container');
     if (container) {
       const containerWidth = container.offsetWidth;
-  
+
       // 计算适当的图表高度
       calculateChartHeight();
-  
+
       mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10;
     }
-  
+
     // 只有在有选中通道时才渲染图表
     if (selectedChannels.value.length > 0) {
       renderCharts();
@@ -973,7 +896,7 @@ onMounted(async () => {
   if (container) {
     resizeObserver.value.observe(container);
   }
-  
+
   // 监听chart-wrapper的大小变化
   const chartWrapper = document.querySelector('.chart-wrapper');
   if (chartWrapper) {
@@ -1050,26 +973,26 @@ watch(selectedChannels, (newChannels, oldChannels) => {
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
       let seriesUpdated = false;
-      
+
       // 逐个检查并更新图表中的颜色
       newChannels.forEach(newCh => {
         const oldCh = oldChannels.find(
           old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
         );
-        
+
         if (oldCh && oldCh.color !== newCh.color) {
           const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
           const color = newCh.color;
-          
+
           // 更新 channelsData 中的颜色
           const channelDataIndex = channelsData.value.findIndex(
             d => d.channelName === newCh.channel_name && d.channelshotnumber === newCh.shot_number
           );
-          
+
           if (channelDataIndex !== -1) {
             channelsData.value[channelDataIndex].color = color;
           }
-          
+
           // 更新图表中的所有相关系列颜色
           chart.series.forEach(series => {
             // 检查系列名称是否为当前通道的主线或平滑线
@@ -1078,11 +1001,11 @@ watch(selectedChannels, (newChannels, oldChannels) => {
               series.update({
                 color: color
               }, false); // 不立即重绘
-              
+
               seriesUpdated = true;
             }
           });
-          
+
           // 更新图例文字颜色
           const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
           if (legendText) {
@@ -1090,18 +1013,18 @@ watch(selectedChannels, (newChannels, oldChannels) => {
           }
         }
       });
-      
+
       // 一次性重绘图表，提高性能
       if (seriesUpdated) {
         chart.redraw();
       }
-      
+
       // 更新 store 中的颜色
       newChannels.forEach(newCh => {
         const oldCh = oldChannels.find(
           old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
         );
-        
+
         if (oldCh && oldCh.color !== newCh.color) {
           const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
           store.commit('updateChannelColor', { channel_key: channelKey, color: newCh.color });
@@ -1121,28 +1044,28 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 watch(sampling, (newSamplingRate, oldSamplingRate) => {
   // console.log(`[重要] 采样率从 ${oldSamplingRate} kHz 变更为 ${newSamplingRate} kHz，准备刷新数据和图表`);
   sampleRate.value = newSamplingRate;
-  
+
   // 设置采样率更新标志并锁定渲染
   isUpdatingSampling.value = true;
   isRenderingLocked.value = true;
-  
+
   // 清空处理后的数据缓存
   processedDataCache.value.clear();
-  
+
   // 重置进度状态
   resetProgress();
-  
+
   // 立即清空数据，防止旧数据重绘
   channelsData.value = [];
   exposeData.value = [];
-  
+
   // 销毁现有图表，避免重叠渲染
   const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (existingChart) {
     // console.log('已销毁现有图表，准备重新渲染');
     existingChart.destroy();
   }
-  
+
   // 需要延迟一下，确保DOM已更新
   nextTick(() => {
     // 使用 store 的全局采样率更新机制，这会触发所有选中通道的数据刷新
@@ -1166,7 +1089,6 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
   });
 });
 
-// 一并修改channelDataCache监听，确保在采样率更新时不会触发渲染
 // 监听 channelDataCache 变化，当通道数据缓存更新时重新渲染图表
 watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
   // 重要：如果正在更新采样率，跳过这次触发
@@ -1174,9 +1096,7 @@ watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
     // console.log('正在更新采样率，跳过缓存更新触发的渲染');
     return;
   }
-  
-  // console.log('通道数据缓存键值已更新，重新渲染图表');
-  
+
   // 清空已处理的数据缓存
   processedDataCache.value.clear();
   // 使用requestAnimationFrame替代setTimeout，更适合UI渲染
@@ -1784,7 +1704,7 @@ watch(isBoxSelect, (newValue) => {
         zoomType: newValue ? 'x' : 'xy'
       }
     }, false);
-    
+
     // 确保图表正确响应尺寸变化
     setTimeout(() => {
       calculateChartHeight();
@@ -1865,14 +1785,14 @@ const drawCombinedChart = () => {
     }
 
     // 检查是否有任何通道提供了统计数据
-    const hasStats = channelsData.value.some(channel => channel.stats && 
+    const hasStats = channelsData.value.some(channel => channel.stats &&
       channel.stats.y_min !== undefined && channel.stats.y_max !== undefined);
 
     // 如果至少有一个通道提供了统计数据，使用归一化的-1到1范围
     const padding = 0.05;
     // 定义yExtent变量
     let yExtent;
-    
+
     if (!hasStats) {
       // 默认归一化范围为-1到1，增加5%的上下空白用于视觉效果
       yExtent = [-1 - padding, 1 + padding]; // 范围为 -1.05 到 1.05，但刻度只显示-1到1
@@ -1896,7 +1816,7 @@ const drawCombinedChart = () => {
     const prepareSeries = () => {
       // 准备 Highcharts 的数据系列
       const series = [];
-      
+
       // 为每个通道创建数据系列
       channelsData.value.forEach((data) => {
         // 确保X和Y数组长度一致
@@ -1906,16 +1826,16 @@ const drawCombinedChart = () => {
         }
 
         // 从selectedChannels获取最新的颜色
-        const channelFromStore = selectedChannels.value.find(ch => 
+        const channelFromStore = selectedChannels.value.find(ch =>
           ch.channel_name === data.channelName && ch.shot_number === data.channelshotnumber
         );
-        
+
         // 始终使用selectedChannels中的颜色，确保颜色一致性
         const channelColor = channelFromStore ? channelFromStore.color : data.color;
-        
+
         // 更新channelsData中的颜色以保持同步
         data.color = channelColor;
-        
+
         // 创建完整的数据点数组
         const pointsData = data.data.x.map((x, i) => ([x, data.data.y[i]]));
 
@@ -1940,53 +1860,6 @@ const drawCombinedChart = () => {
           turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
         };
         series.push(mainLineSeries);
-
-        // 如果有平滑值，添加平滑线
-        if (smoothnessValue.value > 0 && smoothnessValue.value <= 1) {
-          let smoothedYValue = [];
-          try {
-            smoothedYValue = interpolateData(data.data.y, smoothnessValue.value);
-          } catch (error) {
-            // console.error(`平滑处理数据出错: ${error.message}`);
-            smoothedYValue = [...data.data.y]; // 出错时使用原始数据
-          }
-
-          // 确保平滑后的Y值数组长度与X值数组一致
-          if (smoothedYValue.length !== data.data.x.length) {
-            // console.warn(`Smoothed Y array length (${smoothedYValue.length}) does not match X array length (${data.data.x.length})`);
-            if (smoothedYValue.length > data.data.x.length) {
-              smoothedYValue = smoothedYValue.slice(0, data.data.x.length);
-            } else {
-              // 填充缺失值
-              while (smoothedYValue.length < data.data.x.length) {
-                smoothedYValue.push(smoothedYValue[smoothedYValue.length - 1] || 0);
-              }
-            }
-          }
-
-          const smoothedPointsData = data.data.x.map((x, i) => ([x, smoothedYValue[i]]));
-
-          const smoothedLineSeries = {
-            name: `${data.channelName}_${data.channelshotnumber}_smoothed`,
-            data: smoothedPointsData,
-            color: channelColor,
-            lineWidth: 1.5,
-            zIndex: 2,
-            marker: {
-              enabled: false
-            },
-            states: {
-              hover: {
-                lineWidthPlus: 0
-              }
-            },
-            connectNulls: true, // 连接空值点
-            enableMouseTracking: false,
-            step: data.is_digital || data.channelType === 'DIGITAL' ? 'left' : false, // 使用后端判断的数字信号类型
-            turboThreshold: 0 // 禁用 turboThreshold 以允许大量数据点
-          };
-          series.push(smoothedLineSeries);
-        }
 
         // 处理错误数据 - 但不立即添加到series，而是返回它们
         if (data.errorData && data.errorData.length > 0) {
@@ -2084,10 +1957,10 @@ const drawCombinedChart = () => {
           });
         }
       });
-      
+
       return series;
     };
-    
+
     // 批量准备所有系列数据
     const series = prepareSeries();
 
@@ -2127,12 +2000,12 @@ const drawCombinedChart = () => {
               if (brush_begin.value && brush_end.value) {
                 // 恢复到总览条的范围
                 xDomains.value.global = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
-                
+
                 // 计算带padding的Y轴范围
                 const padding = 0.05;
                 const yMinWithPadding = -1 - padding;
                 const yMaxWithPadding = 1 + padding;
-                
+
                 // 重置 Y 轴到默认范围（带padding）
                 originalDomains.value.global = {
                   x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
@@ -2156,7 +2029,7 @@ const drawCombinedChart = () => {
                     drawHighlightRects(channel.channel_name, channelMatchedResults);
                   }
                 });
-                
+
                 // 确保图表尺寸正确
                 setTimeout(() => {
                   calculateChartHeight();
@@ -2345,7 +2218,7 @@ const drawCombinedChart = () => {
                     drawHighlightRects(channel.channel_name, channelMatchedResults);
                   }
                 });
-                
+
                 // 确保图表尺寸正确
                 setTimeout(() => {
                   calculateChartHeight();
@@ -2367,7 +2240,7 @@ const drawCombinedChart = () => {
                 // 恢复到总览条的范围
                 const beginValue = parseFloat(brush_begin.value);
                 const endValue = parseFloat(brush_end.value);
-                
+
                 // 计算带padding的Y轴范围
                 const padding = 0.05;
                 const yMinWithPadding = -1 - padding;
@@ -2393,7 +2266,7 @@ const drawCombinedChart = () => {
                     drawHighlightRects(channel.channel_name, channelMatchedResults);
                   }
                 });
-                
+
                 // 确保图表尺寸正确
                 setTimeout(() => {
                   calculateChartHeight();
@@ -2594,14 +2467,14 @@ const drawCombinedChart = () => {
           mainChartDimensions.value.width + 10, // 增加额外宽度
           mainChartDimensions.value.height
         );
-        
+
         // 确保正确的缩放类型
         chart.update({
           chart: {
             zoomType: isBoxSelect.value ? 'x' : 'xy'
           }
         }, false);
-        
+
         // 确保高度自适应
         calculateChartHeight();
         chart.reflow();
@@ -2647,33 +2520,29 @@ const drawCombinedChart = () => {
     // 在图表创建成功后调用
     nextTick(() => {
       syncLegendColors();
-      
+
       // 添加变更监听，确保颜色持续同步
       // 断开之前的observer (如果存在)
       if (chartLegendObserver.value) {
         chartLegendObserver.value.disconnect();
       }
-      
+
       // 创建新的observer
       chartLegendObserver.value = new MutationObserver(() => {
         syncLegendColors();
       });
-      
+
       // 监听图例容器
       const legendContainer = document.getElementById('channelLegendContainer');
       if (legendContainer) {
-        chartLegendObserver.value.observe(legendContainer, { 
-          childList: true, 
-          subtree: true, 
+        chartLegendObserver.value.observe(legendContainer, {
+          childList: true,
+          subtree: true,
           attributes: true,
           attributeFilter: ['style', 'class']
         });
       }
-      
-      // 移除这部分代码，因为已经在组件顶层添加了onUnmounted钩子
-      // onUnmounted(() => {
-      //   observer.disconnect();
-      // });
+
     });
   } catch (error) {
     // console.error('Error drawing combined chart:', error);
@@ -2698,18 +2567,6 @@ const drawCombinedChart = () => {
     };
 
     finalizeProgress();
-  }
-};
-
-// 添加确认通道选择的方法
-const confirmChannelSelection = () => {
-  if (selectedChannelForAnnotation.value) {
-    showChannelSelectDialog.value = false;
-    const channelName = selectedChannelForAnnotation.value.split('_')[0];
-    const shotNumber = selectedChannelForAnnotation.value.split('_')[1];
-    ElMessage.success(`已选择通道: ${channelName} | ${shotNumber}`);
-  } else {
-    ElMessage.warning('请选择一个通道');
   }
 };
 
@@ -2747,7 +2604,8 @@ onUnmounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  overflow: hidden; /* 防止内容溢出 */
+  overflow: hidden;
+  /* 防止内容溢出 */
 }
 
 .chart-wrapper {
@@ -2759,14 +2617,16 @@ onUnmounted(() => {
   overflow: hidden;
   margin-top: 5px;
   /* 减少顶部空白 */
-  min-height: 100px; /* 降低最小高度，允许更小的图表高度 */
+  min-height: 100px;
+  /* 降低最小高度，允许更小的图表高度 */
 }
 
 #combined-chart {
   width: 100%;
   height: 100%;
   position: relative;
-  min-height: 100px; /* 降低最小高度，允许更小的图表高度 */
+  min-height: 100px;
+  /* 降低最小高度，允许更小的图表高度 */
 }
 
 .legend-container {
@@ -2787,14 +2647,14 @@ onUnmounted(() => {
   padding: 6px;
   background-color: rgba(255, 255, 255, 0.95);
   border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   max-height: 200px;
   overflow-y: auto;
   transition: box-shadow 0.2s ease;
 }
 
 .legend:hover {
-  box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .legend-item {
