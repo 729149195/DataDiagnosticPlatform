@@ -56,6 +56,7 @@ const store = createStore({
       smoothness: 0,
       anomalies: {},
       matchedResults: [],
+      matchedResultsCleared: null,
       clickedChannelNames: "",
       clickedShownChannelList: [],
       ErrorLineXScopes: [],
@@ -313,7 +314,14 @@ const store = createStore({
       state.CalculateResult = CalculateResult;
     },
     clearMatchedResults(state) {
+      // 先将数组清空
+      state.matchedResults.length = 0;
+      
+      // 然后重新赋值为空数组，确保引用也更新
       state.matchedResults = [];
+      
+      // 添加一个特殊标记，表示这是一次清除操作，而不是普通的更新
+      state.matchedResultsCleared = Date.now();
     },
     setQueryPattern(state, patternData) {
       state.queryPattern = patternData;

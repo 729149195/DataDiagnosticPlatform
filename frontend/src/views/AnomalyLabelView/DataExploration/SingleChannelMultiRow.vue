@@ -99,6 +99,9 @@ const domains = computed(() => ({
 }));
 const chartContainerWidth = ref(0);
 const matchedResults = computed(() => store.state.matchedResults);
+const matchedResultsCleared = computed(() => store.state.matchedResultsCleared);
+// 添加一个标记，用于忽略初始化时的变化
+const initialMatchedResultsClearedValue = ref(store.state.matchedResultsCleared);
 
 // 存储原始的显示范围
 const originalDomains = ref({});
@@ -2090,100 +2093,90 @@ const adjustColorPickerPosition = (chart, channel) => {
 
 // 添加对matchedResults的监听
 watch(matchedResults, (newMatchedResults) => {
-  // 清除所有现有的匹配高亮区域
-  Object.keys(window.chartInstances || {}).forEach(channelKey => {
-    const chart = window.chartInstances[channelKey];
-    if (chart) {
-      // 移除现有的匹配高亮区域
-      chart.xAxis[0].plotLinesAndBands.forEach(band => {
-        if (band.id && band.id.startsWith('match-band-')) {
-          chart.xAxis[0].removePlotBand(band.id);
-        }
-      });
-
-      // 移除现有的匹配高亮系列
-      chart.series.forEach(series => {
-        if (series.options.id && series.options.id.startsWith('match-highlight-')) {
-          series.remove(false);
-        }
-      });
-    }
-  });
-
+  // 先清除所有高亮
+  forceClearAllHighlights();
+  
   // 处理新的匹配结果
   if (newMatchedResults && newMatchedResults.length > 0) {
-    newMatchedResults.forEach((matchResult, index) => {
-      // 获取通道名称和炮号
-      const { channelName, shotNumber, range, confidence } = matchResult;
-      const channelKey = `${channelName}_${shotNumber}`;
+    // 延迟50ms再添加新的高亮，确保之前的清除操作已完成
+    setTimeout(() => {
+      newMatchedResults.forEach((matchResult, index) => {
+        // 获取通道名称和炮号
+        const { channelName, shotNumber, range, confidence } = matchResult;
+        const channelKey = `${channelName}_${shotNumber}`;
 
-      // 获取匹配区域的范围
-      if (range && range.length > 0) {
-        // 获取对应的图表实例
-        const chart = window.chartInstances?.[channelKey];
-        if (chart) {
-          // 遍历匹配区域的范围
-          range.forEach((rangeItem, rangeIndex) => {
-            const startTime = rangeItem[0];
-            const endTime = rangeItem[1];
+        // 获取匹配区域的范围
+        if (range && range.length > 0) {
+          // 获取对应的图表实例
+          const chart = window.chartInstances?.[channelKey];
+          if (chart) {
+            // 遍历匹配区域的范围
+            range.forEach((rangeItem, rangeIndex) => {
+              const startTime = rangeItem[0];
+              const endTime = rangeItem[1];
 
-            // 根据置信度计算透明度
-            const alpha = Math.max(0.1, Math.min(0.8, confidence));
+              // 根据置信度计算透明度
+              const alpha = Math.max(0.1, Math.min(0.8, confidence));
 
-            // 添加高亮区域
-            chart.xAxis[0].addPlotBand({
-              id: `match-band-${index}-${rangeIndex}`,
-              from: startTime,
-              to: endTime,
-              color: `rgba(255, 255, 0, ${alpha})`,
-              zIndex: 3,
-              borderColor: 'rgba(255, 215, 0, 0.8)',
-              borderWidth: 1
-            });
+              // 使用唯一的ID确保不重复
+              const uniqueBandId = `match-band-${index}-${rangeIndex}-${Date.now()}`;
+              const uniqueSeriesId = `match-highlight-${index}-${rangeIndex}-${Date.now()}`;
 
-            // 获取当前通道的数据
-            const channelData = channelDataCache.value[channelKey];
-            if (channelData && channelData.X_value && channelData.Y_value) {
-              // 找到区间内的所有点
-              const pointsInRange = [];
-              for (let i = 0; i < channelData.X_value.length; i++) {
-                if (channelData.X_value[i] >= startTime && channelData.X_value[i] <= endTime) {
-                  pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
+              // 添加高亮区域
+              chart.xAxis[0].addPlotBand({
+                id: uniqueBandId,
+                from: startTime,
+                to: endTime,
+                color: `rgba(255, 255, 0, ${alpha})`,
+                zIndex: 3,
+                borderColor: 'rgba(255, 215, 0, 0.8)',
+                borderWidth: 1
+              });
+
+              // 获取当前通道的数据
+              const channelData = channelDataCache.value[channelKey];
+              if (channelData && channelData.X_value && channelData.Y_value) {
+                // 找到区间内的所有点
+                const pointsInRange = [];
+                for (let i = 0; i < channelData.X_value.length; i++) {
+                  if (channelData.X_value[i] >= startTime && channelData.X_value[i] <= endTime) {
+                    pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
+                  }
+                }
+
+                // 确保点按X轴排序
+                pointsInRange.sort((a, b) => a[0] - b[0]);
+
+                // 添加高亮线条
+                if (pointsInRange.length > 0) {
+                  chart.addSeries({
+                    id: uniqueSeriesId,
+                    name: `匹配区域-${index}-${rangeIndex}`,
+                    data: pointsInRange,
+                    color: `rgba(255, 215, 0, ${alpha + 0.2})`,
+                    lineWidth: 2,
+                    zIndex: 4,
+                    marker: {
+                      enabled: false
+                    },
+                    states: {
+                      hover: {
+                        lineWidthPlus: 0
+                      }
+                    },
+                    enableMouseTracking: false,
+                    showInLegend: false
+                  });
                 }
               }
+            });
 
-              // 确保点按X轴排序
-              pointsInRange.sort((a, b) => a[0] - b[0]);
-
-              // 添加高亮线条
-              if (pointsInRange.length > 0) {
-                chart.addSeries({
-                  id: `match-highlight-${index}-${rangeIndex}`,
-                  name: `匹配区域-${index}-${rangeIndex}`,
-                  data: pointsInRange,
-                  color: `rgba(255, 215, 0, ${alpha + 0.2})`,
-                  lineWidth: 2,
-                  zIndex: 4,
-                  marker: {
-                    enabled: false
-                  },
-                  states: {
-                    hover: {
-                      lineWidthPlus: 0
-                    }
-                  },
-                  enableMouseTracking: false,
-                  showInLegend: false
-                });
-              }
-            }
-          });
-
-          // 重绘图表
-          chart.redraw();
+            // 重绘图表
+            chart.redraw();
+          }
         }
-      }
-    });
+      });
+    }, 50);
   }
 }, { deep: true });
 
@@ -2269,6 +2262,73 @@ const updateMatchedHighlights = (chart, channelKey) => {
           }
         }
       });
+    }
+  });
+};
+
+// 添加对matchedResultsCleared标记的监听
+watch(matchedResultsCleared, (newValue, oldValue) => {
+  // 忽略初始化时的变化或值未变化的情况
+  if (!newValue || newValue === oldValue || newValue === initialMatchedResultsClearedValue.value) {
+    return;
+  }
+  
+  // 确保只有当matchedResults为空数组时才执行清除（说明是真正的清除操作）
+  if (matchedResults.value.length === 0) {
+    forceClearAllHighlights();
+  }
+});
+
+// 提取清除高亮的函数，以便复用
+const forceClearAllHighlights = () => {
+  // 同时遍历所有Highcharts图表实例，确保完全清除
+  if (Highcharts && Highcharts.charts) {
+    Highcharts.charts.forEach(chart => {
+      if (chart) {
+        // 移除现有的匹配高亮区域
+        if (chart.xAxis && chart.xAxis[0]) {
+          const bandsToRemove = [];
+          
+          // 先收集需要删除的plotBand的ID
+          (chart.xAxis[0].plotLinesAndBands || []).forEach(band => {
+            if (band && band.id && band.id.startsWith('match-band-')) {
+              bandsToRemove.push(band.id);
+            }
+          });
+          
+          // 然后删除这些plotBand
+          bandsToRemove.forEach(bandId => {
+            chart.xAxis[0].removePlotBand(bandId);
+          });
+        }
+
+        // 移除现有的匹配高亮系列
+        if (chart.series) {
+          const seriesToRemove = [];
+          
+          chart.series.forEach(series => {
+            if (series && series.options && series.options.id && 
+                series.options.id.startsWith('match-highlight-')) {
+              seriesToRemove.push(series);
+            }
+          });
+          
+          seriesToRemove.forEach(series => {
+            series.remove(false);
+          });
+        }
+        
+        // 强制重绘
+        chart.redraw();
+      }
+    });
+  }
+  
+  // 确保window.chartInstances中的图表也被清除
+  Object.keys(window.chartInstances || {}).forEach(channelKey => {
+    const chart = window.chartInstances[channelKey];
+    if (chart) {
+      chart.redraw();
     }
   });
 };

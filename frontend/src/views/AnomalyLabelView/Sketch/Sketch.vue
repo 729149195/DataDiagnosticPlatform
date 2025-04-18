@@ -528,9 +528,10 @@ const submitData = async () => {
 
 // 修改清除画布函数
 const clearCanvas = () => {
-  // 无论有没有paperScope，都清空匹配结果
+  // 同时清除匹配结果和路径
   store.dispatch('clearMatchedResults');
   
+  // 立即清除路径，不需要等待
   if (paperScope) {
     if (path) {
       path.remove();
@@ -538,6 +539,11 @@ const clearCanvas = () => {
     }
     segmentInfo.value = '';
   }
+  
+  // 再次确认匹配结果已被清除（只需一次额外调用即可）
+  setTimeout(() => {
+    store.dispatch('clearMatchedResults');
+  }, 50);
 };
 
 // 添加全选状态处理
