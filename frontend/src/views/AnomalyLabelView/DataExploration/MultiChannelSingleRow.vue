@@ -1018,7 +1018,7 @@ onUnmounted(() => {
   });
 
   // 终止Worker
-  chartWorkerManager.terminate();
+  // chartWorkerManager.terminate();
 });
 
 // 监听selectedChannels变化，当通道列表变化时，可能需要重新选择标注通道

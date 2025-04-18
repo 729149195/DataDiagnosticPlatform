@@ -632,7 +632,7 @@ onMounted(async () => {
 // 在组件卸载时移除监听器
 onUnmounted(() => {
   // 终止chartWorkerManager
-  chartWorkerManager.terminate();
+  // chartWorkerManager.terminate();
 
   // 移除窗口大小变化的监听器
   window.removeEventListener('resize', handleResize);
@@ -2320,8 +2320,8 @@ svg {
 /* 添加耗时显示样式 */
 .timing-info {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 0px;
+  right: 10px;
   background-color: rgba(255, 255, 255, 0.8);
   padding: 3px 8px;
   border-radius: 4px;
