@@ -1,6 +1,7 @@
 /**
  * Overview Worker 管理器
  * 用于管理和复用 overviewWorker 实例，专门用于处理 OverviewBrush 组件的数据
+ * 经过优化，提供更快的渲染速度，满足粗糙概览的需求
  */
 import { dataCache } from '../services/cacheManager';
 
@@ -11,7 +12,11 @@ class OverviewWorkerManager {
     this.messageId = 0;
     this.onmessage = null; // 允许外部设置消息处理函数
     this.pendingTasks = new Map(); // 存储等待中的任务
-    this.processingLimit = 4; // 同时处理的最大任务数
+    this.processingLimit = 2; // 限制同时处理的任务数，减少资源占用
+    
+    // 增强缓存设置
+    this.cacheTimeToLive = 30 * 60 * 1000; // 缓存有效期30分钟
+    this.cachedResults = new Map(); // 内存缓存，避免IndexedDB查询延迟
   }
 
   /**
@@ -25,12 +30,13 @@ class OverviewWorkerManager {
         // 内联的 overviewWorker 核心逻辑
         
         /**
-         * 对数据进行降采样，专门针对总览视图优化
+         * 对数据进行简化降采样，专为概览视图优化
+         * 使用简单的均匀采样，大幅降低计算复杂度
          * @param {Object} data - 通道数据
          * @param {number} maxPoints - 最大点数，用于控制图表性能
          * @returns {Object} 降采样后的数据
          */
-        function downsampleData(data, maxPoints = 500) {
+        function downsampleData(data, maxPoints = 200) {
           const { X_value, Y_value } = data;
           const totalPoints = X_value.length;
           
@@ -39,65 +45,37 @@ class OverviewWorkerManager {
             return { X: [...X_value], Y: [...Y_value] };
           }
           
-          // 计算采样间隔
+          // 计算采样间隔 - 简单均匀采样
           const step = Math.ceil(totalPoints / maxPoints);
           
-          // 采样结果
-          const sampledX = [];
-          const sampledY = [];
+          // 采样结果数组 - 预分配内存
+          const sampledX = new Array(Math.ceil(totalPoints / step) + 2);
+          const sampledY = new Array(Math.ceil(totalPoints / step) + 2);
           
-          // 优化的降采样算法
-          // 始终保留第一个和最后一个点
-          sampledX.push(X_value[0]);
-          sampledY.push(Y_value[0]);
+          // 始终保留第一个点
+          sampledX[0] = X_value[0];
+          sampledY[0] = Y_value[0];
           
-          // 分桶采样 - 处理大型数据集时分批进行以避免长时间计算
-          const batchSize = 1000;
-          const batches = Math.ceil((totalPoints - 2) / batchSize);
-          
-          for (let batchIndex = 0; batchIndex < batches; batchIndex++) {
-            const startIdx = batchIndex * batchSize + 1;
-            const endIdx = Math.min(startIdx + batchSize, totalPoints - 1);
-            
-            for (let i = startIdx; i < endIdx; i += step) {
-              // 对当前桶内的数据找出Y值范围最大的点
-              let maxRangeIndex = i;
-              let maxRange = 0;
-              
-              const bucketEnd = Math.min(i + step, endIdx);
-              for (let j = i; j < bucketEnd; j++) {
-                // 找出局部变化最大的点 - 优化计算逻辑
-                const prevJ = Math.max(0, j - 1);
-                const nextJ = Math.min(totalPoints - 1, j + 1);
-                // 使用绝对值差作为变化指标
-                const range = Math.abs(Y_value[j] - Y_value[prevJ]) + 
-                             Math.abs(Y_value[nextJ] - Y_value[j]);
-                
-                if (range > maxRange) {
-                  maxRangeIndex = j;
-                  maxRange = range;
-                }
-              }
-              
-              // 添加选中的点
-              sampledX.push(X_value[maxRangeIndex]);
-              sampledY.push(Y_value[maxRangeIndex]);
-              
-              // 每处理50个点检查一次是否需要让出线程
-              if (sampledX.length % 50 === 0) {
-                // 使用setTimeout(0)让出线程时间，比Atomics更安全兼容
-                setTimeout(() => {}, 0);
-              }
-            }
+          // 简单均匀采样 - 大幅简化计算逻辑
+          let sampleIndex = 1;
+          for (let i = step; i < totalPoints - 1; i += step) {
+            sampledX[sampleIndex] = X_value[i];
+            sampledY[sampleIndex] = Y_value[i];
+            sampleIndex++;
           }
           
-          // 添加最后一个点(如果尚未添加)
-          if (sampledX[sampledX.length - 1] !== X_value[totalPoints - 1]) {
-            sampledX.push(X_value[totalPoints - 1]);
-            sampledY.push(Y_value[totalPoints - 1]);
+          // 始终保留最后一个点
+          if (totalPoints > 1) {
+            sampledX[sampleIndex] = X_value[totalPoints - 1];
+            sampledY[sampleIndex] = Y_value[totalPoints - 1];
+            sampleIndex++;
           }
           
-          return { X: sampledX, Y: sampledY };
+          // 调整数组大小为实际使用的长度
+          return { 
+            X: sampledX.slice(0, sampleIndex), 
+            Y: sampledY.slice(0, sampleIndex) 
+          };
         }
         
         // 主要的消息处理函数
@@ -117,13 +95,6 @@ class OverviewWorkerManager {
                 // 对数据进行降采样处理
                 let processedData;
                 if (downsample) {
-                  // 启动处理通知
-                  self.postMessage({
-                    type: 'processingStarted',
-                    messageId,
-                    channelKey
-                  });
-                  
                   processedData = downsampleData(channelData, maxPoints);
                 } else {
                   // 不降采样时直接复制数据
@@ -160,43 +131,25 @@ class OverviewWorkerManager {
       this.worker = new Worker(workerUrl, { type: 'module' });
       URL.revokeObjectURL(workerUrl); // 释放URL
 
-      // 处理Worker返回的消息
+      // 处理Worker返回的消息 - 简化处理流程
       this.worker.onmessage = (event) => {
         const { type, messageId, data, error, channelKey } = event.data;
         
-        // 对于轻量级消息类型，直接处理
-        if (type === 'processingStarted' || error) {
-          this.handleWorkerMessageLight(event);
+        // 错误处理
+        if (error) {
+          this.handleWorkerError(messageId, error);
           return;
         }
         
-        // 对于重量级消息，使用时间切片处理
-        if (window.requestIdleCallback) {
-          // 使用时间切片将消息处理拆分为更小的任务
-          window.requestIdleCallback((deadline) => {
-            // 如果有足够时间，才执行完整处理
-            if (deadline.timeRemaining() > 10) {
-              this.handleWorkerMessageSliced(event);
-            } else {
-              // 没有足够时间，延迟到下一个空闲时段
-              setTimeout(() => {
-                // 使用更高效的批处理方式替代单一requestAnimationFrame调用
-                const messageData = event.data;
-                // 轻量预处理，避免在rAF回调中处理过重的计算
-                const preProcessed = this.preProcessMessage(messageData);
-                requestAnimationFrame(() => {
-                  this.handleWorkerMessageSliced(event, preProcessed);
-                });
-              }, 0);
-            }
-          }, { timeout: 50 }); // 进一步降低timeout
-        } else {
-          // 降级使用setTimeout和rAF组合
-          setTimeout(() => {
-            requestAnimationFrame(() => {
-              this.handleWorkerMessageSliced(event);
-            });
-          }, 0);
+        // 数据处理结果
+        if (type === 'processedOverviewData' && data) {
+          // 直接处理数据，避免多层嵌套和异步调用
+          this.handleProcessedData(messageId, channelKey, data);
+        }
+        
+        // 自定义消息处理
+        if (this.onmessage) {
+          this.onmessage(event);
         }
       };
 
@@ -217,6 +170,57 @@ class OverviewWorkerManager {
   }
 
   /**
+   * 处理Worker错误
+   * @private
+   */
+  handleWorkerError(messageId, error) {
+    const callback = this.callbacks.get(messageId);
+    if (callback) {
+      try {
+        callback(null, error);
+      } catch (err) {
+        console.error('执行错误回调时出错:', err);
+      } finally {
+        this.callbacks.delete(messageId);
+        this.processNextPendingTask();
+      }
+    }
+  }
+
+  /**
+   * 处理Worker处理后的数据
+   * @private
+   */
+  handleProcessedData(messageId, channelKey, data) {
+    const callback = this.callbacks.get(messageId);
+    if (callback) {
+      try {
+        // 执行回调
+        callback(data);
+        
+        // 缓存数据
+        if (channelKey && data) {
+          const cacheKey = `overviewData-${channelKey}-${data.X.length}`;
+          
+          // 更新内存缓存
+          this.cachedResults.set(cacheKey, {
+            data,
+            timestamp: Date.now()
+          });
+          
+          // 更新全局缓存
+          dataCache.put(cacheKey, { data, timestamp: Date.now() });
+        }
+      } catch (err) {
+        console.error('处理数据时出错:', err);
+      } finally {
+        this.callbacks.delete(messageId);
+        this.processNextPendingTask();
+      }
+    }
+  }
+
+  /**
    * 处理等待队列中的下一个任务
    * @private
    */
@@ -229,25 +233,8 @@ class OverviewWorkerManager {
     const [key, task] = this.pendingTasks.entries().next().value;
     this.pendingTasks.delete(key);
     
-    // 防止积压，每次处理最多批量启动2个任务
-    const batchProcess = () => {
-      // 直接执行第一个任务，避免无谓的timeout
-      this.actuallyProcessData(task.options, task.resolve, task.reject);
-      
-      // 如果队列中还有任务且处理中任务少于限制，延迟处理下一个
-      if (this.pendingTasks.size > 0 && this.callbacks.size < this.processingLimit) {
-        const [nextKey, nextTask] = this.pendingTasks.entries().next().value;
-        this.pendingTasks.delete(nextKey);
-        
-        // 使用rAF而不是setTimeout，更合理调度后续任务
-        window.requestAnimationFrame(() => {
-          this.actuallyProcessData(nextTask.options, nextTask.resolve, nextTask.reject);
-        });
-      }
-    };
-    
-    // 直接执行处理，避免嵌套requestIdleCallback
-    batchProcess();
+    // 直接处理任务
+    this.actuallyProcessData(task.options, task.resolve, task.reject);
   }
 
   /**
@@ -255,15 +242,25 @@ class OverviewWorkerManager {
    * @private
    */
   actuallyProcessData(options, resolve, reject) {
-    const { channelData, channelKey, downsample = true, maxPoints = 500 } = options;
+    const { channelData, channelKey, downsample = true, maxPoints = 200 } = options;
     const cacheKey = `overviewData-${channelKey}-${maxPoints}`;
     
-    // 尝试从缓存中获取数据
+    // 1. 首先检查内存缓存
+    const memCached = this.cachedResults.get(cacheKey);
+    if (memCached && (Date.now() - memCached.timestamp < this.cacheTimeToLive)) {
+      resolve(memCached.data);
+      return;
+    }
+    
+    // 2. 检查dataCache缓存
     const cached = dataCache.get(cacheKey);
-    if (cached) {
+    if (cached && (Date.now() - cached.timestamp < this.cacheTimeToLive)) {
+      // 更新内存缓存
+      this.cachedResults.set(cacheKey, {
+        data: cached.data,
+        timestamp: Date.now()
+      });
       resolve(cached.data);
-      // 更新缓存时间戳但保持数据不变
-      dataCache.put(cacheKey, { ...cached, timestamp: Date.now() });
       return;
     }
     
@@ -298,10 +295,15 @@ class OverviewWorkerManager {
    * @param {Object} options.channelData - 通道数据
    * @param {string} options.channelKey - 通道键值
    * @param {boolean} options.downsample - 是否降采样
-   * @param {number} options.maxPoints - 最大点数
+   * @param {number} options.maxPoints - 最大点数，默认降低为200
    * @returns {Promise} 处理结果的Promise
    */
   processData(options) {
+    // 确保maxPoints有合理默认值
+    if (!options.maxPoints) {
+      options.maxPoints = 200; // 降低默认点数以提高性能
+    }
+    
     return new Promise((resolve, reject) => {
       const { channelKey } = options;
       const taskKey = `task-${channelKey}-${Date.now()}`;
@@ -326,126 +328,8 @@ class OverviewWorkerManager {
       this.worker = null;
       this.callbacks.clear();
       this.pendingTasks.clear();
+      this.cachedResults.clear();
     }
-  }
-
-  /**
-   * 轻量级消息处理（针对无需复杂计算的消息类型）
-   * @private
-   */
-  handleWorkerMessageLight(event) {
-    const { type, messageId, error } = event.data;
-    
-    // 执行自定义消息处理
-    if (this.onmessage) {
-      this.onmessage(event);
-    }
-    
-    if (type === 'processingStarted') {
-      return; // 不需要进一步处理
-    }
-    
-    // 对于错误消息，只需要执行错误回调
-    if (error) {
-      const callback = this.callbacks.get(messageId);
-      if (callback) {
-        try {
-          callback(null, error);
-        } catch (err) {
-          console.error('执行错误回调时出错:', err);
-        } finally {
-          this.callbacks.delete(messageId);
-          // 异步处理下一个任务
-          setTimeout(() => this.processNextPendingTask(), 0);
-        }
-      }
-    }
-  }
-  
-  /**
-   * 使用时间切片的消息处理
-   * @private
-   */
-  handleWorkerMessageSliced(event) {
-    const { type, messageId, data, channelKey } = event.data;
-    
-    // 先执行任何自定义消息处理
-    if (this.onmessage) {
-      this.onmessage(event);
-    }
-    
-    // 查找对应的回调函数
-    const callback = this.callbacks.get(messageId);
-    if (!callback) return;
-    
-    // 第一步：执行回调（通常是UI更新相关）
-    requestAnimationFrame(() => {
-      try {
-        this.executeCallback(callback, data);
-        this.callbacks.delete(messageId);
-      } catch (err) {
-        console.error('执行回调时出错:', err);
-        this.callbacks.delete(messageId);
-      }
-      
-      // 第二步：延迟进行缓存操作
-      setTimeout(() => {
-        if (data && channelKey) {
-          this.delayedCacheOperation(channelKey, data);
-        }
-        
-        // 第三步：处理下一个任务
-        requestAnimationFrame(() => {
-          this.processNextPendingTask();
-        });
-      }, 0);
-    });
-  }
-  
-  /**
-   * 执行回调
-   * @private
-   */
-  executeCallback(callback, data) {
-    try {
-      callback(data);
-    } catch (err) {
-      console.error('执行回调时出错:', err);
-    }
-  }
-  
-  /**
-   * 延迟执行缓存操作
-   * @private
-   */
-  delayedCacheOperation(channelKey, data) {
-    setTimeout(() => {
-      try {
-        const cacheKey = `overviewData-${channelKey}-${data.X.length}`;
-        dataCache.put(cacheKey, { data, timestamp: Date.now() });
-      } catch (err) {
-        console.error('缓存数据时出错:', err);
-      }
-    }, 0);
-  }
-
-  /**
-   * 原始的消息处理方法（为了兼容性保留）
-   * @private
-   */
-  handleWorkerMessage(event) {
-    this.handleWorkerMessageSliced(event);
-  }
-
-  /**
-   * 预处理消息数据，在主线程空闲时进行
-   * @private
-   */
-  preProcessMessage(messageData) {
-    // 执行一些轻量级的预处理工作，将重型计算拆分
-    // 这里只做基础数据提取和轻量级转换
-    const { type, messageId, data } = messageData;
-    return { type, messageId, data };
   }
 }
 
