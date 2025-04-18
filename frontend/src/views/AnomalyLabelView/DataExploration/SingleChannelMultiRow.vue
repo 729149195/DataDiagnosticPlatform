@@ -21,6 +21,13 @@
           </div>
         </div>
 
+        <!-- 添加耗时显示 -->
+        <div v-if="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 && 
+                  channelTimings[channel.channel_name + '_' + channel.shot_number]?.duration" 
+             class="timing-info">
+          处理耗时: {{ channelTimings[channel.channel_name + '_' + channel.shot_number].duration }}秒
+        </div>
+
         <div class="color-picker-container" :style="{
           opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
           visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
@@ -102,6 +109,8 @@ const loadingStates = reactive({});  // 用于存储每个通道的加载状态
 const renderingStates = reactive({}); // 用于存储每个通道的渲染状态
 // 用于跟踪已经渲染过的通道
 const renderedChannels = ref(new Set());
+// 添加一个用于存储通道加载和渲染耗时的对象
+const channelTimings = reactive({});
 
 const brush_begin = computed({
   get: () => store.state.brush_begin,
@@ -257,6 +266,10 @@ const processChannelData = async (data, channel) => {
 
     renderingStates[channelKey] = 100;
 
+    // 记录结束时间和计算耗时
+    channelTimings[channelKey].endTime = performance.now();
+    channelTimings[channelKey].duration = ((channelTimings[channelKey].endTime - channelTimings[channelKey].startTime) / 1000).toFixed(2);
+    
     // 在渲染完成后，确保再次调整颜色选择器位置
     const chart = window.chartInstances?.[channelKey];
     if (chart) {
@@ -269,6 +282,12 @@ const processChannelData = async (data, channel) => {
     console.error(`Error processing channel data for ${channel.channel_name}:`, error);
     ElMessage.error(`处理通道数据错误: ${error.message}`);
     renderingStates[channelKey] = 100; // 确保错误时也更新状态
+    
+    // 即使出错也记录耗时
+    if (channelTimings[channelKey]) {
+      channelTimings[channelKey].endTime = performance.now();
+      channelTimings[channelKey].duration = ((channelTimings[channelKey].endTime - channelTimings[channelKey].startTime) / 1000).toFixed(2);
+    }
   }
 };
 
@@ -280,6 +299,13 @@ const fetchChannelData = async (channel, forceRefresh = false) => {
       return null;
     }
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+
+    // 开始计时
+    channelTimings[channelKey] = {
+      startTime: performance.now(),
+      endTime: null,
+      duration: null
+    };
 
     // 确保立即更新初始加载状态
     loadingStates[channelKey] = Number(0);
@@ -840,6 +866,12 @@ const getLoadingStageText = (channelKey) => {
   const renderingTotal = Number(renderingStates[channelKey]) || 0;
   const channelName = channelKey.split('_')[0];
   const shotNumber = channelKey.split('_')[1];
+  
+  // 如果渲染完成，显示耗时
+  if (renderingTotal === 100 && channelTimings[channelKey] && channelTimings[channelKey].duration) {
+    return `加载完成 (耗时 ${channelTimings[channelKey].duration}秒)`;
+  }
+  
   if (loadingTotal < 100) {
     return `正在加载通道 ${channelName}|${shotNumber}`;
   } else if (renderingTotal === 0) {
@@ -2283,6 +2315,22 @@ const updateMatchedHighlights = (chart, channelKey) => {
 svg {
   width: 100%;
   position: relative;
+}
+
+/* 添加耗时显示样式 */
+.timing-info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #303133;
+  font-weight: bold;
+  z-index: 10;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
 }
 
 .color-picker-container {
