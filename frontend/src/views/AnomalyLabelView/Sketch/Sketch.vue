@@ -493,7 +493,8 @@ const submitData = async () => {
         },
         body: JSON.stringify({
           rawQueryPattern,
-          sampling: sampling.value,
+          // sampling: sampling.value,
+          sampling: 1,
           selectedChannels
         })
       });
