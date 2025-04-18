@@ -140,7 +140,6 @@ const selectedChannels = computed(() => store.state.selectedChannels);
 const channelDataCache = computed(() => store.state.channelDataCache); // 添加channelDataCache
 
 const sampling = computed(() => store.state.sampling);
-const smoothnessValue = computed(() => store.state.smoothness);
 const sampleRate = ref(store.state.sampling);
 const matchedResults = computed(() => store.getters.getMatchedResults);
 
@@ -1105,9 +1104,6 @@ watch(() => JSON.stringify(Object.keys(channelDataCache.value)), () => {
   });
 });
 
-watch(smoothnessValue, () => {
-  renderCharts();
-});
 
 watch(
   () => selectedChannels.value.map(channel => channel.errors.map(error => error.color)),
@@ -1845,7 +1841,6 @@ const drawCombinedChart = () => {
           data: pointsData,
           color: channelColor,
           lineWidth: 1.5,
-          opacity: smoothnessValue.value > 0 ? 0.3 : 1,
           zIndex: 1,
           marker: {
             enabled: false
