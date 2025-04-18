@@ -84,8 +84,6 @@ import debounce from 'lodash/debounce';
 import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted, toRaw } from 'vue';
 import { ElMessage, ElEmpty, ElProgress, ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElSelect, ElOption } from 'element-plus';
 import { useStore } from 'vuex';
-import chartWorkerManager from '@/workers/chartWorkerManager';
-import { DataSmoother } from '@/views/AnomalyLabelView/Sketch/data-smoother.js';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
 
 // 添加预定义颜色数组
@@ -1016,9 +1014,6 @@ onUnmounted(() => {
       }
     }
   });
-
-  // 终止Worker
-  // chartWorkerManager.terminate();
 });
 
 // 监听selectedChannels变化，当通道列表变化时，可能需要重新选择标注通道

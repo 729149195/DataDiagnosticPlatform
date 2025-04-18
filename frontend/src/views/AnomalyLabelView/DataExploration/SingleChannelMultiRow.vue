@@ -74,7 +74,6 @@ import debounce from 'lodash/debounce';
 import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw } from 'vue';
 import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
-import chartWorkerManager from '@/workers/chartWorkerManager';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
 
 // 添加预定义颜色数组
@@ -631,9 +630,6 @@ onMounted(async () => {
 
 // 在组件卸载时移除监听器
 onUnmounted(() => {
-  // 终止chartWorkerManager
-  // chartWorkerManager.terminate();
-
   // 移除窗口大小变化的监听器
   window.removeEventListener('resize', handleResize);
 });
