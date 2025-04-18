@@ -35,6 +35,14 @@ import 'highcharts/modules/accessibility';  // 引入无障碍模块
 import { useStore } from 'vuex';
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 
+// 设置Highcharts全局配置
+Highcharts.setOptions({
+  accessibility: {
+    enabled: false // 禁用无障碍功能，避免相关错误
+  }
+});
+
+
 // 获取 Vuex 状态
 const store = useStore();
 const curChannel = ref({});

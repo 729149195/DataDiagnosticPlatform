@@ -28,11 +28,18 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, onBeforeUnmount
 import { useStore } from 'vuex';
 import * as Highcharts from 'highcharts';
 import 'highcharts/modules/boost';  // 使用官方的boost模块
-import 'highcharts/modules/accessibility';  // 添加无障碍模块
 import debounce from 'lodash/debounce';
 import { ElMessage } from 'element-plus';
 import { Loading } from '@element-plus/icons-vue';
 import overviewWorkerManager from '@/workers/overviewWorkerManager'; // 引入专用的Worker管理器
+
+// 设置Highcharts全局配置
+Highcharts.setOptions({
+  accessibility: {
+    enabled: false // 禁用无障碍功能，避免相关错误
+  }
+});
+
 
 const store = useStore();
 const chartContainer = ref(null);
@@ -266,42 +273,43 @@ const prepareDataForChart = () => {
     return;
   }
 
-  // 先处理全局范围数据，然后在requestAnimationFrame中处理图表数据
-  // 这分解了繁重的计算工作
+  // 改为使用预计算方式，避免在requestAnimationFrame中执行重复计算
+  const globalYBounds = calculateGlobalYBounds();
   
-  // 计算全局数据范围，用于智能降采样
+  // 将剩余处理放入一个独立的宏任务中，避免阻塞主线程
+  setTimeout(() => {
+    prepareChartDataInBatches(globalYBounds.min, globalYBounds.max);
+  }, 0);
+};
+
+// 预计算Y轴全局边界，与渲染分离
+const calculateGlobalYBounds = () => {
   let globalYMin = Infinity;
   let globalYMax = -Infinity;
 
-  // 预处理：计算全局Y值范围
-  Object.entries(processedDataCache.value).forEach(([channelKey, data]) => {
-    if (data && data.Y) {
-      // 优化循环，使用批量处理
+  // 优化: 使用更高效的数组方法直接获取最值
+  Object.values(processedDataCache.value).forEach(data => {
+    if (data && data.Y && data.Y.length > 0) {
+      // 采样计算，不需要遍历所有点
       const yValues = data.Y;
-      const length = yValues.length;
+      const step = Math.max(1, Math.floor(yValues.length / 50)); // 只采样约50个点
       
-      // 分批处理Y值以减少计算负担
-      for (let i = 0; i < length; i += 100) {
-        const endIdx = Math.min(i + 100, length);
-        for (let j = i; j < endIdx; j++) {
-          const y = yValues[j];
-          if (y < globalYMin) globalYMin = y;
-          if (y > globalYMax) globalYMax = y;
-        }
+      for (let i = 0; i < yValues.length; i += step) {
+        const y = yValues[i];
+        if (y < globalYMin) globalYMin = y;
+        if (y > globalYMax) globalYMax = y;
       }
     }
   });
 
-  // 添加一些边距到Y值范围
+  // 增加边距
   const globalYRange = globalYMax - globalYMin;
   const globalYPadding = globalYRange * 0.05;
-  globalYMin = globalYMin - globalYPadding;
-  globalYMax = globalYMax + globalYPadding;
-
-  // 在下一帧中完成剩余的数据准备
-  requestAnimationFrame(() => {
-    prepareChartDataInBatches(globalYMin, globalYMax);
-  });
+  
+  return {
+    min: globalYMin - globalYPadding,
+    max: globalYMax + globalYPadding
+  };
 };
 
 // 分批处理图表数据
@@ -309,79 +317,112 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
   const chartData = [];
   const channels = Object.entries(processedDataCache.value);
   
-  // 处理第一批通道数据
-  processBatch(chartData, channels, 0, Math.min(3, channels.length), globalYMin, globalYMax, () => {
-    // 完成数据处理后渲染图表
+  // 创建一个实际进行处理的函数，使用时间切片
+  const processNextBatch = (startTime) => {
+    // 最多使用15ms，然后让出主线程
+    const TIME_BUDGET = 15;
+    let batchIndex = 0;
+    let processed = 0;
+    
+    const processChannel = (index) => {
+      if (index >= channels.length) {
+        // 全部处理完成
+        finishProcessing();
+        return;
+      }
+      
+      const [channelKey, data] = channels[index];
+      const channel = selectedChannels.value.find(
+        ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
+      );
+
+      if (channel && data && data.X && data.Y) {
+        // 创建优化的数据点数组
+        const seriesData = createOptimizedDataPoints(data.X, data.Y);
+        
+        // 添加通道数据
+        chartData.push({
+          channelName: channelKey,
+          name: channel.channel_name,
+          data: seriesData,
+          color: channel.color || '#7cb5ec',
+          boostThreshold: 200, // 进一步降低boost阈值
+          turboThreshold: 0
+        });
+      }
+      
+      processed++;
+      
+      // 检查时间预算
+      const elapsedTime = performance.now() - startTime;
+      if (elapsedTime > TIME_BUDGET && processed < channels.length) {
+        // 超出时间预算，让出线程
+        setTimeout(() => {
+          processNextBatch(performance.now());
+        }, 0);
+      } else {
+        // 继续处理下一批
+        processChannel(index + 1);
+      }
+    };
+    
+    // 开始处理
+    processChannel(batchIndex);
+  };
+  
+  // 处理完成时的回调
+  const finishProcessing = () => {
     overviewData.value = chartData;
     
     if (chartData.length > 0) {
-      renderChart(false);
+      // 使用requestAnimationFrame确保在下一帧渲染
+      requestAnimationFrame(() => {
+        renderChart(false);
+      });
     } else {
       isLoading.value = false;
       console.warn('没有有效数据用于渲染');
     }
-  });
+  };
+  
+  // 启动处理
+  processNextBatch(performance.now());
 };
 
-// 批处理函数，每次处理少量通道数据
-const processBatch = (chartData, channels, startIdx, endIdx, globalYMin, globalYMax, onComplete) => {
-  // 处理当前批次的通道
-  for (let i = startIdx; i < endIdx; i++) {
-    const [channelKey, data] = channels[i];
-    
-    const channel = selectedChannels.value.find(
-      ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
-    );
-
-    if (channel && data && data.X && data.Y) {
-      // 为Highcharts准备数据，使用更高效的数组构建方式
-      const xData = data.X;
-      const yData = data.Y;
-      const seriesData = new Array(xData.length);
-      
-      // 批量构建数据点
-      for (let j = 0; j < xData.length; j++) {
-        seriesData[j] = [xData[j], yData[j]];
-      }
-
-      chartData.push({
-        channelName: channelKey,
-        name: channel.channel_name,
-        data: seriesData,
-        color: channel.color || '#7cb5ec',
-        boostThreshold: 500, // 降低boost阈值以提高性能
-        turboThreshold: 0 // 禁用turboThreshold限制
-      });
+// 优化的数据点创建函数
+const createOptimizedDataPoints = (xData, yData) => {
+  // 如果数据超过一定长度，进行抽样
+  const MAX_CHART_POINTS = 200; // 控制最大点数
+  
+  if (xData.length <= MAX_CHART_POINTS) {
+    // 数据点较少，直接创建
+    const result = new Array(xData.length);
+    for (let i = 0; i < xData.length; i++) {
+      result[i] = [xData[i], yData[i]];
     }
+    return result;
   }
   
-  // 如果还有更多批次要处理
-  if (endIdx < channels.length) {
-    // 使用requestAnimationFrame替代setTimeout，更适合UI渲染周期
-    requestAnimationFrame(() => {
-      processBatch(
-        chartData, 
-        channels, 
-        endIdx, 
-        Math.min(endIdx + 3, channels.length), 
-        globalYMin, 
-        globalYMax, 
-        onComplete
-      );
-    });
-  } else {
-    // 所有批次处理完成
-    onComplete();
+  // 数据点太多，均匀抽样
+  const step = Math.ceil(xData.length / MAX_CHART_POINTS);
+  const result = new Array(Math.ceil(xData.length / step) + 2); // +2 确保首尾点
+  
+  // 添加第一个点
+  let resultIndex = 0;
+  result[resultIndex++] = [xData[0], yData[0]];
+  
+  // 均匀抽样
+  for (let i = step; i < xData.length - 1; i += step) {
+    result[resultIndex++] = [xData[i], yData[i]];
   }
-};
-
-// 清空图表
-const clearChart = () => {
-  if (chartInstance.value) {
-    chartInstance.value.destroy();
-    chartInstance.value = null;
+  
+  // 添加最后一个点
+  if (xData.length > 1) {
+    result[resultIndex++] = [xData[xData.length - 1], yData[yData.length - 1]];
   }
-  isLoading.value = false;
+  
+  // 返回实际长度的数组
+  return result.slice(0, resultIndex);
 };
 
 // 渲染图表
@@ -405,143 +446,185 @@ const renderChart = (forceRender = false) => {
     chartInstance.value.destroy();
   }
 
-  // 计算全局数据范围
+  // 使用优化的方式计算数据范围
+  const dataRanges = calculateDataRanges();
+  
+  // 保存原始数据范围
+  originalDomains.value = {
+    x: [dataRanges.xMin, dataRanges.xMax],
+    y: { min: dataRanges.yMin, max: dataRanges.yMax }
+  };
+
+  // 设置初始刷选范围
+  const initialBrushBegin = dataRanges.xMin;
+  const initialBrushEnd = dataRanges.xMax;
+
+  // 延迟创建图表配置，分拆大型计算任务
+  setTimeout(() => {
+    // 创建Highcharts配置
+    const options = {
+      chart: {
+        renderTo: 'overview-chart',
+        height: 80,
+        marginLeft: 15,
+        marginRight: 15,
+        marginTop: 5,
+        marginBottom: 30,
+        animation: false,
+        zoomType: 'x',
+        events: {
+          selection: function (event) {
+            if (event.xAxis) {
+              const min = event.xAxis[0].min;
+              const max = event.xAxis[0].max;
+              updateBrush(min, max);
+            }
+            return false; // 阻止默认缩放行为
+          }
+        }
+      },
+      title: {
+        text: null
+      },
+      credits: {
+        enabled: false
+      },
+      exporting: {
+        enabled: false // 禁用导出按钮
+      },
+      xAxis: {
+        min: dataRanges.xMin,
+        max: dataRanges.xMax,
+        lineWidth: 1,
+        tickLength: 3,
+        labels: {
+          style: {
+            fontSize: '10px',
+            fontWeight: 'bold'
+          }
+        },
+        plotBands: [{
+          from: initialBrushBegin,
+          to: initialBrushEnd,
+          color: 'rgba(64, 158, 255, 0.1)',
+          id: 'plot-band-selection'
+        }]
+      },
+      yAxis: {
+        min: dataRanges.yMin,
+        max: dataRanges.yMax,
+        visible: false
+      },
+      legend: {
+        enabled: false
+      },
+      tooltip: {
+        enabled: false
+      },
+      plotOptions: {
+        series: {
+          animation: false,
+          lineWidth: 1,  // 减小线宽提高绘图性能
+          states: {
+            hover: {
+              enabled: false
+            }
+          },
+          marker: {
+            enabled: false
+          },
+          enableMouseTracking: false,
+          stickyTracking: false,
+          turboThreshold: 0,
+          boostThreshold: 200 // 降低boost阈值以提高性能
+        }
+      },
+      boost: {
+        useGPUTranslations: true,
+        usePreAllocated: true,
+        seriesThreshold: 1
+      },
+      series: overviewData.value
+    };
+
+    // 创建图表
+    chartInstance.value = Highcharts.chart(options);
+
+    // 更新brush值到store
+    updatingBrush.value = true;
+    brush_begin.value = initialBrushBegin.toFixed(4);
+    brush_end.value = initialBrushEnd.toFixed(4);
+    store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
+    updatingBrush.value = false;
+
+    // 保存初始极值
+    extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
+
+    isLoading.value = false;
+  }, 0);
+};
+
+// 优化计算数据范围的函数
+const calculateDataRanges = () => {
   let xMin = Infinity;
   let xMax = -Infinity;
   let yMin = Infinity;
   let yMax = -Infinity;
-
-  // 首先计算所有通道的数据范围
-  overviewData.value.forEach(channel => {
-    channel.data.forEach(point => {
-      const x = point[0];
-      const y = point[1];
-
-      if (x < xMin) xMin = x;
-      if (x > xMax) xMax = x;
-      if (y < yMin) yMin = y;
-      if (y > yMax) yMax = y;
-    });
-  });
-
-  // 添加一些边距到Y值范围
+  
+  // 优化遍历，避免嵌套循环
+  for (const channel of overviewData.value) {
+    // 每个通道只检查部分点，提高性能
+    const data = channel.data;
+    const dataLength = data.length;
+    
+    // 抽样检查点数，最多检查100个点
+    const sampleStep = Math.max(1, Math.floor(dataLength / 100));
+    
+    // 先检查首尾点
+    if (dataLength > 0) {
+      // 检查第一个点
+      const firstPoint = data[0];
+      if (firstPoint[0] < xMin) xMin = firstPoint[0];
+      if (firstPoint[0] > xMax) xMax = firstPoint[0];
+      if (firstPoint[1] < yMin) yMin = firstPoint[1];
+      if (firstPoint[1] > yMax) yMax = firstPoint[1];
+      
+      // 检查最后一个点
+      const lastPoint = data[dataLength - 1];
+      if (lastPoint[0] < xMin) xMin = lastPoint[0];
+      if (lastPoint[0] > xMax) xMax = lastPoint[0];
+      if (lastPoint[1] < yMin) yMin = lastPoint[1];
+      if (lastPoint[1] > yMax) yMax = lastPoint[1];
+    }
+    
+    // 抽样检查中间点
+    for (let i = sampleStep; i < dataLength - 1; i += sampleStep) {
+      const point = data[i];
+      if (point[0] < xMin) xMin = point[0];
+      if (point[0] > xMax) xMax = point[0];
+      if (point[1] < yMin) yMin = point[1];
+      if (point[1] > yMax) yMax = point[1];
+    }
+  }
+  
+  // 添加边距到Y值范围
   const yRange = yMax - yMin;
   const yPadding = yRange * 0.05;
-  yMin = yMin - yPadding;
-  yMax = yMax + yPadding;
-
-  // 保存原始数据范围
-  originalDomains.value = {
-    x: [xMin, xMax],
-    y: { min: yMin, max: yMax }
+  
+  return {
+    xMin,
+    xMax,
+    yMin: yMin - yPadding,
+    yMax: yMax + yPadding
   };
+};
 
-  // 设置初始刷选范围
-  const initialBrushBegin = xMin;
-  const initialBrushEnd = xMax;
-
-  // 创建Highcharts配置
-  const options = {
-    chart: {
-      renderTo: 'overview-chart',
-      height: 80,
-      marginLeft: 15,
-      marginRight: 15,
-      marginTop: 5,
-      marginBottom: 30,
-      animation: false,
-      zoomType: 'x',
-      events: {
-        selection: function (event) {
-          if (event.xAxis) {
-            const min = event.xAxis[0].min;
-            const max = event.xAxis[0].max;
-            updateBrush(min, max);
-          }
-          return false; // 阻止默认缩放行为
-        }
-      }
-    },
-    title: {
-      text: null
-    },
-    credits: {
-      enabled: false
-    },
-    exporting: {
-      enabled: false // 禁用导出按钮
-    },
-    xAxis: {
-      min: xMin,
-      max: xMax,
-      lineWidth: 1,
-      tickLength: 3,
-      labels: {
-        style: {
-          fontSize: '10px',
-          fontWeight: 'bold'
-        }
-      },
-      plotBands: [{
-        from: initialBrushBegin,
-        to: initialBrushEnd,
-        color: 'rgba(64, 158, 255, 0.1)',
-        id: 'plot-band-selection'
-      }]
-    },
-    yAxis: {
-      min: yMin,
-      max: yMax,
-      visible: false
-    },
-    legend: {
-      enabled: false
-    },
-    tooltip: {
-      enabled: false
-    },
-    plotOptions: {
-      series: {
-        animation: false,
-        lineWidth: 1.5,
-        states: {
-          hover: {
-            enabled: false
-          }
-        },
-        marker: {
-          enabled: false
-        },
-        enableMouseTracking: false,
-        stickyTracking: false,
-        turboThreshold: 0, // 禁用turboThreshold限制
-        boostThreshold: 1000 // 启用boost的阈值
-      }
-    },
-    boost: {
-      useGPUTranslations: true,
-      usePreAllocated: true,
-      seriesThreshold: 1 // 只要有一个系列就启用boost
-    },
-    accessibility: {
-      enabled: false // 禁用无障碍功能，避免相关错误
-    },
-    series: overviewData.value
-  };
-
-  // 创建图表
-  chartInstance.value = Highcharts.chart(options);
-
-  // 更新brush值到store
-  updatingBrush.value = true;
-  brush_begin.value = initialBrushBegin.toFixed(4);
-  brush_end.value = initialBrushEnd.toFixed(4);
-  store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-  updatingBrush.value = false;
-
-  // 保存初始极值
-  extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
-
+// 清空图表
+const clearChart = () => {
+  if (chartInstance.value) {
+    chartInstance.value.destroy();
+    chartInstance.value = null;
+  }
   isLoading.value = false;
 };
 

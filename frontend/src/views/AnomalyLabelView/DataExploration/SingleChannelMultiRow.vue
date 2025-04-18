@@ -76,6 +76,14 @@ import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'elem
 import { useStore } from 'vuex';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
 
+// 设置Highcharts全局配置
+Highcharts.setOptions({
+  accessibility: {
+    enabled: false // 禁用无障碍功能，避免相关错误
+  }
+});
+
+
 // 添加预定义颜色数组
 const predefineColors = [
   '#000000', '#4169E1', '#DC143C', '#228B22', '#FF8C00',
@@ -2176,7 +2184,7 @@ watch(matchedResults, (newMatchedResults) => {
           }
         }
       });
-    }, 50);
+    }, 100);
   }
 }, { deep: true });
 

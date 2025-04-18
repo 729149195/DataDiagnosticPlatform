@@ -116,7 +116,7 @@
                     <SingleChannelMultiRow v-show="selectedChannels.length > 0" />
                   </div>
                   <div v-show="SingleChannelMultiRow_channel_number === false">
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
+                    <!-- <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" /> -->
                   </div>
                 </el-scrollbar>
                 <OverviewBrush />
@@ -568,7 +568,6 @@ import { FolderChecked, Upload, Menu, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElLoading, ElMessageBox } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
-import 'highcharts/modules/accessibility';
 import 'highcharts/modules/exporting';
 import JSZip from 'jszip'; // 导入JSZip库
 import { CacheFactory } from "cachefactory"; // 导入CacheFactory
@@ -600,9 +599,16 @@ import OverviewBrush from '@/components/OverviewBrush.vue';
 
 import { ElDialog, ElForm, ElFormItem, ElCheckbox, ElRadioGroup, ElRadio, ElTag, ElScrollbar, ElProgress } from 'element-plus'
 
+// 设置Highcharts全局配置
+Highcharts.setOptions({
+  accessibility: {
+    enabled: false // 禁用无障碍功能，避免相关错误
+  }
+});
+
+
 const store = useStore()
 const sampling = ref(5)
-const smoothness = ref(0)
 const isSecondSectionCollapsed = ref(true) // 默认为折叠状态
 const showAnomaly = ref(true) // 是否显示异常区域，默认显示
 const chartObserver = ref(null) // 添加MutationObserver引用

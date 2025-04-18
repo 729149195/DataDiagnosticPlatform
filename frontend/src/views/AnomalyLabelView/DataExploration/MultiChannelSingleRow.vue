@@ -97,12 +97,11 @@ const predefineColors = [
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
-  // ... existing code ...
   accessibility: {
     enabled: false // 禁用无障碍功能，避免相关错误
   }
 });
-// ... existing code ...
+
 
 // 平滑数据函数
 const interpolateData = (data, factor) => {
