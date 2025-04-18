@@ -262,8 +262,7 @@ import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
-import { Search, Delete, Edit, InfoFilled, ArrowDown, ArrowUp, Upload } from '@element-plus/icons-vue';
-import { dataCache, cacheFactory } from '@/services/cacheManager';
+import { Search, Delete, Edit, ArrowDown, ArrowUp, Upload } from '@element-plus/icons-vue';
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
