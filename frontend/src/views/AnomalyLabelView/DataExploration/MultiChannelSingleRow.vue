@@ -141,7 +141,6 @@ const channelDataCache = computed(() => store.state.channelDataCache); // 添加
 
 const sampling = computed(() => store.state.sampling);
 const sampleRate = ref(store.state.sampling);
-const matchedResults = computed(() => store.getters.getMatchedResults);
 
 // 添加 updateChartColor 函数，直接更新图表颜色而不触发重绘
 const updateChartColor = (channel, newColor) => {
@@ -267,208 +266,6 @@ const updateChannelColor = ({ channelKey, color }) => {
   }
 };
 
-// 监听匹配结果并高亮
-watch(matchedResults, (newResults) => {
-  if (newResults.length > 0) {
-    const resultsByChannel = newResults.reduce((acc, result) => {
-      const { channel_name } = result;
-      if (!acc[channel_name]) acc[channel_name] = [];
-      acc[channel_name].push(result);
-      return acc;
-    }, {});
-
-    Object.keys(resultsByChannel).forEach(channel_name => {
-      drawHighlightRects(channel_name, resultsByChannel[channel_name]);
-    });
-  }
-});
-
-// 添加 drawHighlightRects 函数
-const drawHighlightRects = (channelName, matchedResults) => {
-  try {
-    // 找到当前图表实例
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (!chart) {
-      // console.warn('未找到图表实例，无法绘制高亮区域');
-      return;
-    }
-
-    // 先清除之前为该通道绘制的所有高亮区域
-    const existingRects = chart.annotations || [];
-    const channelRects = existingRects.filter(rect =>
-      rect && rect.options && rect.options.id && rect.options.id.startsWith(`highlight-${channelName}-`)
-    );
-    channelRects.forEach(rect => {
-      if (rect) {
-        try {
-          rect.destroy();
-        } catch (error) {
-          // console.warn(`删除高亮区域时出错: ${error.message}`);
-        }
-      }
-    });
-
-    // 清除之前的匹配高亮系列
-    chart.series.forEach(series => {
-      if (series && series.name && series.name.startsWith(`highlight-${channelName}-`)) {
-        series.remove(false); // 不立即重绘
-      }
-    });
-
-    // 确保xDomains.value.global是有效的范围
-    if (!xDomains.value.global || !Array.isArray(xDomains.value.global) || xDomains.value.global.length !== 2) {
-      // console.warn('无效的X轴范围，无法绘制高亮区域');
-      return;
-    }
-
-    // 获取当前图表的显示范围
-    const xMin = chart.xAxis[0].min || xDomains.value.global[0];
-    const xMax = chart.xAxis[0].max || xDomains.value.global[1];
-
-    // 获取Y轴范围
-    const yMin = chart.yAxis[0].min;
-    const yMax = chart.yAxis[0].max;
-
-    // 计算当前可见区域的宽度
-    const visibleWidth = xMax - xMin;
-
-    // 过滤出当前通道的匹配结果
-    const channelResults = matchedResults.filter(r => r.channel_name === channelName);
-
-    // 为每个匹配的区域添加高亮
-    channelResults.forEach((result, resultIndex) => {
-      if (!result.tbegin || !result.tend) {
-        return; // 跳过无效区域
-      }
-
-      const tbegin = parseFloat(result.tbegin);
-      const tend = parseFloat(result.tend);
-
-      // 跳过完全在可见区域外的区域
-      if (tend < xMin || tbegin > xMax) {
-        return;
-      }
-
-      // 确保区域在可见范围内
-      const visibleBegin = Math.max(tbegin, xMin);
-      const visibleEnd = Math.min(tend, xMax);
-
-      // 计算区域宽度占比
-      const widthRatio = (visibleEnd - visibleBegin) / visibleWidth;
-
-      // 只绘制足够宽的区域，避免过小的区域影响性能
-      if (widthRatio < 0.001 && (visibleEnd - visibleBegin) < 0.01) {
-        return; // 跳过太小的区域
-      }
-
-      // 决定区域颜色 - 使用预定义颜色或默认颜色
-      const colorMap = {
-        'matched': 'rgba(255, 215, 0, 0.9)', // 金色，匹配区域
-        'manual': 'rgba(220, 20, 60, 0.9)',  // 红色，人工标注
-        'machine': 'rgba(0, 128, 0, 0.9)'    // 绿色，机器识别
-      };
-
-      // 根据标签类型决定颜色
-      const colorKey = result.match_type || (result.is_manual ? 'manual' : 'machine');
-      const highlightColor = colorMap[colorKey] || 'rgba(0, 0, 255, 0.9)'; // 默认蓝色
-
-      // 创建唯一ID
-      const seriesId = `highlight-${channelName}-${resultIndex}-${Date.now()}`;
-
-      // 找到相应通道的数据系列
-      const channelSeries = chart.series.find(s => s.name === `${channelName}_${result.shot_number}` ||
-        s.name === `${channelName}_${result.shot_number}_smoothed`);
-
-      if (channelSeries) {
-        // 获取区域内的数据点
-        const pointsInRange = [];
-        // 找到区间内数据点
-        const allX = channelsData.value.find(d => d.channelName === channelName)?.X_value || [];
-        const allY = channelsData.value.find(d => d.channelName === channelName)?.Y_value || [];
-
-        if (allX.length > 0 && allY.length > 0) {
-          // 找到区间内的所有点
-          for (let i = 0; i < allX.length; i++) {
-            if (allX[i] >= visibleBegin && allX[i] <= visibleEnd) {
-              pointsInRange.push([allX[i], allY[i]]);
-            }
-          }
-
-          // 如果没有足够点，添加区间端点
-          if (pointsInRange.length < 2) {
-            // 添加区间端点
-            const yValueBegin = allY[allX.findIndex(x => x >= visibleBegin)] || 0;
-            const yValueEnd = allY[allX.findIndex(x => x >= visibleEnd)] || 0;
-
-            pointsInRange.push([visibleBegin, yValueBegin]);
-            pointsInRange.push([visibleEnd, yValueEnd]);
-          }
-
-          // 添加高亮系列 - 使用细线高亮贴合原始信号
-          if (pointsInRange.length > 0) {
-            chart.addSeries({
-              name: seriesId,
-              data: pointsInRange,
-              color: highlightColor,
-              lineWidth: 2,  // 使用细线条
-              zIndex: 998,    // 确保在其它线条上方，但在错误线下方
-              dashStyle: null, // 所有类型都使用实线，不再区分
-              marker: {
-                enabled: false
-              },
-              states: {
-                hover: {
-                  lineWidthPlus: 0
-                }
-              },
-              enableMouseTracking: false
-            }, false);  // 不立即重绘
-          }
-
-          // 添加标签
-          if (result.label_name) {
-            const labelX = visibleBegin + (visibleEnd - visibleBegin) / 2;
-            const labelY = Math.max(...pointsInRange.map(p => p[1])) + 0.05;
-
-            chart.addAnnotation({
-              id: `label-${seriesId}`,
-              labels: [{
-                text: result.label_name,
-                align: 'center',
-                verticalAlign: 'top',
-                x: labelX,
-                y: labelY,
-                backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                borderColor: 'silver',
-                borderWidth: 1,
-                borderRadius: 3,
-                padding: 3,
-                style: {
-                  fontSize: '11px',
-                  fontWeight: 'bold'
-                }
-              }],
-              zIndex: 999,
-              events: {
-                click: function (e) {
-                  // 记录点击的区域
-                  selectedAnomaly.value = result;
-                }
-              }
-            });
-          }
-        }
-      } else {
-        // console.warn(`找不到对应的通道系列: ${channelName}_${result.shot_number}`);
-      }
-    });
-
-    // 一次性重绘图表
-    chart.redraw();
-  } catch (error) {
-    // console.error(`绘制高亮区域时出错: ${error.message}`);
-  }
-};
 
 // 重构状态管理部分，将原来的 loadingStates 和 renderingStates 简化
 const loadingState = reactive({
@@ -2015,15 +1812,6 @@ const drawCombinedChart = () => {
                 );
                 this.yAxis[0].setExtremes(yMinWithPadding, yMaxWithPadding, true);
 
-                // 重新绘制高亮区域
-                selectedChannels.value.forEach((channel) => {
-                  const channelMatchedResults = matchedResults.value.filter(
-                    (r) => r.channel_name === channel.channel_name
-                  );
-                  if (channelMatchedResults.length > 0) {
-                    drawHighlightRects(channel.channel_name, channelMatchedResults);
-                  }
-                });
 
                 // 确保图表尺寸正确
                 setTimeout(() => {
@@ -2204,15 +1992,6 @@ const drawCombinedChart = () => {
                 this.xAxis[0].setExtremes(newXDomain[0], newXDomain[1], false);
                 this.yAxis[0].setExtremes(newYDomain[1], newYDomain[0], true);
 
-                // 重新绘制高亮区域
-                selectedChannels.value.forEach((channel) => {
-                  const channelMatchedResults = matchedResults.value.filter(
-                    (r) => r.channel_name === channel.channel_name
-                  );
-                  if (channelMatchedResults.length > 0) {
-                    drawHighlightRects(channel.channel_name, channelMatchedResults);
-                  }
-                });
 
                 // 确保图表尺寸正确
                 setTimeout(() => {
@@ -2251,16 +2030,6 @@ const drawCombinedChart = () => {
                   x: [beginValue, endValue],
                   y: [yMinWithPadding, yMaxWithPadding]
                 };
-
-                // 重新绘制高亮区域
-                selectedChannels.value.forEach((channel) => {
-                  const channelMatchedResults = matchedResults.value.filter(
-                    (r) => r.channel_name === channel.channel_name
-                  );
-                  if (channelMatchedResults.length > 0) {
-                    drawHighlightRects(channel.channel_name, channelMatchedResults);
-                  }
-                });
 
                 // 确保图表尺寸正确
                 setTimeout(() => {
@@ -2431,25 +2200,6 @@ const drawCombinedChart = () => {
       },
       accessibility: {
         enabled: false // 禁用无障碍功能，避免相关错误
-      }
-    });
-
-    // 绘制高亮区域
-    selectedChannels.value.forEach((channel) => {
-      const channelMatchedResults = matchedResults.value.filter(
-        (r) => r.channel_name === channel.channel_name
-      );
-      if (channelMatchedResults.length > 0) {
-        drawHighlightRects(channel.channel_name, channelMatchedResults);
-      }
-
-      // 绘制已有的异常标注
-      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      const channelAnomalies = store.getters.getAnomaliesByChannel(channelKey);
-      if (channelAnomalies && channelAnomalies.length > 0) {
-        channelAnomalies.forEach(anomaly => {
-          addAnomalyToChart(channelKey, anomaly);
-        });
       }
     });
 
