@@ -26,15 +26,7 @@
           visibility: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 'visible' : 'hidden',
           transition: 'opacity 0.5s ease'
         }" v-show="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100">
-          <ChannelColorPicker 
-            :key="channel.channel_name + '_' + channel.shot_number + '_' + channel.color"
-            :color="channel.color" 
-            :predefineColors="predefineColors"
-            @change="updateChannelColor(channel)" 
-            @update:color="updateChartColor(channel, $event)"
-            :channelName="channel.channel_name" 
-            :shotNumber="channel.shot_number" 
-          />
+          <ChannelColorPicker :key="channel.channel_name + '_' + channel.shot_number + '_' + channel.color" :color="channel.color" :predefineColors="predefineColors" @change="updateChannelColor(channel)" @update:color="updateChartColor(channel, $event)" :channelName="channel.channel_name" :shotNumber="channel.shot_number" />
         </div>
       </div>
     </div>
@@ -224,10 +216,10 @@ const processChannelData = async (data, channel) => {
     //   originalFrequency: data.originalFrequency || '未知',
     //   stats: data.stats || '未提供统计数据'
     // });
-    
+
     // 标记渲染开始
     renderingStates[channelKey] = 25;
-    
+
     // 并行获取错误数据 - 不阻塞其他处理
     const errorDataPromise = channel.errors && channel.errors.length > 0
       ? store.dispatch('fetchAllErrorData', channel).catch(err => {
@@ -240,7 +232,7 @@ const processChannelData = async (data, channel) => {
 
     // 获取错误数据，这是唯一需要的异步操作
     const errorDataResults = await errorDataPromise;
-    
+
     renderingStates[channelKey] = 75; // 更新渲染状态
 
     // 绘制图表，直接使用后端处理好的数据
@@ -265,7 +257,7 @@ const processChannelData = async (data, channel) => {
     );
 
     renderingStates[channelKey] = 100;
-    
+
     // 在渲染完成后，确保再次调整颜色选择器位置
     const chart = window.chartInstances?.[channelKey];
     if (chart) {
@@ -304,9 +296,9 @@ const fetchChannelData = async (channel, forceRefresh = false) => {
 
     try {
       // console.log(`正在获取通道数据: ${channelKey}, 采样率: ${sampling.value} KHz, 强制刷新: ${forceRefresh}`);
-      
+
       // 使用 store action 获取数据，传递forceRefresh参数
-      const data = await store.dispatch('fetchChannelData', { 
+      const data = await store.dispatch('fetchChannelData', {
         channel,
         forceRefresh: forceRefresh // 传递强制刷新参数
       });
@@ -335,11 +327,11 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       console.warn('No channels selected');
       return;
     }
-    
+
     // 如果强制重新渲染，清除现有图表实例
     if (forceRenderAll) {
       // console.log('强制重新渲染所有图表，正在清除现有图表实例...');
-      
+
       // 清除所有现有图表实例
       if (window.chartInstances) {
         Object.keys(window.chartInstances).forEach(key => {
@@ -354,13 +346,13 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
           delete window.chartInstances[key];
         });
       }
-      
+
       // 清空已渲染标记
       renderedChannels.value.clear();
-      
+
       window.chartInstances = {};
     }
-    
+
     let channelsToRender;
     if (forceRenderAll) {
       channelsToRender = [...selectedChannels.value];
@@ -407,7 +399,7 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       'Total Render Time-end');
 
     window.dataLoaded = true;
-    
+
     // 渲染完成后，延迟200ms再次调整所有颜色选择器的位置
     setTimeout(() => {
       selectedChannels.value.forEach(channel => {
@@ -438,16 +430,16 @@ watch(selectedChannels, (newChannels, oldChannels) => {
   });
   // 获取新添加的通道键
   const addedChannelKeys = [...newChannelKeys].filter(key => !oldChannelKeys.has(key));
-  
+
   // 检查颜色变化的通道
   const colorChangedChannels = newChannels.filter(newCh => {
-    const oldCh = oldChannels.find(ch => 
-      ch.channel_name === newCh.channel_name && 
+    const oldCh = oldChannels.find(ch =>
+      ch.channel_name === newCh.channel_name &&
       ch.shot_number === newCh.shot_number
     );
     return oldCh && oldCh.color !== newCh.color;
   });
-  
+
   // 处理颜色变化的通道
   colorChangedChannels.forEach(channel => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -456,7 +448,7 @@ watch(selectedChannels, (newChannels, oldChannels) => {
       updateChartColor(channel, channel.color);
     }
   });
-  
+
   // 只对新增通道或颜色变更的通道进行处理，每个通道独立处理
   if (addedChannelKeys.length > 0) {
     // 找出所有新增的通道
@@ -522,7 +514,7 @@ watch(() => domains.value, (newDomains, oldDomains) => {
 // 添加对采样率的监听，当采样率变化时重新渲染所有图表
 watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
   // console.log(`[重要] 采样率从 ${oldSamplingRate} 变更为 ${newSamplingRate} KHz，正在准备刷新图表`);
-  
+
   // 更彻底的清理图表实例和缓存
   if (window.chartInstances) {
     Object.keys(window.chartInstances).forEach(key => {
@@ -539,11 +531,11 @@ watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
       delete window.chartInstances[key];
     });
   }
-  
+
   // 清空已渲染标记
   renderedChannels.value.clear();
   // console.log('已清空渲染缓存标记，即将重新渲染所有图表');
-  
+
   // 使用更长的延迟确保store中的数据已更新
   setTimeout(() => {
     // 强制重新渲染所有通道图表
@@ -586,7 +578,7 @@ watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
 
       // 更新异常高亮线条
       updateAnomalyHighlights(chart, channelKey);
-      
+
       // 更新匹配高亮线条
       updateMatchedHighlights(chart, channelKey);
 
@@ -601,10 +593,10 @@ onMounted(async () => {
   if (container) {
     chartContainerWidth.value = container.offsetWidth;
   }
-  
+
   // 添加窗口大小变化的监听器
   window.addEventListener('resize', handleResize);
-  
+
   nextTick(() => {
     if (selectedChannels.value && selectedChannels.value.length > 0) {
       renderCharts();
@@ -616,7 +608,7 @@ onMounted(async () => {
 onUnmounted(() => {
   // 终止chartWorkerManager
   chartWorkerManager.terminate();
-  
+
   // 移除窗口大小变化的监听器
   window.removeEventListener('resize', handleResize);
 });
@@ -628,7 +620,7 @@ const handleResize = debounce(() => {
   if (container) {
     chartContainerWidth.value = container.offsetWidth;
   }
-  
+
   // 重新调整所有颜色选择器的位置（立即调整一次）
   selectedChannels.value.forEach(channel => {
     const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -637,7 +629,7 @@ const handleResize = debounce(() => {
       adjustColorPickerPosition(chart, channel);
     }
   });
-  
+
   // 短暂延迟后再次调整，确保DOM已完全更新
   setTimeout(() => {
     selectedChannels.value.forEach(channel => {
@@ -916,11 +908,11 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
       // console.log(`绘制图表 ${channelName}，原始频率数据:`, { 
       //   originalFrequency: data.originalFrequency
       // });
-      
+
       // 保持原始频率值不变
       const freqValue = data.originalFrequency;
       // console.log(`通道 ${channelName} 的最终频率值:`, freqValue);
-      
+
       // 添加防抖检查
       const chartKey = `${channelName}-${color}-${sampling.value}-${smoothnessValue.value}`;
       if (chartKey === drawChart.lastDrawnChart) {
@@ -946,19 +938,19 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
 
       // 使用后端提供的统计数据设置Y轴范围
       const stats = data.stats || {};
-      
+
       // 使用后端计算的Y轴范围 (如果有)，否则计算默认值
       const yMin = stats.y_axis_min !== undefined ? stats.y_axis_min :
         Math.min(...data.Y_value) - (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
       const yMax = stats.y_axis_max !== undefined ? stats.y_axis_max :
         Math.max(...data.Y_value) + (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
-      
+
       // 设置X轴和Y轴范围
-      const xDomain = domains.value.x[channelName] || 
-        (stats.x_min !== undefined && stats.x_max !== undefined ? 
+      const xDomain = domains.value.x[channelName] ||
+        (stats.x_min !== undefined && stats.x_max !== undefined ?
           [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)]);
       const yDomain = domains.value.y[channelName] || [yMin, yMax];
-      
+
       // 使用后端判断是否为数字信号
       const isDigitalSignal = data.is_digital === true;
 
@@ -1105,7 +1097,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
               id: `error-band-${index}`,
               from: startTime,
               to: endTime,
-              color: 'rgba(255, 0, 0, 0.1)', 
+              color: 'rgba(255, 0, 0, 0.1)',
               zIndex: 1, // 确保在异常区域下方
             });
           });
@@ -1733,7 +1725,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
       // 添加图例文字
       if (chart && chart.renderer) {
         // 不再需要添加图例文字，因为我们已经在图表配置中设置了title
-        
+
         // 在图表渲染完成后，调整颜色选择器的位置
         // 创建一个临时channel对象，包含调整颜色选择器所需的属性
         const channelObj = {
@@ -1840,7 +1832,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
 
       // 图表初始化完成后，添加匹配高亮
       updateMatchedHighlights(chart, channelName);
-      
+
       resolve();
     } catch (error) {
       console.error('Error in drawChart:', error);
@@ -1950,22 +1942,22 @@ const updateAnomalyHighlights = (chart, channelKey) => {
 // 添加更新通道颜色的函数
 const updateChannelColor = (channel) => {
   if (!channel || !channel.color) return;
-  
+
   // console.log(`updateChannelColor: 更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${channel.color}`);
-  
+
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-  
+
   // 更新 Vuex 存储
   store.commit('updateChannelColor', { channel_key: channelKey, color: channel.color });
-  
+
   // 强制更新视图
   nextTick(() => {
     // 确保颜色选择器能够正确接收颜色变化
-    const index = selectedChannels.value.findIndex(ch => 
-      ch.channel_name === channel.channel_name && 
+    const index = selectedChannels.value.findIndex(ch =>
+      ch.channel_name === channel.channel_name &&
       ch.shot_number === channel.shot_number
     );
-    
+
     if (index !== -1) {
       // 更新选中通道的颜色
       selectedChannels.value[index].color = channel.color;
@@ -1976,21 +1968,21 @@ const updateChannelColor = (channel) => {
 // 添加新函数，用于实时更新图表颜色
 const updateChartColor = (channel, newColor) => {
   if (!channel || !newColor) return;
-  
+
   // console.log(`更新通道 ${channel.channel_name}_${channel.shot_number} 的颜色为 ${newColor}`);
-  
+
   // 更新本地数据
   channel.color = newColor;
-  
+
   const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-  
+
   // 获取当前图表实例
   const chart = window.chartInstances?.[channelKey];
   if (!chart) {
     console.warn(`找不到通道 ${channelKey} 的图表实例`);
     return;
   }
-  
+
   try {
     // 更新特定通道的线条颜色
     chart.series.forEach(series => {
@@ -2000,7 +1992,7 @@ const updateChartColor = (channel, newColor) => {
         }, false); // 不立即重绘
       }
     });
-    
+
     // 更新图例文字颜色
     try {
       // 使用chart.setTitle方法来更新图例文字的颜色
@@ -2011,21 +2003,21 @@ const updateChartColor = (channel, newColor) => {
           fontWeight: 'medium'
         }
       }, null, false); // 不立即重绘
-      
+
       // 更新图表自定义属性中的颜色
       if (chart.options.custom) {
         chart.options.custom.color = newColor;
       }
-      
+
       // 在图表重绘后，重新调整颜色选择器的位置
       adjustColorPickerPosition(chart, channel);
     } catch (error) {
       console.warn('更新图例文字颜色时出错:', error);
     }
-    
+
     // 一次性重绘图表
     chart.redraw();
-    
+
     // 确保 Vuex 存储中的颜色也被更新
     store.commit('updateChannelColor', { channel_key: channelKey, color: newColor });
   } catch (error) {
@@ -2044,14 +2036,14 @@ const adjustColorPickerPosition = (chart, channel) => {
         // 获取title的宽度和位置
         const titleRect = titleElement.getBoundingClientRect();
         const chartRect = chart.container.getBoundingClientRect();
-        
+
         // 计算title左边界相对于图表的位置
         const titleLeftPosition = titleRect.left - chartRect.left;
-        
+
         // 获取颜色选择器容器
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         const colorPickerContainer = chart.container.closest('.chart-wrapper')?.querySelector('.color-picker-container');
-        
+
         if (colorPickerContainer) {
           // 设置颜色选择器的位置，使其位于title的左侧
           const rightPosition = chartRect.width - titleLeftPosition;
@@ -2081,7 +2073,7 @@ watch(matchedResults, (newMatchedResults) => {
           chart.xAxis[0].removePlotBand(band.id);
         }
       });
-      
+
       // 移除现有的匹配高亮系列
       chart.series.forEach(series => {
         if (series.options.id && series.options.id.startsWith('match-highlight-')) {
@@ -2090,14 +2082,14 @@ watch(matchedResults, (newMatchedResults) => {
       });
     }
   });
-  
+
   // 处理新的匹配结果
   if (newMatchedResults && newMatchedResults.length > 0) {
     newMatchedResults.forEach((matchResult, index) => {
       // 获取通道名称和炮号
       const { channelName, shotNumber, range, confidence } = matchResult;
       const channelKey = `${channelName}_${shotNumber}`;
-      
+
       // 获取匹配区域的范围
       if (range && range.length > 0) {
         // 获取对应的图表实例
@@ -2107,10 +2099,10 @@ watch(matchedResults, (newMatchedResults) => {
           range.forEach((rangeItem, rangeIndex) => {
             const startTime = rangeItem[0];
             const endTime = rangeItem[1];
-            
+
             // 根据置信度计算透明度
             const alpha = Math.max(0.1, Math.min(0.8, confidence));
-            
+
             // 添加高亮区域
             chart.xAxis[0].addPlotBand({
               id: `match-band-${index}-${rangeIndex}`,
@@ -2121,7 +2113,7 @@ watch(matchedResults, (newMatchedResults) => {
               borderColor: 'rgba(255, 215, 0, 0.8)',
               borderWidth: 1
             });
-            
+
             // 获取当前通道的数据
             const channelData = channelDataCache.value[channelKey];
             if (channelData && channelData.X_value && channelData.Y_value) {
@@ -2132,10 +2124,10 @@ watch(matchedResults, (newMatchedResults) => {
                   pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
                 }
               }
-              
+
               // 确保点按X轴排序
               pointsInRange.sort((a, b) => a[0] - b[0]);
-              
+
               // 添加高亮线条
               if (pointsInRange.length > 0) {
                 chart.addSeries({
@@ -2159,7 +2151,7 @@ watch(matchedResults, (newMatchedResults) => {
               }
             }
           });
-          
+
           // 重绘图表
           chart.redraw();
         }
@@ -2171,37 +2163,37 @@ watch(matchedResults, (newMatchedResults) => {
 // 在drawChart函数中的updateAnomalyHighlights后添加处理匹配结果的函数
 const updateMatchedHighlights = (chart, channelKey) => {
   if (!chart || !matchedResults.value) return;
-  
+
   // 移除现有的匹配高亮区域
   chart.xAxis[0].plotLinesAndBands.forEach(band => {
     if (band.id && band.id.startsWith('match-band-')) {
       chart.xAxis[0].removePlotBand(band.id);
     }
   });
-  
+
   // 移除现有的匹配高亮系列
   chart.series.forEach(series => {
     if (series.options.id && series.options.id.startsWith('match-highlight-')) {
       series.remove(false);
     }
   });
-  
+
   // 处理匹配结果
   matchedResults.value.forEach((matchResult, index) => {
     // 获取通道名称和炮号
     const { channelName, shotNumber, range, confidence } = matchResult;
     const matchChannelKey = `${channelName}_${shotNumber}`;
-    
+
     // 只处理当前通道的匹配结果
     if (matchChannelKey === channelKey && range && range.length > 0) {
       // 遍历匹配区域的范围
       range.forEach((rangeItem, rangeIndex) => {
         const startTime = rangeItem[0];
         const endTime = rangeItem[1];
-        
+
         // 根据置信度计算透明度
         const alpha = Math.max(0.1, Math.min(0.8, confidence));
-        
+
         // 添加高亮区域
         chart.xAxis[0].addPlotBand({
           id: `match-band-${index}-${rangeIndex}`,
@@ -2212,7 +2204,7 @@ const updateMatchedHighlights = (chart, channelKey) => {
           borderColor: 'rgba(255, 215, 0, 0.8)',
           borderWidth: 1
         });
-        
+
         // 获取当前通道的数据
         const channelData = channelDataCache.value[channelKey];
         if (channelData && channelData.X_value && channelData.Y_value) {
@@ -2223,10 +2215,10 @@ const updateMatchedHighlights = (chart, channelKey) => {
               pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
             }
           }
-          
+
           // 确保点按X轴排序
           pointsInRange.sort((a, b) => a[0] - b[0]);
-          
+
           // 添加高亮线条
           if (pointsInRange.length > 0) {
             chart.addSeries({
@@ -2285,7 +2277,8 @@ const updateMatchedHighlights = (chart, channelKey) => {
   min-height: 200px;
   overflow: hidden;
   padding: 5px 0;
-  margin-bottom: -10px; /* 调整图表之间的间距为15px，既不过于拥挤也不过于分散 */
+  margin-bottom: -10px;
+  /* 调整图表之间的间距为15px，既不过于拥挤也不过于分散 */
 }
 
 svg {
@@ -2296,13 +2289,15 @@ svg {
 .color-picker-container {
   position: absolute;
   top: 45px;
-  right: 250px; /* 初始位置，会被动态调整 */
+  right: 250px;
+  /* 初始位置，会被动态调整 */
   display: flex;
   align-items: center;
   gap: 5px;
   background-color: transparent;
   padding: 2px 5px;
-  transition: right 0.3s ease; /* 添加平滑过渡效果 */
+  transition: right 0.3s ease;
+  /* 添加平滑过渡效果 */
 }
 
 /* 添加新的图例样式 */
