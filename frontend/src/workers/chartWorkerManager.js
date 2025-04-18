@@ -1,15 +1,7 @@
 /**
  * Chart Worker 管理器
- * 用于管理和复用 chartWorker 实例
+ * 该模块仅用于处理错误数据和模式匹配功能
  */
-import { dataCache } from '../services/cacheManager';
-
-// chartWorkerManager.js
-//
-// 注意：从v2.0开始，前端不再负责数据采样处理工作。
-// 采样处理已经交由后端API完成，前端仅处理渲染相关工作。
-// 当前保留此文件是为了兼容性考虑，后续版本可能会移除相关功能。
-//
 
 class ChartWorkerManager {
   constructor() {
@@ -55,48 +47,6 @@ class ChartWorkerManager {
     }
 
     return this.worker;
-  }
-
-  /**
-   * 处理数据
-   * @param {Object} channelData - 通道数据
-   * @param {number} sampleRate - 采样率
-   * @param {number} smoothnessValue - 平滑度
-   * @param {string} channelKey - 通道键值
-   * @param {string} color - 颜色
-   * @param {string} xUnit - X轴单位
-   * @param {string} yUnit - Y轴单位
-   * @param {string} channelType - 通道类型
-   * @param {number} channelNumber - 通道编号
-   * @param {number} shotNumber - 炮号
-   * @returns {Promise} 处理结果的Promise
-   */
-  async processData(channelData, sampleRate, smoothnessValue, channelKey, color, xUnit, yUnit, channelType, channelNumber, shotNumber) {
-    const cacheKey = `chartData-${channelKey}-${sampleRate}-${smoothnessValue}`;
-    const cached = dataCache.get(cacheKey);
-    if (cached) return cached.data;
-    
-    console.log(`processData: 跳过采样处理，${channelKey} 的采样处理已由后端完成`);
-    
-    // 直接格式化数据并返回，不再调用worker进行采样处理
-    const processedData = {
-      processedData: channelData,
-      channelKey,
-      color,
-      xUnit,
-      yUnit,
-      channelType,
-      channelNumber,
-      shotNumber
-    };
-    
-    // 缓存处理结果
-    dataCache.put(cacheKey, {
-      data: processedData,
-      timestamp: Date.now()
-    });
-    
-    return processedData;
   }
 
   /**
