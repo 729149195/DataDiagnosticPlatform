@@ -27,10 +27,10 @@ function processChannels({ channels, anomalies }) {
     });
 
     let errorData = [];
-    if (channel.errors && channel.errors.length > 0) {
-      errorData = channel.errors.map(error => {
-        return error;
-      });
+    if (Array.isArray(channel.errorData) && channel.errorData.length > 0) {
+      errorData = channel.errorData;
+    } else if (channel.errors && channel.errors.length > 0) {
+      errorData = channel.errors.map(error => error);
     }
 
     processedChannels.push({

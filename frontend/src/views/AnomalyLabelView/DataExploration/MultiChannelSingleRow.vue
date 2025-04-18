@@ -349,17 +349,23 @@ const renderCharts = debounce(async () => {
       }
     }, 100);
 
-    // 收集所有通道原始数据
+    // 收集所有通道原始数据，并获取详细errorData
     const rawChannels = await Promise.all(selectedChannels.value.map(async channel => {
       const cacheKey = `${channel.channel_name}_${channel.shot_number}`;
       let data = channelDataCache.value[cacheKey];
       if (!data) {
         data = await store.dispatch('fetchChannelData', { channel, forceRefresh: false });
       }
+      // 新增：获取详细errorData
+      let errorData = [];
+      if (channel.errors && channel.errors.length > 0) {
+        errorData = await store.dispatch('fetchAllErrorData', channel);
+      }
       // 深拷贝，去除响应式
       return JSON.parse(JSON.stringify({
         ...channel,
-        ...data
+        ...data,
+        errorData
       }));
     }));
     const anomalies = JSON.parse(JSON.stringify(store.state.anomalies || {}));
