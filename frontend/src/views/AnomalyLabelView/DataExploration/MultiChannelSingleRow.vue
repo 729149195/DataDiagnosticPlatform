@@ -463,9 +463,8 @@ const processChannelDataAsync = async (data, channel) => {
     }
   }
 
-  // 直接使用后端已经处理好的数据
-  // 后端提供的归一化Y值，如果没有则使用默认处理方式
-  let finalY = data.Y_normalized || [];
+  // 直接使用后端已经处理好的归一化Y值数据
+  let finalY = data.Y_normalized;
   let xValues = data.X_value;
 
   // 处理绘图数据
