@@ -529,7 +529,7 @@ const submitData = async () => {
 // 修改清除画布函数
 const clearCanvas = () => {
   // 无论有没有paperScope，都清空匹配结果
-  store.dispatch('updateMatchedResults', []);
+  store.dispatch('clearMatchedResults');
   
   if (paperScope) {
     if (path) {

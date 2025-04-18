@@ -58,7 +58,17 @@
 
   <!-- 缓存信息对话框 -->
   <Teleport to="body">
-    <el-dialog v-model="cacheInfoDialogVisible" title="缓存信息" width="80%" :close-on-click-modal="false" :close-on-press-escape="true" destroy-on-close append-to-body>
+    <el-dialog
+      v-model="cacheInfoDialogVisible"
+      title="缓存信息"
+      width="80%"
+      :close-on-click-modal="false"
+      :close-on-press-escape="true"
+      destroy-on-close
+      append-to-body
+      :modal-class="loadingCache ? 'loading-dialog-mask' : ''"
+      top="5vh"
+    >
       <div v-if="cacheKeys.length === 0" class="empty-cache">
         <el-empty description="暂无缓存数据" v-loading="loadingCache" element-loading-text="加载缓存数据中..." />
       </div>
@@ -67,7 +77,7 @@
         <div class="table-divider">
           <span>通道数据</span>
         </div>
-        <el-table :data="nonErrorCacheKeys" style="width: 100%" max-height="400px" min-height="250px" border v-loading="loadingCache" :class="{ 'table-loading': loadingCache }" @selection-change="handleSelectionChange">
+        <el-table :data="nonErrorCacheKeys" style="width: 100%" max-height="250px" border v-loading="loadingCache" :class="{ 'table-loading': loadingCache }" @selection-change="handleSelectionChange">
           <el-table-column type="selection" width="55" />
           <el-table-column type="expand">
             <template #default="props">
@@ -117,7 +127,7 @@
           <div class="table-divider">
             <span>异常标注数据</span>
           </div>
-          <el-table :data="errorCacheKeys" style="width: 100%" max-height="300px" min-height="250px" border v-loading="loadingCache" :class="{ 'table-loading': loadingCache }" @selection-change="handleErrorSelectionChange">
+          <el-table :data="errorCacheKeys" style="width: 100%" max-height="250px" border v-loading="loadingCache" :class="{ 'table-loading': loadingCache }" @selection-change="handleErrorSelectionChange">
             <el-table-column type="selection" width="55" />
             <el-table-column type="index" label="序号" width="60" />
             <el-table-column prop="key" label="缓存键" min-width="180" show-overflow-tooltip />
@@ -181,6 +191,39 @@ const store = useStore()
 const router = useRouter()
 const selectedButton = ref('anay');
 
+// 添加缓存服务性能优化
+let isCachePreloading = false;
+// 在应用空闲时预加载缓存数据
+const preloadCacheData = () => {
+  if (isCachePreloading) return;
+  
+  isCachePreloading = true;
+  
+  // 使用requestIdleCallback在浏览器空闲时预加载缓存数据
+  // 如果浏览器不支持requestIdleCallback则使用setTimeout
+  const requestIdleCallbackFn = window.requestIdleCallback || 
+    ((cb) => setTimeout(cb, 1000));
+  
+  requestIdleCallbackFn(() => {
+    // 只预取缓存键，不加载全部数据
+    indexedDBService.getAllKeys()
+      .then(keys => {
+        // 存储缓存键以便后续使用
+        cacheKeysIndex.value = keys;
+        // console.log(`预加载了 ${keys.length} 个缓存键`);
+      })
+      .catch(err => {
+        console.warn('预加载缓存键失败:', err);
+      })
+      .finally(() => {
+        isCachePreloading = false;
+      });
+  });
+};
+
+// 预加载缓存索引，但不加载全部数据
+const cacheKeysIndex = ref([]);
+
 // 接收父组件传递的初始按钮状态
 const props = defineProps({
   initialButton: {
@@ -203,6 +246,9 @@ const checkLoginStatus = () => {
 onMounted(() => {
   checkLoginStatus();
   selectedButton.value = props.initialButton;
+  
+  // 预加载缓存索引
+  preloadCacheData();
 });
 
 // 监听 person 的变化
@@ -315,139 +361,51 @@ const formatSize = (bytes) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
-// 格式化频率显示 - 添加缓存以提高性能
-const formatFrequencyCache = new Map();
+// 格式化频率显示 - 不使用缓存
 const formatFrequency = (frequency) => {
-  // 检查缓存
-  const cacheKey = `${frequency}`;
-  if (formatFrequencyCache.has(cacheKey)) {
-    return formatFrequencyCache.get(cacheKey);
-  }
-
-  let result;
   if (frequency === undefined || frequency === null) {
-    result = '0 KHz';
+    return '0 KHz';
   } else if (typeof frequency !== 'number') {
-    result = `${frequency} KHz`;
+    return `${frequency} KHz`;
   } else if (frequency >= 1000) {
-    result = `${(frequency / 1000).toFixed(2)} MHz`;
+    return `${(frequency / 1000).toFixed(2)} MHz`;
   } else {
-    result = `${frequency.toFixed(2)} KHz`;
+    return `${frequency.toFixed(2)} KHz`;
   }
-
-  // 存入缓存
-  formatFrequencyCache.set(cacheKey, result);
-  return result;
 };
 
 // 获取缓存信息
-const getCacheInfo = async (forceRefresh = false) => {
+const getCacheInfo = async () => {
   try {
-    // 检查是否已经在加载中，但如果设置了强制刷新参数则忽略
-    if (loadingCache.value && !forceRefresh) {
-      console.log('已有加载请求在进行中，跳过');
+    // 检查是否已经在加载中
+    if (loadingCache.value && document.hidden) {
+      console.log('已有加载请求在进行中且页面不可见，跳过');
       return;
     }
+    
+    // 设置加载状态 - 如果已在viewCacheInfo中设置则不再设置
+    if (!loadingCache.value) {
+      loadingCache.value = true;
+    }
 
-    loadingCache.value = true;
-    const keys = await indexedDBService.getAllKeys();
-
+    // 高效获取缓存键
+    const keys = cacheKeysIndex.value.length > 0
+      ? cacheKeysIndex.value 
+      : await indexedDBService.getAllKeys();
+      
+    // 即使没有缓存也更新索引
+    if (cacheKeysIndex.value.length === 0) {
+      cacheKeysIndex.value = keys;
+    }
+    
     if (keys.length === 0) {
       cacheKeys.value = [];
       loadingCache.value = false;
       return;
     }
-
-    // 一次性获取所有缓存数据而不是逐个获取
-    // 创建一个Map来存储所有获取操作的Promise
-    const promises = [];
-    const batchSize = 20; // 每批处理的数量
-
-    // 分批处理以避免一次创建太多Promise
-    for (let i = 0; i < keys.length; i += batchSize) {
-      const batch = keys.slice(i, i + batchSize);
-      batch.forEach(key => {
-        promises.push(
-          indexedDBService.getChannelData(key)
-            .then(data => ({ key, data }))
-            .catch(error => {
-              console.error(`获取缓存数据失败: ${key}`, error);
-              return null;
-            })
-        );
-      });
-
-      // 每批次等待完成后再开始下一批
-      if ((i + batchSize) < keys.length || i === 0) {
-        // 开始时或者中间批次，需要等待完成
-        await Promise.all(promises);
-      }
-    }
-
-    // 统一处理所有结果
-    const results = await Promise.all(promises);
-    const validResults = results.filter(result => result && result.data);
-
-    // 预先分配数组大小以提高性能
-    const newCacheKeys = new Array(validResults.length);
-
-    // 处理数据并填充数组
-    for (let i = 0; i < validResults.length; i++) {
-      const { key, data } = validResults[i];
-
-      // 计算数据大小（近似值）
-      const size = JSON.stringify(data).length;
-
-      // 判断是否为异常标注数据
-      const isErrorData = key.startsWith('error-');
-
-      if (isErrorData) {
-        // 异常标注数据
-        newCacheKeys[i] = {
-          key,
-          timestamp: data.timestamp || Date.now(),
-          size,
-          isErrorData: true,
-          details: data.data || {}
-        };
-      } else {
-        // 通道数据
-        const dataContent = data.data || {};
-
-        // 确保安全访问数组属性
-        const dataPoints = Array.isArray(dataContent.X_value) ? dataContent.X_value.length :
-          (dataContent.originalDataPoints || 0);
-
-        // 创建不包含X_value和Y_value的详细信息对象
-        const details = { ...dataContent };
-
-        // 确保所有必需字段都有默认值
-        details.channel_number = details.channel_number || key.split('_')[0] || '';
-        details.X_unit = details.X_unit || 's';
-        details.Y_unit = details.Y_unit || '';
-        details.originalFrequency = details.originalFrequency || 0;
-        details.originalDataPoints = details.originalDataPoints || dataPoints;
-
-        // 删除大型数组数据
-        delete details.X_value;
-        delete details.Y_value;
-
-        newCacheKeys[i] = {
-          key,
-          timestamp: data.timestamp || Date.now(),
-          size,
-          dataPoints,
-          isErrorData: false,
-          details
-        };
-      }
-    }
-
-    // 按时间倒序排序
-    newCacheKeys.sort((a, b) => b.timestamp - a.timestamp);
-
-    // 一次性更新状态，减少重渲染次数
-    cacheKeys.value = newCacheKeys;
+    
+    // 使用批量异步处理模式
+    await processKeysInBatches(keys);
   } catch (error) {
     console.error('获取缓存键失败:', error);
     ElMessage({
@@ -457,6 +415,92 @@ const getCacheInfo = async (forceRefresh = false) => {
   } finally {
     loadingCache.value = false;
   }
+};
+
+// 批量处理缓存键
+const processKeysInBatches = async (keys) => {
+  // 保存处理结果
+  const newCacheKeys = [];
+  const batchSize = 15; // 每批处理的数量
+  const totalBatches = Math.ceil(keys.length / batchSize);
+  
+  // 分批处理
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    const startIdx = batchIndex * batchSize;
+    const endIdx = Math.min(startIdx + batchSize, keys.length);
+    const batchKeys = keys.slice(startIdx, endIdx);
+    
+    // 创建这一批次的Promise
+    const batchPromises = batchKeys.map(key => 
+      indexedDBService.getChannelData(key)
+        .then(data => ({ key, data }))
+        .catch(error => {
+          console.error(`获取缓存数据失败: ${key}`, error);
+          return null;
+        })
+    );
+    
+    // 等待本批次完成
+    const batchResults = await Promise.all(batchPromises);
+    
+    // 处理本批次结果
+    for (const result of batchResults) {
+      if (!result || !result.data) continue;
+      
+      const { key, data } = result;
+      
+      // 计算数据大小和类型
+      const size = JSON.stringify(data).length;
+      const isErrorData = key.startsWith('error-');
+      
+      // 构建缓存项
+      if (isErrorData) {
+        // 错误数据
+        newCacheKeys.push({
+          key,
+          timestamp: data.timestamp || Date.now(),
+          size,
+          isErrorData: true,
+          details: data.data || {}
+        });
+      } else {
+        // 通道数据
+        const dataContent = data.data || {};
+        const dataPoints = Array.isArray(dataContent.X_value) ? dataContent.X_value.length : 
+                           (dataContent.originalDataPoints || 0);
+                           
+        // 简化细节处理
+        const details = { ...dataContent };
+        details.channel_number = details.channel_number || key.split('_')[0] || '';
+        details.X_unit = details.X_unit || 's';
+        details.Y_unit = details.Y_unit || '';
+        details.originalFrequency = details.originalFrequency || 0;
+        details.originalDataPoints = details.originalDataPoints || dataPoints;
+        
+        // 删除大型数组
+        delete details.X_value;
+        delete details.Y_value;
+        
+        newCacheKeys.push({
+          key,
+          timestamp: data.timestamp || Date.now(),
+          size,
+          dataPoints,
+          isErrorData: false,
+          details
+        });
+      }
+    }
+    
+    // 在批次之间使用rAF让出主线程，避免UI阻塞
+    if (batchIndex < totalBatches - 1) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+  }
+  
+  // 所有批次处理完成后，排序并更新状态
+  newCacheKeys.sort((a, b) => b.timestamp - a.timestamp);
+  cacheKeys.value = newCacheKeys;
 };
 
 // 计算非错误数据缓存项
@@ -520,8 +564,9 @@ const deleteChannelCache = async (key) => {
 
 // 刷新缓存信息
 const refreshCacheInfo = async () => {
-  // 直接调用getCacheInfo并传递强制刷新参数
-  await getCacheInfo(true);
+  if (loadingCache.value) return; // 如果正在加载，忽略请求
+
+  await getCacheInfo();
 
   ElMessage({
     message: '缓存信息已刷新',
@@ -530,24 +575,39 @@ const refreshCacheInfo = async () => {
 };
 
 // 查看缓存信息
-const viewCacheInfo = async () => {
+const viewCacheInfo = () => {
+  // 重置缓存列表，确保每次都重新加载
+  cacheKeys.value = [];
+  cacheKeysIndex.value = [];
+  
+  // 立即打开对话框，不等待任何异步操作
   cacheInfoDialogVisible.value = true;
-
-  // 始终设置加载状态为true，确保显示加载动画
-  loadingCache.value = true;
-
-  try {
-    // 刷新缓存数据，传递强制刷新参数
-    await getCacheInfo(true);
-  } catch (error) {
-    console.error('加载缓存数据失败:', error);
-    ElMessage({
-      message: '加载缓存数据失败，请重试',
-      type: 'error'
-    });
-  } finally {
-    // 已经在getCacheInfo中重置了状态，这里不需要重复操作
-  }
+  
+  // 使用requestAnimationFrame确保DOM更新后再处理数据加载
+  requestAnimationFrame(() => {
+    // 强制设置加载状态，确保UI有反馈
+    loadingCache.value = true;
+    
+    // 使用setTimeout将数据加载移至宏任务队列末尾
+    setTimeout(async () => {
+      try {
+        // 每次都重新获取缓存索引
+        const keys = await indexedDBService.getAllKeys();
+        cacheKeysIndex.value = keys;
+        
+        // 始终加载新数据
+        if (keys.length > 0) {
+          await getCacheInfo();
+        } else {
+          // 没有缓存数据，结束加载状态
+          loadingCache.value = false;
+        }
+      } catch (error) {
+        console.error('加载缓存数据失败:', error);
+        loadingCache.value = false;
+      }
+    }, 0);
+  });
 };
 
 // 清空缓存
@@ -770,7 +830,7 @@ const isExpandable = (row) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 200px;
+  height: 300px;
 }
 
 .dialog-footer {
@@ -809,5 +869,9 @@ const isExpandable = (row) => {
 
 .table-loading {
   opacity: 0.6;
+}
+
+.loading-dialog-mask {
+  backdrop-filter: blur(2px);
 }
 </style>
