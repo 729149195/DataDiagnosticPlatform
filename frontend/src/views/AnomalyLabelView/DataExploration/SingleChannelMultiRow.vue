@@ -366,9 +366,6 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
 
     // 如果强制重新渲染，清除现有图表实例
     if (forceRenderAll) {
-      // console.log('强制重新渲染所有图表，正在清除现有图表实例...');
-
-      // 清除所有现有图表实例
       if (window.chartInstances) {
         Object.keys(window.chartInstances).forEach(key => {
           const chart = window.chartInstances[key];
@@ -382,10 +379,7 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
           delete window.chartInstances[key];
         });
       }
-
-      // 清空已渲染标记
       renderedChannels.value.clear();
-
       window.chartInstances = {};
     }
 
@@ -393,7 +387,6 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
     if (forceRenderAll) {
       channelsToRender = [...selectedChannels.value];
     } else {
-      // 否则只渲染新添加的通道
       channelsToRender = selectedChannels.value.filter(channel => {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
         return !renderedChannels.value.has(channelKey);
@@ -407,27 +400,35 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       renderingStates[channelKey] = 0;
     });
 
-    // 完全并行获取和渲染每个通道，不等待其他通道完成
-    const renderPromises = channelsToRender.map(async (channel) => {
-      try {
+    // 1. 并发获取所有通道数据
+    const channelDataResults = await Promise.all(
+      channelsToRender.map(channel => fetchChannelData(channel, forceRenderAll))
+    );
+
+    // 2. 分帧批量渲染（每帧渲染2条通道）
+    const batchSize = 2;
+    let index = 0;
+    function renderNextBatch() {
+      const batch = channelsToRender.slice(index, index + batchSize);
+      batch.forEach(async (channel, i) => {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-
-        // 获取通道数据 - 传递forceRenderAll作为强制刷新的标志
-        const data = await fetchChannelData(channel, forceRenderAll);
+        const data = channelDataResults[index + i];
         if (!data) return;
-
-        // 处理数据并渲染图表 (不等待其他通道)
         await processChannelData(data, channel);
-
-        // 标记通道已渲染
         renderedChannels.value.add(channelKey);
-      } catch (error) {
-        console.error(`Error rendering channel ${channel.channel_name}:`, error);
+        requestAnimationFrame(() => {
+          const chart = window.chartInstances?.[channelKey];
+          if (chart) {
+            adjustColorPickerPosition(chart, channel);
+          }
+        });
+      });
+      index += batchSize;
+      if (index < channelsToRender.length) {
+        requestAnimationFrame(renderNextBatch);
       }
-    });
-
-    // 等待所有通道并行渲染完成
-    await Promise.all(renderPromises);
+    }
+    renderNextBatch();
 
     performance.mark('Total Render Time-end');
     performance.measure('Total Render Time',
@@ -435,17 +436,6 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       'Total Render Time-end');
 
     window.dataLoaded = true;
-
-    // 渲染完成后，使用requestAnimationFrame调整所有颜色选择器的位置
-    requestAnimationFrame(() => {
-      selectedChannels.value.forEach(channel => {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const chart = window.chartInstances?.[channelKey];
-        if (chart) {
-          adjustColorPickerPosition(chart, channel);
-        }
-      });
-    });
   } catch (error) {
     console.error('Error in renderCharts:', error);
     ElMessage.error(`渲染图表错误: ${error.message}`);
