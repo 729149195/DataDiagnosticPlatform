@@ -290,141 +290,117 @@ const isRenderingLocked = ref(false);
 // 添加一个标志，表示是否处于采样率更新过程中
 const isUpdatingSampling = ref(false);
 
+// 引入Web Worker
+const DataProcessorWorker = new URL('@/workers/dataProcessor.js', import.meta.url);
+let dataWorker = null;
+if (window.Worker) {
+  dataWorker = new Worker(DataProcessorWorker, { type: 'module' });
+}
+
+function processDataInWorker(rawData) {
+  return new Promise((resolve, reject) => {
+    if (!dataWorker) {
+      reject(new Error('Web Worker not supported'));
+      return;
+    }
+    dataWorker.onmessage = (e) => {
+      if (e.data.type === 'processedChannels') {
+        resolve(e.data.result);
+      }
+    };
+    dataWorker.onerror = reject;
+    dataWorker.postMessage({ type: 'processChannels', payload: rawData });
+  });
+}
+
 // 重构的 renderCharts 函数
 const renderCharts = debounce(async () => {
-  // 如果已经在渲染中，则跳过
   if (isRenderingLocked.value) {
-    // console.log('图表正在渲染中，跳过重复渲染请求');
     return;
   }
-
-  // 锁定渲染过程
   isRenderingLocked.value = true;
-
   try {
-    // 重置状态
     resetProgress();
     loadingState.isLoading = true;
     renderingState.isRendering = false;
     renderingState.completed = false;
     processedDataCache.value.clear();
 
-    // console.log(`开始渲染图表，当前采样率: ${sampling.value} kHz`);
-
-    // 清除可能存在的旧图表
+    // 清除旧图表
     const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (existingChart) {
-      // console.log('已销毁旧图表实例');
       existingChart.destroy();
     }
 
-    // 确保有选中的通道
     if (!selectedChannels.value || selectedChannels.value.length === 0) {
-      // console.warn('No channels selected');
       loadingState.isLoading = false;
       renderingState.completed = true;
-      isRenderingLocked.value = false; // 解锁渲染
+      isRenderingLocked.value = false;
       return;
     }
 
-    // 创建进度更新定时器，模拟平滑进度
+    // 进度条模拟
     loadingState.progressInterval = setInterval(() => {
       if (loadingState.isLoading && loadingState.progress < 50) {
-        // 在数据加载阶段，进度最多到50%
         loadingState.progress = Math.min(loadingState.progress + 0.5, 50);
       } else if (!loadingState.isLoading && renderingState.isRendering && loadingState.progress < 95) {
-        // 在图表渲染阶段，进度从50%到95%
-        // 计算渲染阶段的增量，使其平滑过渡
-        const renderingIncrement = (95 - 50) / 90; // 分90步完成剩余的45%
+        const renderingIncrement = (95 - 50) / 90;
         loadingState.progress = Math.min(loadingState.progress + renderingIncrement, 95);
       }
     }, 100);
 
-    // 顺序处理通道数据，而不是并行处理
-    const totalChannels = selectedChannels.value.length;
-    const progressStep = 50 / totalChannels; // 数据处理阶段占50%进度
-
-    // console.log(`开始加载 ${totalChannels} 个通道的数据，采样率: ${sampling.value} kHz`);
-
-    for (let i = 0; i < totalChannels; i++) {
-      const channel = selectedChannels.value[i];
-      try {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        // console.log(`正在加载通道 ${channelKey} 的数据，采样率: ${sampling.value} kHz`);
-
-        // 获取通道数据，不再强制刷新，直接从缓存获取
-        const data = await store.dispatch('fetchChannelData', {
-          channel,
-          forceRefresh: false // 不再强制刷新，依赖采样率变化时的全局刷新机制
-        });
-
-        if (!data) {
-          throw new Error(`Failed to fetch data for channel ${channelKey}`);
-        }
-
-        // console.log(`已成功加载通道 ${channelKey} 的数据，数据点数: ${data.X_value?.length || 0}`);
-
-        // 处理通道数据
-        const processedData = await processChannelDataAsync(data, channel);
-        processedDataCache.value.set(channelKey, processedData);
-
-        // 更新进度
-        loadingState.progress = (i + 1) * progressStep;
-
-        // 让UI线程有机会更新
-        await new Promise(resolve => setTimeout(resolve, 0));
-      } catch (error) {
-        // console.error(`Error processing data for channel ${channel.channel_name}:`, error);
-        // 继续处理其他通道，不要因为一个通道失败而中断整个过程
+    // 收集所有通道原始数据
+    const rawChannels = await Promise.all(selectedChannels.value.map(async channel => {
+      const cacheKey = `${channel.channel_name}_${channel.shot_number}`;
+      let data = channelDataCache.value[cacheKey];
+      if (!data) {
+        data = await store.dispatch('fetchChannelData', { channel, forceRefresh: false });
       }
-    }
+      // 深拷贝，去除响应式
+      return JSON.parse(JSON.stringify({
+        ...channel,
+        ...data
+      }));
+    }));
+    const anomalies = JSON.parse(JSON.stringify(store.state.anomalies || {}));
 
-    // 更新加载进度到50%（数据处理阶段完成）
+    // 交给worker处理
+    const workerResult = await processDataInWorker({
+      channels: rawChannels,
+      anomalies
+    });
+
+    // 更新前端状态
+    channelsData.value = workerResult.processedChannels;
+    exposeData.value = workerResult.processedChannels.map(d => ({
+      channel_type: d.channel.channelType,
+      channel_name: d.channel.channelName,
+      X_value: d.data.x,
+      X_unit: d.channel.xUnit,
+      Y_value: d.data.y,
+      Y_unit: d.channel.yUnit,
+      errorsData: d.errorData,
+      shot_number: d.channel.shotNumber
+    }));
+    xDomains.value.global = workerResult.xDomain;
+    originalDomains.value.global = {
+      x: workerResult.xDomain,
+      y: workerResult.yDomain
+    };
+    // 进度到50%
     loadingState.progress = 50;
-    // console.log('所有通道数据加载完成，准备渲染图表');
-
-    // 准备渲染图表
-    try {
-      await prepareAndRenderChart();
-    } catch (error) {
-      // console.error('Error in prepareAndRenderChart:', error);
-      ElMessage.error(`准备渲染图表时出错: ${error.message}`);
-      loadingState.isLoading = false;
-      loadingState.error = error.message;
-
-      // 清除进度更新定时器
-      if (loadingState.progressInterval) {
-        clearInterval(loadingState.progressInterval);
-        loadingState.progressInterval = null;
-      }
-
-      // 平滑过渡到100%
-      const finalizeProgress = () => {
-        const currentProgress = loadingState.progress;
-        if (currentProgress < 100) {
-          loadingState.progress = Math.min(currentProgress + 1, 100);
-          if (loadingState.progress < 100) {
-            setTimeout(finalizeProgress, 20);
-          }
-        }
-      };
-
-      finalizeProgress();
-    }
+    // 渲染图表
+    await nextTick();
+    drawCombinedChart();
   } catch (error) {
-    // console.error('Error rendering charts:', error);
     ElMessage.error(`加载图表时出错: ${error.message}`);
     loadingState.isLoading = false;
     loadingState.error = error.message;
     renderingState.completed = true;
-
-    // 清除进度更新定时器
     if (loadingState.progressInterval) {
       clearInterval(loadingState.progressInterval);
       loadingState.progressInterval = null;
     }
-
-    // 平滑过渡到100%
     const finalizeProgress = () => {
       const currentProgress = loadingState.progress;
       if (currentProgress < 100) {
@@ -434,156 +410,13 @@ const renderCharts = debounce(async () => {
         }
       }
     };
-
     finalizeProgress();
   } finally {
-    // 完成后解锁渲染，延迟解锁以防止快速连续触发
     setTimeout(() => {
       isRenderingLocked.value = false;
     }, 1000);
   }
 }, 300);
-
-// 新增的异步数据处理函数
-const processChannelDataAsync = async (data, channel) => {
-  if (!data || !data.X_value || !data.Y_value) {
-    throw new Error(`Invalid data for channel ${channel.channel_name}`);
-  }
-
-  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-
-  // 获取错误数据
-  let errorDataResults = [];
-  if (channel.errors && channel.errors.length > 0) {
-    try {
-      // 使用store中的方法获取异常数据
-      errorDataResults = await store.dispatch('fetchAllErrorData', channel);
-    } catch (err) {
-      // console.warn('Failed to fetch error data:', err);
-    }
-  }
-
-  // 直接使用后端已经处理好的归一化Y值数据
-  let finalY = data.Y_normalized;
-  let xValues = data.X_value;
-
-  // 处理绘图数据
-  return {
-    channelKey,
-    channelName: channel.channel_name,
-    channelshotnumber: channel.shot_number,
-    color: channel.color, // 确保包含颜色属性
-    data: {
-      x: xValues,
-      y: finalY
-    },
-    channel,
-    errorData: errorDataResults
-  };
-};
-
-// 新增准备并渲染图表的函数
-const prepareAndRenderChart = async () => {
-  try {
-    renderingState.isRendering = true;
-    // 更新加载状态，表示进入图表渲染阶段
-    loadingState.isLoading = false;
-
-    // 确保进度至少为50%，表示数据加载阶段已完成
-    if (loadingState.progress < 50) {
-      loadingState.progress = 50;
-    }
-
-    // 清空数据数组，避免重复添加
-    channelsData.value = [];
-    exposeData.value = [];
-
-    // 创建一个函数来按顺序一个一个处理通道数据
-    const processChannelsSequentially = async () => {
-      const channelEntries = Array.from(processedDataCache.value.entries());
-      const progressStart = 50;
-      const progressEnd = 95;
-      const progressStep = (progressEnd - progressStart) / (channelEntries.length || 1);
-      let i = 0;
-      function processNext() {
-        if (i >= channelEntries.length) return Promise.resolve();
-        const [channelKey, processedData] = channelEntries[i];
-        channelsData.value.push(processedData);
-        exposeData.value.push({
-          channel_type: processedData.channel.channelType,
-          channel_name: processedData.channel.channelName,
-          X_value: processedData.data.x,
-          X_unit: processedData.channel.xUnit,
-          Y_value: processedData.data.y,
-          Y_unit: processedData.channel.yUnit,
-          errorsData: processedData.errorData,
-          shot_number: processedData.channel.shotNumber
-        });
-        loadingState.progress = progressStart + (i + 1) * progressStep;
-        i++;
-        // 用 setTimeout 分片，避免阻塞
-        return new Promise(resolve => setTimeout(resolve, 0)).then(processNext);
-      }
-      await processNext();
-    };
-
-    // 按顺序处理通道数据
-    await processChannelsSequentially();
-
-    // 计算全局X轴范围
-    if (!xDomains.value.global && channelsData.value.length > 0) {
-      // 使用第一个通道的stats中提供的x_min和x_max
-      const firstChannel = channelsData.value[0];
-      if (firstChannel && firstChannel.channel && firstChannel.channel.stats) {
-        const stats = firstChannel.channel.stats;
-        xDomains.value.global = [stats.x_min, stats.x_max];
-      } else {
-        // 后备方案：如果没有stats数据，再使用计算方式
-        const allX = channelsData.value.flatMap(d => d.data.x);
-        if (allX.length > 0) {
-          // 使用循环代替Math.min(...allX)和Math.max(...allX)
-          let minX = allX[0];
-          let maxX = allX[0];
-          for (let i = 1; i < allX.length; i++) {
-            if (allX[i] < minX) minX = allX[i];
-            if (allX[i] > maxX) maxX = allX[i];
-          }
-          xDomains.value.global = [minX, maxX];
-        }
-      }
-    }
-
-    // 等待数据更新到 DOM
-    await nextTick();
-
-    // 直接调用 drawCombinedChart 函数，不要使用 await
-    // 这里不需要 await，因为 drawCombinedChart 内部已经处理了异步操作
-    drawCombinedChart();
-  } catch (error) {
-    // console.error('Error preparing chart data:', error);
-    ElMessage.error(`准备图表数据时出错: ${error.message}`);
-    renderingState.isRendering = false;
-    renderingState.completed = true;
-    // 确保在出错时也更新加载状态
-    loadingState.isLoading = false;
-
-    // 清除进度更新定时器
-    if (loadingState.progressInterval) {
-      clearInterval(loadingState.progressInterval);
-      loadingState.progressInterval = null;
-    }
-
-    // 平滑过渡到100%
-    const finalizeProgress = () => {
-      requestAnimationFrame(() => {
-        loadingState.progress = 100;
-        loadingState.isLoading = false;
-      });
-    };
-
-    finalizeProgress();
-  }
-};
 
 // 计算图表高度的函数，减少debounce时间
 const calculateChartHeight = () => {
