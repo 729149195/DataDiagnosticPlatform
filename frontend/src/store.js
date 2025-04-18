@@ -3,50 +3,23 @@ import { createStore } from "vuex";
 import { reactive, ref } from "vue";
 import colors from "./color.json"; // 导入 color.json 文件
 import axios from "axios";
-import { CacheFactory } from "cachefactory";
+import { dataCache, isChannelSelected } from "./services/cacheManager";
 import indexedDBService from "./services/indexedDBService"; // 导入IndexedDB服务
 
 // 定义一个映射，用于存储每个 channel_key 分配的颜色
 const channelColorMap = new Map();
 let colorIndex = 0;
 
-// 缓存工厂配置
-const cacheFactory = new CacheFactory();
-const dataCache = cacheFactory.createCache("channelData", {
-  maxEntries: 200, // 最大缓存条目数
-  maxAge: 30 * 60 * 1000, // 30分钟
-  deleteOnExpire: "passive", // 改为被动模式，由我们自己控制过期
-  storageMode: "memory", // 纯内存存储
-  recycleFreq: 60 * 1000, // 内存回收频率
-  onExpire: (key, value, reason) => {
-    return false; // 返回false表示允许过期
-  }
-});
-
 // 添加一个用于跟踪进行中的请求的映射
 const pendingRequests = new Map();
-
-// 添加一个函数来检查通道是否在selectedChannels中
-function isChannelSelected(channelKey, selectedChannels) {
-  if (!selectedChannels || !channelKey) return false;
-  
-  // 从channelKey中提取channel_name和shot_number
-  // 格式通常是 `${channel.channel_name}_${channel.shot_number}`
-  return selectedChannels.some(channel => {
-    const currentChannelKey = `${channel.channel_name}_${channel.shot_number}`;
-    return currentChannelKey === channelKey;
-  });
-}
 
 // 从IndexedDB加载缓存数据到内存缓存
 async function loadCacheFromIndexedDB() {
   if (!indexedDBService.isSupported) {
-    // console.log('当前浏览器不支持IndexedDB，跳过加载缓存数据');
+    console.log('当前浏览器不支持IndexedDB，跳过加载缓存数据');
     return;
   }
-  
   try {
-    // console.log('正在从IndexedDB加载缓存数据...');
     const keys = await indexedDBService.getAllKeys();
     
     for (const key of keys) {
@@ -60,14 +33,12 @@ async function loadCacheFromIndexedDB() {
             timestamp: Date.now() // 使用当前时间戳，而不是原始时间戳
           });
         } else {
-          // console.log(`跳过过期的缓存数据: ${key}`);
+          console.log(`跳过过期的缓存数据: ${key}`);
         }
       }
     }
-    
-    // console.log(`从IndexedDB加载了 ${dataCache.keys().length} 条缓存数据`);
   } catch (error) {
-    // console.error('从IndexedDB加载缓存数据失败:', error);
+    console.error('从IndexedDB加载缓存数据失败:', error);
   }
 }
 

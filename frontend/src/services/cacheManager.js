@@ -4,14 +4,27 @@ import { CacheFactory } from 'cachefactory';
 export const cacheFactory = new CacheFactory();
 
 export const dataCache = cacheFactory.createCache('channelData', {
-  maxEntries: 100,
+  maxEntries: 200,
   maxAge: 30 * 60 * 1000,
+  deleteOnExpire: "passive",
   storageMode: 'memory',
-  onExpire: (key, value) => {
-    // 添加自定义过期处理
-    console.log(`Cache expired: ${key}`);
+  recycleFreq: 60 * 1000,
+  onExpire: (key, value, reason) => {
+    return true;
   }
 });
+
+// 添加isChannelSelected函数供外部使用
+export function isChannelSelected(channelKey, selectedChannels) {
+  if (!selectedChannels || !channelKey) return false;
+  
+  // 从channelKey中提取channel_name和shot_number
+  // 格式通常是 `${channel.channel_name}_${channel.shot_number}`
+  return selectedChannels.some(channel => {
+    const currentChannelKey = `${channel.channel_name}_${channel.shot_number}`;
+    return currentChannelKey === channelKey;
+  });
+}
 
 // 内存监控方法
 export const monitorMemoryUsage = () => {
