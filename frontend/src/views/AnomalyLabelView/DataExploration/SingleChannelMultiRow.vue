@@ -85,7 +85,6 @@ const store = useStore();
 const selectedChannels = computed(() => store.state.selectedChannels);
 const sampling = computed(() => store.state.sampling);
 const smoothnessValue = computed(() => store.state.smoothness);
-const sampleRate = ref(store.state.sampling);
 const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
 const isBoxSelect = computed(() => store.state.isBoxSelect);
 const domains = computed(() => ({
