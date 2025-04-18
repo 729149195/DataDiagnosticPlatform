@@ -314,67 +314,13 @@ const calculateGlobalYBounds = () => {
 const prepareChartDataInBatches = (globalYMin, globalYMax) => {
   const chartData = [];
   const channels = Object.entries(processedDataCache.value);
-  
-  // 创建一个实际进行处理的函数，使用时间切片
-  const processNextBatch = (startTime) => {
-    // 最多使用15ms，然后让出主线程
-    const TIME_BUDGET = 15;
-    let batchIndex = 0;
-    let processed = 0;
-    
-    const processChannel = (index) => {
-      if (index >= channels.length) {
-        // 全部处理完成
-        finishProcessing();
-        return;
-      }
-      
-      const [channelKey, data] = channels[index];
-      const channel = selectedChannels.value.find(
-        ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
-      );
+  let currentIndex = 0;
+  const BATCH_SIZE = 5; // 每帧处理5个series
 
-      if (channel && data && data.X && data.Y) {
-        // 创建优化的数据点数组
-        const seriesData = createOptimizedDataPoints(data.X, data.Y);
-        
-        // 添加通道数据
-        chartData.push({
-          channelName: channelKey,
-          name: channel.channel_name,
-          data: seriesData,
-          color: channel.color || '#7cb5ec',
-          boostThreshold: 200, // 进一步降低boost阈值
-          turboThreshold: 0
-        });
-      }
-      
-      processed++;
-      
-      // 检查时间预算
-      const elapsedTime = performance.now() - startTime;
-      if (elapsedTime > TIME_BUDGET && processed < channels.length) {
-        // 超出时间预算，使用requestAnimationFrame让出线程
-        // 这比setTimeout更适合与UI渲染相关的任务
-        requestAnimationFrame(() => {
-          processNextBatch(performance.now());
-        });
-      } else {
-        // 继续处理下一批
-        processChannel(index + 1);
-      }
-    };
-    
-    // 开始处理
-    processChannel(batchIndex);
-  };
-  
   // 处理完成时的回调
   const finishProcessing = () => {
     overviewData.value = chartData;
-    
     if (chartData.length > 0) {
-      // 使用requestAnimationFrame确保在下一帧渲染
       requestAnimationFrame(() => {
         renderChart(false);
       });
@@ -383,50 +329,37 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
       console.warn('没有有效数据用于渲染');
     }
   };
-  
-  // 启动处理
-  processNextBatch(performance.now());
-};
 
-// 优化的数据点创建函数
-const createOptimizedDataPoints = (xData, yData) => {
-  // 如果数据超过一定长度，进行抽样
-  const MAX_CHART_POINTS = 200; // 控制最大点数
-  
-  if (xData.length <= MAX_CHART_POINTS) {
-    // 数据点较少，直接创建
-    const result = new Array(xData.length);
-    for (let i = 0; i < xData.length; i++) {
-      result[i] = [xData[i], yData[i]];
+  // 每帧处理BATCH_SIZE个通道
+  const processNext = () => {
+    let processed = 0;
+    while (currentIndex < channels.length && processed < BATCH_SIZE) {
+      const [channelKey, data] = channels[currentIndex];
+      const channel = selectedChannels.value.find(
+        ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
+      );
+      if (channel && data && data.points) {
+        chartData.push({
+          channelName: channelKey,
+          name: channel.channel_name,
+          data: data.points,
+          color: channel.color || '#7cb5ec',
+          boostThreshold: 200,
+          turboThreshold: 0
+        });
+      }
+      currentIndex++;
+      processed++;
     }
-    return result;
-  }
-  
-  // 数据点太多，使用更高效的抽样方法
-  const step = Math.ceil(xData.length / MAX_CHART_POINTS);
-  const resultLength = Math.ceil(xData.length / step) + 2; // +2 确保首尾点
-  const result = new Array(resultLength);
-  
-  // 添加第一个点
-  let resultIndex = 0;
-  result[resultIndex++] = [xData[0], yData[0]];
-  
-  // 使用局部变量缓存数组访问，减少查找时间
-  const xLen = xData.length;
-  const yLen = yData.length;
-  
-  // 均匀抽样 - 每批最多处理50个点以避免长时间计算
-  for (let i = step; i < xLen - 1; i += step) {
-    result[resultIndex++] = [xData[i], yData[i]];
-  }
-  
-  // 添加最后一个点
-  if (xLen > 1) {
-    result[resultIndex++] = [xData[xLen - 1], yData[yLen - 1]];
-  }
-  
-  // 返回实际长度的数组
-  return result.slice(0, resultIndex);
+    if (currentIndex < channels.length) {
+      requestAnimationFrame(processNext);
+    } else {
+      finishProcessing();
+    }
+  };
+
+  // 启动处理
+  processNext();
 };
 
 // 渲染图表
@@ -452,120 +385,112 @@ const renderChart = (forceRender = false) => {
 
   // 使用优化的方式计算数据范围
   const dataRanges = calculateDataRanges();
-  
   // 保存原始数据范围
   originalDomains.value = {
     x: [dataRanges.xMin, dataRanges.xMax],
     y: { min: dataRanges.yMin, max: dataRanges.yMax }
   };
-
   // 设置初始刷选范围
   const initialBrushBegin = dataRanges.xMin;
   const initialBrushEnd = dataRanges.xMax;
 
-  // 使用requestAnimationFrame创建图表配置，分拆大型计算任务
-  requestAnimationFrame(() => {
-    // 创建Highcharts配置
-    const options = {
-      chart: {
-        renderTo: 'overview-chart',
-        height: 80,
-        marginLeft: 15,
-        marginRight: 15,
-        marginTop: 5,
-        marginBottom: 30,
+  // 创建Highcharts配置（不带series）
+  const options = {
+    chart: {
+      renderTo: 'overview-chart',
+      height: 80,
+      marginLeft: 15,
+      marginRight: 15,
+      marginTop: 5,
+      marginBottom: 30,
+      animation: false,
+      zoomType: 'x',
+      events: {
+        selection: function (event) {
+          if (event.xAxis) {
+            const min = event.xAxis[0].min;
+            const max = event.xAxis[0].max;
+            updateBrush(min, max);
+          }
+          return false; // 阻止默认缩放行为
+        }
+      }
+    },
+    title: { text: null },
+    credits: { enabled: false },
+    exporting: { enabled: false },
+    xAxis: {
+      min: dataRanges.xMin,
+      max: dataRanges.xMax,
+      lineWidth: 1,
+      tickLength: 3,
+      labels: { style: { fontSize: '10px', fontWeight: 'bold' } },
+      plotBands: [{
+        from: initialBrushBegin,
+        to: initialBrushEnd,
+        color: 'rgba(64, 158, 255, 0.1)',
+        id: 'plot-band-selection'
+      }]
+    },
+    yAxis: {
+      min: dataRanges.yMin,
+      max: dataRanges.yMax,
+      visible: false
+    },
+    legend: { enabled: false },
+    tooltip: { enabled: false },
+    plotOptions: {
+      series: {
         animation: false,
-        zoomType: 'x',
-        events: {
-          selection: function (event) {
-            if (event.xAxis) {
-              const min = event.xAxis[0].min;
-              const max = event.xAxis[0].max;
-              updateBrush(min, max);
-            }
-            return false; // 阻止默认缩放行为
-          }
-        }
-      },
-      title: {
-        text: null
-      },
-      credits: {
-        enabled: false
-      },
-      exporting: {
-        enabled: false // 禁用导出按钮
-      },
-      xAxis: {
-        min: dataRanges.xMin,
-        max: dataRanges.xMax,
         lineWidth: 1,
-        tickLength: 3,
-        labels: {
-          style: {
-            fontSize: '10px',
-            fontWeight: 'bold'
-          }
-        },
-        plotBands: [{
-          from: initialBrushBegin,
-          to: initialBrushEnd,
-          color: 'rgba(64, 158, 255, 0.1)',
-          id: 'plot-band-selection'
-        }]
-      },
-      yAxis: {
-        min: dataRanges.yMin,
-        max: dataRanges.yMax,
-        visible: false
-      },
-      legend: {
-        enabled: false
-      },
-      tooltip: {
-        enabled: false
-      },
-      plotOptions: {
-        series: {
-          animation: false,
-          lineWidth: 1,  // 减小线宽提高绘图性能
-          states: {
-            hover: {
-              enabled: false
-            }
-          },
-          marker: {
-            enabled: false
-          },
-          enableMouseTracking: false,
-          stickyTracking: false,
-          turboThreshold: 0,
-          boostThreshold: 200 // 降低boost阈值以提高性能
-        }
-      },
-      boost: {
-        useGPUTranslations: true,
-        usePreAllocated: true,
-        seriesThreshold: 1
-      },
-      series: overviewData.value
-    };
+        states: { hover: { enabled: false } },
+        marker: { enabled: false },
+        enableMouseTracking: false,
+        stickyTracking: false,
+        turboThreshold: 0,
+        boostThreshold: 200
+      }
+    },
+    boost: {
+      useGPUTranslations: true,
+      usePreAllocated: true,
+      seriesThreshold: 1
+    },
+    series: [] // 先不传数据
+  };
 
-    // 创建图表
-    chartInstance.value = Highcharts.chart(options);
+  chartInstance.value = Highcharts.chart(options);
 
-    // 更新brush值到store
-    updatingBrush.value = true;
-    brush_begin.value = initialBrushBegin.toFixed(4);
-    brush_end.value = initialBrushEnd.toFixed(4);
-    store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
-    updatingBrush.value = false;
-
-    // 保存初始极值
-    extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
-
-    isLoading.value = false;
-  });
+  // 分批addSeries
+  let idx = 0;
+  const BATCH_SIZE = 1;
+  function addSeriesBatch() {
+    let count = 0;
+    while (idx < overviewData.value.length && count < BATCH_SIZE) {
+      try {
+        chartInstance.value.addSeries(overviewData.value[idx], false);
+      } catch (e) {
+        console.warn('addSeries error:', e);
+      }
+      idx++;
+      count++;
+    }
+    if (idx < overviewData.value.length) {
+      requestAnimationFrame(addSeriesBatch);
+    } else {
+      chartInstance.value.redraw(); // 最后一次性重绘
+      // 更新brush值到store
+      updatingBrush.value = true;
+      brush_begin.value = initialBrushBegin.toFixed(4);
+      brush_end.value = initialBrushEnd.toFixed(4);
+      store.commit('updatebrush', { begin: brush_begin.value, end: brush_end.value });
+      updatingBrush.value = false;
+      // 保存初始极值
+      extremes.value = { min: initialBrushBegin, max: initialBrushEnd };
+      isLoading.value = false;
+    }
+  }
+  addSeriesBatch();
 };
 
 // 优化计算数据范围的函数

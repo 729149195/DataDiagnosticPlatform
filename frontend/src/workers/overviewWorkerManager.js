@@ -39,42 +39,34 @@ class OverviewWorkerManager {
         function downsampleData(data, maxPoints = 200) {
           const { X_value, Y_value } = data;
           const totalPoints = X_value.length;
-          
-          // 如果数据点少于最大点数，直接返回
           if (totalPoints <= maxPoints) {
-            return { X: [...X_value], Y: [...Y_value] };
+            const points = X_value.map((x, i) => [x, Y_value[i]]);
+            return { X: [...X_value], Y: [...Y_value], points };
           }
-          
-          // 计算采样间隔 - 简单均匀采样
           const step = Math.ceil(totalPoints / maxPoints);
-          
-          // 采样结果数组 - 预分配内存
           const sampledX = new Array(Math.ceil(totalPoints / step) + 2);
           const sampledY = new Array(Math.ceil(totalPoints / step) + 2);
-          
-          // 始终保留第一个点
+          const sampledPoints = new Array(Math.ceil(totalPoints / step) + 2);
           sampledX[0] = X_value[0];
           sampledY[0] = Y_value[0];
-          
-          // 简单均匀采样 - 大幅简化计算逻辑
+          sampledPoints[0] = [X_value[0], Y_value[0]];
           let sampleIndex = 1;
           for (let i = step; i < totalPoints - 1; i += step) {
             sampledX[sampleIndex] = X_value[i];
             sampledY[sampleIndex] = Y_value[i];
+            sampledPoints[sampleIndex] = [X_value[i], Y_value[i]];
             sampleIndex++;
           }
-          
-          // 始终保留最后一个点
           if (totalPoints > 1) {
             sampledX[sampleIndex] = X_value[totalPoints - 1];
             sampledY[sampleIndex] = Y_value[totalPoints - 1];
+            sampledPoints[sampleIndex] = [X_value[totalPoints - 1], Y_value[totalPoints - 1]];
             sampleIndex++;
           }
-          
-          // 调整数组大小为实际使用的长度
-          return { 
-            X: sampledX.slice(0, sampleIndex), 
-            Y: sampledY.slice(0, sampleIndex) 
+          return {
+            X: sampledX.slice(0, sampleIndex),
+            Y: sampledY.slice(0, sampleIndex),
+            points: sampledPoints.slice(0, sampleIndex)
           };
         }
         
