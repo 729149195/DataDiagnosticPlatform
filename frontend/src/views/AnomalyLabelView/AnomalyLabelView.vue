@@ -112,12 +112,10 @@
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
                 <el-scrollbar :height="isSecondSectionCollapsed ? '81vh' : '50vh'" :always="false">
-                  <div v-if="SingleChannelMultiRow_channel_number === true">
-                    <SingleChannelMultiRow v-show="selectedChannels.length > 0" />
-                  </div>
-                  <div v-show="SingleChannelMultiRow_channel_number === false">
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-if="selectedChannels.length > 0" />
-                  </div>
+                  <keep-alive>
+                    <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" />
+                  </keep-alive>
                 </el-scrollbar>
                 <OverviewBrush />
               </div>
