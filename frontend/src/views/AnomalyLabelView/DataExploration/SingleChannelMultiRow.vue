@@ -453,22 +453,35 @@ watch(selectedChannels, (newChannels, oldChannels) => {
       const key = `${ch.channel_name}_${ch.shot_number}`;
       return addedChannelKeys.includes(key);
     });
-    // 并行渲染新增通道，每个通道单独处理，不互相等待
+    // 并发渲染新增通道，每个通道单独处理，计时独立
     newAddedChannels.forEach(channel => {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      // 初始化加载状态
       loadingStates[channelKey] = 0;
       renderingStates[channelKey] = 0;
-      // 立即开始异步加载和渲染，不等待其他通道
       (async () => {
         try {
-          // 获取通道数据
+          // 记录fetch开始时间
+          channelTimings[channelKey] = channelTimings[channelKey] || {};
+          channelTimings[channelKey].fetchStartTime = performance.now();
+
           const data = await fetchChannelData(channel);
+
+          channelTimings[channelKey].fetchEndTime = performance.now();
+          channelTimings[channelKey].fetchDuration = ((channelTimings[channelKey].fetchEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
+
           if (!data) return;
-          // 处理通道数据并渲染
+
+          // 记录process开始时间
+          channelTimings[channelKey].processStartTime = performance.now();
+
           await processChannelData(data, channel);
 
-          // 标记为已渲染
+          channelTimings[channelKey].processEndTime = performance.now();
+          channelTimings[channelKey].processDuration = ((channelTimings[channelKey].processEndTime - channelTimings[channelKey].processStartTime) / 1000).toFixed(2);
+
+          // 总耗时
+          channelTimings[channelKey].totalDuration = ((channelTimings[channelKey].processEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
+
           renderedChannels.value.add(channelKey);
         } catch (error) {
           console.error(`Error rendering channel ${channelKey}:`, error);
@@ -2373,28 +2386,56 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       });
     }
 
-    // 初始化要渲染的通道的加载状态
+    // 并发请求所有通道数据，数据到达即入渲染队列，渲染分帧进行
+    const pendingRenderQueue = [];
+    let fetchCompletedCount = 0;
+
     channelsToRender.forEach(channel => {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
       loadingStates[channelKey] = 0;
       renderingStates[channelKey] = 0;
-    });
-
-    // 顺序请求和渲染每个通道
-    for (let i = 0; i < channelsToRender.length; i++) {
-      const channel = channelsToRender[i];
-      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      const data = await fetchChannelData(channel, forceRenderAll);
-      if (!data) continue;
-      await processChannelData(data, channel);
-      renderedChannels.value.add(channelKey);
-      requestAnimationFrame(() => {
-        const chart = window.chartInstances?.[channelKey];
-        if (chart) {
-          adjustColorPickerPosition(chart, channel);
+      // 记录fetch开始时间
+      channelTimings[channelKey] = channelTimings[channelKey] || {};
+      channelTimings[channelKey].fetchStartTime = performance.now();
+      fetchChannelData(channel, forceRenderAll).then(data => {
+        channelTimings[channelKey].fetchEndTime = performance.now();
+        channelTimings[channelKey].fetchDuration = ((channelTimings[channelKey].fetchEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
+        fetchCompletedCount++;
+        if (data) {
+          pendingRenderQueue.push({ channel, data });
         }
       });
+    });
+
+    // 分帧批量渲染
+    const batchSize = 2;
+    function renderNextBatch() {
+      let count = 0;
+      while (pendingRenderQueue.length > 0 && count < batchSize) {
+        const { channel, data } = pendingRenderQueue.shift();
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        // 记录process开始时间
+        channelTimings[channelKey].processStartTime = performance.now();
+        processChannelData(data, channel).then(() => {
+          channelTimings[channelKey].processEndTime = performance.now();
+          channelTimings[channelKey].processDuration = ((channelTimings[channelKey].processEndTime - channelTimings[channelKey].processStartTime) / 1000).toFixed(2);
+          // 总耗时
+          channelTimings[channelKey].totalDuration = ((channelTimings[channelKey].processEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
+          renderedChannels.value.add(channelKey);
+          requestAnimationFrame(() => {
+            const chart = window.chartInstances?.[channelKey];
+            if (chart) {
+              adjustColorPickerPosition(chart, channel);
+            }
+          });
+        });
+        count++;
+      }
+      if (pendingRenderQueue.length > 0 || fetchCompletedCount < channelsToRender.length) {
+        requestAnimationFrame(renderNextBatch);
+      }
     }
+    renderNextBatch();
 
     performance.mark('Total Render Time-end');
     performance.measure('Total Render Time',
