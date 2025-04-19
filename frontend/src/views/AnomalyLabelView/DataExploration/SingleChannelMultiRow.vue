@@ -2386,26 +2386,39 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       });
     }
 
-    // 并发请求所有通道数据，数据到达即入渲染队列，渲染分帧进行
+    // 请求池/批量并发机制，最大并发数
+    const maxConcurrent = 8;
+    let activeCount = 0;
+    const queue = [...channelsToRender];
     const pendingRenderQueue = [];
     let fetchCompletedCount = 0;
 
-    channelsToRender.forEach(channel => {
-      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      loadingStates[channelKey] = 0;
-      renderingStates[channelKey] = 0;
-      // 记录fetch开始时间
-      channelTimings[channelKey] = channelTimings[channelKey] || {};
-      channelTimings[channelKey].fetchStartTime = performance.now();
-      fetchChannelData(channel, forceRenderAll).then(data => {
-        channelTimings[channelKey].fetchEndTime = performance.now();
-        channelTimings[channelKey].fetchDuration = ((channelTimings[channelKey].fetchEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
-        fetchCompletedCount++;
-        if (data) {
-          pendingRenderQueue.push({ channel, data });
-        }
-      });
-    });
+    function nextFetch() {
+      if (queue.length === 0) return;
+      while (activeCount < maxConcurrent && queue.length > 0) {
+        const channel = queue.shift();
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        loadingStates[channelKey] = 0;
+        renderingStates[channelKey] = 0;
+        // 记录通道总耗时开始时间
+        channelTimings[channelKey] = channelTimings[channelKey] || {};
+        channelTimings[channelKey].startTime = performance.now();
+        channelTimings[channelKey].fetchStartTime = channelTimings[channelKey].startTime;
+        activeCount++;
+        fetchChannelData(channel, forceRenderAll).then(data => {
+          channelTimings[channelKey].fetchEndTime = performance.now();
+          channelTimings[channelKey].fetchDuration = ((channelTimings[channelKey].fetchEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
+          fetchCompletedCount++;
+          if (data) {
+            pendingRenderQueue.push({ channel, data });
+          }
+        }).finally(() => {
+          activeCount--;
+          nextFetch(); // 补发下一个
+        });
+      }
+    }
+    nextFetch();
 
     // 分帧批量渲染
     const batchSize = 2;
@@ -2419,8 +2432,9 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
         processChannelData(data, channel).then(() => {
           channelTimings[channelKey].processEndTime = performance.now();
           channelTimings[channelKey].processDuration = ((channelTimings[channelKey].processEndTime - channelTimings[channelKey].processStartTime) / 1000).toFixed(2);
-          // 总耗时
-          channelTimings[channelKey].totalDuration = ((channelTimings[channelKey].processEndTime - channelTimings[channelKey].fetchStartTime) / 1000).toFixed(2);
+          // 记录通道总耗时结束时间
+          channelTimings[channelKey].endTime = performance.now();
+          channelTimings[channelKey].totalDuration = ((channelTimings[channelKey].endTime - channelTimings[channelKey].startTime) / 1000).toFixed(2);
           renderedChannels.value.add(channelKey);
           requestAnimationFrame(() => {
             const chart = window.chartInstances?.[channelKey];
