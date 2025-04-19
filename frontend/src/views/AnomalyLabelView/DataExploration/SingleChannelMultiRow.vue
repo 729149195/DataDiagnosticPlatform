@@ -71,7 +71,7 @@ import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import 'highcharts/modules/accessibility';
 import debounce from 'lodash/debounce';
-import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw } from 'vue';
+import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw, onActivated, onDeactivated } from 'vue';
 import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
@@ -381,94 +381,40 @@ const fetchChannelData = async (channel, forceRefresh = false) => {
   }
 };
 
-const renderCharts = debounce(async (forceRenderAll = false) => {
-  try {
-    performance.mark('Total Render Time-start');
-    if (!selectedChannels.value || selectedChannels.value.length === 0) {
-      console.warn('No channels selected');
-      return;
-    }
+// keep-alive激活标志
+const isActive = ref(true);
+// 新增：记录激活时是否需要补渲染
+const needRenderOnActivate = ref(false);
 
-    // 如果强制重新渲染，清除现有图表实例
-    if (forceRenderAll) {
-      if (window.chartInstances) {
-        Object.keys(window.chartInstances).forEach(key => {
-          const chart = window.chartInstances[key];
-          if (chart) {
-            try {
-              chart.destroy();
-            } catch (e) {
-              console.warn(`销毁图表实例失败: ${e.message}`);
-            }
-          }
-          delete window.chartInstances[key];
-        });
-      }
-      renderedChannels.value.clear();
-      window.chartInstances = {};
-    }
-
-    let channelsToRender;
-    if (forceRenderAll) {
-      channelsToRender = [...selectedChannels.value];
-    } else {
-      channelsToRender = selectedChannels.value.filter(channel => {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        return !renderedChannels.value.has(channelKey);
+onActivated(() => {
+  isActive.value = true;
+  nextTick(() => {
+    if (window.chartInstances) {
+      Object.values(window.chartInstances).forEach(chart => {
+        if (chart && typeof chart.reflow === 'function') {
+          chart.reflow();
+        }
       });
     }
-
-    // 初始化要渲染的通道的加载状态
-    channelsToRender.forEach(channel => {
-      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-      loadingStates[channelKey] = 0;
-      renderingStates[channelKey] = 0;
-    });
-
-    // 1. 并发获取所有通道数据
-    const channelDataResults = await Promise.all(
-      channelsToRender.map(channel => fetchChannelData(channel, forceRenderAll))
-    );
-
-    // 2. 分帧批量渲染（每帧渲染2条通道）
-    const batchSize = 2;
-    let index = 0;
-    function renderNextBatch() {
-      const batch = channelsToRender.slice(index, index + batchSize);
-      batch.forEach(async (channel, i) => {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const data = channelDataResults[index + i];
-        if (!data) return;
-        await processChannelData(data, channel);
-        renderedChannels.value.add(channelKey);
-        requestAnimationFrame(() => {
-          const chart = window.chartInstances?.[channelKey];
-          if (chart) {
-            adjustColorPickerPosition(chart, channel);
-          }
-        });
-      });
-      index += batchSize;
-      if (index < channelsToRender.length) {
-        requestAnimationFrame(renderNextBatch);
-      }
+    // 如果有新通道待渲染，补一次渲染
+    if (needRenderOnActivate.value) {
+      renderCharts();
+      needRenderOnActivate.value = false;
     }
-    renderNextBatch();
+  });
+});
+onDeactivated(() => {
+  isActive.value = false;
+});
 
-    performance.mark('Total Render Time-end');
-    performance.measure('Total Render Time',
-      'Total Render Time-start',
-      'Total Render Time-end');
-
-    window.dataLoaded = true;
-  } catch (error) {
-    console.error('Error in renderCharts:', error);
-    ElMessage.error(`渲染图表错误: ${error.message}`);
-  }
-}, 200);
+// 修改所有watch和异步渲染入口，增加isActive判断
 
 // 监听selectedChannels的变化，处理移除的通道
 watch(selectedChannels, (newChannels, oldChannels) => {
+  if (!isActive.value) {
+    needRenderOnActivate.value = true;
+    return;
+  }
   if (!oldChannels) { return; }
   // 获取新旧通道的键集合
   const oldChannelKeys = new Set(oldChannels.map(ch => `${ch.channel_name}_${ch.shot_number}`));
@@ -535,6 +481,7 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 
 // 添加对domains的监听，当domains变化时更新图表的显示范围，但只更新y轴，不影响x轴
 watch(() => domains.value, (newDomains, oldDomains) => {
+  if (!isActive.value) return;
   // 遍历所有图表实例
   Object.keys(window.chartInstances || {}).forEach(channelKey => {
     const chart = window.chartInstances[channelKey];
@@ -564,6 +511,7 @@ watch(() => domains.value, (newDomains, oldDomains) => {
 
 // 添加对采样率的监听，当采样率变化时重新渲染所有图表
 watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
+  if (!isActive.value) return;
   // console.log(`[重要] 采样率从 ${oldSamplingRate} 变更为 ${newSamplingRate} KHz，正在准备刷新图表`);
 
   // 更彻底的清理图表实例和缓存
@@ -598,6 +546,7 @@ watch(() => sampling.value, (newSamplingRate, oldSamplingRate) => {
 
 // 添加对channelDataCache的监听，当缓存数据发生变化时重新渲染图表
 watch(() => channelDataCache.value, () => {
+  if (!isActive.value) return;
   // 仅当已经有通道被选择时才重新渲染
   if (selectedChannels.value && selectedChannels.value.length > 0) {
     // console.log('数据缓存已更新，重新渲染图表');
@@ -612,6 +561,7 @@ watch(() => channelDataCache.value, () => {
 
 // 添加对brush_begin和brush_end的监听，当它们变化时更新所有图表的横坐标范围
 watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
+  if (!isActive.value) return;
   // 解析为数值
   const beginValue = parseFloat(newBegin);
   const endValue = parseFloat(newEnd);
@@ -2383,6 +2333,94 @@ const forceClearAllHighlights = () => {
     }
   });
 };
+
+// 修改renderCharts函数，增加isActive判断
+const renderCharts = debounce(async (forceRenderAll = false) => {
+  try {
+    performance.mark('Total Render Time-start');
+    if (!isActive.value) return;
+    if (!selectedChannels.value || selectedChannels.value.length === 0) {
+      console.warn('No channels selected');
+      return;
+    }
+
+    // 如果强制重新渲染，清除现有图表实例
+    if (forceRenderAll) {
+      if (window.chartInstances) {
+        Object.keys(window.chartInstances).forEach(key => {
+          const chart = window.chartInstances[key];
+          if (chart) {
+            try {
+              chart.destroy();
+            } catch (e) {
+              console.warn(`销毁图表实例失败: ${e.message}`);
+            }
+          }
+          delete window.chartInstances[key];
+        });
+      }
+      renderedChannels.value.clear();
+      window.chartInstances = {};
+    }
+
+    let channelsToRender;
+    if (forceRenderAll) {
+      channelsToRender = [...selectedChannels.value];
+    } else {
+      channelsToRender = selectedChannels.value.filter(channel => {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        return !renderedChannels.value.has(channelKey);
+      });
+    }
+
+    // 初始化要渲染的通道的加载状态
+    channelsToRender.forEach(channel => {
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      loadingStates[channelKey] = 0;
+      renderingStates[channelKey] = 0;
+    });
+
+    // 1. 并发获取所有通道数据
+    const channelDataResults = await Promise.all(
+      channelsToRender.map(channel => fetchChannelData(channel, forceRenderAll))
+    );
+
+    // 2. 分帧批量渲染（每帧渲染2条通道）
+    const batchSize = 2;
+    let index = 0;
+    function renderNextBatch() {
+      const batch = channelsToRender.slice(index, index + batchSize);
+      batch.forEach(async (channel, i) => {
+        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const data = channelDataResults[index + i];
+        if (!data) return;
+        await processChannelData(data, channel);
+        renderedChannels.value.add(channelKey);
+        requestAnimationFrame(() => {
+          const chart = window.chartInstances?.[channelKey];
+          if (chart) {
+            adjustColorPickerPosition(chart, channel);
+          }
+        });
+      });
+      index += batchSize;
+      if (index < channelsToRender.length) {
+        requestAnimationFrame(renderNextBatch);
+      }
+    }
+    renderNextBatch();
+
+    performance.mark('Total Render Time-end');
+    performance.measure('Total Render Time',
+      'Total Render Time-start',
+      'Total Render Time-end');
+
+    window.dataLoaded = true;
+  } catch (error) {
+    console.error('Error in renderCharts:', error);
+    ElMessage.error(`渲染图表错误: ${error.message}`);
+  }
+}, 200);
 </script>
 
 <style scoped>
