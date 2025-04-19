@@ -114,12 +114,7 @@
                 <el-scrollbar :height="isSecondSectionCollapsed ? '81vh' : '50vh'" :always="false">
                   <keep-alive>
                     <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
-                    <MultiChannelSingleRow
-                      ref="MultiChannelRef"
-                      v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0"
-                      :containerWidth="multiChannelContainerWidth"
-                      :containerHeight="multiChannelContainerHeight"
-                    />
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" :containerWidth="multiChannelContainerWidth" :containerHeight="multiChannelContainerHeight" />
                   </keep-alive>
                 </el-scrollbar>
                 <OverviewBrush ref="overviewBrushRef" />
@@ -406,7 +401,7 @@
                         使用当前采样频率 ({{ sampling }}KHz)
                       </el-radio>
                     </div>
-                    
+
                     <div class="radio-option">
                       <div class="radio-with-tag">
                         <el-radio v-model="svgExportConfig.frequencyMode" label="original">
@@ -415,7 +410,7 @@
                         <el-tag type="warning" size="small">需要更多耗时</el-tag>
                       </div>
                     </div>
-                    
+
                     <div class="radio-option">
                       <div class="radio-with-tag">
                         <el-radio v-model="svgExportConfig.frequencyMode" label="custom">
@@ -423,7 +418,7 @@
                         </el-radio>
                         <el-tag type="warning" size="small">需要更多耗时</el-tag>
                       </div>
-                    
+
                       <div class="custom-frequency-control">
                         <el-input-number v-model="svgExportConfig.customFrequency" :precision="2" :step="0.5" :min="0.1" :max="1000" size="small" :disabled="svgExportConfig.frequencyMode !== 'custom'" />
                         <span class="unit-label">KHz</span>
@@ -472,22 +467,22 @@
         <div class="param-form" style="width: 100%;">
           <el-form :model="resultSvgExportConfig" label-width="auto">
             <!-- 图片尺寸设置 -->
-            <el-form-item label="图片尺寸" class="size-controls-container" >
+            <el-form-item label="图片尺寸" class="size-controls-container">
               <div class="size-controls" style="display: flex; justify-content: space-between; width: 100%;">
                 <div class="size-input-group" style="margin-bottom: 10px; display: flex; align-items: center; width: 48%;">
                   <span class="size-label" style=" text-align: left;">宽度:</span>
-                  <el-input-number v-model="resultSvgExportConfig.width" :min="300" :max="3000" :controls="false" size="small"/>
+                  <el-input-number v-model="resultSvgExportConfig.width" :min="300" :max="3000" :controls="false" size="small" />
                   <span class="size-unit" style="margin-left: 5px;">px</span>
                 </div>
 
                 <div class="size-input-group" style="display: flex; align-items: center; width: 48%;">
                   <span class="size-label" style=" text-align: left;">高　　　度:</span>
-                  <el-input-number v-model="resultSvgExportConfig.height" :min="200" :max="2000" :controls="false" size="small"/>
+                  <el-input-number v-model="resultSvgExportConfig.height" :min="200" :max="2000" :controls="false" size="small" />
                   <span class="size-unit" style="margin-left: 5px;">px</span>
                 </div>
               </div>
             </el-form-item>
-            
+
             <!-- 字体大小设置 -->
             <el-form-item label="字体大小" class="font-size-container">
               <div style="width: 100%;">
@@ -538,7 +533,7 @@
               </div>
             </el-form-item>
 
-            
+
           </el-form>
         </div>
 
@@ -567,7 +562,7 @@
 import { ref, computed, watch, onMounted, reactive, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import { Upload, Refresh } from '@element-plus/icons-vue'
-import { ElMessage} from 'element-plus'
+import { ElMessage } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
 import 'highcharts/modules/exporting';
@@ -920,7 +915,7 @@ const initSvgExportConfig = () => {
 
     // 设置默认导出格式
     svgExportConfig.exportFormat = 'png'
-    
+
     // 设置默认字体大小
     svgExportConfig.titleFontSize = 18
     svgExportConfig.axisTitleFontSize = 18
@@ -1703,7 +1698,7 @@ const startExportSvg = async () => {
       ElMessage.warning('请选择一种导出格式')
       return
     }
-    
+
     // 获取选中的通道
     const channelsToExport = []
     const fileNames = []
@@ -1898,7 +1893,7 @@ const startExportSvg = async () => {
         const fileName = validChannels.length === 1
           ? fileNames[channelsToExport.indexOf(validChannels[0])]
           : `multi_channel_image${frequencyInfo}_${timestamp}`
-        
+
         // 根据选择的格式导出文件
         switch (svgExportConfig.exportFormat) {
           case 'png':
@@ -1971,7 +1966,7 @@ const initResultSvgExportConfig = () => {
 
   // 设置默认导出格式
   resultSvgExportConfig.exportFormat = 'png'
-  
+
   // 设置默认字体大小
   resultSvgExportConfig.titleFontSize = 18
   resultSvgExportConfig.axisTitleFontSize = 18
@@ -1987,7 +1982,7 @@ const startExportResultSvg = async () => {
       ElMessage.warning('请选择一种导出格式')
       return
     }
-    
+
     // 获取计算结果数据
     const calculationResult = store.state.CalculateResult
     if (!calculationResult) {
@@ -2206,10 +2201,10 @@ const startExportResultSvg = async () => {
             // 清理背景
             ctx.fillStyle = '#ffffff'
             ctx.fillRect(0, 0, resultSvgExportConfig.width, resultSvgExportConfig.height)
-            
+
             // 绘制图表
             ctx.drawImage(img, 0, 0, resultSvgExportConfig.width, resultSvgExportConfig.height)
-            
+
             // 转换为对应格式的blob
             canvas.toBlob(blob => {
               if (resultSvgExportConfig.exportFormat === 'png') {
@@ -2218,8 +2213,8 @@ const startExportResultSvg = async () => {
                 result.jpg = blob
               }
               resolve()
-            }, resultSvgExportConfig.exportFormat === 'png' ? 'image/png' : 'image/jpeg', 
-               resultSvgExportConfig.exportFormat === 'jpg' ? 0.9 : 1)
+            }, resultSvgExportConfig.exportFormat === 'png' ? 'image/png' : 'image/jpeg',
+              resultSvgExportConfig.exportFormat === 'jpg' ? 0.9 : 1)
           }
           img.onerror = reject
           img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(serializedSvg)
@@ -2732,20 +2727,22 @@ onBeforeUnmount(() => {
     max-height: 650px;
     overflow-y: auto;
   }
-  
+
   :deep(.el-dialog) {
-    margin-top: 5vh !important; /* 将对话框位置上移 */
+    margin-top: 5vh !important;
+    /* 将对话框位置上移 */
     margin-bottom: 5vh;
     height: auto;
-    max-height: 90vh; /* 设置最大高度为视口的90% */
+    max-height: 90vh;
+    /* 设置最大高度为视口的90% */
     display: flex;
     flex-direction: column;
   }
-  
+
   :deep(.el-dialog__header) {
     padding-bottom: 15px;
   }
-  
+
   :deep(.el-dialog__footer) {
     padding-top: 15px;
     border-top: 1px solid #e4e7ed;
@@ -2759,18 +2756,23 @@ onBeforeUnmount(() => {
   background-color: #f8f9fa;
   display: flex;
   flex-direction: column;
-  flex-grow: 1; /* 允许元素在容器中增长 */
-  overflow: hidden; /* 防止内容溢出 */
-  
+  flex-grow: 1;
+  /* 允许元素在容器中增长 */
+  overflow: hidden;
+  /* 防止内容溢出 */
+
   :deep(.el-scrollbar) {
-    flex-grow: 1; /* 滚动区域可自动增长 */
+    flex-grow: 1;
+    /* 滚动区域可自动增长 */
     display: flex;
     flex-direction: column;
-    height: 100%; /* 确保滚动区域填充整个容器 */
+    height: 100%;
+    /* 确保滚动区域填充整个容器 */
   }
-  
+
   :deep(.el-scrollbar__wrap) {
-    overflow-x: hidden; /* 隐藏水平滚动条 */
+    overflow-x: hidden;
+    /* 隐藏水平滚动条 */
   }
 }
 
@@ -2802,6 +2804,7 @@ onBeforeUnmount(() => {
 .filename-input-container {
   position: relative;
   width: 180px;
+
   .el-input {
     width: 100%;
   }
@@ -2873,6 +2876,7 @@ onBeforeUnmount(() => {
   border-radius: 4px;
   border: 1px solid #e4e7ed;
   min-height: 70px;
+
   p {
     margin-bottom: 8px;
     color: #606266;
@@ -2886,7 +2890,8 @@ onBeforeUnmount(() => {
 }
 
 .progress-container {
-  margin-top: auto; /* 将进度条区域推到底部 */
+  margin-top: auto;
+  /* 将进度条区域推到底部 */
 }
 
 /* 添加导出模式相关样式 */
