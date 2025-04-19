@@ -114,10 +114,15 @@
                 <el-scrollbar :height="isSecondSectionCollapsed ? '81vh' : '50vh'" :always="false">
                   <keep-alive>
                     <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" />
+                    <MultiChannelSingleRow
+                      ref="MultiChannelRef"
+                      v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0"
+                      :containerWidth="multiChannelContainerWidth"
+                      :containerHeight="multiChannelContainerHeight"
+                    />
                   </keep-alive>
                 </el-scrollbar>
-                <OverviewBrush />
+                <OverviewBrush ref="overviewBrushRef" />
               </div>
             </el-card>
 
@@ -559,7 +564,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, reactive } from 'vue';
+import { ref, computed, watch, onMounted, reactive, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
 import { Upload, Refresh } from '@element-plus/icons-vue'
 import { ElMessage} from 'element-plus'
@@ -671,7 +676,25 @@ onMounted(() => {
 
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
+
+  if (multiChannelContainer.value) {
+    multiChannelResizeObserver = new ResizeObserver(() => {
+      updateMultiChannelSize()
+    })
+    multiChannelResizeObserver.observe(multiChannelContainer.value)
+    // 首次也要手动算一次
+    nextTick(() => {
+      updateMultiChannelSize()
+    })
+  }
 });
+
+onBeforeUnmount(() => {
+  if (multiChannelResizeObserver && multiChannelContainer.value) {
+    multiChannelResizeObserver.unobserve(multiChannelContainer.value)
+    multiChannelResizeObserver.disconnect()
+  }
+})
 
 const selectButton = (button) => {
   selectedButton.value = button;
@@ -2246,6 +2269,58 @@ const startExportResultSvg = async () => {
     resultSvgExportProgress.isExporting = false
   }
 }
+
+// 用于监听多通道单行视图容器尺寸
+const multiChannelContainer = ref(null)
+const multiChannelContainerWidth = ref(0)
+const multiChannelContainerHeight = ref(0)
+let multiChannelResizeObserver = null
+// 新增：OverviewBrush的ref
+const overviewBrushRef = ref(null)
+
+// 计算可用高度（减去OverviewBrush高度）
+const updateMultiChannelSize = () => {
+  if (multiChannelContainer.value) {
+    const rect = multiChannelContainer.value.getBoundingClientRect()
+    let brushHeight = 0
+    // 获取OverviewBrush真实高度
+    if (overviewBrushRef.value && overviewBrushRef.value.$el) {
+      brushHeight = overviewBrushRef.value.$el.offsetHeight || 0
+    }
+    multiChannelContainerWidth.value = rect.width
+    multiChannelContainerHeight.value = rect.height - brushHeight
+  }
+}
+
+onMounted(() => {
+  // ...原有代码...
+  if (multiChannelContainer.value) {
+    multiChannelResizeObserver = new ResizeObserver(() => {
+      updateMultiChannelSize()
+    })
+    multiChannelResizeObserver.observe(multiChannelContainer.value)
+    // 首次也要手动算一次
+    nextTick(() => {
+      updateMultiChannelSize()
+    })
+  }
+})
+
+watch(
+  () => [multiChannelContainer.value, overviewBrushRef.value],
+  () => {
+    nextTick(() => {
+      updateMultiChannelSize()
+    })
+  }
+)
+
+onBeforeUnmount(() => {
+  if (multiChannelResizeObserver && multiChannelContainer.value) {
+    multiChannelResizeObserver.unobserve(multiChannelContainer.value)
+    multiChannelResizeObserver.disconnect()
+  }
+})
 </script>
 
 <style scoped lang="scss">

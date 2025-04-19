@@ -291,7 +291,7 @@ const isRenderingLocked = ref(false);
 const isUpdatingSampling = ref(false);
 
 // 引入Web Worker
-const DataProcessorWorker = new URL('@/workers/dataProcessor.js', import.meta.url);
+const DataProcessorWorker = new URL('@/workers/MultiChannelSingleRowDataProcessor.js', import.meta.url);
 let dataWorker = null;
 if (window.Worker) {
   dataWorker = new Worker(DataProcessorWorker, { type: 'module' });
@@ -2129,7 +2129,7 @@ const drawCombinedChart = () => {
     });
   } catch (error) {
     // console.error('Error drawing combined chart:', error);
-    ElMessage.error(`绘制图表时出错: ${error.message}`);
+    // ElMessage.error(`绘制图表时出错: ${error.message}`);
 
     // 确保在出错时也标记为完成
     renderingState.completed = true;
@@ -2162,6 +2162,27 @@ onUnmounted(() => {
     chartLegendObserver.value.disconnect();
   }
 });
+
+// 新增props定义
+const props = defineProps({
+  containerWidth: { type: Number, default: 0 },
+  containerHeight: { type: Number, default: 0 }
+})
+
+// 在setup内添加watch监听props变化
+watch(
+  () => [props.containerWidth, props.containerHeight],
+  ([newWidth, newHeight]) => {
+    if (newWidth > 0 && newHeight > 0) {
+      const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart')
+      if (chart) {
+        chart.setSize(newWidth, newHeight)
+        chart.reflow()
+      }
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 

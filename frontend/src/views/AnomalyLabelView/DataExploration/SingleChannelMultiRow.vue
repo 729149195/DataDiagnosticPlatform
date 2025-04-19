@@ -229,7 +229,7 @@ watch(() => store.state.anomalies, (newAnomalies) => {
 let channelDataWorker = null;
 if (window.Worker) {
   if (!window._channelDataWorkerInstance) {
-    window._channelDataWorkerInstance = new Worker(new URL('./channelDataWorker.js', import.meta.url), { type: 'module' });
+    window._channelDataWorkerInstance = new Worker(new URL('@/workers/SingleChannelMultiRowDataWorker.js', import.meta.url), { type: 'module' });
   }
   channelDataWorker = window._channelDataWorkerInstance;
 }
