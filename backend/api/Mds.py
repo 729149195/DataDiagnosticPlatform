@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from MDSplus import Tree, mdsExceptions, Connection # type: ignore
+from MDSplus import Tree, mdsExceptions, Connection
 
 def judge_data(npary):
     """ 判断MDSplus返回数据是否是一维数据 """
@@ -174,6 +174,7 @@ class MdsTree:
         if isSetTime:
             self.setTimeContext(begin, end, delta)
         channel_name = self.renameChaName(channel_name)
+        print(channel_name)
         try:
             data_x = self.tree.getNode(channel_name).dim_of().data()
             data_y = self.tree.getNode(channel_name).data()

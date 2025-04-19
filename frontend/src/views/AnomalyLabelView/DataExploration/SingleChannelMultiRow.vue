@@ -2380,35 +2380,21 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
       renderingStates[channelKey] = 0;
     });
 
-    // 1. 并发获取所有通道数据
-    const channelDataResults = await Promise.all(
-      channelsToRender.map(channel => fetchChannelData(channel, forceRenderAll))
-    );
-
-    // 2. 分帧批量渲染（每帧渲染2条通道）
-    const batchSize = 2;
-    let index = 0;
-    function renderNextBatch() {
-      const batch = channelsToRender.slice(index, index + batchSize);
-      batch.forEach(async (channel, i) => {
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const data = channelDataResults[index + i];
-        if (!data) return;
-        await processChannelData(data, channel);
-        renderedChannels.value.add(channelKey);
-        requestAnimationFrame(() => {
-          const chart = window.chartInstances?.[channelKey];
-          if (chart) {
-            adjustColorPickerPosition(chart, channel);
-          }
-        });
+    // 顺序请求和渲染每个通道
+    for (let i = 0; i < channelsToRender.length; i++) {
+      const channel = channelsToRender[i];
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      const data = await fetchChannelData(channel, forceRenderAll);
+      if (!data) continue;
+      await processChannelData(data, channel);
+      renderedChannels.value.add(channelKey);
+      requestAnimationFrame(() => {
+        const chart = window.chartInstances?.[channelKey];
+        if (chart) {
+          adjustColorPickerPosition(chart, channel);
+        }
       });
-      index += batchSize;
-      if (index < channelsToRender.length) {
-        requestAnimationFrame(renderNextBatch);
-      }
     }
-    renderNextBatch();
 
     performance.mark('Total Render Time-end');
     performance.measure('Total Render Time',

@@ -302,7 +302,10 @@ def get_channel_data(request, channel_key=None):
                 logs.append(f"创建MdsTree对象耗时: {time.time() - tree_start_time:.2f}秒")
                 
                 data_start_time = time.time()
-                data_x, data_y, unit = tree.getData(channel_name)
+                if channel_name[:2] == 'MP' or channel_name[:4] == 'FLUX':
+                    data_x, data_y, unit = tree.getData(channel_name, -7, 5)
+                else:
+                    data_x, data_y, unit = tree.getData(channel_name)
                 logs.append(f"获取数据耗时: {time.time() - data_start_time:.2f}秒")
                 logs.append(f"原始数据量: X轴 {len(data_x)} 点, Y轴 {len(data_y)} 点")
                 
