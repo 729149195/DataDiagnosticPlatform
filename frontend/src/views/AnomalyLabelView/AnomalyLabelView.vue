@@ -1591,48 +1591,47 @@ const startExportData = async () => {
     // 获取通道数据并添加到zip
     const missingChannels = []
 
-    for (let i = 0; i < channelsToExport.length; i++) {
-      const channel = channelsToExport[i]
-      const fileName = fileNames[i]
-
-      // 更新进度
-      exportProgress.current = i + 1
-      exportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
-      exportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
-
-      try {
-        // 根据频率模式设置参数
-        const params = { channel }
-
-        if (exportConfig.frequencyMode === 'original') {
-          params.sample_mode = 'full'
-        } else if (exportConfig.frequencyMode === 'custom') {
-          params.sample_mode = 'downsample'  // 修改为downsample，后端只支持full和downsample
-          params.sample_freq = exportConfig.customFrequency // 使用sample_freq参数传递自定义频率
-        }
-
-        // 获取通道数据
-        const data = await store.dispatch('fetchChannelData', params)
-
-        if (data) {
-          // 添加到zip
-          const jsonData = JSON.stringify(data, null, 2)
-          zip.file(`${fileName}.json`, jsonData)
-        } else {
-          missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
-        }
-      } catch (error) {
-        console.error(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error)
-        missingChannels.push(`${channel.channel_name}_${channel.shot_number}`)
+    // --- 并发请求所有通道数据 ---
+    // 构造请求参数数组
+    const fetchParamsArr = channelsToExport.map(channel => {
+      const params = { channel };
+      if (exportConfig.frequencyMode === 'original') {
+        params.sample_mode = 'full';
+      } else if (exportConfig.frequencyMode === 'custom') {
+        params.sample_mode = 'downsample';
+        params.sample_freq = exportConfig.customFrequency;
       }
+      return params;
+    });
 
-      // 等待一点时间以更新UI
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
+    // 并发请求所有通道数据
+    const results = await Promise.all(
+      fetchParamsArr.map((params, i) =>
+        store.dispatch('fetchChannelData', params)
+          .then(data => ({ data, index: i }))
+          .catch(error => {
+            missingChannels.push(`${channelsToExport[i].channel_name}_${channelsToExport[i].shot_number}`);
+            return { data: null, index: i };
+          })
+      )
+    );
+
+    // 处理结果，写入zip
+    results.forEach(({ data, index }, i) => {
+      exportProgress.current = i + 1;
+      exportProgress.currentChannel = `${channelsToExport[index].channel_name}_${channelsToExport[index].shot_number}`;
+      exportProgress.percentage = Math.floor((i / channelsToExport.length) * 100);
+      if (data) {
+        const jsonData = JSON.stringify(data, null, 2);
+        zip.file(`${fileNames[index]}.json`, jsonData);
+      } else {
+        // 已在catch中统计missingChannels
+      }
+    });
 
     // 完成下载阶段
-    exportProgress.percentage = 100
-    await new Promise(resolve => setTimeout(resolve, 500))
+    exportProgress.percentage = 100;
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     // 开始打包阶段
     exportProgress.stage = 'packaging'
@@ -1736,32 +1735,29 @@ const startExportSvg = async () => {
     }
 
     // 下载所有需要的通道数据
-    const channelDataMap = new Map()
-    for (let i = 0; i < channelsToExport.length; i++) {
-      const channel = channelsToExport[i]
+    const fetchParamsArr = channelsToExport.map(channel => ({
+      channel,
+      ...frequencyParams
+    }));
 
-      // 更新进度
-      svgExportProgress.current = i + 1
-      svgExportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`
-      svgExportProgress.percentage = Math.floor((i / channelsToExport.length) * 100)
+    const results = await Promise.all(
+      fetchParamsArr.map((params, i) =>
+        store.dispatch('fetchChannelData', params)
+          .then(data => ({ data, channel: channelsToExport[i] }))
+          .catch(error => {
+            ElMessage.warning(`获取通道 ${channelsToExport[i].channel_name}_${channelsToExport[i].shot_number} 数据失败，将跳过此通道`)
+            return { data: null, channel: channelsToExport[i] };
+          })
+      )
+    );
 
-      try {
-        // 获取通道数据
-        const data = await store.dispatch('fetchChannelData', {
-          channel,
-          ...frequencyParams
-        })
-
-        // 存储数据以便后续渲染使用
-        channelDataMap.set(channel, data)
-      } catch (error) {
-        console.error(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error)
-        ElMessage.warning(`获取通道 ${channel.channel_name}_${channel.shot_number} 数据失败，将跳过此通道`)
-      }
-
-      // 等待一点时间以更新UI
-      await new Promise(resolve => setTimeout(resolve, 100))
-    }
+    const channelDataMap = new Map();
+    results.forEach(({ data, channel }, i) => {
+      svgExportProgress.current = i + 1;
+      svgExportProgress.currentChannel = `${channel.channel_name}_${channel.shot_number}`;
+      svgExportProgress.percentage = Math.floor((i / channelsToExport.length) * 100);
+      if (data) channelDataMap.set(channel, data);
+    });
 
     // 完成下载阶段，进入渲染阶段
     svgExportProgress.percentage = 100
