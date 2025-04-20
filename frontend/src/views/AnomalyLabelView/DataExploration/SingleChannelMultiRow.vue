@@ -386,23 +386,45 @@ const isActive = ref(true);
 // 新增：记录激活时是否需要补渲染
 const needRenderOnActivate = ref(false);
 
+// 保存上一次的selectedChannels和sampling快照
+const lastSelectedChannels = ref(JSON.stringify(toRaw(selectedChannels.value)));
+const lastSampling = ref(sampling.value);
+
+const samplingVersion = computed(() => store.state.samplingVersion);
+const lastSamplingVersion = ref(samplingVersion.value);
+
 onActivated(() => {
-  isActive.value = true;
-  nextTick(() => {
-    if (window.chartInstances) {
-      Object.values(window.chartInstances).forEach(chart => {
-        if (chart && typeof chart.reflow === 'function') {
-          chart.reflow();
-        }
-      });
-    }
-    // 只有有未渲染通道时才补渲染
-    const unrendered = selectedChannels.value.filter(ch => !renderedChannels.value.has(`${ch.channel_name}_${ch.shot_number}`));
-    if (needRenderOnActivate.value && unrendered.length > 0) {
+  if (samplingVersion.value !== lastSamplingVersion.value) {
+    nextTick(() => {
       renderCharts();
-      needRenderOnActivate.value = false;
-    }
-  });
+    });
+    lastSamplingVersion.value = samplingVersion.value;
+    // 这里也可以顺便更新lastSelectedChannels
+    lastSelectedChannels.value = JSON.stringify(toRaw(selectedChannels.value));
+    lastSampling.value = sampling.value;
+  }
+  isActive.value = true;
+  // 只有当selectedChannels或sampling发生变化时才重绘
+  const currentChannels = JSON.stringify(toRaw(selectedChannels.value));
+  const currentSampling = sampling.value;
+  if (currentChannels !== lastSelectedChannels.value || currentSampling !== lastSampling.value) {
+    nextTick(() => {
+      renderCharts();
+    });
+    lastSelectedChannels.value = currentChannels;
+    lastSampling.value = currentSampling;
+  } else {
+    // 只做reflow
+    nextTick(() => {
+      if (window.chartInstances) {
+        Object.values(window.chartInstances).forEach(chart => {
+          if (chart && typeof chart.reflow === 'function') {
+            chart.reflow();
+          }
+        });
+      }
+    });
+  }
 });
 onDeactivated(() => {
   isActive.value = false;

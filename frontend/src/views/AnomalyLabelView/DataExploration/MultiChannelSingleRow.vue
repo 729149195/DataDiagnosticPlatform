@@ -136,6 +136,10 @@ const channelDataCache = computed(() => store.state.channelDataCache); // 添加
 const sampling = computed(() => store.state.sampling);
 const sampleRate = ref(store.state.sampling);
 
+// 保存上一次的selectedChannels和sampling快照
+const lastSelectedChannels = ref(JSON.stringify(toRaw(selectedChannels.value)));
+const lastSampling = ref(sampling.value);
+
 // 添加 updateChartColor 函数，直接更新图表颜色而不触发重绘
 const updateChartColor = (channel, newColor) => {
   if (!channel || !newColor) return;
@@ -2155,14 +2159,15 @@ const isActive = ref(true);
 const isChartReady = ref(false);
 
 onActivated(() => {
-  isActive.value = true;
-  nextTick(() => {
-    // 只做 reflow，不做 renderCharts
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (chart && typeof chart.reflow === 'function') {
-      chart.reflow();
-    }
-  });
+  const currentChannels = JSON.stringify(toRaw(selectedChannels.value));
+  const currentSampling = sampling.value;
+  if (currentChannels !== lastSelectedChannels.value || currentSampling !== lastSampling.value) {
+    nextTick(() => {
+      renderCharts();
+    });
+    lastSelectedChannels.value = currentChannels;
+    lastSampling.value = currentSampling;
+  }
 });
 onDeactivated(() => {
   isActive.value = false;

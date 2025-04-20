@@ -96,6 +96,7 @@ const store = createStore({
         progress: 0
       },
       queryPattern: null,
+      samplingVersion: 0,
     };
   },
   getters: {
@@ -142,6 +143,7 @@ const store = createStore({
     },
     setSampling(state, value) {
       state.sampling = value;
+      state.samplingVersion++;
     },
     setSmoothness(state, value) {
       state.smoothness = value;
