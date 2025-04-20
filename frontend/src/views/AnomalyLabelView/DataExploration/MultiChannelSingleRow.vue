@@ -2183,6 +2183,344 @@ watch(
   },
   { immediate: true }
 )
+
+// ========== 新增全局变量 ==========
+const chartInstance = ref(null); // 保存 Highcharts 实例
+const loadedChannels = ref(new Set()); // 已加载通道集合
+
+// ========== 初始化图表（只做一次） ==========
+function initChart() {
+  if (chartInstance.value) return;
+  chartInstance.value = Highcharts.chart('combined-chart', {
+    chart: {
+      type: 'line',
+      zoomType: isBoxSelect.value ? 'x' : 'xy',
+      animation: false,
+      height: mainChartDimensions.value.height,
+      events: {
+        // 保留原有 selection/click 事件
+        selection: function (event) {
+          // ...原有 selection 事件代码...
+          if (event.resetSelection) {
+            if (brush_begin.value && brush_end.value) {
+              xDomains.value.global = [parseFloat(brush_begin.value), parseFloat(brush_end.value)];
+              const padding = 0.05;
+              const yMinWithPadding = -1 - padding;
+              const yMaxWithPadding = 1 + padding;
+              originalDomains.value.global = {
+                x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
+                y: [yMinWithPadding, yMaxWithPadding]
+              };
+              this.xAxis[0].setExtremes(
+                parseFloat(brush_begin.value),
+                parseFloat(brush_end.value),
+                false
+              );
+              this.yAxis[0].setExtremes(yMinWithPadding, yMaxWithPadding, true);
+              setTimeout(() => {
+                calculateChartHeight();
+                this.reflow();
+              }, 10);
+            }
+          } else if (event.xAxis) {
+            if (isBoxSelect.value) {
+              const [x0, x1] = [event.xAxis[0].min, event.xAxis[0].max];
+              const startX = Math.min(x0, x1);
+              const endX = Math.max(x0, x1);
+              if (Math.abs(endX - startX) < 0.001) {
+                return false;
+              }
+              const tempAnomaly = {
+                id: `temp_${Date.now()}`,
+                startX: startX,
+                endX: endX,
+                anomalyCategory: '',
+                anomalyDiagnosisName: '',
+                anomalyDescription: '',
+                isStored: false
+              };
+              Object.keys(currentAnomaly).forEach(key => {
+                delete currentAnomaly[key];
+              });
+              Object.assign(currentAnomaly, tempAnomaly);
+              selectedChannelForAnnotation.value = '';
+              const chart = this;
+              chart.xAxis[0].addPlotBand({
+                id: `temp-band-${tempAnomaly.id}`,
+                from: tempAnomaly.startX,
+                to: tempAnomaly.endX,
+                color: 'rgba(255, 165, 0, 0.2)',
+                borderColor: 'orange',
+                borderWidth: 1,
+                zIndex: 5,
+                label: {
+                  text: `(${tempAnomaly.startX.toFixed(3)} - ${tempAnomaly.endX.toFixed(3)})`,
+                  align: 'center',
+                  verticalAlign: 'top',
+                  y: -15,
+                  style: {
+                    color: '#ff8c00',
+                    fontWeight: 'bold',
+                    fontSize: '12px'
+                  }
+                }
+              });
+              const anomalyEndX = chart.xAxis[0].toPixels(tempAnomaly.endX);
+              const buttonWidth = 12;
+              const buttonHeight = 12;
+              const buttonX = anomalyEndX - buttonWidth - 5;
+              const buttonY = chart.chartHeight / 10;
+              const deleteButton = chart.renderer.button(
+                '×',
+                buttonX - 2,
+                buttonY - buttonWidth * 2.8,
+                function () {
+                  chart.xAxis[0].removePlotBand(`temp-band-${tempAnomaly.id}`);
+                  showAnomalyForm.value = false;
+                  Object.keys(currentAnomaly).forEach(key => {
+                    delete currentAnomaly[key];
+                  });
+                  this.destroy();
+                  const editBtn = document.querySelector(`.edit-button-${tempAnomaly.id}`);
+                  if (editBtn) {
+                    editBtn.remove();
+                  }
+                },
+                {
+                  fill: '#f56c6c',
+                  style: {
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    textAlign: 'center',
+                    lineHeight: '24px',
+                    paddingTop: '0px',
+                    paddingLeft: '0px'
+                  },
+                  r: 6,
+                  width: buttonWidth,
+                  height: buttonHeight,
+                  zIndex: 999
+                }
+              )
+                .attr({
+                  'class': `delete-button-${tempAnomaly.id}`,
+                  'zIndex': 999
+                })
+                .css({
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                })
+                .add();
+              const editButton = chart.renderer.button(
+                '✎',
+                buttonX - 2,
+                buttonY,
+                function () {
+                  showAnomalyForm.value = true;
+                },
+                {
+                  fill: '#409eff',
+                  style: {
+                    color: 'white',
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    textAlign: 'center',
+                    lineHeight: '24px',
+                    paddingTop: '0px',
+                    paddingLeft: '0px'
+                  },
+                  r: 6,
+                  width: buttonWidth,
+                  height: buttonHeight,
+                  zIndex: 999
+                }
+              )
+                .attr({
+                  'class': `edit-button-${tempAnomaly.id}`,
+                  'zIndex': 999
+                })
+                .css({
+                  cursor: 'pointer',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                })
+                .add();
+              showAnomalyForm.value = true;
+              return false;
+            } else if (!isBoxSelect.value) {
+              const newXDomain = [event.xAxis[0].min, event.xAxis[0].max];
+              const newYDomain = [event.yAxis[0].max, event.yAxis[0].min];
+              xDomains.value.global = newXDomain;
+              originalDomains.value.global = {
+                x: newXDomain,
+                y: newYDomain
+              };
+              this.xAxis[0].setExtremes(newXDomain[0], newXDomain[1], false);
+              this.yAxis[0].setExtremes(newYDomain[1], newYDomain[0], true);
+              setTimeout(() => {
+                calculateChartHeight();
+                this.reflow();
+              }, 10);
+            }
+          }
+          return false;
+        },
+        click: function (event) {
+          const now = new Date().getTime();
+          const lastClick = this.lastClickTime || 0;
+          this.lastClickTime = now;
+          if (now - lastClick < 300) {
+            if (brush_begin.value && brush_end.value) {
+              const beginValue = parseFloat(brush_begin.value);
+              const endValue = parseFloat(brush_end.value);
+              const padding = 0.05;
+              const yMinWithPadding = -1 - padding;
+              const yMaxWithPadding = 1 + padding;
+              this.xAxis[0].setExtremes(beginValue, endValue);
+              this.yAxis[0].setExtremes(yMinWithPadding, yMaxWithPadding);
+              xDomains.value.global = [beginValue, endValue];
+              originalDomains.value.global = {
+                x: [beginValue, endValue],
+                y: [yMinWithPadding, yMaxWithPadding]
+              };
+              setTimeout(() => {
+                calculateChartHeight();
+                this.reflow();
+                this.update({
+                  chart: {
+                    zoomType: isBoxSelect.value ? 'x' : 'xy'
+                  }
+                }, false);
+              }, 10);
+            }
+          }
+        }
+      }
+    },
+    // 其它配置项保持不变
+    xAxis: {
+      // ...原有 xAxis 配置...
+    },
+    yAxis: {
+      // ...原有 yAxis 配置...
+    },
+    tooltip: { enabled: false },
+    legend: { enabled: false },
+    plotOptions: {
+      series: {
+        animation: false,
+        turboThreshold: 0,
+        states: {
+          inactive: { opacity: 1 },
+          hover: { enabled: false },
+          point: { events: { click: null } },
+          stickyTracking: false,
+          boostThreshold: 5000,
+          connectNulls: true,
+          dataGrouping: { enabled: false },
+          gapSize: 0,
+          cropThreshold: 100000,
+          findNearestPointBy: 'x'
+        },
+        line: {
+          lineWidth: 1.5,
+          connectNulls: true,
+          marker: { enabled: false }
+        }
+      },
+      line: {
+        lineWidth: 1.5,
+        connectNulls: true,
+        marker: { enabled: false }
+      }
+    },
+    credits: { enabled: false },
+    series: [],
+    exporting: { enabled: false },
+    accessibility: { enabled: false }
+  });
+}
+
+// ========== 增量添加/更新系列 ==========
+function addOrUpdateChannelSeries(channel, points) {
+  const chart = chartInstance.value;
+  if (!chart) return;
+  const seriesName = `${channel.channel_name}_${channel.shot_number}`;
+  const exist = chart.series.find(s => s.name === seriesName);
+  if (exist) {
+    exist.setData(points, false);
+  } else {
+    chart.addSeries({
+      name: seriesName,
+      data: points,
+      color: channel.color,
+      lineWidth: 1.5,
+      marker: { enabled: false }
+    }, false);
+  }
+  chart.redraw();
+}
+
+// ========== 异步加载每个通道数据并增量渲染 ==========
+async function loadAndRenderChannel(channel) {
+  const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+  let data = channelDataCache.value[channelKey];
+  if (!data) {
+    data = await store.dispatch('fetchChannelData', { channel, forceRefresh: false });
+  }
+  // 这里可按你原有的 worker 处理逻辑处理数据
+  const x = data.X_value;
+  const y = data.Y_value;
+  const points = x.map((xi, i) => [xi, y[i]]);
+  addOrUpdateChannelSeries(channel, points);
+  loadedChannels.value.add(channelKey);
+  loadingState.progress = Math.round(loadedChannels.value.size / selectedChannels.value.length * 100);
+  if (loadedChannels.value.size === selectedChannels.value.length) {
+    renderingState.completed = true;
+    loadingState.isLoading = false;
+    loadingState.progress = 100;
+  }
+}
+
+// ========== 通道变动时的处理 ==========
+watch(selectedChannels, (newChannels, oldChannels) => {
+  if (newChannels.length === 0) {
+    if (chartInstance.value) {
+      chartInstance.value.destroy();
+      chartInstance.value = null;
+    }
+    loadedChannels.value.clear();
+    return;
+  }
+  const newKeys = newChannels.map(ch => `${ch.channel_name}_${ch.shot_number}`);
+  const oldKeys = oldChannels.map(ch => `${ch.channel_name}_${ch.shot_number}`);
+  const added = newKeys.filter(k => !oldKeys.includes(k));
+  const removed = oldKeys.filter(k => !newKeys.includes(k));
+  if (chartInstance.value) {
+    removed.forEach(key => {
+      const s = chartInstance.value.series.find(s => s.name === key);
+      if (s) s.remove(false);
+      loadedChannels.value.delete(key);
+    });
+    chartInstance.value.redraw();
+  }
+  added.forEach(key => {
+    const channel = newChannels.find(ch => `${ch.channel_name}_${ch.shot_number}` === key);
+    if (channel) loadAndRenderChannel(channel);
+  });
+  loadingState.progress = Math.round(loadedChannels.value.size / newChannels.length * 100);
+});
+
+// ========== 首次挂载时初始化并加载所有通道 ==========
+onMounted(() => {
+  initChart();
+  loadedChannels.value.clear();
+  selectedChannels.value.forEach(channel => {
+    loadAndRenderChannel(channel);
+  });
+  loadingState.isLoading = true;
+  renderingState.completed = false;
+});
 </script>
 
 
