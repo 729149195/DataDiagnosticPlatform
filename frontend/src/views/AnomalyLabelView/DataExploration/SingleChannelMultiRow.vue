@@ -396,8 +396,9 @@ onActivated(() => {
         }
       });
     }
-    // 如果有新通道待渲染，补一次渲染
-    if (needRenderOnActivate.value) {
+    // 只有有未渲染通道时才补渲染
+    const unrendered = selectedChannels.value.filter(ch => !renderedChannels.value.has(`${ch.channel_name}_${ch.shot_number}`));
+    if (needRenderOnActivate.value && unrendered.length > 0) {
       renderCharts();
       needRenderOnActivate.value = false;
     }
@@ -407,12 +408,16 @@ onDeactivated(() => {
   isActive.value = false;
 });
 
-// 修改所有watch和异步渲染入口，增加isActive判断
-
 // 监听selectedChannels的变化，处理移除的通道
 watch(selectedChannels, (newChannels, oldChannels) => {
   if (!isActive.value) {
-    needRenderOnActivate.value = true;
+    // 只有有新通道时才设置 needRenderOnActivate
+    const oldChannelKeys = new Set((oldChannels || []).map(ch => `${ch.channel_name}_${ch.shot_number}`));
+    const newChannelKeys = new Set(newChannels.map(ch => `${ch.channel_name}_${ch.shot_number}`));
+    const added = [...newChannelKeys].filter(k => !oldChannelKeys.has(k));
+    if (added.length > 0) {
+      needRenderOnActivate.value = true;
+    }
     return;
   }
   if (!oldChannels) { return; }

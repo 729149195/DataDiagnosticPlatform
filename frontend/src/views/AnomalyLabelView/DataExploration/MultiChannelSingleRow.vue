@@ -74,7 +74,7 @@
 import Highcharts from 'highcharts';
 import 'highcharts/modules/accessibility';
 import debounce from 'lodash/debounce';
-import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted, toRaw } from 'vue';
+import { ref, watch, computed, onMounted, nextTick, reactive, onUnmounted, toRaw, onActivated, onDeactivated } from 'vue';
 import { ElMessage, ElEmpty, ElProgress, ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElSelect, ElOption } from 'element-plus';
 import { useStore } from 'vuex';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
@@ -2444,7 +2444,10 @@ function initChart() {
 // ========== 增量添加/更新系列 ==========
 function addOrUpdateChannelSeries(channel, points) {
   const chart = chartInstance.value;
-  if (!chart) return;
+  if (!chart) {
+    // 图表未初始化，直接跳过，避免报错
+    return;
+  }
   const seriesName = `${channel.channel_name}_${channel.shot_number}`;
   const exist = chart.series.find(s => s.name === seriesName);
   if (exist) {
@@ -2521,6 +2524,48 @@ onMounted(() => {
   loadingState.isLoading = true;
   renderingState.completed = false;
 });
+
+// 新增：激活标志和渲染完成标志
+const isActive = ref(true);
+const isChartReady = ref(false);
+
+onActivated(() => {
+  isActive.value = true;
+  nextTick(() => {
+    // 只做 reflow，不做 renderCharts
+    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
+    if (chart && typeof chart.reflow === 'function') {
+      chart.reflow();
+    }
+  });
+});
+onDeactivated(() => {
+  isActive.value = false;
+});
+
+// 首次渲染后设置 isChartReady
+watch(
+  () => renderingState.completed,
+  (completed) => {
+    if (completed) {
+      isChartReady.value = true;
+    }
+  }
+);
+
+// 优化 watch(selectedChannels, ...) 只在数据变化时渲染
+watch(selectedChannels, (newChannels, oldChannels) => {
+  if (!isActive.value) return;
+  // 只有通道真正变化时才重新渲染
+  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
+    channelsData.value = [];
+    exposeData.value = [];
+    nextTick().then(() => {
+      renderCharts();
+    });
+  }
+}, { deep: true });
+
 </script>
 
 
