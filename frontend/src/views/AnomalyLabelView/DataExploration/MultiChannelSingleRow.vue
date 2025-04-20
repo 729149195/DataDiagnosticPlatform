@@ -23,7 +23,7 @@
           <el-progress type="circle" :percentage="getProgressPercentage" :stroke-width="6" :status="loadingState.isLoading ? 'warning' : ''" :color="!loadingState.isLoading ? '#409EFF' : ''">
             <template #default>
               <div class="progress-info">
-                <div class="progress-text">{{ !loadingState.isLoading ? '图表渲染中' : '数据加载中' }}</div>
+                <div class="progress-text">{{ progressStage === 'loading' ? '数据加载中' : '图表渲染中' }}</div>
                 <div class="progress-percentage">{{ getProgressPercentage }}%</div>
               </div>
             </template>
@@ -291,6 +291,14 @@ if (window.Worker) {
   dataWorker = new Worker(DataProcessorWorker, { type: 'module' });
 }
 
+// 定义进度推进函数，目标值和速度可调
+function setProgress(target, speed = 0.5) {
+  if (loadingState.progress < target) {
+    loadingState.progress = Math.min(loadingState.progress + speed, target);
+  }
+}
+
+// 修改 processDataInWorker，支持进度回调
 function processDataInWorker(rawData) {
   return new Promise((resolve, reject) => {
     if (!dataWorker) {
@@ -298,7 +306,12 @@ function processDataInWorker(rawData) {
       return;
     }
     dataWorker.onmessage = (e) => {
+      if (e.data.type === 'progress') {
+        // worker处理进度，e.data.value: 0~1
+        setProgress(60 + 20 * e.data.value, 1);
+      }
       if (e.data.type === 'processedChannels') {
+        setProgress(80, 2);
         resolve(e.data.result);
       }
     };
@@ -307,8 +320,37 @@ function processDataInWorker(rawData) {
   });
 }
 
+// 增加进度阶段状态，区分数据加载和渲染
+const progressStage = ref('loading'); // 'loading' | 'rendering'
+
+// 平滑推进的最大值，随阶段变化
+const progressMax = computed(() => {
+  if (progressStage.value === 'loading') return 60;
+  if (progressStage.value === 'rendering') return 99;
+  return 100;
+});
+
+// 平滑推进定时器
+let progressTimer = null;
+
+// 监听阶段变化，切换推进定时器
+watch(progressStage, (stage) => {
+  if (progressTimer) clearInterval(progressTimer);
+  progressTimer = setInterval(() => {
+    if (loadingState.progress < progressMax.value) {
+      loadingState.progress = Math.min(loadingState.progress + 0.5, progressMax.value);
+    }
+  }, 100);
+});
+
+// 组件卸载时清理定时器
+onUnmounted(() => {
+  if (progressTimer) clearInterval(progressTimer);
+});
+
 // 重构的 renderCharts 函数
 const renderCharts = debounce(async () => {
+  progressStage.value = 'loading';
   if (isRenderingLocked.value) {
     return;
   }
@@ -333,28 +375,26 @@ const renderCharts = debounce(async () => {
       return;
     }
 
-    // 进度条模拟
-    loadingState.progressInterval = setInterval(() => {
-      if (loadingState.isLoading && loadingState.progress < 50) {
-        loadingState.progress = Math.min(loadingState.progress + 0.5, 50);
-      } else if (!loadingState.isLoading && renderingState.isRendering && loadingState.progress < 95) {
-        const renderingIncrement = (95 - 50) / 90;
-        loadingState.progress = Math.min(loadingState.progress + renderingIncrement, 95);
-      }
-    }, 100);
+    // 进度条推进到5%
+    setProgress(5, 2);
 
-    // 收集所有通道原始数据，并获取详细errorData
+    // 数据获取阶段
+    const totalChannels = selectedChannels.value.length;
+    let fetchedChannels = 0;
     const rawChannels = await Promise.all(selectedChannels.value.map(async channel => {
       const cacheKey = `${channel.channel_name}_${channel.shot_number}`;
       let data = channelDataCache.value[cacheKey];
       if (!data) {
         data = await store.dispatch('fetchChannelData', { channel, forceRefresh: false });
       }
-      // 新增：获取详细errorData
+      // 获取详细errorData
       let errorData = [];
       if (channel.errors && channel.errors.length > 0) {
         errorData = await store.dispatch('fetchAllErrorData', channel);
       }
+      // 每获取一个通道数据，进度推进
+      fetchedChannels++;
+      setProgress(5 + 55 * (fetchedChannels / totalChannels), 2);
       // 深拷贝，去除响应式
       return JSON.parse(JSON.stringify({
         ...channel,
@@ -362,13 +402,17 @@ const renderCharts = debounce(async () => {
         errorData
       }));
     }));
+    // 数据获取完毕，直接推进到60%
+    loadingState.progress = 60;
+    progressStage.value = 'rendering';
     const anomalies = JSON.parse(JSON.stringify(store.state.anomalies || {}));
 
-    // 交给worker处理
+    // worker处理阶段，进度由worker回调推进
     const workerResult = await processDataInWorker({
       channels: rawChannels,
       anomalies
     });
+    setProgress(80, 2);
 
     // 更新前端状态
     channelsData.value = workerResult.processedChannels;
@@ -387,11 +431,13 @@ const renderCharts = debounce(async () => {
       x: workerResult.xDomain,
       y: workerResult.yDomain
     };
-    // 进度到50%
-    loadingState.progress = 50;
+    setProgress(85, 2);
     // 渲染图表
     await nextTick();
+    setProgress(90, 2);
     drawCombinedChart();
+    // 渲染完成后，直接推进到100%
+    loadingState.progress = 100;
   } catch (error) {
     ElMessage.error(`加载图表时出错: ${error.message}`);
     loadingState.isLoading = false;
@@ -401,12 +447,13 @@ const renderCharts = debounce(async () => {
       clearInterval(loadingState.progressInterval);
       loadingState.progressInterval = null;
     }
+    // 平滑补齐到100%
     const finalizeProgress = () => {
       const currentProgress = loadingState.progress;
       if (currentProgress < 100) {
-        loadingState.progress = Math.min(currentProgress + 1, 100);
+        loadingState.progress = Math.min(currentProgress + 2, 100);
         if (loadingState.progress < 100) {
-          setTimeout(finalizeProgress, 20);
+          setTimeout(finalizeProgress, 10);
         }
       }
     };
@@ -598,6 +645,7 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 }, { deep: true });
 
 watch(sampling, (newSamplingRate, oldSamplingRate) => {
+  progressStage.value = 'loading';
   // console.log(`[重要] 采样率从 ${oldSamplingRate} kHz 变更为 ${newSamplingRate} kHz，准备刷新数据和图表`);
   sampleRate.value = newSamplingRate;
 
