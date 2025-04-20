@@ -112,17 +112,10 @@
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
                 <el-scrollbar :height="chartAreaHeight" :always="false">
-                  <div ref="chartAreaRef" :style="{height: chartAreaHeight, width: '100%'}">
-                    <keep-alive>
-                      <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
-                      <MultiChannelSingleRow
-                        ref="MultiChannelRef"
-                        v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0"
-                        :containerRef="chartAreaRef"
-                        :height="chartAreaHeight"
-                      />
-                    </keep-alive>
-                  </div>
+                  <keep-alive>
+                    <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" :containerRef="chartAreaRef" :height="chartAreaHeight" />
+                  </keep-alive>
                 </el-scrollbar>
                 <OverviewBrush ref="overviewBrushRef" />
               </div>

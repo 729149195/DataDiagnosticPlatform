@@ -35,7 +35,7 @@
         transition: 'opacity 0.3s ease-in-out',
         position: 'relative'
       }">
-        <div id="combined-chart" ref="chartContainer" style="width: 100%; height: 100%;"></div>
+        <div id="combined-chart" ref="chartContainer" :style="{ width: '100%', height: props.height }"></div>
       </div>
     </div>
     <el-dialog v-if="showAnomalyForm" v-model="showAnomalyForm" title="编辑/修改异常信息">
@@ -2074,7 +2074,8 @@ onUnmounted(() => {
 
 // 新增props定义
 const props = defineProps({
-  containerRef: Object
+  containerRef: Object,
+  height: [String, Number]
 })
 
 // 在setup内添加watch监听props变化
@@ -2204,7 +2205,6 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   position: relative;
-  min-height: 100px;
 }
 
 .legend-container {
