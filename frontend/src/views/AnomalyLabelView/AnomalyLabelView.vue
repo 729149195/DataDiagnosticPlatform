@@ -2312,7 +2312,10 @@ onBeforeUnmount(() => {
   }
 })
 
-const chartAreaHeight = computed(() => isSecondSectionCollapsed.value ? '81vh' : '50vh')
+const chartAreaHeight = computed(() => {
+  // 使用减去一些像素的方式，确保高度略微小于容器，避免滚动条
+  return isSecondSectionCollapsed.value ? 'calc(81vh - 5px)' : 'calc(50vh - 5px)';
+})
 </script>
 
 <style scoped lang="scss">

@@ -35,7 +35,7 @@
         transition: 'opacity 0.3s ease-in-out',
         position: 'relative'
       }">
-        <div id="combined-chart" ref="chartContainer" :style="{ width: '100%', height: props.height }"></div>
+        <div id="combined-chart" ref="chartContainer" :style="{ width: '100%', height: typeof props.height === 'string' ? `calc(${props.height} - 5px)` : `${props.height - 5}px` }"></div>
       </div>
     </div>
     <el-dialog v-if="showAnomalyForm" v-model="showAnomalyForm" title="编辑/修改异常信息">
