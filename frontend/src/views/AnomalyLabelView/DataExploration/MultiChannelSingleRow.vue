@@ -128,12 +128,6 @@ defineExpose({
   resetProgress
 })
 
-const mainChartDimensions = ref({
-  margin: { top: 30, right: 10, bottom: 80, left: 80 },
-  width: 0,
-  height: 0, // 将会动态计算
-});
-
 // Vuex store
 const store = useStore();
 const selectedChannels = computed(() => store.state.selectedChannels);
@@ -424,58 +418,6 @@ const renderCharts = debounce(async () => {
   }
 }, 300);
 
-// 计算图表高度的函数，减少debounce时间
-const calculateChartHeight = () => {
-  // 获取容器元素
-  const container = document.querySelector('.chart-container');
-  if (!container) return;
-
-  // 获取容器的实际高度
-  const containerHeight = container.clientHeight;
-
-  // 设置图表高度为容器高度减去上下边距，不再使用固定的减去值
-  // 移除了Math.max(300, containerHeight)中的300限制，允许高度随容器变化
-  const newHeight = containerHeight - mainChartDimensions.value.margin.top - mainChartDimensions.value.margin.bottom;
-
-  // 仅当高度有明显变化时才更新，降低阈值以提高响应性
-  if (Math.abs(newHeight - mainChartDimensions.value.height) > 2) {
-    mainChartDimensions.value.height = newHeight;
-
-    // 更新已存在的图表高度
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (chart) {
-      chart.setSize(null, newHeight);
-      chart.redraw();
-    }
-  }
-};
-
-// 添加窗口大小变化的处理函数，减少debounce时间提高响应速度
-const handleResize = debounce(() => {
-  const container = document.querySelector('.chart-container');
-  let containerWidth = 0;
-  let newWidth = 0;
-  if (container) {
-    containerWidth = container.offsetWidth;
-    newWidth = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 70;
-  }
-  requestAnimationFrame(() => {
-    calculateChartHeight();
-    if (containerWidth > 0) {
-      mainChartDimensions.value.width = newWidth;
-    }
-    const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
-    if (chart) {
-      chart.setSize(newWidth, mainChartDimensions.value.height);
-      chart.redraw();
-    } else if (channelsData.value && channelsData.value.length > 0) {
-      drawCombinedChart();
-    }
-  });
-}, 50); // 适当增加debounce时间以减少触发频率
-
-// 创建一个ResizeObserver来监听容器大小变化
-const resizeObserver = ref(null);
 
 // onMounted 生命周期钩子
 onMounted(async () => {
@@ -500,42 +442,10 @@ onMounted(async () => {
 
   // 使用单个requestAnimationFrame避免嵌套
   requestAnimationFrame(() => {
-    const container = document.querySelector('.chart-container');
-    if (container) {
-      const containerWidth = container.offsetWidth;
-
-      // 计算适当的图表高度
-      calculateChartHeight();
-
-      mainChartDimensions.value.width = containerWidth - mainChartDimensions.value.margin.left - mainChartDimensions.value.margin.right + 10;
-    }
-
-    // 只有在有选中通道时才渲染图表
     if (selectedChannels.value.length > 0) {
       renderCharts();
     }
   });
-
-  // 添加窗口大小变化监听
-  window.addEventListener('resize', handleResize);
-
-  // 初始化ResizeObserver，使用更积极的触发策略
-  resizeObserver.value = new ResizeObserver(entries => {
-    // 立即触发resize处理
-    handleResize();
-  });
-
-  // 监听容器大小变化
-  const container = document.querySelector('.chart-container');
-  if (container) {
-    resizeObserver.value.observe(container);
-  }
-
-  // 监听chart-wrapper的大小变化
-  const chartWrapper = document.querySelector('.chart-wrapper');
-  if (chartWrapper) {
-    resizeObserver.value.observe(chartWrapper);
-  }
 
   // 初始化异常数据
   previousAnomalies.value = JSON.parse(JSON.stringify(toRaw(store.state.anomalies)));
@@ -550,17 +460,24 @@ onMounted(async () => {
       }
     }
   });
+
+  // 监听父容器尺寸变化，只做 chart.reflow()
+  if (props.containerRef && props.containerRef.value) {
+    chartResizeObserver = new ResizeObserver(() => {
+      const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
+      if (chart) chart.reflow()
+    })
+    chartResizeObserver.observe(props.containerRef.value)
+    // 初始化时也 reflow 一次
+    nextTick(() => {
+      const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
+      if (chart) chart.reflow()
+    })
+  }
 });
 
 // 在组件卸载时移除监听器
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize);
-
-  // 断开ResizeObserver连接
-  if (resizeObserver.value) {
-    resizeObserver.value.disconnect();
-  }
-
   // 移除键盘事件监听
   window.removeEventListener('keydown', (e) => {
     if (e.key === 'Escape' && isBoxSelect.value) {
@@ -570,6 +487,11 @@ onUnmounted(() => {
       }
     }
   });
+
+  if (chartResizeObserver && props.containerRef && props.containerRef.value) {
+    chartResizeObserver.unobserve(props.containerRef.value)
+    chartResizeObserver.disconnect()
+  }
 });
 
 // 监听selectedChannels变化，当通道列表变化时，可能需要重新选择标注通道
@@ -1338,7 +1260,6 @@ watch(isBoxSelect, (newValue) => {
 
     // 确保图表正确响应尺寸变化
     setTimeout(() => {
-      calculateChartHeight();
       chart.reflow();
       chart.redraw();
     }, 10);
@@ -1616,7 +1537,6 @@ const drawCombinedChart = () => {
         panning: true,
         panKey: 'shift',
         animation: false,
-        height: mainChartDimensions.value.height,
         marginBottom: 80,
         marginTop: 30,
         marginRight: 10,
@@ -1653,7 +1573,6 @@ const drawCombinedChart = () => {
 
                 // 确保图表尺寸正确
                 setTimeout(() => {
-                  calculateChartHeight();
                   this.reflow();
                 }, 10);
               }
@@ -1833,7 +1752,6 @@ const drawCombinedChart = () => {
 
                 // 确保图表尺寸正确
                 setTimeout(() => {
-                  calculateChartHeight();
                   this.reflow();
                 }, 10);
               }
@@ -1871,7 +1789,6 @@ const drawCombinedChart = () => {
 
                 // 确保图表尺寸正确
                 setTimeout(() => {
-                  calculateChartHeight();
                   this.reflow();
                   // 确保缩放类型正确
                   this.update({
@@ -2045,11 +1962,6 @@ const drawCombinedChart = () => {
     nextTick(() => {
       const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
       if (chart) {
-        // 手动设置图表大小，增加一些额外的宽度以填充右侧空间
-        chart.setSize(
-          mainChartDimensions.value.width + 10, // 增加额外宽度
-          mainChartDimensions.value.height
-        );
 
         // 确保正确的缩放类型
         chart.update({
@@ -2058,8 +1970,6 @@ const drawCombinedChart = () => {
           }
         }, false);
 
-        // 确保高度自适应
-        calculateChartHeight();
         chart.reflow();
       }
 
@@ -2165,8 +2075,7 @@ onUnmounted(() => {
 
 // 新增props定义
 const props = defineProps({
-  containerWidth: { type: Number, default: 0 },
-  containerHeight: { type: Number, default: 0 }
+  containerRef: Object
 })
 
 // 在setup内添加watch监听props变化
@@ -2251,6 +2160,30 @@ watch(selectedChannels, (newChannels, oldChannels) => {
   }
 }, { deep: true });
 
+
+let chartResizeObserver = null
+onMounted(() => {
+  // 监听父容器尺寸变化，只做 chart.reflow()
+  if (props.containerRef && props.containerRef.value) {
+    chartResizeObserver = new ResizeObserver(() => {
+      const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
+      if (chart) chart.reflow()
+    })
+    chartResizeObserver.observe(props.containerRef.value)
+    // 初始化时也 reflow 一次
+    nextTick(() => {
+      const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
+      if (chart) chart.reflow()
+    })
+  }
+})
+onUnmounted(() => {
+  if (chartResizeObserver && props.containerRef && props.containerRef.value) {
+    chartResizeObserver.unobserve(props.containerRef.value)
+    chartResizeObserver.disconnect()
+  }
+})
+
 </script>
 
 
@@ -2262,35 +2195,21 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 
 .chart-container {
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
-  /* 改为从顶部开始 */
-  user-select: none;
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  overflow: hidden;
-  /* 防止内容溢出 */
+  position: relative;
+  min-height: 0;
 }
 
 .chart-wrapper {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  height: calc(100% - 40px);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
   position: relative;
   overflow: hidden;
   margin-top: 5px;
-  /* 减少顶部空白 */
-  min-height: 100px;
-  /* 降低最小高度，允许更小的图表高度 */
 }
 
 #combined-chart {
@@ -2298,7 +2217,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
   height: 100%;
   position: relative;
   min-height: 100px;
-  /* 降低最小高度，允许更小的图表高度 */
 }
 
 .legend-container {

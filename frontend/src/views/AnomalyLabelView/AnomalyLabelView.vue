@@ -114,7 +114,7 @@
                 <el-scrollbar :height="isSecondSectionCollapsed ? '81vh' : '50vh'" :always="false">
                   <keep-alive>
                     <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" :containerWidth="multiChannelContainerWidth" :containerHeight="multiChannelContainerHeight" />
+                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" :containerRef="chartAreaRef" />
                   </keep-alive>
                 </el-scrollbar>
                 <OverviewBrush ref="overviewBrushRef" />
@@ -672,22 +672,22 @@ onMounted(() => {
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
 
-  if (multiChannelContainer.value) {
-    multiChannelResizeObserver = new ResizeObserver(() => {
-      updateMultiChannelSize()
+  if (chartAreaRef.value) {
+    chartAreaResizeObserver = new ResizeObserver(() => {
+      updateChartAreaSize()
     })
-    multiChannelResizeObserver.observe(multiChannelContainer.value)
+    chartAreaResizeObserver.observe(chartAreaRef.value)
     // 首次也要手动算一次
     nextTick(() => {
-      updateMultiChannelSize()
+      updateChartAreaSize()
     })
   }
 });
 
 onBeforeUnmount(() => {
-  if (multiChannelResizeObserver && multiChannelContainer.value) {
-    multiChannelResizeObserver.unobserve(multiChannelContainer.value)
-    multiChannelResizeObserver.disconnect()
+  if (chartAreaResizeObserver && chartAreaRef.value) {
+    chartAreaResizeObserver.unobserve(chartAreaRef.value)
+    chartAreaResizeObserver.disconnect()
   }
 })
 
@@ -2266,54 +2266,49 @@ const startExportResultSvg = async () => {
 }
 
 // 用于监听多通道单行视图容器尺寸
-const multiChannelContainer = ref(null)
-const multiChannelContainerWidth = ref(0)
-const multiChannelContainerHeight = ref(0)
-let multiChannelResizeObserver = null
-// 新增：OverviewBrush的ref
+const chartAreaRef = ref(null)
 const overviewBrushRef = ref(null)
 
 // 计算可用高度（减去OverviewBrush高度）
-const updateMultiChannelSize = () => {
-  if (multiChannelContainer.value) {
-    const rect = multiChannelContainer.value.getBoundingClientRect()
+const updateChartAreaSize = () => {
+  if (chartAreaRef.value) {
+    const rect = chartAreaRef.value.getBoundingClientRect()
     let brushHeight = 0
     // 获取OverviewBrush真实高度
     if (overviewBrushRef.value && overviewBrushRef.value.$el) {
       brushHeight = overviewBrushRef.value.$el.offsetHeight || 0
     }
-    multiChannelContainerWidth.value = rect.width
-    multiChannelContainerHeight.value = rect.height - brushHeight
+    chartAreaRef.value.style.height = `${rect.height - brushHeight}px`
   }
 }
 
 onMounted(() => {
   // ...原有代码...
-  if (multiChannelContainer.value) {
-    multiChannelResizeObserver = new ResizeObserver(() => {
-      updateMultiChannelSize()
+  if (chartAreaRef.value) {
+    chartAreaResizeObserver = new ResizeObserver(() => {
+      updateChartAreaSize()
     })
-    multiChannelResizeObserver.observe(multiChannelContainer.value)
+    chartAreaResizeObserver.observe(chartAreaRef.value)
     // 首次也要手动算一次
     nextTick(() => {
-      updateMultiChannelSize()
+      updateChartAreaSize()
     })
   }
 })
 
 watch(
-  () => [multiChannelContainer.value, overviewBrushRef.value],
+  () => [chartAreaRef.value, overviewBrushRef.value],
   () => {
     nextTick(() => {
-      updateMultiChannelSize()
+      updateChartAreaSize()
     })
   }
 )
 
 onBeforeUnmount(() => {
-  if (multiChannelResizeObserver && multiChannelContainer.value) {
-    multiChannelResizeObserver.unobserve(multiChannelContainer.value)
-    multiChannelResizeObserver.disconnect()
+  if (chartAreaResizeObserver && chartAreaRef.value) {
+    chartAreaResizeObserver.unobserve(chartAreaRef.value)
+    chartAreaResizeObserver.disconnect()
   }
 })
 </script>
