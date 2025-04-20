@@ -1,5 +1,5 @@
 <template>
-  <div ref="parentContainer" class="chart-container">
+  <div class="chart-container">
     <div class="legend-container">
       <!-- 移除 LegendComponent，改为直接使用 ChannelColorPicker -->
       <div class="legend" id="channelLegendContainer">
@@ -474,6 +474,8 @@ const handleResize = debounce(() => {
   });
 }, 50); // 适当增加debounce时间以减少触发频率
 
+// 创建一个ResizeObserver来监听容器大小变化
+const resizeObserver = ref(null);
 
 // onMounted 生命周期钩子
 onMounted(async () => {
@@ -548,12 +550,6 @@ onMounted(async () => {
       }
     }
   });
-
-  // 只保留一个observer
-  resizeObserver = new ResizeObserver(updateChartHeight)
-  if (parentContainer.value) resizeObserver.observe(parentContainer.value)
-  if (overviewBrushRef.value && overviewBrushRef.value.$el) resizeObserver.observe(overviewBrushRef.value.$el)
-  nextTick(updateChartHeight)
 });
 
 // 在组件卸载时移除监听器
@@ -574,8 +570,6 @@ onUnmounted(() => {
       }
     }
   });
-
-  if (resizeObserver) resizeObserver.disconnect()
 });
 
 // 监听selectedChannels变化，当通道列表变化时，可能需要重新选择标注通道
@@ -2571,39 +2565,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
     });
   }
 }, { deep: true });
-
-// 1. 在setup顶部添加ref
-const parentContainer = ref(null)
-const overviewBrushRef = ref(null)
-let resizeObserver = null
-
-// 2. 新增高效高度自适应逻辑
-const updateChartHeight = () => {
-  if (!parentContainer.value || !chartContainer.value) return
-  const parentHeight = parentContainer.value.offsetHeight
-  let brushHeight = 0
-  if (overviewBrushRef.value && overviewBrushRef.value.$el) {
-    brushHeight = overviewBrushRef.value.$el.offsetHeight || 0
-  }
-  const chartHeight = Math.max(parentHeight - brushHeight, 100)
-  chartContainer.value.style.height = chartHeight + 'px'
-  // 触发Highcharts自适应
-  const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart')
-  if (chart) chart.reflow()
-}
-
-onMounted(() => {
-  // ... existing code ...
-  // 只保留一个observer
-  resizeObserver = new ResizeObserver(updateChartHeight)
-  if (parentContainer.value) resizeObserver.observe(parentContainer.value)
-  if (overviewBrushRef.value && overviewBrushRef.value.$el) resizeObserver.observe(overviewBrushRef.value.$el)
-  nextTick(updateChartHeight)
-})
-
-onUnmounted(() => {
-  if (resizeObserver) resizeObserver.disconnect()
-})
 
 </script>
 
