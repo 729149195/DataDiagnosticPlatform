@@ -672,23 +672,38 @@ onMounted(() => {
   // 创建并启动MutationObserver，监听图表变化
   setupChartObserver();
 
-  if (multiChannelContainer.value) {
-    multiChannelResizeObserver = new ResizeObserver(() => {
-      updateMultiChannelSize()
-    })
-    multiChannelResizeObserver.observe(multiChannelContainer.value)
-    // 首次也要手动算一次
-    nextTick(() => {
-      updateMultiChannelSize()
-    })
+  // 只保留multiChannelContainer和overviewBrushRef的ref
+  const multiChannelContainer = ref(null)
+  const overviewBrushRef = ref(null)
+  let resizeObserver = null
+
+  // 新增高效高度自适应逻辑
+  const updateChartHeight = () => {
+    if (!multiChannelContainer.value) return
+    // 查找MultiChannelSingleRow内部的chartContainer
+    const chartContainer = multiChannelContainer.value.querySelector('#combined-chart')
+    if (!chartContainer) return
+    const parentHeight = multiChannelContainer.value.offsetHeight
+    let brushHeight = 0
+    if (overviewBrushRef.value && overviewBrushRef.value.$el) {
+      brushHeight = overviewBrushRef.value.$el.offsetHeight || 0
+    }
+    const chartHeight = Math.max(parentHeight - brushHeight, 100)
+    chartContainer.style.height = chartHeight + 'px'
+    // 触发Highcharts自适应
+    const chart = window.Highcharts?.charts?.find(chart => chart && chart.renderTo.id === 'combined-chart')
+    if (chart) chart.reflow()
   }
+
+  // 只保留一个observer
+  resizeObserver = new ResizeObserver(updateChartHeight)
+  if (multiChannelContainer.value) resizeObserver.observe(multiChannelContainer.value)
+  if (overviewBrushRef.value && overviewBrushRef.value.$el) resizeObserver.observe(overviewBrushRef.value.$el)
+  nextTick(updateChartHeight)
 });
 
 onBeforeUnmount(() => {
-  if (multiChannelResizeObserver && multiChannelContainer.value) {
-    multiChannelResizeObserver.unobserve(multiChannelContainer.value)
-    multiChannelResizeObserver.disconnect()
-  }
+  if (resizeObserver) resizeObserver.disconnect()
 })
 
 const selectButton = (button) => {
@@ -2269,53 +2284,48 @@ const startExportResultSvg = async () => {
 const multiChannelContainer = ref(null)
 const multiChannelContainerWidth = ref(0)
 const multiChannelContainerHeight = ref(0)
-let multiChannelResizeObserver = null
-// 新增：OverviewBrush的ref
 const overviewBrushRef = ref(null)
+let resizeObserver = null
 
-// 计算可用高度（减去OverviewBrush高度）
-const updateMultiChannelSize = () => {
-  if (multiChannelContainer.value) {
-    const rect = multiChannelContainer.value.getBoundingClientRect()
-    let brushHeight = 0
-    // 获取OverviewBrush真实高度
-    if (overviewBrushRef.value && overviewBrushRef.value.$el) {
-      brushHeight = overviewBrushRef.value.$el.offsetHeight || 0
-    }
-    multiChannelContainerWidth.value = rect.width
-    multiChannelContainerHeight.value = rect.height - brushHeight
+// 新增高效高度自适应逻辑
+const updateChartHeight = () => {
+  if (!multiChannelContainer.value) return
+  // 查找MultiChannelSingleRow内部的chartContainer
+  const chartContainer = multiChannelContainer.value.querySelector('#combined-chart')
+  if (!chartContainer) return
+  const parentHeight = multiChannelContainer.value.offsetHeight
+  let brushHeight = 0
+  if (overviewBrushRef.value && overviewBrushRef.value.$el) {
+    brushHeight = overviewBrushRef.value.$el.offsetHeight || 0
   }
+  const chartHeight = Math.max(parentHeight - brushHeight, 100)
+  chartContainer.style.height = chartHeight + 'px'
+  // 触发Highcharts自适应
+  const chart = window.Highcharts?.charts?.find(chart => chart && chart.renderTo.id === 'combined-chart')
+  if (chart) chart.reflow()
 }
 
 onMounted(() => {
-  // ...原有代码...
-  if (multiChannelContainer.value) {
-    multiChannelResizeObserver = new ResizeObserver(() => {
-      updateMultiChannelSize()
-    })
-    multiChannelResizeObserver.observe(multiChannelContainer.value)
-    // 首次也要手动算一次
-    nextTick(() => {
-      updateMultiChannelSize()
-    })
-  }
+  // ... existing code ...
+  // 只保留一个observer
+  resizeObserver = new ResizeObserver(updateChartHeight)
+  if (multiChannelContainer.value) resizeObserver.observe(multiChannelContainer.value)
+  if (overviewBrushRef.value && overviewBrushRef.value.$el) resizeObserver.observe(overviewBrushRef.value.$el)
+  nextTick(updateChartHeight)
+})
+
+onBeforeUnmount(() => {
+  if (resizeObserver) resizeObserver.disconnect()
 })
 
 watch(
   () => [multiChannelContainer.value, overviewBrushRef.value],
   () => {
     nextTick(() => {
-      updateMultiChannelSize()
+      updateChartHeight()
     })
   }
 )
-
-onBeforeUnmount(() => {
-  if (multiChannelResizeObserver && multiChannelContainer.value) {
-    multiChannelResizeObserver.unobserve(multiChannelContainer.value)
-    multiChannelResizeObserver.disconnect()
-  }
-})
 </script>
 
 <style scoped lang="scss">
