@@ -27,7 +27,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import * as Highcharts from 'highcharts';
-import 'highcharts/modules/boost';  // 使用官方的boost模块
 import debounce from 'lodash/debounce';
 import { ElMessage } from 'element-plus';
 import { Loading } from '@element-plus/icons-vue';
@@ -52,6 +51,7 @@ const originalDomains = ref({});
 const isLoading = ref(false);
 const extremes = ref(null);
 const processedDataCache = ref({}); // 缓存处理后的数据
+const lastContainerWidth = ref(0); // 记录上次宽度
 
 // 从store获取数据
 const brush_begin = computed({
@@ -72,27 +72,27 @@ const domains = computed(() => ({
 }));
 
 // 处理窗口大小变化
-const handleResize = debounce(() => {
-  if (overviewData.value && overviewData.value.length > 0 && chartInstance.value) {
-    // 记住当前的刷选状态
+const handleResize = debounce(async () => {
+  await nextTick();
+  if (!chartContainer.value) return;
+  const currentWidth = chartContainer.value.offsetWidth;
+  if (currentWidth !== lastContainerWidth.value) {
+    lastContainerWidth.value = currentWidth;
+    // 宽度变化，销毁并重建图表
+    renderChart(false);
+  } else if (chartInstance.value) {
+    chartInstance.value.reflow();
+    // 重新设置brush遮罩
     const currentExtreme = extremes.value;
-
-    // 使用requestAnimationFrame优化重绘流程
-    requestAnimationFrame(() => {
-      // 重新渲染图表
-      chartInstance.value.reflow();
-
-      // 如果原来有滑动块选择，重新设置
-      if (currentExtreme) {
-        try {
-          updateBrush(currentExtreme.min, currentExtreme.max);
-        } catch (error) {
-          console.warn('窗口大小变化时更新遮罩区域出错:', error);
-        }
+    if (currentExtreme) {
+      try {
+        updateBrush(currentExtreme.min, currentExtreme.max);
+      } catch (error) {
+        console.warn('窗口大小变化时更新遮罩区域出错:', error);
       }
-    });
+    }
   }
-}, 150); // 减少debounce时间，提高响应速度
+}, 150);
 
 // 组件挂载和卸载
 onMounted(() => {
@@ -218,7 +218,7 @@ const collectData = async () => {
         const channelData = await store.dispatch('fetchChannelData', { channel });
 
         if (channelData && channelData.X_value && channelData.Y_value) {
-          // 使用Worker处理数据 - 增加点数以提高细节显示
+          // 使用Worker处理数据 - 降采样点数为2000，防止触发boost
           overviewWorkerManager.processData({
             channelData: {
               X_value: [...channelData.X_value],
@@ -226,7 +226,7 @@ const collectData = async () => {
             },
             channelKey,
             downsample: true, // 启用降采样以提高性能
-            maxPoints: 10000 // 大幅增加最大点数以显示更多细节
+            maxPoints: 2000 // 降采样到2000点以内，防止boost
           });
         }
       } catch (error) {
@@ -344,7 +344,6 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
           name: channel.channel_name,
           data: data.points,
           color: channel.color || '#7cb5ec',
-          boostThreshold: 200,
           turboThreshold: 0
         });
       }
@@ -363,7 +362,7 @@ const prepareChartDataInBatches = (globalYMin, globalYMax) => {
 };
 
 // 渲染图表
-const renderChart = (forceRender = false) => {
+const renderChart = async (forceRender = false) => {
   if (overviewData.value.length === 0 && !forceRender) {
     console.warn('无数据可渲染');
     clearChart();
@@ -378,9 +377,11 @@ const renderChart = (forceRender = false) => {
     return;
   }
 
-  // 如果已有图表实例，先销毁
+  // 如果已有图表实例，先销毁并等待DOM清理
   if (chartInstance.value) {
     chartInstance.value.destroy();
+    chartInstance.value = null;
+    await nextTick();
   }
 
   // 使用优化的方式计算数据范围
@@ -447,15 +448,10 @@ const renderChart = (forceRender = false) => {
         marker: { enabled: false },
         enableMouseTracking: false,
         stickyTracking: false,
-        turboThreshold: 0,
-        boostThreshold: 200
+        turboThreshold: 0
       }
     },
-    boost: {
-      useGPUTranslations: true,
-      usePreAllocated: true,
-      seriesThreshold: 1
-    },
+    boost: { enabled: false }, // 禁用boost模块，防止报错
     series: [] // 先不传数据
   };
 
@@ -465,6 +461,7 @@ const renderChart = (forceRender = false) => {
   let idx = 0;
   const BATCH_SIZE = 1;
   function addSeriesBatch() {
+    if (!chartInstance.value) return; // 防止已销毁还操作
     let count = 0;
     while (idx < overviewData.value.length && count < BATCH_SIZE) {
       try {
@@ -477,7 +474,7 @@ const renderChart = (forceRender = false) => {
     }
     if (idx < overviewData.value.length) {
       requestAnimationFrame(addSeriesBatch);
-    } else {
+    } else if (chartInstance.value) {
       chartInstance.value.redraw(); // 最后一次性重绘
       // 更新brush值到store
       updatingBrush.value = true;
@@ -491,6 +488,9 @@ const renderChart = (forceRender = false) => {
     }
   }
   addSeriesBatch();
+
+  // 记录最新宽度
+  lastContainerWidth.value = chartContainer.value ? chartContainer.value.offsetWidth : 0;
 };
 
 // 优化计算数据范围的函数
@@ -692,7 +692,7 @@ onBeforeUnmount(() => {
   overflow: visible;
   box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.05);
   cursor: ew-resize;
-  /* 添加指针样式提示可点击 */
+  width: 100%; /* 保证宽度自适应 */
 }
 
 .overview-chart {
