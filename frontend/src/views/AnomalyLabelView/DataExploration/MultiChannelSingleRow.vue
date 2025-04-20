@@ -618,7 +618,6 @@ watch(sampling, (newSamplingRate, oldSamplingRate) => {
   // 销毁现有图表，避免重叠渲染
   const existingChart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
   if (existingChart) {
-    // console.log('已销毁现有图表，准备重新渲染');
     existingChart.destroy();
   }
 
@@ -2093,23 +2092,6 @@ watch(
   { immediate: true }
 )
 
-// ========== 新增全局变量 ==========
-// const chartInstance = ref(null); // 保存 Highcharts 实例
-// const loadedChannels = ref(new Set()); // 已加载通道集合
-
-// ========== 初始化图表（只做一次） ==========
-// function initChart() { ... }
-
-// ========== 增量添加/更新系列 ==========
-// function addOrUpdateChannelSeries(channel, points) { ... }
-
-// ========== 异步加载每个通道数据并增量渲染 ==========
-// async function loadAndRenderChannel(channel) { ... }
-
-// ========== 通道变动时的处理 ==========
-// watch(selectedChannels, (newChannels, oldChannels) => { ... });
-
-// ========== 首次挂载时初始化并加载所有通道 ==========
 onMounted(() => {
   // 只在有选中通道时才渲染图表
   if (selectedChannels.value.length > 0) {
@@ -2163,17 +2145,23 @@ watch(selectedChannels, (newChannels, oldChannels) => {
 
 let chartResizeObserver = null
 onMounted(() => {
-  // 监听父容器尺寸变化，只做 chart.reflow()
+  // 监听父容器尺寸变化，宽高都自适应
   if (props.containerRef && props.containerRef.value) {
     chartResizeObserver = new ResizeObserver(() => {
       const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
-      if (chart) chart.reflow()
+      if (chart && props.containerRef && props.containerRef.value) {
+        const { clientWidth, clientHeight } = props.containerRef.value
+        chart.setSize(clientWidth, clientHeight, false)
+      }
     })
     chartResizeObserver.observe(props.containerRef.value)
-    // 初始化时也 reflow 一次
+    // 初始化时也 setSize 一次
     nextTick(() => {
       const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
-      if (chart) chart.reflow()
+      if (chart && props.containerRef && props.containerRef.value) {
+        const { clientWidth, clientHeight } = props.containerRef.value
+        chart.setSize(clientWidth, clientHeight, false)
+      }
     })
   }
 })
@@ -2222,7 +2210,7 @@ onUnmounted(() => {
 .legend-container {
   position: absolute;
   top: 40px;
-  right: 40px;
+  right: 15px;
   z-index: 999;
   min-width: 100px;
   max-width: 200px;

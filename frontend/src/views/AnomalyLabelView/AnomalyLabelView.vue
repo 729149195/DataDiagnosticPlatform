@@ -111,11 +111,18 @@
                 </div>
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
-                <el-scrollbar :height="isSecondSectionCollapsed ? '81vh' : '50vh'" :always="false">
-                  <keep-alive>
-                    <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" :containerRef="chartAreaRef" />
-                  </keep-alive>
+                <el-scrollbar :height="chartAreaHeight" :always="false">
+                  <div ref="chartAreaRef" :style="{height: chartAreaHeight, width: '100%'}">
+                    <keep-alive>
+                      <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
+                      <MultiChannelSingleRow
+                        ref="MultiChannelRef"
+                        v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0"
+                        :containerRef="chartAreaRef"
+                        :height="chartAreaHeight"
+                      />
+                    </keep-alive>
+                  </div>
                 </el-scrollbar>
                 <OverviewBrush ref="overviewBrushRef" />
               </div>
@@ -601,6 +608,7 @@ Highcharts.setOptions({
   }
 });
 
+let chartAreaResizeObserver = null
 
 const store = useStore()
 const sampling = ref(5)
@@ -2283,7 +2291,6 @@ const updateChartAreaSize = () => {
 }
 
 onMounted(() => {
-  // ...原有代码...
   if (chartAreaRef.value) {
     chartAreaResizeObserver = new ResizeObserver(() => {
       updateChartAreaSize()
@@ -2311,6 +2318,8 @@ onBeforeUnmount(() => {
     chartAreaResizeObserver.disconnect()
   }
 })
+
+const chartAreaHeight = computed(() => isSecondSectionCollapsed.value ? '81vh' : '50vh')
 </script>
 
 <style scoped lang="scss">
