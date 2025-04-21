@@ -1604,12 +1604,25 @@ const startExportData = async () => {
       return params;
     });
 
-    // 并发请求所有通道数据
+    // 实时推进进度条
+    let finishedCount = 0;
+    const total = fetchParamsArr.length;
+
     const results = await Promise.all(
       fetchParamsArr.map((params, i) =>
         store.dispatch('fetchChannelData', params)
-          .then(data => ({ data, index: i }))
+          .then(data => {
+            finishedCount++;
+            exportProgress.current = finishedCount;
+            exportProgress.currentChannel = `${channelsToExport[i].channel_name}_${channelsToExport[i].shot_number}`;
+            exportProgress.percentage = Math.floor((finishedCount / total) * 100);
+            return { data, index: i };
+          })
           .catch(error => {
+            finishedCount++;
+            exportProgress.current = finishedCount;
+            exportProgress.currentChannel = `${channelsToExport[i].channel_name}_${channelsToExport[i].shot_number}`;
+            exportProgress.percentage = Math.floor((finishedCount / total) * 100);
             missingChannels.push(`${channelsToExport[i].channel_name}_${channelsToExport[i].shot_number}`);
             return { data: null, index: i };
           })
