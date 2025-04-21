@@ -33,8 +33,8 @@ CSRF_COOKIE_SECURE = True
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 本地开发配置 HTTPS 证书路径
-DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.231+3.pem')  # 证书路径
-DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.231+3-key.pem')  # 私钥路径
+DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.231.pem')  # 证书路径
+DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.231-key.pem')  # 私钥路径
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
