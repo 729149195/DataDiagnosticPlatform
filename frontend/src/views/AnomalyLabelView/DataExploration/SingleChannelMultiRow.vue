@@ -543,10 +543,6 @@ watch(() => domains.value, (newDomains, oldDomains) => {
       if (yDomain && yDomainChanged) {
         // 只更新y轴，不影响x轴
         chart.yAxis[0].setExtremes(yDomain[0], yDomain[1], false);
-
-        // 更新异常高亮线条
-        updateAnomalyHighlights(chart, channelKey);
-
         chart.redraw();
       }
     }
@@ -620,9 +616,6 @@ watch([brush_begin, brush_end], ([newBegin, newEnd]) => {
         channelName: channelKey,
         xDomain: [beginValue, endValue],
       });
-
-      // 更新异常高亮线条
-      updateAnomalyHighlights(chart, channelKey);
 
       // 更新匹配高亮线条
       updateMatchedHighlights(chart, channelKey);
@@ -1475,10 +1468,6 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                     xDomain: [xMin, xMax],
                     // 不再更新yDomain，保持y轴不变
                   });
-
-                  // 更新异常高亮线条
-                  updateAnomalyHighlights(chart, channelName);
-
                   // 允许默认的缩放行为，不再重新绘制整个图表
                   return true;
                 }
@@ -1509,9 +1498,6 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                     xDomain: [xMin, xMax],
                     yDomain: [yMin, yMax]
                   });
-
-                  // 更新异常高亮线条
-                  updateAnomalyHighlights(chart, channelName);
                 }
               }
             },
@@ -2395,6 +2381,69 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
     ElMessage.error(`渲染图表错误: ${error.message}`);
   }
 }, 200);
+
+// ========== 新增：监听 errorNamesVersion，只刷新指定通道的 error plotBand ===========
+watch(
+  () => store.state.errorNamesVersion,
+  async (newVal, oldVal) => {
+    if (!newVal || !newVal.channels || newVal.channels.length === 0) return;
+    for (const channelKey of newVal.channels) {
+      // 找到当前通道对象
+      const channel = selectedChannels.value.find(
+        ch => `${ch.channel_name}_${ch.shot_number}` === channelKey
+      );
+      if (!channel) continue;
+      // 拉取最新error data
+      let errorDataResults = [];
+      try {
+        errorDataResults = await store.dispatch('fetchAllErrorData', channel);
+      } catch (e) {
+        errorDataResults = [];
+      }
+      // 获取当前图表实例
+      const chart = window.chartInstances?.[channelKey];
+      if (!chart) continue;
+      // 先移除旧的 error plotBand
+      (chart.xAxis[0].plotLinesAndBands || []).forEach(band => {
+        if (band.id && band.id.startsWith('error-band-')) {
+          chart.xAxis[0].removePlotBand(band.id);
+        }
+      });
+      // 重新添加 error plotBand
+      let errorRanges = [];
+      if (Array.isArray(errorDataResults)) {
+        errorDataResults.forEach((errorGroup, groupIndex) => {
+          if (Array.isArray(errorGroup)) {
+            errorGroup.forEach((errors, personIndex) => {
+              if (errors && Array.isArray(errors)) {
+                errors.forEach((error, errorIndex) => {
+                  if (error.X_error && Array.isArray(error.X_error)) {
+                    error.X_error.forEach((xRange, rangeIndex) => {
+                      const startTime = xRange[0];
+                      const endTime = xRange[1];
+                      errorRanges.push([startTime, endTime]);
+                    });
+                  }
+                });
+              }
+            });
+          }
+        });
+      }
+      errorRanges.forEach((range, idx) => {
+        chart.xAxis[0].addPlotBand({
+          id: `error-band-${idx}`,
+          from: range[0],
+          to: range[1],
+          color: 'rgba(255, 0, 0, 0.1)',
+          zIndex: 1,
+        });
+      });
+      chart.redraw();
+    }
+  },
+  { deep: true }
+);
 </script>
 
 <style scoped>
