@@ -98,7 +98,7 @@ const store = createStore({
       queryPattern: null,
       samplingVersion: 0,
       visibleMatchedResultIds: [],
-      errorNamesVersion: 0, // 新增：异常名索引版本号
+      errorNamesVersion: { version: 0, channels: [] }, // 新增：异常名索引版本号，包含变动通道key数组
     };
   },
   getters: {
@@ -622,8 +622,12 @@ const store = createStore({
         });
       }
     },
-    incrementErrorNamesVersion(state) {
-      state.errorNamesVersion++;
+    incrementErrorNamesVersion(state, payload = { channels: [] }) {
+      // 递增版本号，并记录本次变动的通道key数组
+      state.errorNamesVersion = {
+        version: (state.errorNamesVersion.version || 0) + 1,
+        channels: payload.channels || []
+      };
     },
   },
   actions: {

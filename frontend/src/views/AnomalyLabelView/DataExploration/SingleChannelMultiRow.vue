@@ -192,12 +192,6 @@ watch(() => store.state.anomalies, (newAnomalies) => {
         chart.xAxis[0].removePlotBand(`band-${anomaly.id}`);
         chart.xAxis[0].removePlotBand(`band-end-${anomaly.id}`);
 
-        // 移除高亮线条
-        const highlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${anomaly.id}`);
-        if (highlightSeries) {
-          highlightSeries.remove(false);
-        }
-
         // 移除按钮
         const deleteButton = document.querySelector(`.delete-button-${anomaly.id}`);
         if (deleteButton) {
@@ -1891,104 +1885,6 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
     } catch (error) {
       console.error('Error in drawChart:', error);
       reject(error);
-    }
-  });
-};
-
-// 添加更新异常高亮线条的函数
-const updateAnomalyHighlights = (chart, channelKey) => {
-  if (!chart) return;
-
-  // 获取当前通道的异常
-  const channelAnomalies = store.getters.getAnomaliesByChannel(channelKey);
-  if (!channelAnomalies || channelAnomalies.length === 0) return;
-
-  // 获取当前通道的数据
-  const channelData = channelDataCache.value[channelKey];
-  if (!channelData || !channelData.X_value || !channelData.Y_value) return;
-
-  // 获取当前图表的显示范围
-  const xMin = chart.xAxis[0].min;
-  const xMax = chart.xAxis[0].max;
-
-  // 遍历所有异常
-  channelAnomalies.forEach(anomaly => {
-    // 检查异常是否在当前显示范围内
-    if (anomaly.endX < xMin || anomaly.startX > xMax) return;
-
-    // 移除旧的高亮线条
-    const oldHighlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${anomaly.id}`);
-    if (oldHighlightSeries) {
-      oldHighlightSeries.remove(false);
-    }
-
-    // 获取异常区域内的数据点
-    const pointsInRange = [];
-    const startX = anomaly.startX;
-    const endX = anomaly.endX;
-
-    // 找到区间内的所有点
-    for (let i = 0; i < channelData.X_value.length; i++) {
-      if (channelData.X_value[i] >= startX && channelData.X_value[i] <= endX) {
-        pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
-      }
-    }
-
-    // 如果没有足够点，添加区间端点
-    if (pointsInRange.length < 2) {
-      // 找到最接近区间边界的点
-      let startIdx = -1;
-      let endIdx = -1;
-      let minStartDiff = Infinity;
-      let minEndDiff = Infinity;
-
-      for (let i = 0; i < channelData.X_value.length; i++) {
-        const startDiff = Math.abs(channelData.X_value[i] - startX);
-        const endDiff = Math.abs(channelData.X_value[i] - endX);
-
-        if (startDiff < minStartDiff) {
-          minStartDiff = startDiff;
-          startIdx = i;
-        }
-
-        if (endDiff < minEndDiff) {
-          minEndDiff = endDiff;
-          endIdx = i;
-        }
-      }
-
-      if (startIdx !== -1) {
-        pointsInRange.push([startX, channelData.Y_value[startIdx]]);
-      }
-
-      if (endIdx !== -1) {
-        pointsInRange.push([endX, channelData.Y_value[endIdx]]);
-      }
-    }
-
-    // 确保点按X轴排序
-    pointsInRange.sort((a, b) => a[0] - b[0]);
-
-    // 添加高亮线条
-    if (pointsInRange.length > 0) {
-      chart.addSeries({
-        id: `anomaly-highlight-${anomaly.id}`,
-        name: `异常区域-${anomaly.id}`,
-        data: pointsInRange,
-        color: anomaly.isStored ? 'rgba(255, 0, 0, 0.8)' : 'rgba(255, 165, 0, 0.8)',
-        lineWidth: 2,
-        zIndex: 10,
-        marker: {
-          enabled: false
-        },
-        states: {
-          hover: {
-            lineWidthPlus: 0
-          }
-        },
-        enableMouseTracking: false,
-        showInLegend: false
-      });
     }
   });
 };

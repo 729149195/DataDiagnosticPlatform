@@ -787,7 +787,8 @@ const syncUpload = async () => {
     // 使用新的action更新通道异常数据而不刷新整个表格
     await store.dispatch('updateChannelErrorsData');
     // 新增：通知异常名下拉刷新
-    store.commit('incrementErrorNamesVersion');
+    const changedChannelKeys = Object.keys(groupedByChannel);
+    store.commit('incrementErrorNamesVersion', { channels: changedChannelKeys });
 
     return true; // 返回成功状态
   } catch (error) {
@@ -2210,6 +2211,9 @@ const deleteAnomalyFromList = (anomaly, type) => {
 
         // 立即更新对话框内容
         updateAnomalyDialogContent();
+        // 新增：通知异常名下拉刷新
+        const channelKey = anomaly.channel_key || `${anomaly.channel_name || anomaly.通道名称}_${anomaly.shot_number || anomaly.炮号}`;
+        store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
       })
       .catch(() => {
         // 用户取消删除操作
@@ -2302,7 +2306,8 @@ const deleteErrorData = (errorData, type) => {
         // 立即更新对话框内容
         updateAnomalyDialogContent();
         // 新增：通知异常名下拉刷新
-        store.commit('incrementErrorNamesVersion');
+        const channelKey = errorData.channel_key || `${errorData.channel_name || errorData.通道名称}_${errorData.shot_number || errorData.炮号}`;
+        store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
       } catch (error) {
         console.error('删除失败:', error);
         ElMessage.error('删除失败: ' + error.message);
