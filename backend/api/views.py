@@ -1369,46 +1369,84 @@ def update_error_type_index(error_type, add_to_channel=None, remove_from_channel
 
 def sync_error_data(request):
     """
-    同步异常标注数据
+    同步异常标注数据（只做添加，不清空原有数据）
     """
     try:
         # 获取请求数据
         data = json.loads(request.body)
+        print(f"收到同步请求，通道数：{len(data)}")
+        
+        # 确定当前工作目录，便于调试
+        current_dir = os.getcwd()
+        print(f"当前工作目录: {current_dir}")
         
         # 读取现有的 StructTree.json
         struct_tree_path = os.path.join('static', 'StructTree.json')
-        with open(struct_tree_path, 'r', encoding='utf-8') as f:
+        abs_struct_tree_path = os.path.abspath(struct_tree_path)
+        print(f"结构树文件路径: {abs_struct_tree_path}")
+        
+        with open(abs_struct_tree_path, 'r', encoding='utf-8') as f:
             struct_tree = json.load(f)
 
-        # 处理每个通道的数据
-        for channel_data in data:
+        # 确保 ErrorData 目录存在
+        error_data_dir = os.path.join('static', 'ErrorData')
+        abs_error_data_dir = os.path.abspath(error_data_dir)
+        print(f"错误数据目录路径: {abs_error_data_dir}")
+        
+        if not os.path.exists(abs_error_data_dir):
+            print(f"创建错误数据目录: {abs_error_data_dir}")
+            os.makedirs(abs_error_data_dir, exist_ok=True)
+        
+        # 显示ErrorData目录下的文件列表
+        existing_files = os.listdir(abs_error_data_dir) if os.path.exists(abs_error_data_dir) else []
+        print(f"错误数据目录中的现有文件: {existing_files}")
+
+        # 处理每个通道的数据，并记录结果
+        results = []
+        
+        for channel_idx, channel_data in enumerate(data):
             channel_key = channel_data['channelKey']
             manual_errors, machine_errors = channel_data['errorData']
+            print(f"处理通道[{channel_idx+1}/{len(data)}]: {channel_key}, 人工异常数：{len(manual_errors)}, 机器异常数：{len(machine_errors)}")
 
             # 从 channel_key 解析通道信息
             channel_name, shot_number = channel_key.rsplit('_', 1)
+            print(f"解析通道信息: 通道名={channel_name}, 炮号={shot_number}")
 
             # 转换人工标注数据格式
             converted_manual_errors = []
-            for error in manual_errors:
-                # 检查必要字段是否存在且不为空
-                if not error.get('anomalyCategory') or not error.get('anomalyDiagnosisName'):
+            for error_idx, error in enumerate(manual_errors):
+                # 兼容多种异常类型字段
+                error_type = (
+                    error.get('anomalyCategory') or
+                    error.get('error_type') or
+                    error.get('异常类别') or
+                    ''
+                )
+                error_diag_name = (
+                    error.get('anomalyDiagnosisName') or 
+                    error.get('diagnostic_name') or 
+                    error.get('诊断名称') or
+                    ''
+                )
+                if not error_type.strip() or not error_diag_name:
+                    print(f"跳过人工异常[{error_idx+1}]: 缺少必要字段 (error_type={error_type}, diag_name={error_diag_name})")
                     continue
 
                 converted_error = {
                     "person": error.get('person', 'unknown'),
-                    "diagnostic_name": error.get('anomalyDiagnosisName', ''),
+                    "diagnostic_name": error_diag_name,
                     "channel_number": channel_name,
-                    "error_type": error.get('anomalyCategory', ''),
+                    "error_type": error_type,
                     "shot_number": shot_number,
                     "X_error": [[float(error.get('startX', 0)), float(error.get('endX', 0))]],
                     "Y_error": [],
                     "diagnostic_time": error.get('annotationTime', ''),
                     "error_description": error.get('anomalyDescription', '')
                 }
-                # 只有当 error_type 不为空时才添加
                 if converted_error['error_type'].strip():
                     converted_manual_errors.append(converted_error)
+                    print(f"转换人工异常[{error_idx+1}]: 类型={error_type}, 诊断名={error_diag_name}")
 
             # 对每个异常类型创建或更新文件
             error_types = set()
@@ -1419,106 +1457,188 @@ def sync_error_data(request):
             for error in machine_errors:
                 if error.get('error_type', '').strip():
                     error_types.add(error['error_type'])
+            
+            print(f"通道 {channel_key} 中的异常类型: {list(error_types)}")
 
             # 获取通道在结构树中现有的错误类型
             existing_error_types = set()
+            struct_tree_item = None
             for item in struct_tree:
-                if (item['shot_number'] == shot_number and 
-                    item['channel_name'] == channel_name and
-                    'error_name' in item):
-                    existing_error_types.update(item['error_name'])
+                if (str(item.get('shot_number')) == str(shot_number) and 
+                    item.get('channel_name') == channel_name):
+                    struct_tree_item = item
+                    if 'error_name' in item:
+                        existing_error_types.update(item['error_name'])
+            
+            print(f"通道 {channel_key} 在结构树中现有的异常类型: {list(existing_error_types)}")
+            
+            # 记录当前通道的处理结果
+            channel_result = {
+                'channel_key': channel_key,
+                'error_types': list(error_types),
+                'files_processed': []
+            }
             
             for error_type in error_types:
                 # 跳过空的 error_type
                 if not error_type.strip():
+                    print(f"跳过空异常类型")
                     continue
 
                 # 构建文件名
                 error_file_name = f"{shot_number}_{channel_name}_{error_type}.json"
-                error_file_path = os.path.join('static', 'ErrorData', error_file_name)
+                error_file_path = os.path.join(error_data_dir, error_file_name)
+                abs_error_file_path = os.path.abspath(error_file_path)
+                print(f"处理异常文件: {error_file_name}, 绝对路径: {abs_error_file_path}")
 
                 # 准备新的错误数据
                 current_manual_errors = [error for error in converted_manual_errors if error['error_type'] == error_type]
-                current_machine_errors = [error for error in machine_errors if error['error_type'] == error_type]
+                current_machine_errors = [error for error in machine_errors if error.get('error_type', '') == error_type]
+                print(f"当前类型'{error_type}'的人工异常数: {len(current_manual_errors)}, 机器异常数: {len(current_machine_errors)}")
 
-                # 如果文件已存在，读取现有数据并合并
-                if os.path.exists(error_file_path):
-                    with open(error_file_path, 'r', encoding='utf-8') as f:
-                        existing_data = json.load(f)
+                file_result = {
+                    'file_name': error_file_name,
+                    'error_type': error_type,
+                    'status': 'pending'
+                }
+
+                try:
+                    # 多种方法检查文件存在性
+                    check1 = os.path.isfile(abs_error_file_path)
+                    check2 = os.path.exists(abs_error_file_path) and not os.path.isdir(abs_error_file_path)
+                    check3 = error_file_name in existing_files
+                    
+                    print(f"文件存在性多重检查: isfile={check1}, exists+notdir={check2}, in_dir_listing={check3}")
+                    
+                    # 尝试直接打开文件，如果失败则认为文件不存在
+                    existing_data = None
+                    try:
+                        if check1 or check2 or check3:  # 如果任一检查为True
+                            print(f"尝试读取文件: {abs_error_file_path}")
+                            with open(abs_error_file_path, 'r', encoding='utf-8') as f:
+                                existing_data = json.load(f)
+                            print(f"成功读取文件: {abs_error_file_path}")
+                    except (FileNotFoundError, json.JSONDecodeError) as e:
+                        print(f"读取文件失败: {e} - 将视为文件不存在")
+                        existing_data = None
+                    
+                    # 基于读取结果判断文件是否存在
+                    if existing_data is not None:
+                        print(f"文件确实存在且可读，进行合并: {abs_error_file_path}")
+                        existing_manual_errors = existing_data[0]
+                        existing_machine_errors = existing_data[1]
+
+                        # 合并人工标注数据
+                        if current_manual_errors:
+                            manual_error_dict = {
+                                f"{error.get('person')}_{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}": error 
+                                for error in existing_manual_errors
+                            }
+                            for error in current_manual_errors:
+                                key = f"{error.get('person')}_{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}"
+                                manual_error_dict[key] = error
+                            merged_manual_errors = list(manual_error_dict.values())
+                        else:
+                            merged_manual_errors = existing_manual_errors
+
+                        # 合并机器识别数据
+                        if current_machine_errors:
+                            machine_error_dict = {
+                                f"{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}": error 
+                                for error in existing_machine_errors
+                            }
+                            for error in current_machine_errors:
+                                key = f"{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}"
+                                machine_error_dict[key] = error
+                            merged_machine_errors = list(machine_error_dict.values())
+                        else:
+                            merged_machine_errors = existing_machine_errors
+
+                        # 保存合并后的数据
+                        merged_data = [merged_manual_errors, merged_machine_errors]
                         
-                    # 合并人工标注数据
-                    existing_manual_errors = existing_data[0]
-                    # 使用字典来去重，基于 person, startX, endX 的组合
-                    manual_error_dict = {
-                        f"{error.get('person')}_{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}": error 
-                        for error in existing_manual_errors
-                    }
-                    # 添加新的人工标注数据
-                    for error in current_manual_errors:
-                        key = f"{error.get('person')}_{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}"
-                        manual_error_dict[key] = error
+                    else:
+                        # 文件不存在或无法读取，创建新文件
+                        print(f"文件不存在或无法读取，创建新文件: {abs_error_file_path}")
+                        merged_data = [current_manual_errors, current_machine_errors]
+                        file_result['status'] = 'created'
                     
-                    # 合并机器识别数据
-                    existing_machine_errors = existing_data[1]
-                    # 使用字典来去重，基于 X_error 的组合
-                    machine_error_dict = {
-                        f"{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}": error 
-                        for error in existing_machine_errors
-                    }
-                    # 添加新的机器识别数据
-                    for error in current_machine_errors:
-                        key = f"{error.get('X_error', [[]])[0][0]}_{error.get('X_error', [[]])[0][1]}"
-                        machine_error_dict[key] = error
-
-                    # 准备最终的合并数据
-                    merged_data = [
-                        list(manual_error_dict.values()),
-                        list(machine_error_dict.values())
-                    ]
-
-                    # 保存合并后的数据
-                    with open(error_file_path, 'w', encoding='utf-8') as f:
-                        json.dump(merged_data, f, indent=2, ensure_ascii=False)
-                else:
-                    # 创建新文件
-                    new_error_data = [current_manual_errors, current_machine_errors]
-                    with open(error_file_path, 'w', encoding='utf-8') as f:
-                        json.dump(new_error_data, f, indent=2, ensure_ascii=False)
+                    # 写入文件（无论是新建还是更新）
+                    try:
+                        with open(abs_error_file_path, 'w', encoding='utf-8') as f:
+                            json.dump(merged_data, f, indent=2, ensure_ascii=False)
+                        print(f"成功写入文件: {abs_error_file_path}")
+                        if file_result['status'] != 'created':
+                            file_result['status'] = 'updated'
+                    except Exception as write_error:
+                        print(f"写入文件失败: {write_error}")
+                        raise
                     
-                    # 更新 StructTree.json
-                    for item in struct_tree:
-                        if (item['shot_number'] == shot_number and 
-                            item['channel_name'] == channel_name):
-                            # 确保 error_name 是列表
-                            if 'error_name' not in item:
-                                item['error_name'] = []
-                            # 只有当 error_type 不为空且不在列表中时才添加
-                            if error_type.strip() and error_type not in item['error_name']:
-                                item['error_name'].append(error_type)
-                            break
-                
-                # 如果这是一个新增的错误类型，更新索引
-                if error_type not in existing_error_types:
-                    update_error_type_index(
+                    # 更新结构树（无论文件是否存在）
+                    tree_updated = False
+                    
+                    # 如果已找到了该通道在结构树中的项，直接更新
+                    if struct_tree_item:
+                        if 'error_name' not in struct_tree_item:
+                            struct_tree_item['error_name'] = []
+                        
+                        # 只有当 error_type 不为空且不在列表中时才添加
+                        if error_type.strip() and error_type not in struct_tree_item['error_name']:
+                            struct_tree_item['error_name'].append(error_type)
+                            print(f"已将异常类型 '{error_type}' 添加到结构树中的通道 {channel_key}")
+                        tree_updated = True
+                    else:
+                        # 尝试再次查找并更新
+                        for item in struct_tree:
+                            if (str(item.get('shot_number')) == str(shot_number) and 
+                                item.get('channel_name') == channel_name):
+                                # 确保 error_name 是列表
+                                if 'error_name' not in item:
+                                    item['error_name'] = []
+                                # 只有当 error_type 不为空且不在列表中时才添加
+                                if error_type.strip() and error_type not in item['error_name']:
+                                    item['error_name'].append(error_type)
+                                    print(f"已将异常类型 '{error_type}' 添加到结构树中的通道 {channel_key}")
+                                tree_updated = True
+                                break
+                    
+                    if not tree_updated:
+                        print(f"警告: 在结构树中未找到通道 {channel_key}, 尝试添加通道到结构树")
+                        # 如果找不到通道，创建一个新的通道条目
+                        # 此处可以添加创建新通道条目的逻辑，暂不实现
+                    
+                    # 更新索引
+                    update_result = update_error_type_index(
                         error_type, 
                         add_to_channel={"channel_name": channel_name, "shot_number": shot_number}
                     )
+                    file_result['index_updated'] = update_result
+                    print(f"索引更新结果: {update_result}")
+                    
+                except Exception as file_error:
+                    file_result['status'] = 'error'
+                    file_result['error'] = str(file_error)
+                    print(f"处理文件时出错: {abs_error_file_path}, 错误: {str(file_error)}")
+                    import traceback
+                    traceback.print_exc()
+                
+                channel_result['files_processed'].append(file_result)
             
-            # 检查是否有错误类型被移除，如果有，更新索引
-            removed_error_types = existing_error_types - error_types
-            for error_type in removed_error_types:
-                update_error_type_index(
-                    error_type, 
-                    remove_from_channel={"channel_name": channel_name, "shot_number": shot_number}
-                )
+            results.append(channel_result)
 
         # 保存更新后的 StructTree.json
-        with open(struct_tree_path, 'w', encoding='utf-8') as f:
+        print(f"保存更新后的结构树: {abs_struct_tree_path}")
+        with open(abs_struct_tree_path, 'w', encoding='utf-8') as f:
             json.dump(struct_tree, f, indent=2, ensure_ascii=False)
 
-        return JsonResponse({'message': '同步成功'})
+        # 返回详细处理结果
+        return JsonResponse({'message': '同步成功', 'results': results})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"同步异常标注数据出错: {str(e)}")
+        print(error_trace)
+        return JsonResponse({'error': str(e), 'traceback': error_trace}, status=500)
 
 def delete_error_data(request):
     """

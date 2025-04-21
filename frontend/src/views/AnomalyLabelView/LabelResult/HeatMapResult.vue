@@ -777,6 +777,9 @@ const syncUpload = async () => {
       body: JSON.stringify(reorganizedData)
     });
 
+    console.log(JSON.stringify(reorganizedData));
+    console.log(JSON.stringify(response));
+
     if (!response.ok) {
       throw new Error('同步失败');
     }
