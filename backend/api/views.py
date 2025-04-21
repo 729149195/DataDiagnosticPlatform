@@ -1295,6 +1295,44 @@ def verify_user(request):
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
+# 辅助函数：查找StructTree中通道的索引
+
+def find_struct_tree_index(shot_number, channel_name):
+    struct_tree_path = os.path.join('static', 'StructTree.json')
+    with open(struct_tree_path, 'r', encoding='utf-8') as f:
+        struct_tree = json.load(f)
+    for idx, item in enumerate(struct_tree):
+        if str(item.get('shot_number')) == str(shot_number) and item.get('channel_name') == channel_name:
+            return idx
+    return None
+
+# 辅助函数：增量更新error_name_index.json
+
+def update_error_name_index(shot_number, channel_name, error_type, action):
+    index_file_path = os.path.join('static', 'IndexFile', 'error_name_index.json')
+    idx = find_struct_tree_index(shot_number, channel_name)
+    if idx is None:
+        return
+    # 读取索引文件
+    if os.path.exists(index_file_path):
+        with open(index_file_path, 'r', encoding='utf-8') as f:
+            index_data = json.load(f)
+    else:
+        index_data = {}
+    # 增加或删除
+    if action == 'add':
+        index_data.setdefault(error_type, [])
+        if idx not in index_data[error_type]:
+            index_data[error_type].append(idx)
+    elif action == 'remove':
+        if error_type in index_data and idx in index_data[error_type]:
+            index_data[error_type].remove(idx)
+            if not index_data[error_type]:
+                del index_data[error_type]
+    # 保存
+    with open(index_file_path, 'w', encoding='utf-8') as f:
+        json.dump(index_data, f, ensure_ascii=False, indent=4)
+
 def sync_error_data(request):
     """
     同步异常标注数据
@@ -1399,6 +1437,7 @@ def sync_error_data(request):
                     # 保存合并后的数据
                     with open(error_file_path, 'w', encoding='utf-8') as f:
                         json.dump(merged_data, f, indent=2, ensure_ascii=False)
+                    # 索引增量更新（已存在文件，说明该异常类型已存在，不需要重复添加）
                 else:
                     # 创建新文件
                     new_error_data = [current_manual_errors, current_machine_errors]
@@ -1415,6 +1454,8 @@ def sync_error_data(request):
                             # 只有当 error_type 不为空且不在列表中时才添加
                             if error_type.strip() and error_type not in item['error_name']:
                                 item['error_name'].append(error_type)
+                                # 新增异常类型时，增量更新索引
+                                update_error_name_index(shot_number, channel_name, error_type, 'add')
                             break
 
         # 保存更新后的 StructTree.json
@@ -1495,6 +1536,8 @@ def delete_error_data(request):
                         # 从 error_name 列表中移除对应的错误类型
                         if error_type in item['error_name']:
                             item['error_name'].remove(error_type)
+                            # 删除异常类型时，增量更新索引
+                            update_error_name_index(shot_number, channel_number, error_type, 'remove')
                         break
 
                 # 保存更新后的 StructTree.json
