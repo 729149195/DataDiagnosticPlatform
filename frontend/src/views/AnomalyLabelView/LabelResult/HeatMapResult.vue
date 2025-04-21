@@ -2211,20 +2211,6 @@ const deleteAnomalyFromList = (anomaly, type) => {
 
         // 立即更新对话框内容
         updateAnomalyDialogContent();
-        // 新增：通知异常名下拉刷新
-        let channelKey = anomaly.channel_key;
-        if (!channelKey) {
-          const channelName = anomaly.channel_name || anomaly['通道名称'] || anomaly['通道编号'] || anomaly['channel_number'];
-          const shotNumber = anomaly.shot_number || anomaly['炮号'] || anomaly['shotNumber'];
-          if (channelName && shotNumber) {
-            channelKey = `${channelName}_${shotNumber}`;
-          }
-        }
-        if (channelKey) {
-          store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
-        } else {
-          console.warn('删除异常时无法获取通道key', anomaly);
-        }
       })
       .catch(() => {
         // 用户取消删除操作
