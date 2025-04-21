@@ -3,6 +3,31 @@
     <!-- 顶部操作栏 -->
     <div class="header">
       <span class="title">手绘查询</span>
+      <span class="matched-results-select">
+        <el-select
+          v-model="selectedMatchedResults"
+          placeholder="请选择匹配结果"
+          multiple
+          collapse-tags
+          clearable
+          collapse-tags-tooltip
+          class="select-matched-results"
+          @change="handleMatchedResultsChange"
+        >
+          <el-option key="select-all-matched" value="select-all-matched" label="全选所有匹配结果">
+            <el-checkbox v-model="allMatchedSelected" @change="handleSelectAllMatched">
+              全选所有匹配结果
+            </el-checkbox>
+          </el-option>
+          <el-option
+            v-for="(result, idx) in sortedMatchedResults"
+            :key="`${result.channelName}_${result.shotNumber}_${result.smoothLevel}_${idx}`"
+            :label="`${result.channelName}_${result.shotNumber} 匹配度: ${result.confidence?.toFixed(3)} 平滑: ${result.smoothLevel} 区间: [${result.range?.[0]?.[0]?.toFixed(2)}, ${result.range?.[0]?.[1]?.toFixed(2)}]`"
+            :value="`${result.channelName}_${result.shotNumber}_${result.smoothLevel}_${idx}`"
+          />
+        </el-select>
+      </span>
+      
       <span class="operate">
         <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
           <!-- 添加全部全选选项 -->
@@ -988,6 +1013,37 @@ const clearFullscreenCanvas = () => {
 const closeFullscreenCanvas = () => {
   dialogVisible.value = false;
 };
+
+// 匹配结果多选
+const selectedMatchedResults = ref([]);
+// 全选状态
+const allMatchedSelected = ref(false);
+// 排序后的匹配结果
+const sortedMatchedResults = computed(() => {
+  // 按confidence降序排列
+  return [...store.state.matchedResults].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+});
+// 获取所有匹配结果id
+const allMatchedIds = computed(() => sortedMatchedResults.value.map((r, idx) => `${r.channelName}_${r.shotNumber}_${r.smoothLevel}_${idx}`));
+// 处理全选/全不选
+const handleSelectAllMatched = (checked) => {
+  if (checked) {
+    selectedMatchedResults.value = allMatchedIds.value;
+  } else {
+    selectedMatchedResults.value = [];
+  }
+};
+// 监听selectedMatchedResults变化，更新全选状态
+watch(selectedMatchedResults, (newVal) => {
+  allMatchedSelected.value = newVal.length === allMatchedIds.value.length && newVal.length > 0;
+});
+// 处理匹配结果选择变化
+const handleMatchedResultsChange = (val) => {
+  // 这里可以根据选中的匹配结果id，过滤或高亮显示结果
+  // 例如：store.dispatch('filterMatchedResults', val);
+  // 你可以在这里实现只显示选中的匹配结果的逻辑
+  // 例如：store.dispatch('updateVisibleMatchedResults', val);
+};
 </script>
 
 <style scoped>
@@ -1145,5 +1201,12 @@ const closeFullscreenCanvas = () => {
 .exit-fullscreen-btn {
   margin-left: auto;
   font-size: 14px;
+}
+
+.matched-results-select {
+  margin-right: 8px;
+}
+.select-matched-results {
+  width: 260px;
 }
 </style>

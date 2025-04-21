@@ -38,8 +38,8 @@ def match_pattern(normalized_query_pattern, channel_data_list):
     
     # 定义参数常量
     PARAMETERS = {
-        'DIVIDE_SECTION_MIN_HEIGHT_QUERY': 0.05,
-        'DIVIDE_SECTION_MIN_HEIGHT_DATA': 0.05,
+        'DIVIDE_SECTION_MIN_HEIGHT_QUERY': 0.1,
+        'DIVIDE_SECTION_MIN_HEIGHT_DATA': 0.1,
         'VALUE_DIFFERENCE_WEIGHT': 0.7,
         'RESCALING_COST_WEIGHT': 0.3,
         'SMOOTH_ITERATIONS_STEPS': 5,

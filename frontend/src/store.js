@@ -218,6 +218,7 @@ const store = createStore({
               channelName: match.channelName,
               shotNumber: match.shotNumber,
               confidence: match.confidence,
+              smoothLevel: match.smoothLevel, // 加上这一行
             }));
           } else {
             return {
@@ -225,6 +226,7 @@ const store = createStore({
               channelName: result.channelName,
               shotNumber: result.shotNumber,
               confidence: result.confidence,
+              smoothLevel: result.smoothLevel, // 加上这一行
             };
           }
         })
