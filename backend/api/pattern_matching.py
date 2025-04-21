@@ -444,7 +444,7 @@ def match_pattern(normalized_query_pattern, channel_data_list):
         
         # 只保留最好的几个匹配（比如前3个）
         channel_matches.sort(key=lambda m: m['match'])
-        best_matches = channel_matches[:3]
+        best_matches = channel_matches[:10]
         
         results = []
         # 将匹配范围转换为所需格式
