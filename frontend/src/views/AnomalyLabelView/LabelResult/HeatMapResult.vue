@@ -2212,8 +2212,19 @@ const deleteAnomalyFromList = (anomaly, type) => {
         // 立即更新对话框内容
         updateAnomalyDialogContent();
         // 新增：通知异常名下拉刷新
-        const channelKey = anomaly.channel_key || `${anomaly.channel_name || anomaly.通道名称}_${anomaly.shot_number || anomaly.炮号}`;
-        store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
+        let channelKey = anomaly.channel_key;
+        if (!channelKey) {
+          const channelName = anomaly.channel_name || anomaly['通道名称'] || anomaly['通道编号'] || anomaly['channel_number'];
+          const shotNumber = anomaly.shot_number || anomaly['炮号'] || anomaly['shotNumber'];
+          if (channelName && shotNumber) {
+            channelKey = `${channelName}_${shotNumber}`;
+          }
+        }
+        if (channelKey) {
+          store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
+        } else {
+          console.warn('删除异常时无法获取通道key', anomaly);
+        }
       })
       .catch(() => {
         // 用户取消删除操作
@@ -2306,8 +2317,19 @@ const deleteErrorData = (errorData, type) => {
         // 立即更新对话框内容
         updateAnomalyDialogContent();
         // 新增：通知异常名下拉刷新
-        const channelKey = errorData.channel_key || `${errorData.channel_name || errorData.通道名称}_${errorData.shot_number || errorData.炮号}`;
-        store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
+        let channelKey = errorData.channel_key;
+        if (!channelKey) {
+          const channelName = errorData.channel_name || errorData['通道名称'] || errorData['通道编号'] || errorData['channel_number'];
+          const shotNumber = errorData.shot_number || errorData['炮号'] || errorData['shotNumber'];
+          if (channelName && shotNumber) {
+            channelKey = `${channelName}_${shotNumber}`;
+          }
+        }
+        if (channelKey) {
+          store.commit('incrementErrorNamesVersion', { channels: [channelKey] });
+        } else {
+          console.warn('删除异常时无法获取通道key', errorData);
+        }
       } catch (error) {
         console.error('删除失败:', error);
         ElMessage.error('删除失败: ' + error.message);
