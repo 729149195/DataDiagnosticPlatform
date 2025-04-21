@@ -22,11 +22,11 @@
         </div>
 
         <!-- 添加耗时显示 -->
-        <div v-if="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 && 
+        <!-- <div v-if="renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 && 
                   channelTimings[channel.channel_name + '_' + channel.shot_number]?.duration" 
              class="timing-info">
           处理耗时: {{ channelTimings[channel.channel_name + '_' + channel.shot_number].duration }}秒
-        </div>
+        </div> -->
 
         <div class="color-picker-container" :style="{
           opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
