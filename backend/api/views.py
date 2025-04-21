@@ -42,51 +42,51 @@ def get_struct_tree(request):
         if indices_param:
             indices = [int(i) for i in indices_param.split(',') if i.strip().isdigit()]
             filtered_data = [data[i] for i in indices if 0 <= i < len(data)]
-            return JsonResponse(filtered_data, safe=False)
+            return OrJsonResponse(filtered_data)
         else:
-            return JsonResponse(data, safe=False)
+            return OrJsonResponse(data)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)})
     
 def get_shot_number_index(request):
     try:
         with open(os.path.join('static', 'IndexFile', 'shot_number_index.json'), 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return JsonResponse(data, safe=False)
+        return OrJsonResponse(data)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)})
     
 def get_channel_type_index(request):
     try:
         with open(os.path.join('static', 'IndexFile', 'channel_type_index.json'), 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return JsonResponse(data, safe=False)
+        return OrJsonResponse(data)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)})
     
 def get_channel_name_index(request):
     try:
         with open(os.path.join('static', 'IndexFile', 'channel_name_index.json'), 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return JsonResponse(data, safe=False)
+        return OrJsonResponse(data)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)})
     
 def get_errors_name_index(request):
     try:
         with open(os.path.join('static', 'IndexFile', 'error_name_index.json'), 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return JsonResponse(data, safe=False)
+        return OrJsonResponse(data)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)   
+        return OrJsonResponse({'error': str(e)})   
      
 def get_error_origin_index(request):
     try:
         with open(os.path.join('static', 'IndexFile', 'error_origin_index.json'), 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return JsonResponse(data, safe=False)
+        return OrJsonResponse(data)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)})
     
 def downsample_to_frequency(x_values, y_values, target_freq=1000):
     """
@@ -209,13 +209,12 @@ def compress_response(view_func):
     return wrapped_view
 
 # 使用orjson创建更快的JsonResponse
-def OrJsonResponse(data):
+def OrJsonResponse(data, status=200):
     """使用orjson创建更快的JsonResponse，同时保持对numpy的支持"""
-    # orjson不需要自定义encoder，它内置支持numpy类型
-    # 设置option保持精度和按顺序输出
     return HttpResponse(
         orjson.dumps(data, option=orjson.OPT_SERIALIZE_NUMPY),
-        content_type='application/json'
+        content_type='application/json',
+        status=status
     )
 
 def get_channel_data(request, channel_key=None):
@@ -254,9 +253,9 @@ def get_channel_data(request, channel_key=None):
                 try:
                     shot_number = int(shot_number)
                 except ValueError:
-                    return JsonResponse({'error': f"无法将炮号转换为整数: '{shot_number}'"}, status=400)
+                    return OrJsonResponse({'error': f"无法将炮号转换为整数: '{shot_number}'"}, status=400)
             else:
-                return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
+                return OrJsonResponse({'error': 'Invalid channel_key format'}, status=400)
             
             DB_list = ["exl50u", "eng50u"]
             DBS = {
@@ -512,7 +511,7 @@ def get_channel_data(request, channel_key=None):
                     print(f"| {formatted_log} |")
             print(f"+{'-'*width}+")
         else:
-            return JsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
+            return OrJsonResponse({'error': 'channel_key or channel_type parameter is missing'}, status=400)
     except Exception as e:
         # 打印错误信息
         width = 80
@@ -558,7 +557,7 @@ def get_channel_data(request, channel_key=None):
         print(f"+{'-'*width}+")
         import traceback
         traceback.print_exc()  # 打印完整的错误堆栈跟踪
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)}, status=500)
 
 # 添加一个插值采样函数
 def upsample_to_frequency(x_values, y_values, target_freq=1000):
@@ -607,12 +606,12 @@ def get_error_data(request):
             try:
                 error_index = int(error_index)
             except ValueError:
-                return JsonResponse({'error': 'Invalid error_index'}, status=400)
+                return OrJsonResponse({'error': 'Invalid error_index'}, status=400)
 
             if '_' in channel_key:
                 channel_name, shot_number = channel_key.rsplit('_', 1)
             else:
-                return JsonResponse({'error': 'Invalid channel_key format'}, status=400)
+                return OrJsonResponse({'error': 'Invalid channel_key format'}, status=400)
 
             anomaly_file_name = f"{error_name}{error_index}.json"
 
@@ -623,15 +622,15 @@ def get_error_data(request):
             if os.path.exists(file_path):
                 with open(file_path, encoding='unicode_escape') as f:
                     data = json.load(f)
-                return JsonResponse(data, encoder=JsonEncoder, safe=False)
+                return OrJsonResponse(data)
             else:
-                return JsonResponse({'error': 'File not found'}, status=404)
+                return OrJsonResponse({'error': 'File not found'}, status=404)
 
 
         else:
-            return JsonResponse({'error': 'Required parameters are missing'}, status=400)
+            return OrJsonResponse({'error': 'Required parameters are missing'}, status=400)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)}, status=500)
 
 # 添加表达式解析类
 class ExpressionParser:
@@ -805,15 +804,15 @@ def init_calculation(request):
             'last_update': timezone.now().isoformat(),
         }
         
-        return JsonResponse({'task_id': task_id, 'status': 'initialized'})
+        return OrJsonResponse({'task_id': task_id, 'status': 'initialized'})
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)}, status=500)
 
 def get_calculation_progress(request, task_id):
     """获取计算任务的进度"""
     try:
         if task_id not in calculation_tasks:
-            return JsonResponse({'error': '找不到指定的任务'}, status=404)
+            return OrJsonResponse({'error': '找不到指定的任务'}, status=404)
         
         task_info = calculation_tasks[task_id]
         
@@ -824,9 +823,9 @@ def get_calculation_progress(request, task_id):
             if (current_time - last_update).total_seconds() > 1800:  # 30分钟
                 calculation_tasks.pop(t_id, None)
         
-        return JsonResponse(task_info)
+        return OrJsonResponse(task_info)
     except Exception as e:
-        return JsonResponse({'error': str(e)}, status=500)
+        return OrJsonResponse({'error': str(e)}, status=500)
 
 def update_calculation_progress(task_id, step, progress, status='processing'):
     """更新计算任务的进度（供内部使用）"""
