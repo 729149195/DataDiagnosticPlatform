@@ -2664,24 +2664,6 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
         const [channelName, shotNumber] = channelKey.split('_');
         const cacheKey = `${channelName}_${shotNumber}`;
 
-        // 清除错误数据缓存
-        try {
-          // 直接使用dataCache处理缓存
-          const keys = Object.keys(dataCache)
-            .filter(key => key.startsWith(`error-${channelKey}`));
-
-          // 逐个删除缓存项
-          keys.forEach(key => {
-            delete dataCache[key];
-          });
-
-          // 清除通道数据缓存
-          if (dataCache[channelKey]) {
-            delete dataCache[channelKey];
-          }
-        } catch (error) {
-          console.warn('清除缓存失败:', error);
-        }
 
         // 从错误结果列表中移除该通道的所有非异常数据
         errorResults = errorResults.filter(
@@ -2814,6 +2796,13 @@ const batchDeleteNotUploaded = async () => {
     } else {
       const totalCount = results.reduce((sum, item) => sum + item.count, 0);
       ElMessage.success(`已成功删除 ${results.length} 个通道中的 ${totalCount} 个未上传异常`);
+      // 新增：批量触发异常名下拉刷新
+      const changedKeys = selectedRows.value
+        .filter(row => row.notUploadedCount > 0)
+        .map(row => row.channelKey);
+      if (changedKeys.length > 0) {
+        store.commit('incrementErrorNamesVersion', { channels: changedKeys });
+      }
     }
   } catch (error) {
     // 用户取消删除操作
@@ -2997,25 +2986,6 @@ const batchDeleteUploaded = async () => {
           // 清除通道数据缓存
           const [channelName, shotNumber] = channelKey.split('_');
 
-          // 清除错误数据缓存
-          try {
-            // 直接使用dataCache处理缓存
-            const keys = Object.keys(dataCache)
-              .filter(key => key.startsWith(`error-${channelKey}`));
-
-            // 逐个删除缓存项
-            keys.forEach(key => {
-              delete dataCache[key];
-            });
-
-            // 清除通道数据缓存
-            if (dataCache[channelKey]) {
-              delete dataCache[channelKey];
-            }
-          } catch (error) {
-            console.warn('清除缓存失败:', error);
-          }
-
           // 从错误结果列表中移除该通道的所有非异常数据
           errorResults = errorResults.filter(
             result => !(result.channelKey === channelKey && !result.isAnomaly)
@@ -3039,10 +3009,12 @@ const batchDeleteUploaded = async () => {
       } else {
         const totalCount = results.reduce((sum, item) => sum + item.count, 0);
         ElMessage.success(`已成功删除 ${results.length} 个通道中的 ${totalCount} 种异常类别`);
-
-        // 重新渲染热力图以更新显示
-        if (selectedChannels.value.length > 0) {
-          renderHeatmap(selectedChannels.value, true);
+        // 新增：批量触发异常名下拉刷新
+        const changedKeys = selectedRows.value
+          .filter(row => row.uploadedCount > 0)
+          .map(row => row.channelKey);
+        if (changedKeys.length > 0) {
+          store.commit('incrementErrorNamesVersion', { channels: changedKeys });
         }
       }
     } catch (error) {
@@ -3372,25 +3344,6 @@ const deleteBatchUploaded = async (channelKey) => {
       // 清除该通道的数据缓存
       const [channelName, shotNumber] = channelKey.split('_');
       const cacheKey = `${channelName}_${shotNumber}`;
-
-      // 清除错误数据缓存
-      try {
-        // 直接使用dataCache处理缓存
-        const keys = Object.keys(dataCache)
-          .filter(key => key.startsWith(`error-${channelKey}`));
-
-        // 逐个删除缓存项
-        keys.forEach(key => {
-          delete dataCache[key];
-        });
-
-        // 清除通道数据缓存
-        if (dataCache[channelKey]) {
-          delete dataCache[channelKey];
-        }
-      } catch (error) {
-        console.warn('清除缓存失败:', error);
-      }
 
       // 从错误结果列表中移除该通道的所有非异常数据
       errorResults = errorResults.filter(
