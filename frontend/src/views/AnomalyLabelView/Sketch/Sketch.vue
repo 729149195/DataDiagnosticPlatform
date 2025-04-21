@@ -739,10 +739,14 @@ const initFullscreenPaper = () => {
   // 设置工具事件
   const tool = new fullscreenPaperScope.Tool();
 
+  // 将selectedSegment和selectedHandle提升到函数作用域顶部
+  let selectedSegment = null;
+  let selectedHandle = null;
+
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
-    let selectedSegment = null;
-    let selectedHandle = null;
+    selectedSegment = null;
+    selectedHandle = null;
 
     // 检查是否点击了现有路径上的段点或手柄
     if (fullscreenPath) {
