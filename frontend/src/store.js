@@ -97,6 +97,7 @@ const store = createStore({
       },
       queryPattern: null,
       samplingVersion: 0,
+      visibleMatchedResultIds: [],
     };
   },
   getters: {
@@ -379,6 +380,9 @@ const store = createStore({
     },
     setUserMessage(state, message) {
       state.userMessage = message;
+    },
+    setVisibleMatchedResultIds(state, ids) {
+      state.visibleMatchedResultIds = ids;
     },
     refreshStructTree(state, data) {
       // 保存当前选中状态和异常展示状态

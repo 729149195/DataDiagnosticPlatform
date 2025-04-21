@@ -1037,12 +1037,18 @@ const handleSelectAllMatched = (checked) => {
 watch(selectedMatchedResults, (newVal) => {
   allMatchedSelected.value = newVal.length === allMatchedIds.value.length && newVal.length > 0;
 });
+// 匹配结果下拉框默认全选
+watch(sortedMatchedResults, (newVal) => {
+  if (newVal.length > 0) {
+    selectedMatchedResults.value = allMatchedIds.value;
+    // 同步到store
+    store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
+  }
+}, { immediate: true });
 // 处理匹配结果选择变化
 const handleMatchedResultsChange = (val) => {
-  // 这里可以根据选中的匹配结果id，过滤或高亮显示结果
-  // 例如：store.dispatch('filterMatchedResults', val);
-  // 你可以在这里实现只显示选中的匹配结果的逻辑
-  // 例如：store.dispatch('updateVisibleMatchedResults', val);
+  // 同步选中id到store
+  store.commit('setVisibleMatchedResultIds', val);
 };
 </script>
 

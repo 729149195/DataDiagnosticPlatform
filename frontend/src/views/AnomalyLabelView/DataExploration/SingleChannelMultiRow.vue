@@ -107,6 +107,16 @@ const domains = computed(() => ({
 }));
 const chartContainerWidth = ref(0);
 const matchedResults = computed(() => store.state.matchedResults);
+const visibleMatchedResultIds = computed(() => store.state.visibleMatchedResultIds);
+// 只显示被选中的匹配结果
+const filteredMatchedResults = computed(() => {
+  if (!visibleMatchedResultIds.value || visibleMatchedResultIds.value.length === 0) {
+    return [];
+  }
+  return matchedResults.value.filter((result, idx) =>
+    visibleMatchedResultIds.value.includes(`${result.channelName}_${result.shotNumber}_${result.smoothLevel}_${idx}`)
+  );
+});
 const matchedResultsCleared = computed(() => store.state.matchedResultsCleared);
 // 添加一个标记，用于忽略初始化时的变化
 const initialMatchedResultsClearedValue = ref(store.state.matchedResultsCleared);
@@ -2106,7 +2116,7 @@ const adjustColorPickerPosition = (chart, channel) => {
 };
 
 // 添加对matchedResults的监听
-watch(matchedResults, (newMatchedResults) => {
+watch(filteredMatchedResults, (newMatchedResults) => {
   // 先清除所有高亮
   forceClearAllHighlights();
   
@@ -2227,7 +2237,7 @@ watch(matchedResults, (newMatchedResults) => {
 
 // 在drawChart函数中的updateAnomalyHighlights后添加处理匹配结果的函数
 const updateMatchedHighlights = (chart, channelKey) => {
-  if (!chart || !matchedResults.value) return;
+  if (!chart || !filteredMatchedResults.value) return;
 
   // 移除现有的匹配高亮区域
   chart.xAxis[0].plotLinesAndBands.forEach(band => {
@@ -2244,7 +2254,7 @@ const updateMatchedHighlights = (chart, channelKey) => {
   });
 
   // 处理匹配结果
-  matchedResults.value.forEach((matchResult, index) => {
+  filteredMatchedResults.value.forEach((matchResult, index) => {
     // 获取通道名称和炮号
     const { channelName, shotNumber, range, confidence } = matchResult;
     const matchChannelKey = `${channelName}_${shotNumber}`;
