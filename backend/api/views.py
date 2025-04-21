@@ -1295,43 +1295,77 @@ def verify_user(request):
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
 
-# 辅助函数：查找StructTree中通道的索引
-
-def find_struct_tree_index(shot_number, channel_name):
-    struct_tree_path = os.path.join('static', 'StructTree.json')
-    with open(struct_tree_path, 'r', encoding='utf-8') as f:
-        struct_tree = json.load(f)
-    for idx, item in enumerate(struct_tree):
-        if str(item.get('shot_number')) == str(shot_number) and item.get('channel_name') == channel_name:
-            return idx
-    return None
-
-# 辅助函数：增量更新error_name_index.json
-
-def update_error_name_index(shot_number, channel_name, error_type, action):
-    index_file_path = os.path.join('static', 'IndexFile', 'error_name_index.json')
-    idx = find_struct_tree_index(shot_number, channel_name)
-    if idx is None:
-        return
-    # 读取索引文件
-    if os.path.exists(index_file_path):
-        with open(index_file_path, 'r', encoding='utf-8') as f:
-            index_data = json.load(f)
-    else:
-        index_data = {}
-    # 增加或删除
-    if action == 'add':
-        index_data.setdefault(error_type, [])
-        if idx not in index_data[error_type]:
-            index_data[error_type].append(idx)
-    elif action == 'remove':
-        if error_type in index_data and idx in index_data[error_type]:
-            index_data[error_type].remove(idx)
-            if not index_data[error_type]:
-                del index_data[error_type]
-    # 保存
-    with open(index_file_path, 'w', encoding='utf-8') as f:
-        json.dump(index_data, f, ensure_ascii=False, indent=4)
+# 新增辅助函数：更新错误类型索引
+def update_error_type_index(error_type, add_to_channel=None, remove_from_channel=None):
+    """
+    更新错误类型索引文件，添加或删除特定通道的索引
+    
+    Args:
+        error_type (str): 错误类型名称
+        add_to_channel (dict, optional): 需要添加到错误类型索引的通道信息，格式为 {"channel_name": 名称, "shot_number": 炮号}
+        remove_from_channel (dict, optional): 需要从错误类型索引中移除的通道信息，格式为 {"channel_name": 名称, "shot_number": 炮号}
+    """
+    try:
+        # 读取结构树数据，获取索引位置
+        struct_tree_path = os.path.join('static', 'StructTree.json')
+        with open(struct_tree_path, 'r', encoding='utf-8') as f:
+            struct_tree = json.load(f)
+            
+        # 读取错误类型索引文件
+        error_name_index_path = os.path.join('static', 'IndexFile', 'error_name_index.json')
+        if os.path.exists(error_name_index_path):
+            with open(error_name_index_path, 'r', encoding='utf-8') as f:
+                error_name_index = json.load(f)
+        else:
+            error_name_index = {}
+            
+        # 如果错误类型不在索引中，初始化为空列表
+        if error_type not in error_name_index:
+            error_name_index[error_type] = []
+            
+        # 添加通道到索引
+        if add_to_channel:
+            # 查找通道在结构树中的索引位置
+            channel_indices = []
+            for idx, item in enumerate(struct_tree):
+                if (item.get('channel_name') == add_to_channel['channel_name'] and 
+                    str(item.get('shot_number')) == str(add_to_channel['shot_number'])):
+                    channel_indices.append(idx)
+                    
+            # 将通道索引添加到错误类型索引中（去重）
+            for idx in channel_indices:
+                if idx not in error_name_index[error_type]:
+                    error_name_index[error_type].append(idx)
+                    
+        # 从索引中移除通道
+        if remove_from_channel:
+            # 查找通道在结构树中的索引位置
+            channel_indices = []
+            for idx, item in enumerate(struct_tree):
+                if (item.get('channel_name') == remove_from_channel['channel_name'] and 
+                    str(item.get('shot_number')) == str(remove_from_channel['shot_number'])):
+                    channel_indices.append(idx)
+                    
+            # 从错误类型索引中移除通道索引
+            error_name_index[error_type] = [
+                idx for idx in error_name_index[error_type] 
+                if idx not in channel_indices
+            ]
+            
+            # 如果错误类型索引为空，从索引中删除该错误类型
+            if not error_name_index[error_type]:
+                error_name_index.pop(error_type, None)
+                
+        # 保存更新后的索引文件
+        with open(error_name_index_path, 'w', encoding='utf-8') as f:
+            json.dump(error_name_index, f, ensure_ascii=False, indent=4)
+            
+        return True
+    except Exception as e:
+        print(f"更新错误类型索引出错: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def sync_error_data(request):
     """
@@ -1386,6 +1420,14 @@ def sync_error_data(request):
                 if error.get('error_type', '').strip():
                     error_types.add(error['error_type'])
 
+            # 获取通道在结构树中现有的错误类型
+            existing_error_types = set()
+            for item in struct_tree:
+                if (item['shot_number'] == shot_number and 
+                    item['channel_name'] == channel_name and
+                    'error_name' in item):
+                    existing_error_types.update(item['error_name'])
+            
             for error_type in error_types:
                 # 跳过空的 error_type
                 if not error_type.strip():
@@ -1437,7 +1479,6 @@ def sync_error_data(request):
                     # 保存合并后的数据
                     with open(error_file_path, 'w', encoding='utf-8') as f:
                         json.dump(merged_data, f, indent=2, ensure_ascii=False)
-                    # 索引增量更新（已存在文件，说明该异常类型已存在，不需要重复添加）
                 else:
                     # 创建新文件
                     new_error_data = [current_manual_errors, current_machine_errors]
@@ -1454,9 +1495,22 @@ def sync_error_data(request):
                             # 只有当 error_type 不为空且不在列表中时才添加
                             if error_type.strip() and error_type not in item['error_name']:
                                 item['error_name'].append(error_type)
-                                # 新增异常类型时，增量更新索引
-                                update_error_name_index(shot_number, channel_name, error_type, 'add')
                             break
+                
+                # 如果这是一个新增的错误类型，更新索引
+                if error_type not in existing_error_types:
+                    update_error_type_index(
+                        error_type, 
+                        add_to_channel={"channel_name": channel_name, "shot_number": shot_number}
+                    )
+            
+            # 检查是否有错误类型被移除，如果有，更新索引
+            removed_error_types = existing_error_types - error_types
+            for error_type in removed_error_types:
+                update_error_type_index(
+                    error_type, 
+                    remove_from_channel={"channel_name": channel_name, "shot_number": shot_number}
+                )
 
         # 保存更新后的 StructTree.json
         with open(struct_tree_path, 'w', encoding='utf-8') as f:
@@ -1518,7 +1572,7 @@ def delete_error_data(request):
         with open(error_file_path, 'w', encoding='utf-8') as f:
             json.dump(updated_error_data, f, indent=2, ensure_ascii=False)
 
-        # 如果两个列表都为空，删除文件
+        # 如果两个列表都为空，删除文件并更新结构树
         if not manual_errors and not machine_errors:
             os.remove(error_file_path)
 
@@ -1528,6 +1582,9 @@ def delete_error_data(request):
                 with open(struct_tree_path, 'r', encoding='utf-8') as f:
                     struct_tree = json.load(f)
 
+                # 检查是否需要从结构树中移除错误类型
+                error_type_removed = False
+                
                 # 更新对应通道的 error_name
                 for item in struct_tree:
                     if (str(item.get('shot_number')) == str(shot_number) and 
@@ -1536,13 +1593,19 @@ def delete_error_data(request):
                         # 从 error_name 列表中移除对应的错误类型
                         if error_type in item['error_name']:
                             item['error_name'].remove(error_type)
-                            # 删除异常类型时，增量更新索引
-                            update_error_name_index(shot_number, channel_number, error_type, 'remove')
+                            error_type_removed = True
                         break
 
                 # 保存更新后的 StructTree.json
                 with open(struct_tree_path, 'w', encoding='utf-8') as f:
                     json.dump(struct_tree, f, indent=2, ensure_ascii=False)
+                
+                # 如果错误类型从结构树中移除，则更新索引
+                if error_type_removed:
+                    update_error_type_index(
+                        error_type, 
+                        remove_from_channel={"channel_name": channel_number, "shot_number": shot_number}
+                    )
 
         return JsonResponse({'message': '删除成功', 'file': error_file_name})
     except Exception as e:
