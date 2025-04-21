@@ -98,6 +98,7 @@ const store = createStore({
       queryPattern: null,
       samplingVersion: 0,
       visibleMatchedResultIds: [],
+      errorNamesVersion: 0, // 新增：异常名索引版本号
     };
   },
   getters: {
@@ -621,6 +622,9 @@ const store = createStore({
         });
       }
     },
+    incrementErrorNamesVersion(state) {
+      state.errorNamesVersion++;
+    },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, indices = []) {
@@ -1124,6 +1128,15 @@ const store = createStore({
         }
       } catch (error) {
         console.error("Failed to update channel errors:", error);
+      }
+    },
+    async refreshErrorNames({ commit }) {
+      try {
+        const response = await axios.get('https://10.1.108.231:5000/api/get-errors-name-index');
+        return response.data;
+      } catch (error) {
+        console.error('异常名索引获取失败:', error);
+        throw error;
       }
     },
   },

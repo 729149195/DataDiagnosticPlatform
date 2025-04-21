@@ -855,6 +855,24 @@ const handleGunNumberFocus = () => {
   }
 };
 
+// 只刷新异常名的函数
+const fetchErrorNames = async () => {
+  try {
+    const data = await store.dispatch('refreshErrorNames');
+    setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, data);
+  } catch (error) {
+    ElMessage.error('异常名索引获取失败');
+  }
+};
+
+// 监听异常名索引版本号变化，自动刷新异常名下拉
+watch(
+  () => store.state.errorNamesVersion,
+  async () => {
+    await fetchErrorNames();
+  }
+);
+
 onMounted(async () => {
   await fetData();
   // 初始化时所有选择都为空

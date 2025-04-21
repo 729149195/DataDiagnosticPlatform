@@ -786,6 +786,8 @@ const syncUpload = async () => {
 
     // 使用新的action更新通道异常数据而不刷新整个表格
     await store.dispatch('updateChannelErrorsData');
+    // 新增：通知异常名下拉刷新
+    store.commit('incrementErrorNamesVersion');
 
     return true; // 返回成功状态
   } catch (error) {
@@ -2299,6 +2301,8 @@ const deleteErrorData = (errorData, type) => {
 
         // 立即更新对话框内容
         updateAnomalyDialogContent();
+        // 新增：通知异常名下拉刷新
+        store.commit('incrementErrorNamesVersion');
       } catch (error) {
         console.error('删除失败:', error);
         ElMessage.error('删除失败: ' + error.message);
