@@ -678,7 +678,7 @@ const store = createStore({
         version: (state.errorNamesVersion.version || 0) + 1,
         channels: payload.channels || []
       };
-      console.log(state.errorNamesVersion);
+      // console.log(state.errorNamesVersion);
     },
   },
   actions: {

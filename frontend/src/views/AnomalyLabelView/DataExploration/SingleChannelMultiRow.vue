@@ -2403,12 +2403,24 @@ watch(
       // 获取当前图表实例
       const chart = window.chartInstances?.[channelKey];
       if (!chart) continue;
-      // 先移除旧的 error plotBand
-      (chart.xAxis[0].plotLinesAndBands || []).forEach(band => {
+      
+      // 清除所有error plotBand的更可靠方法
+      const axis = chart.xAxis[0];
+      // 1. 首先获取所有plotBand的ID
+      const errorBandIds = [];
+      (axis.plotLinesAndBands || []).forEach(band => {
         if (band.id && band.id.startsWith('error-band-')) {
-          chart.xAxis[0].removePlotBand(band.id);
+          errorBandIds.push(band.id);
         }
       });
+      
+      // 2. 然后一个个移除，确保所有ID都被处理
+      // 使用axis.update来批量处理plotBand的移除，避免多次触发重绘
+      axis.update({}, false); // 先禁用自动重绘
+      errorBandIds.forEach(id => {
+        axis.removePlotBand(id);
+      });
+      
       // 重新添加 error plotBand
       let errorRanges = [];
       if (Array.isArray(errorDataResults)) {
@@ -2430,16 +2442,21 @@ watch(
           }
         });
       }
-      errorRanges.forEach((range, idx) => {
-        chart.xAxis[0].addPlotBand({
-          id: `error-band-${idx}`,
-          from: range[0],
-          to: range[1],
-          color: 'rgba(255, 0, 0, 0.1)',
-          zIndex: 1,
-        });
-      });
-      chart.redraw();
+      
+      // 3. 批量添加新的plotBands
+      // 使用一次axis.update来添加所有plotBand，而不是逐个添加
+      const plotBands = errorRanges.map((range, idx) => ({
+        id: `error-band-${idx}`,
+        from: range[0],
+        to: range[1],
+        color: 'rgba(255, 0, 0, 0.1)',
+        zIndex: 1
+      }));
+      
+      // 一次性更新所有plotBands，只触发一次重绘
+      axis.update({
+        plotBands: plotBands
+      }, true); // 最后一次更新时才触发重绘
     }
   },
   { deep: true }
