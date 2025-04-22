@@ -2382,7 +2382,7 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
   }
 }, 200);
 
-// ========== 新增：监听 errorNamesVersion，只刷新指定通道的 error plotBand ===========
+// ========== 监听 errorNamesVersion，只刷新指定通道的 error plotBand ===========
 watch(
   () => store.state.errorNamesVersion,
   async (newVal, oldVal) => {
