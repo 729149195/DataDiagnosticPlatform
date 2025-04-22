@@ -206,9 +206,36 @@ const store = createStore({
     },
     deleteAnomaly(state, { channelName, anomalyId }) {
       if (state.anomalies[channelName]) {
+        // 查找要删除的异常，以获取更多信息
+        const anomalyToDelete = state.anomalies[channelName].find(a => a.id === anomalyId);
+        
+        // 删除内存中的异常
         state.anomalies[channelName] = state.anomalies[channelName].filter(
           (a) => a.id !== anomalyId
         );
+        
+        // 如果找到了异常
+        if (anomalyToDelete) {
+          // 构造异常缓存的key
+          const channelKey = channelName; // 通道key就是channelName
+          
+          // 尝试找到与该异常相关的所有缓存，并删除它们
+          dataCache.keys().forEach(key => {
+            // 检查是否是该通道的异常缓存
+            if (key.startsWith(`error-${channelKey}`)) {
+              // 从内存缓存中移除
+              dataCache.remove(key);
+              
+              // 异步从IndexedDB中移除
+              setTimeout(() => {
+                indexedDBService.deleteChannelData(key)
+                  .catch(error => {
+                    console.error(`从IndexedDB中删除异常缓存失败 (${key}):`, error);
+                  });
+              }, 0);
+            }
+          });
+        }
       }
     },
     setMatchedResults(state, results) {
@@ -561,7 +588,30 @@ const store = createStore({
       }, 0);
     },
     clearAnomalies(state) {
-      state.anomalies = {}; // 清空 anomalies 对象
+      // 获取所有通道keys
+      const channelKeys = Object.keys(state.anomalies);
+      
+      // 清空内存中的 anomalies 对象
+      state.anomalies = {}; 
+      
+      // 清理相关缓存
+      channelKeys.forEach(channelKey => {
+        // 查找并删除该通道相关的所有异常缓存
+        dataCache.keys().forEach(key => {
+          if (key.startsWith(`error-${channelKey}`)) {
+            // 从内存缓存中移除
+            dataCache.remove(key);
+            
+            // 异步从IndexedDB中移除
+            setTimeout(() => {
+              indexedDBService.deleteChannelData(key)
+                .catch(error => {
+                  console.error(`从IndexedDB中删除异常缓存失败 (${key}):`, error);
+                });
+            }, 0);
+          }
+        });
+      });
     },
     setCalculatingStatus(state, status) {
       state.isCalculating = status;

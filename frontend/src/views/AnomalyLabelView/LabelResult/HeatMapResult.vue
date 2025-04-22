@@ -777,8 +777,8 @@ const syncUpload = async () => {
       body: JSON.stringify(reorganizedData)
     });
 
-    console.log(JSON.stringify(reorganizedData));
-    console.log(JSON.stringify(response));
+    // console.log(JSON.stringify(reorganizedData));
+    // console.log(JSON.stringify(response));
 
     if (!response.ok) {
       throw new Error('同步失败');
@@ -2662,6 +2662,14 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
         // 根据结果关闭加载动画并显示提示
         loadingInstance.close();
 
+        // 清除相关通道的错误数据缓存
+        const errorCachePrefix = `error-${channelKey}`;
+        store.state.channelDataCache.getCacheInfo().keys.forEach(key => {
+          if (key.startsWith(errorCachePrefix)) {
+            store.commit('removeChannelDataCache', key);
+          }
+        });
+
         if (deleteResults.length === 0) {
           ElMessage.info('没有找到可删除的已上传异常');
         } else if (deleteResults.every(result => result)) {
@@ -2987,6 +2995,21 @@ const batchDeleteUploaded = async () => {
 
       // 关闭加载提示
       loadingInstance.close();
+
+      // 清除相关通道的错误数据缓存
+      for (const row of selectedRows.value) {
+        if (row.uploadedCount > 0) {
+          const channelKey = row.channelKey;
+          const errorCachePrefix = `error-${channelKey}`;
+          
+          // 清除内存缓存中的错误数据
+          store.state.channelDataCache.getCacheInfo().keys.forEach(key => {
+            if (key.startsWith(errorCachePrefix)) {
+              store.commit('removeChannelDataCache', key);
+            }
+          });
+        }
+      }
 
       // 更新批量调整对话框数据，确保在刷新数据后再次获取最新状态
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -3338,6 +3361,14 @@ const deleteBatchUploaded = async (channelKey) => {
       errorResults = errorResults.filter(
         result => !(result.channelKey === channelKey && !result.isAnomaly)
       );
+      
+      // 清除掉相关的错误数据缓存
+      const errorCachePrefix = `error-${channelKey}`;
+      store.state.channelDataCache.getCacheInfo().keys.forEach(key => {
+        if (key.startsWith(errorCachePrefix)) {
+          store.commit('removeChannelDataCache', key);
+        }
+      });
 
       // 根据结果关闭加载动画并显示提示
       loadingInstance.close();
