@@ -320,112 +320,107 @@ def match_pattern(normalized_query_pattern, channel_data_list):
     # =====================================================
     
     def execute_query(query_pattern, channel_data):
-        """执行查询匹配 - 优化版本"""
-        matches = []
-        
-        # 从通道数据提取x和y值
-        data_x = channel_data['X_value']
-        data_y = channel_data['Y_value']
-        
-        # 确保数据点足够
-        if len(data_x) < 2 or len(data_y) < 2:
+        """Execute query matching using z-normalized cross-correlation for fast and precise pattern detection."""
+        # 新版：基于Z标准化交叉相关的高效模式匹配
+        import numpy as np
+        # 获取标准化后的Y值，如果不存在则使用原始Y
+        data_y = channel_data.get('Y_normalized', channel_data['Y_value'])
+        data_y = np.array(data_y, dtype=float)
+        # 提取查询模式的Y值
+        query_y = np.array([y for (_, y) in query_pattern], dtype=float)
+        # 数据长度必须大于查询模式长度
+        if data_y.size < query_y.size:
             return []
-            
-        # 构建数据点列表
-        data_points = list(zip(data_x, data_y))
-        
-        # 对大数据集进行降采样提高性能
-        target_size = max(PARAMETERS['MIN_SAMPLES'], 
-                          min(PARAMETERS['MAX_SAMPLES'], 
-                              int(len(data_points) * PARAMETERS['SAMPLING_RATIO'])))
-                              
-        data_points = downsample_data(data_points, target_size)
-        
-        # 提取查询特征 - 只需计算一次
+        # 定义Z标准化交叉相关函数
+        def z_norm_cross_corr(data, query):
+            m = query.size
+            mean_q = query.mean()
+            std_q = query.std() if query.std() > 0 else 1.0
+            q_flat = (query - mean_q) / std_q
+            sum_d = np.convolve(data, np.ones(m), mode='valid')
+            sum_d2 = np.convolve(data**2, np.ones(m), mode='valid')
+            std_d = np.sqrt(sum_d2/m - (sum_d/m)**2)
+            std_d[std_d == 0] = 1e-10
+            corr = np.convolve(data, q_flat[::-1], mode='valid')
+            return corr / (std_d * m)
+        # 多尺度分段匹配：水平缩放重采样并识别嵌套模式
         query_tangents = extract_tangents(query_pattern)
         query_sections = find_curve_sections(query_tangents, query_pattern, PARAMETERS['DIVIDE_SECTION_MIN_HEIGHT_QUERY'])
-        
-        # 对数据进行预处理和平滑
-        # 创建多个平滑级别的数据
-        smoothed_data_iterations = []
-        smoothed_data_iterations.append(data_points)  # 原始数据作为第一个元素
-        
-        for i in range(PARAMETERS['SMOOTH_MAXIMUM_ATTEMPTS']):
-            # 创建新的平滑数据副本
-            last_data = smoothed_data_iterations[-1]
-            window_size = min(PARAMETERS['MAX_WINDOW_SIZE'], max(3, len(last_data) // 200))  # 动态计算窗口大小
-            smoothed = smooth_data(last_data, window_size, i+1)
-            
-            # 如果平滑后的符号变化不再显著减少，则停止
-            if count_sign_variations(smoothed) >= count_sign_variations(last_data) * 0.9:
-                break
-                
-            smoothed_data_iterations.append(smoothed)
-        
-        # 对每个平滑级别执行匹配
-        for smooth_iteration, current_smooth_data in enumerate(smoothed_data_iterations):
-            # 提取特征
-            data_tangents = extract_tangents(current_smooth_data)
-            data_sections = find_curve_sections(data_tangents, current_smooth_data, PARAMETERS['DIVIDE_SECTION_MIN_HEIGHT_DATA'])
-            
-            # 如果查询段数大于数据段数，则跳过
-            if len(query_sections) > len(data_sections):
-                continue
-                
-            # 优化：如果段太多，可以先评估段的相似性来过滤明显不匹配的位置
-            valid_starting_positions = []
-            
-            # 尝试在所有可能的位置匹配
-            for i in range(len(data_sections) - len(query_sections) + 1):
-                # 快速检查：先比较第一段的高度比例，如果差异太大，直接跳过
-                first_query_height = data_height(query_sections[0]['points'])
-                first_data_height = data_height(data_sections[i]['points'])
-                
-                height_ratio = first_data_height / first_query_height if first_query_height > 0 else 1
-                if height_ratio > 3 or height_ratio < 0.33:  # 快速过滤
-                    continue
-                
-                valid_starting_positions.append(i)
-            
-            # 仅在有效的起始位置进行完整匹配
-            for i in valid_starting_positions:
-                potential_match_sections = data_sections[i:i+len(query_sections)]
-                
-                # 计算匹配度
-                match_result = calculate_points_match(query_sections, potential_match_sections)
-                
-                if match_result:
-                    # 提取匹配点的范围
-                    matched_points = match_result['matchedPoints']
-                    if matched_points:
-                        min_x = matched_points[0][0]
-                        max_x = matched_points[-1][0]
-                        
-                        # 创建匹配结果
-                        match = {
-                            'snum': channel_data.get('shot_number', 0),
-                            'smoothIteration': smooth_iteration,  # 保存平滑迭代级别
-                            'match': match_result['match'],  # 较低的值表示更好的匹配
-                            'points': matched_points,
-                            'minPos': min_x,
-                            'maxPos': max_x
-                        }
-                        
-                        # 如果是更好的匹配，则添加到结果
-                        duplicate_idx = next((i for i, m in enumerate(matches) 
-                                            if abs(m['minPos'] - match['minPos']) <= 10 and 
-                                               abs(m['maxPos'] - match['maxPos']) <= 10), -1)
-                                               
-                        if duplicate_idx == -1:
-                            match['id'] = len(matches)
-                            matches.append(match)
-                        elif matches[duplicate_idx]['match'] > match['match']:
-                            match['id'] = len(matches)
-                            matches.append(match)
-                            match['id'] = matches[duplicate_idx]['id']
-                            matches[duplicate_idx] = match
-        
-        return matches
+        # 获取X轴原始值，用于定位匹配区间
+        x_vals = channel_data.get('X_value', [])
+        # 子模式匹配函数
+        def match_subpattern(sub_points):
+            # 将子模式点转换为Y向量
+            qy = np.array([y for (_, y) in sub_points], dtype=float)
+            if data_y.size < qy.size:
+                return []
+            corr_sub = z_norm_cross_corr(data_y, qy)
+            if corr_sub.size == 0:
+                return []
+            threshold = 0.7
+            mask = corr_sub >= threshold
+            results = []
+            m_sub = qy.size
+            in_run = False
+            for idx, hit in enumerate(mask):
+                if hit and not in_run:
+                    run_start = idx
+                    in_run = True
+                elif not hit and in_run:
+                    run_end = idx - 1
+                    avg_c = corr_sub[run_start:run_end+1].mean()
+                    results.append({
+                        'snum': channel_data.get('shot_number', 0),
+                        'match': 1 - float(avg_c),
+                        'minPos': float(x_vals[run_start]),
+                        'maxPos': float(x_vals[run_end + m_sub - 1]),
+                        'smoothIteration': 0
+                    })
+                    in_run = False
+            if in_run:
+                run_end = len(mask) - 1
+                avg_c = corr_sub[run_start:run_end+1].mean()
+                results.append({
+                    'snum': channel_data.get('shot_number', 0),
+                    'match': 1 - float(avg_c),
+                    'minPos': float(x_vals[run_start]),
+                    'maxPos': float(x_vals[run_end + m_sub - 1]),
+                    'smoothIteration': 0
+                })
+            return results
+        # 多尺度匹配主循环
+        scale_factors = PARAMETERS.get('SCALE_FACTORS', [1.5, 2.0, 10.0])
+        all_matches = []
+        subpatterns = [sect['points'] for sect in query_sections] if query_sections else [query_pattern]
+        for sub_pts in subpatterns:
+            xs, ys = zip(*sub_pts)
+            for scale in scale_factors:
+                num_pts = max(2, int(len(ys) * scale))
+                # 水平缩放重采样
+                t_old = np.linspace(0, 1, len(ys))
+                t_new = np.linspace(0, 1, num_pts)
+                y_res = np.interp(t_new, t_old, ys)
+                x_res = np.linspace(xs[0], xs[-1], num_pts)
+                scaled_pts = list(zip(x_res, y_res.tolist()))
+                matches_scale = match_subpattern(scaled_pts)
+                for m in matches_scale:
+                    m['scale'] = scale
+                all_matches.extend(matches_scale)
+        # 按 scale 分组并在每个尺度内进行 min-max 归一化
+        if all_matches:
+            groups = {}
+            for m in all_matches:
+                scale = m.get('scale', 1.0)
+                groups.setdefault(scale, []).append(m)
+            for scale, group in groups.items():
+                vals = [item['match'] for item in group]
+                minv, maxv = min(vals), max(vals)
+                for item in group:
+                    if maxv > minv:
+                        item['match'] = (item['match'] - minv) / (maxv - minv)
+                    else:
+                        item['match'] = 0.0
+        return all_matches
     
     # =====================================================
     # 多通道并行处理

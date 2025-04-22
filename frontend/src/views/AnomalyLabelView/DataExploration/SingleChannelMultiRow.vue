@@ -2027,7 +2027,7 @@ watch(filteredMatchedResults, (newMatchedResults) => {
                 const endTime = rangeItem[1];
                 
                 // 根据置信度计算透明度
-                const alpha = Math.max(0.1, Math.min(0.8, confidence));
+                const alpha = Math.max(0.1, Math.min(0.8, confidence)/2);
                 
                 // 使用唯一的ID确保不重复
                 const uniqueBandId = `match-band-${index}-${rangeIndex}-${Date.now()}`;
@@ -2040,7 +2040,7 @@ watch(filteredMatchedResults, (newMatchedResults) => {
                   to: endTime,
                   color: `rgba(255, 255, 0, ${alpha})`,
                   zIndex: 3,
-                  borderColor: 'rgba(255, 215, 0, 0.8)',
+                  borderColor: 'rgba(255, 215, 0, 0.4)',
                   borderWidth: 1
                 });
                 
@@ -2149,7 +2149,7 @@ const updateMatchedHighlights = (chart, channelKey) => {
         const endTime = rangeItem[1];
 
         // 根据置信度计算透明度
-        const alpha = Math.max(0.1, Math.min(0.8, confidence));
+        const alpha = Math.max(0.1, Math.min(0.8, confidence)/2);
 
         // 添加高亮区域
         chart.xAxis[0].addPlotBand({
@@ -2158,7 +2158,7 @@ const updateMatchedHighlights = (chart, channelKey) => {
           to: endTime,
           color: `rgba(255, 255, 0, ${alpha})`,
           zIndex: 3,
-          borderColor: 'rgba(255, 215, 0, 0.8)',
+          borderColor: 'rgba(255, 215, 0, 0.4)',
           borderWidth: 1
         });
 
