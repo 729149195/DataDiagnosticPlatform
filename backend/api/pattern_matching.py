@@ -381,7 +381,7 @@ def match_pattern(normalized_query_pattern, channel_data_list):
                 run_end = len(mask) - 1
                 avg_c = corr_sub[run_start:run_end+1].mean()
                 results.append({
-                    'snum': channel_data.get('shot_number', 0),
+                            'snum': channel_data.get('shot_number', 0),
                     'match': 1 - float(avg_c),
                     'minPos': float(x_vals[run_start]),
                     'maxPos': float(x_vals[run_end + m_sub - 1]),
@@ -437,9 +437,9 @@ def match_pattern(normalized_query_pattern, channel_data_list):
         channel_name = channel_data.get('channel_name', '')
         shot_number = channel_data.get('shot_number', 0)
         
-        # 只保留最好的几个匹配（比如前3个）
+        # 只保留最好的几个匹配
         channel_matches.sort(key=lambda m: m['match'])
-        best_matches = channel_matches[:10]
+        best_matches = channel_matches[:30]
         
         results = []
         # 将匹配范围转换为所需格式

@@ -1,33 +1,14 @@
 <template>
-  <div class="container">
+  <div class="container" :class="{ 'panel-open': resultsDrawerVisible }">
     <!-- 顶部操作栏 -->
     <div class="header">
       <span class="title">手绘查询</span>
       <span class="matched-results-select">
-        <el-select
-          v-model="selectedMatchedResults"
-          placeholder="请选择匹配结果"
-          multiple
-          collapse-tags
-          clearable
-          collapse-tags-tooltip
-          class="select-matched-results"
-          @change="handleMatchedResultsChange"
-        >
-          <el-option key="select-all-matched" value="select-all-matched" label="全选所有匹配结果">
-            <el-checkbox v-model="allMatchedSelected" @change="handleSelectAllMatched">
-              全选所有匹配结果
-            </el-checkbox>
-          </el-option>
-          <el-option
-            v-for="(result, idx) in sortedMatchedResults"
-            :key="`${result.channelName}_${result.shotNumber}_${result.smoothLevel}_${idx}`"
-            :label="`${result.channelName}_${result.shotNumber} 匹配度: ${result.confidence?.toFixed(3)} 平滑: ${result.smoothLevel} 区间: [${result.range?.[0]?.[0]?.toFixed(2)}, ${result.range?.[0]?.[1]?.toFixed(2)}]`"
-            :value="`${result.channelName}_${result.shotNumber}_${result.smoothLevel}_${idx}`"
-          />
-        </el-select>
+        <el-button type="primary" @click="toggleResultsDrawer" size="small" :icon="List">
+          匹配结果 ({{ sortedMatchedResults.length }})
+        </el-button>
       </span>
-      
+
       <span class="operate">
         <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
           <!-- 添加全部全选选项 -->
@@ -73,15 +54,7 @@
     </div>
 
     <!-- 全屏绘图弹窗 -->
-    <el-dialog
-      v-model="dialogVisible"
-      width="90%"
-      :show-close="false"
-      fullscreen
-      :destroy-on-close="false"
-      :close-on-click-modal="false"
-      :close-on-press-escape="true"
-    >
+    <el-dialog v-model="dialogVisible" width="90%" :show-close="false" fullscreen :destroy-on-close="false" :close-on-click-modal="false" :close-on-press-escape="true">
       <template #header>
         <div class="custom-dialog-header">
           <span class="title">手绘查询</span>
@@ -103,6 +76,40 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 匹配结果抽屉 -->
+    <div class="results-panel" :class="{ 'panel-visible': resultsDrawerVisible }">
+      <div class="panel-header">
+        <span>匹配结果 ({{ sortedMatchedResults.length }})</span>
+        <el-button  @click="toggleResultsDrawer" :icon="ArrowLeft" circle />
+      </div>
+      <div class="panel-content">
+        <el-table 
+          :data="sortedMatchedResults" 
+          style="width: 100%" 
+          @selection-change="handleTableSelectionChange" 
+          height="calc(100vh - 83px)"
+          size="default" 
+          border
+          ref="resultTable"
+          :row-key="rowKey"
+        >
+          <el-table-column type="selection" width="40" align="center" />
+          <el-table-column label="通道名" min-width="90" align="center"  show-overflow-tooltip prop="channelName" />
+          <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
+          <el-table-column label="匹配度" min-width="70" align="center">
+            <template #default="scope">
+              <span class="cell-number">{{ scope.row.confidence?.toFixed(3) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="区间" min-width="110" show-overflow-tooltip align="center">
+            <template #default="scope">
+              [{{ scope.row.range?.[0]?.[0]?.toFixed(2) }}, {{ scope.row.range?.[0]?.[1]?.toFixed(2) }}]
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -113,9 +120,10 @@ import {
   onMounted,
   onUnmounted,
   watch,
+  nextTick,
 } from 'vue';
-import { Search, FullScreen } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { Search, FullScreen, List, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
+import { ElMessage, ElIcon } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
 
@@ -124,9 +132,9 @@ import Paper from 'paper';
 (function patchAddEventListener() {
   // 保存原始方法
   const originalAddEventListener = EventTarget.prototype.addEventListener;
-  
+
   // 替换为我们的修改版本
-  EventTarget.prototype.addEventListener = function(type, listener, options) {
+  EventTarget.prototype.addEventListener = function (type, listener, options) {
     // 对于touchstart事件，强制使用passive: true
     if (type === 'touchstart') {
       let newOptions = options;
@@ -143,7 +151,7 @@ import Paper from 'paper';
       // 调用原始方法，但使用修改后的选项
       return originalAddEventListener.call(this, type, listener, newOptions);
     }
-    
+
     // 对于其他事件类型，使用原始行为
     return originalAddEventListener.call(this, type, listener, options);
   };
@@ -151,7 +159,7 @@ import Paper from 'paper';
 
 // 全局修复Paper.js的DomEvent.add方法，确保所有实例都使用相同的修复
 const originalAdd = Paper.DomEvent.add;
-Paper.DomEvent.add = function(element, events, handler) {
+Paper.DomEvent.add = function (element, events, handler) {
   if (typeof events === 'string' && events.includes('touchstart')) {
     // 分离事件字符串
     const eventArray = events.split(/\s+/);
@@ -296,7 +304,7 @@ const initPaperJs = () => {
 
   // 初始化Paper.js
   paperScope = new Paper.PaperScope();
-  
+
   paperScope.setup(paperCanvas.value);
 
   // 创建网格
@@ -309,7 +317,7 @@ const initPaperJs = () => {
   tool.onMouseDown = (event) => {
     // 如果正在清除过程中，忽略鼠标按下事件
     if (isClearing.value) return;
-    
+
     selectedSegment = null;
     selectedHandle = null;
 
@@ -560,10 +568,10 @@ const submitData = async () => {
 const clearCanvas = () => {
   // 设置清除状态为true
   isClearing.value = true;
-  
+
   // 清除匹配结果
   store.dispatch('clearMatchedResults');
-  
+
   // 立即清除路径
   if (paperScope) {
     if (path) {
@@ -572,7 +580,7 @@ const clearCanvas = () => {
     }
     segmentInfo.value = '';
   }
-  
+
   // 使用requestAnimationFrame确保UI更新完成后再允许新绘制
   requestAnimationFrame(() => {
     // 延迟一帧后再设置为false，确保清除操作和UI更新完成
@@ -645,9 +653,9 @@ onMounted(() => {
     initPaperJs();
 
     // 给canvas元素添加passive触摸事件处理
-    const passiveTouchHandler = () => {};
+    const passiveTouchHandler = () => { };
     paperCanvas.value.addEventListener('touchstart', passiveTouchHandler, { passive: true });
-    
+
     // 设置ResizeObserver监听容器大小变化
     if (window.ResizeObserver) {
       resizeObserver = new ResizeObserver(() => {
@@ -726,17 +734,17 @@ let fullscreenPath = null;
 // 打开全屏绘图弹窗
 const openFullscreenCanvas = () => {
   dialogVisible.value = true;
-  
+
   // 弹窗打开后初始化全屏绘图区域
   setTimeout(() => {
     initFullscreenPaper();
-    
+
     // 给全屏canvas元素添加passive触摸事件处理
     if (fullscreenCanvas.value) {
-      const passiveTouchHandler = () => {};
+      const passiveTouchHandler = () => { };
       fullscreenCanvas.value.addEventListener('touchstart', passiveTouchHandler, { passive: true });
     }
-    
+
     // 如果原画布有内容，复制到全屏画布
     if (path && path.segments && path.segments.length > 0) {
       copyPathToFullscreen();
@@ -755,7 +763,7 @@ const initFullscreenPaper = () => {
 
   // 初始化Paper.js
   fullscreenPaperScope = new Paper.PaperScope();
-  
+
   fullscreenPaperScope.setup(fullscreenCanvas.value);
 
   // 创建网格
@@ -900,16 +908,16 @@ const createFullscreenGrid = (width, height) => {
 // 将原始画布的路径复制到全屏画布
 const copyPathToFullscreen = () => {
   if (!path || !path.segments || !fullscreenPaperScope) return;
-  
+
   // 删除现有路径
   if (fullscreenPath) {
     fullscreenPath.remove();
   }
-  
+
   // 计算缩放因子
   const scaleX = fullscreenCanvas.value.offsetWidth / paperCanvas.value.offsetWidth;
   const scaleY = fullscreenCanvas.value.offsetHeight / paperCanvas.value.offsetHeight;
-  
+
   // 创建新路径
   fullscreenPath = new fullscreenPaperScope.Path({
     strokeColor: 'black',
@@ -918,27 +926,27 @@ const copyPathToFullscreen = () => {
     strokeJoin: 'round',
     fullySelected: true
   });
-  
+
   // 复制所有段点和手柄
   path.segments.forEach(segment => {
     const newSegment = new fullscreenPaperScope.Segment(
       new fullscreenPaperScope.Point(segment.point.x * scaleX, segment.point.y * scaleY)
     );
-    
+
     if (segment.handleIn) {
       newSegment.handleIn = new fullscreenPaperScope.Point(
         segment.handleIn.x * scaleX,
         segment.handleIn.y * scaleY
       );
     }
-    
+
     if (segment.handleOut) {
       newSegment.handleOut = new fullscreenPaperScope.Point(
         segment.handleOut.x * scaleX,
         segment.handleOut.y * scaleY
       );
     }
-    
+
     fullscreenPath.add(newSegment);
   });
 };
@@ -949,16 +957,16 @@ const applyFullscreenDrawing = () => {
     closeFullscreenCanvas();
     return;
   }
-  
+
   // 删除原始路径
   if (path) {
     path.remove();
   }
-  
+
   // 计算缩放因子
   const scaleX = paperCanvas.value.offsetWidth / fullscreenCanvas.value.offsetWidth;
   const scaleY = paperCanvas.value.offsetHeight / fullscreenCanvas.value.offsetHeight;
-  
+
   // 创建新路径
   path = new paperScope.Path({
     strokeColor: 'black',
@@ -967,33 +975,33 @@ const applyFullscreenDrawing = () => {
     strokeJoin: 'round',
     fullySelected: true
   });
-  
+
   // 复制所有段点和手柄
   fullscreenPath.segments.forEach(segment => {
     const newSegment = new paperScope.Segment(
       new paperScope.Point(segment.point.x * scaleX, segment.point.y * scaleY)
     );
-    
+
     if (segment.handleIn) {
       newSegment.handleIn = new paperScope.Point(
         segment.handleIn.x * scaleX,
         segment.handleIn.y * scaleY
       );
     }
-    
+
     if (segment.handleOut) {
       newSegment.handleOut = new paperScope.Point(
         segment.handleOut.x * scaleX,
         segment.handleOut.y * scaleY
       );
     }
-    
+
     path.add(newSegment);
   });
-  
+
   // 更新段点信息
   segmentInfo.value = `点数: ${path.segments.length}`;
-  
+
   // 关闭弹窗
   closeFullscreenCanvas();
 };
@@ -1014,7 +1022,8 @@ const closeFullscreenCanvas = () => {
   dialogVisible.value = false;
 };
 
-// 匹配结果多选
+// 匹配结果抽屉相关变量
+const resultsDrawerVisible = ref(false);
 const selectedMatchedResults = ref([]);
 // 全选状态
 const allMatchedSelected = ref(false);
@@ -1026,30 +1035,71 @@ const sortedMatchedResults = computed(() => {
 // 获取所有匹配结果id
 const allMatchedIds = computed(() => sortedMatchedResults.value.map((r, idx) => `${r.channelName}_${r.shotNumber}_${r.smoothLevel}_${idx}`));
 // 处理全选/全不选
-const handleSelectAllMatched = (checked) => {
-  if (checked) {
-    selectedMatchedResults.value = allMatchedIds.value;
-  } else {
-    selectedMatchedResults.value = [];
-  }
-};
-// 监听selectedMatchedResults变化，更新全选状态
-watch(selectedMatchedResults, (newVal) => {
-  allMatchedSelected.value = newVal.length === allMatchedIds.value.length && newVal.length > 0;
-});
-// 匹配结果下拉框默认全选
-watch(sortedMatchedResults, (newVal) => {
-  if (newVal.length > 0) {
+// const handleSelectAllMatched = (checked) => {
+//   if (checked) {
+//     selectedMatchedResults.value = allMatchedIds.value;
+//     // 修改表格的全选状态
+//     const tableEl = document.querySelector('.el-table');
+//     if (tableEl) {
+//       const checkboxes = tableEl.querySelectorAll('.el-checkbox');
+//       if (checkboxes.length > 0) {
+//         checkboxes[0].click();
+//       }
+//     }
+//   } else {
+//     selectedMatchedResults.value = [];
+//   }
+// };
+
+// 控制抽屉展开和收起
+const toggleResultsDrawer = () => {
+  resultsDrawerVisible.value = !resultsDrawerVisible.value;
+
+  // 当打开面板时，确保所有结果都被选中
+  if (resultsDrawerVisible.value && sortedMatchedResults.value.length > 0) {
+    // 默认全选
     selectedMatchedResults.value = allMatchedIds.value;
     // 同步到store
     store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
-}, { immediate: true });
-// 处理匹配结果选择变化
-const handleMatchedResultsChange = (val) => {
-  // 同步选中id到store
-  store.commit('setVisibleMatchedResultIds', val);
 };
+
+// 表格选择变化处理
+const handleTableSelectionChange = (selection) => {
+  // 将选中的行转换为ID格式
+  selectedMatchedResults.value = selection.map((row, idx) =>
+    `${row.channelName}_${row.shotNumber}_${row.smoothLevel}_${idx}`
+  );
+  // 同步到store
+  store.commit('setVisibleMatchedResultIds', selectedMatchedResults.value);
+  // 更新全选状态
+  allMatchedSelected.value = selection.length === sortedMatchedResults.value.length && selection.length > 0;
+};
+
+// 监听selectedMatchedResults变化，更新全选状态
+watch(selectedMatchedResults, (newVal) => {
+  allMatchedSelected.value = newVal.length === allMatchedIds.value.length && newVal.length > 0;
+});
+
+// 监听匹配结果，有新结果时自动展开抽屉
+watch(sortedMatchedResults, (newVal) => {
+  if (newVal.length > 0) {
+    resultsDrawerVisible.value = true;
+    nextTick(() => {
+      if (resultTable.value) {
+        resultTable.value.clearSelection();
+        newVal.forEach(row => {
+          resultTable.value.toggleRowSelection(row, true);
+        });
+      }
+    });
+  }
+}, { immediate: true });
+
+const resultTable = ref(null);
+function rowKey(row) {
+  return `${row.channelName}_${row.shotNumber}_${row.smoothLevel}`;
+}
 </script>
 
 <style scoped>
@@ -1058,6 +1108,7 @@ const handleMatchedResultsChange = (val) => {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  position: relative;
 }
 
 .header {
@@ -1080,13 +1131,10 @@ const handleMatchedResultsChange = (val) => {
 
 .sketch-container {
   position: relative;
-  border: 0.5px solid #ccc;
-  display: flex;
-  flex-direction: column;
-  border-radius: 5px;
   width: 100%;
-  flex: 1;
-  min-height: 0;
+  height: 100%;
+  border: 0.5px solid #ccc;
+  border-radius: 5px;
   overflow: hidden;
   touch-action: none;
   overscroll-behavior: contain;
@@ -1094,9 +1142,10 @@ const handleMatchedResultsChange = (val) => {
 
 .canvas-container {
   position: relative;
-  flex: 1;
-  min-height: 0;
-  height: 0;
+  width: 100%;
+  height: calc(100% - 10px);
+  display: flex;
+  flex-direction: column;
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -1212,7 +1261,184 @@ const handleMatchedResultsChange = (val) => {
 .matched-results-select {
   margin-right: 8px;
 }
-.select-matched-results {
-  width: 260px;
+
+.drawer-content {
+  padding: 10px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawer-header {
+  margin-bottom: 15px;
+}
+
+:deep(.el-drawer__body) {
+  padding: 0;
+  overflow: hidden;
+}
+
+:deep(.el-drawer__header) {
+  margin-bottom: 0;
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+:deep(.el-drawer__container) {
+  pointer-events: none;
+}
+
+:deep(.el-drawer) {
+  pointer-events: auto;
+}
+
+.results-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 24.5vw;
+  height: 100vh;
+  background-color: white;
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+  z-index: 2000;
+  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  /* 防止外部滚动条 */
+}
+
+.panel-header {
+  padding: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #eee;
+}
+
+.panel-content {
+  padding: 10px;
+  height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* 修改为hidden，将滚动交给表格 */
+}
+
+.panel-header span {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.panel-header .el-button {
+  font-size: 14px;
+}
+
+.panel-visible {
+  transform: translateX(0);
+}
+
+/* 添加匹配结果面板打开时的标识，用于视觉反馈 */
+.results-toggle-active {
+  background-color: #67c23a !important;
+  border-color: #67c23a !important;
+}
+
+/* 确保el-table不会导致额外的滚动条 */
+:deep(.el-table) {
+  width: 100% !important;
+  max-width: 100%;
+  overflow: hidden;
+  --el-table-border-color: #ebeef5;
+  border-color: transparent;
+  font-size: 14px; /* 增大基础字体大小 */
+}
+
+:deep(.el-table__body-wrapper) {
+  overflow-x: hidden !important;
+  overflow-y: auto !important; /* 确保始终显示滚动条 */
+}
+
+:deep(.el-table--border) {
+  border: none;
+}
+
+:deep(.el-table::before),
+:deep(.el-table::after) {
+  display: none;
+}
+
+/* 优化表格在窄屏下的显示 */
+@media (max-width: 1400px) {
+
+  :deep(.el-table th),
+  :deep(.el-table td) {
+    padding: 8px 2px;
+  }
+
+  :deep(.el-table .cell) {
+    padding-left: 5px;
+    padding-right: 5px;
+  }
+}
+
+/* 增大表格中的文字 */
+:deep(.el-table .cell) {
+  font-size: 14px;
+  line-height: 23px; /* 增加行高 */
+  padding: 2px 6px; /* 添加内边距增加可读性 */
+}
+
+:deep(.el-table th) {
+  font-size: 14px;
+  font-weight: bold;
+  background-color: #f5f7fa;
+}
+
+/* 调整滚动条样式 */
+:deep(.el-scrollbar__bar.is-vertical) {
+  width: 8px;
+}
+
+:deep(.el-scrollbar__thumb) {
+  background-color: rgba(144, 147, 153, 0.5);
+}
+
+/* 增大表格中的文字 */
+:deep(.el-table .cell) {
+  font-size: 14px;
+  line-height: 24px; /* 增加行高 */
+  padding: 4px 6px; /* 添加内边距增加可读性 */
+}
+
+/* 优化表格行的样式 */
+:deep(.el-table tr) {
+  height: 36px;
+}
+
+:deep(.el-table__row:hover) {
+  background-color: #f5f7fa !important;
+}
+
+:deep(.el-table__row.current-row) {
+  background-color: #ecf5ff !important;
+}
+
+/* 修复Chrome下的滚动条问题 */
+:deep(.el-table__body-wrapper::-webkit-scrollbar) {
+  width: 8px;
+  height: 8px;
+}
+
+:deep(.el-table__body-wrapper::-webkit-scrollbar-thumb) {
+  background: #c0c4cc;
+  border-radius: 4px;
+}
+
+:deep(.el-table__body-wrapper::-webkit-scrollbar-track) {
+  background: #f5f7fa;
+}
+
+/* 确保数字右对齐 */
+:deep(.el-table .cell-number) {
+  text-align: right;
 }
 </style>
