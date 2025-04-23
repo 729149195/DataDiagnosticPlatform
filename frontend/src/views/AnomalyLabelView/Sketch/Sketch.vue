@@ -4,7 +4,7 @@
     <div class="header">
       <span class="title">手绘查询</span>
       <span class="matched-results-select">
-        <el-button type="primary" @click="toggleResultsDrawer" size="small" :icon="List">
+        <el-button type="primary" @click="toggleResultsDrawer" :icon="List">
           匹配结果 ({{ sortedMatchedResults.length }})
         </el-button>
       </span>
@@ -81,12 +81,12 @@
     <div class="results-panel" :class="{ 'panel-visible': resultsDrawerVisible }">
       <div class="panel-header">
         <span>匹配结果 ({{ sortedMatchedResults.length }})</span>
-        <el-button  @click="toggleResultsDrawer" :icon="ArrowLeft" circle />
+        <el-button @click="toggleResultsDrawer" :icon="ArrowLeft" circle />
       </div>
       <div class="panel-content">
         <el-table :data="sortedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border>
           <el-table-column type="selection" width="40" align="center" />
-          <el-table-column label="通道名" min-width="90" align="center"  show-overflow-tooltip prop="channelName" />
+          <el-table-column label="通道名" min-width="90" align="center" show-overflow-tooltip prop="channelName" />
           <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
           <el-table-column label="匹配度" min-width="70" align="center">
             <template #default="scope">
@@ -112,8 +112,8 @@ import {
   onUnmounted,
   watch,
 } from 'vue';
-import { Search, FullScreen, List, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
-import { ElMessage, ElIcon } from 'element-plus';
+import { Search, FullScreen, List, ArrowLeft } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
 
@@ -1024,22 +1024,6 @@ const sortedMatchedResults = computed(() => {
 });
 // 获取所有匹配结果id
 const allMatchedIds = computed(() => sortedMatchedResults.value.map((r, idx) => `${r.channelName}_${r.shotNumber}_${r.smoothLevel}_${idx}`));
-// 处理全选/全不选
-// const handleSelectAllMatched = (checked) => {
-//   if (checked) {
-//     selectedMatchedResults.value = allMatchedIds.value;
-//     // 修改表格的全选状态
-//     const tableEl = document.querySelector('.el-table');
-//     if (tableEl) {
-//       const checkboxes = tableEl.querySelectorAll('.el-checkbox');
-//       if (checkboxes.length > 0) {
-//         checkboxes[0].click();
-//       }
-//     }
-//   } else {
-//     selectedMatchedResults.value = [];
-//   }
-// };
 
 // 控制抽屉展开和收起
 const toggleResultsDrawer = () => {
@@ -1133,7 +1117,7 @@ watch(
 .canvas-container {
   position: relative;
   width: 100%;
-  height: calc(100% - 10px);
+  height: 100%;
   display: flex;
   flex-direction: column;
   touch-action: none;
@@ -1310,7 +1294,8 @@ watch(
   height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* 修改为hidden，将滚动交给表格 */
+  overflow: hidden;
+  /* 修改为hidden，将滚动交给表格 */
 }
 
 .panel-header span {
@@ -1339,12 +1324,14 @@ watch(
   overflow: hidden;
   --el-table-border-color: #ebeef5;
   border-color: transparent;
-  font-size: 14px; /* 增大基础字体大小 */
+  font-size: 14px;
+  /* 增大基础字体大小 */
 }
 
 :deep(.el-table__body-wrapper) {
   overflow-x: hidden !important;
-  overflow-y: auto !important; /* 确保始终显示滚动条 */
+  overflow-y: auto !important;
+  /* 确保始终显示滚动条 */
 }
 
 :deep(.el-table--border) {
@@ -1373,8 +1360,10 @@ watch(
 /* 增大表格中的文字 */
 :deep(.el-table .cell) {
   font-size: 14px;
-  line-height: 23px; /* 增加行高 */
-  padding: 2px 6px; /* 添加内边距增加可读性 */
+  line-height: 23px;
+  /* 增加行高 */
+  padding: 2px 6px;
+  /* 添加内边距增加可读性 */
 }
 
 :deep(.el-table th) {
@@ -1395,8 +1384,10 @@ watch(
 /* 增大表格中的文字 */
 :deep(.el-table .cell) {
   font-size: 14px;
-  line-height: 24px; /* 增加行高 */
-  padding: 4px 6px; /* 添加内边距增加可读性 */
+  line-height: 24px;
+  /* 增加行高 */
+  padding: 4px 6px;
+  /* 添加内边距增加可读性 */
 }
 
 /* 优化表格行的样式 */
