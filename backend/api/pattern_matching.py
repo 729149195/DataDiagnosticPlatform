@@ -437,9 +437,28 @@ def match_pattern(normalized_query_pattern, channel_data_list):
         channel_name = channel_data.get('channel_name', '')
         shot_number = channel_data.get('shot_number', 0)
         
+        # 匹配结果去重：极其相似的区间只保留一个
+        def is_similar(m1, m2):
+            min1, max1 = m1['minPos'], m1['maxPos']
+            min2, max2 = m2['minPos'], m2['maxPos']
+            len1 = abs(max1 - min1)
+            len2 = abs(max2 - min2)
+            avg_len = (len1 + len2) / 2.0
+            tol = avg_len * 0.7
+            return abs(min1 - min2) <= tol and abs(max1 - max2) <= tol
+
+        deduped_matches = []
+        used = [False] * len(channel_matches)
+        channel_matches.sort(key=lambda m: m['match'])  # 先按相似度排序，优先保留更优
+        for i, m in enumerate(channel_matches):
+            if used[i]:
+                continue
+            deduped_matches.append(m)
+            for j in range(i + 1, len(channel_matches)):
+                if not used[j] and is_similar(m, channel_matches[j]):
+                    used[j] = True
         # 只保留最好的几个匹配
-        channel_matches.sort(key=lambda m: m['match'])
-        best_matches = channel_matches[:30]
+        best_matches = deduped_matches[:30]
         
         results = []
         # 将匹配范围转换为所需格式

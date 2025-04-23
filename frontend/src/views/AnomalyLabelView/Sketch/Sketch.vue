@@ -84,7 +84,10 @@
     <div class="results-panel" :class="{ 'panel-visible': resultsDrawerVisible }">
       <div class="panel-header">
         <span>匹配结果 ({{ sortedMatchedResults.length }})</span>
-        <el-button @click="toggleResultsDrawer" :icon="ArrowLeft" circle />
+        <span class="collapse-button">
+          收起
+          <el-button @click="toggleResultsDrawer" :icon="ArrowLeft" circle />
+        </span>
       </div>
       <div class="panel-content">
         <el-table :data="sortedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border>
@@ -1431,5 +1434,13 @@ watch(
   display: flex;
   flex-direction: row;
   gap: 10px;
+}
+
+.collapse-button{
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
 }
 </style>
