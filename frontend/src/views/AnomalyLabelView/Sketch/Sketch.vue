@@ -3,33 +3,36 @@
     <!-- 顶部操作栏 -->
     <div class="header">
       <span class="title">手绘查询</span>
-      <span class="matched-results-select">
-        <el-button type="primary" @click="toggleResultsDrawer" :icon="List">
-          匹配结果 ({{ sortedMatchedResults.length }})
-        </el-button>
-      </span>
 
-      <span class="operate">
-        <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
-          <!-- 添加全部全选选项 -->
-          <el-option key="select-all" value="select-all" label="全选所有通道">
-            <el-checkbox v-model="allSelected" @change="handleSelectAll">
-              全选所有通道
-            </el-checkbox>
-          </el-option>
+      <span class="channel-and-results-select">
+        <span class="operate">
+          <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
+            <!-- 添加全部全选选项 -->
+            <el-option key="select-all" value="select-all" label="全选所有通道">
+              <el-checkbox v-model="allSelected" @change="handleSelectAll">
+                全选所有通道
+              </el-checkbox>
+            </el-option>
 
-          <!-- 添加分组全选选项 -->
-          <el-option v-for="group in selectV2Options" :key="'select-all-' + group.value" :value="'select-all-' + group.value" :label="'全选' + group.label">
-            <el-checkbox v-model="groupSelectAll[group.value]" @change="(val) => handleSelectAllGroup(val, group)">
-              全选{{ group.label }}
-            </el-checkbox>
-          </el-option>
+            <!-- 添加分组全选选项 -->
+            <el-option v-for="group in selectV2Options" :key="'select-all-' + group.value" :value="'select-all-' + group.value" :label="'全选' + group.label">
+              <el-checkbox v-model="groupSelectAll[group.value]" @change="(val) => handleSelectAllGroup(val, group)">
+                全选{{ group.label }}
+              </el-checkbox>
+            </el-option>
 
-          <!-- 原有的分组选项 -->
-          <el-option-group v-for="group in selectV2Options" :key="group.value" :label="group.label">
-            <el-option v-for="option in group.children" :key="option.value" :label="option.label" :value="option.value" />
-          </el-option-group>
-        </el-select>
+            <!-- 原有的分组选项 -->
+            <el-option-group v-for="group in selectV2Options" :key="group.value" :label="group.label">
+              <el-option v-for="option in group.children" :key="option.value" :label="option.label" :value="option.value" />
+            </el-option-group>
+          </el-select>
+        </span>
+
+        <span class="matched-results-select">
+          <el-button type="primary" @click="toggleResultsDrawer" :icon="List">
+            {{ matchedResultsButtonText }} ({{ sortedMatchedResults.length }})
+          </el-button>
+        </span>
       </span>
     </div>
 
@@ -1025,6 +1028,11 @@ const sortedMatchedResults = computed(() => {
 // 获取所有匹配结果id
 const allMatchedIds = computed(() => sortedMatchedResults.value.map((r, idx) => `${r.channelName}_${r.shotNumber}_${r.smoothLevel}_${idx}`));
 
+// 动态按钮文本，抽屉展开时显示Collapse，收起时显示Expand
+const matchedResultsButtonText = computed(() =>
+  resultsDrawerVisible.value ? '收起查询结果' : '展开查询结果'
+);
+
 // 控制抽屉展开和收起
 const toggleResultsDrawer = () => {
   resultsDrawerVisible.value = !resultsDrawerVisible.value;
@@ -1232,10 +1240,6 @@ watch(
   font-size: 14px;
 }
 
-.matched-results-select {
-  margin-right: 8px;
-}
-
 .drawer-content {
   padding: 10px;
   height: 100%;
@@ -1421,5 +1425,11 @@ watch(
 /* 确保数字右对齐 */
 :deep(.el-table .cell-number) {
   text-align: right;
+}
+
+.channel-and-results-select{
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
 }
 </style>
