@@ -84,16 +84,7 @@
         <el-button  @click="toggleResultsDrawer" :icon="ArrowLeft" circle />
       </div>
       <div class="panel-content">
-        <el-table 
-          :data="sortedMatchedResults" 
-          style="width: 100%" 
-          @selection-change="handleTableSelectionChange" 
-          height="calc(100vh - 83px)"
-          size="default" 
-          border
-          ref="resultTable"
-          :row-key="rowKey"
-        >
+        <el-table :data="sortedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border>
           <el-table-column type="selection" width="40" align="center" />
           <el-table-column label="通道名" min-width="90" align="center"  show-overflow-tooltip prop="channelName" />
           <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
@@ -120,7 +111,6 @@ import {
   onMounted,
   onUnmounted,
   watch,
-  nextTick,
 } from 'vue';
 import { Search, FullScreen, List, ArrowLeft, ArrowRight } from '@element-plus/icons-vue';
 import { ElMessage, ElIcon } from 'element-plus';
@@ -1084,22 +1074,22 @@ watch(selectedMatchedResults, (newVal) => {
 // 监听匹配结果，有新结果时自动展开抽屉
 watch(sortedMatchedResults, (newVal) => {
   if (newVal.length > 0) {
+    // 自动展开抽屉
     resultsDrawerVisible.value = true;
-    nextTick(() => {
-      if (resultTable.value) {
-        resultTable.value.clearSelection();
-        newVal.forEach(row => {
-          resultTable.value.toggleRowSelection(row, true);
-        });
-      }
-    });
+    // 默认全选
+    selectedMatchedResults.value = allMatchedIds.value;
+    // 同步到store
+    store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
 }, { immediate: true });
 
-const resultTable = ref(null);
-function rowKey(row) {
-  return `${row.channelName}_${row.shotNumber}_${row.smoothLevel}`;
-}
+// 监听高亮id变化，自动同步复选框选中状态
+watch(
+  () => store.state.visibleMatchedResultIds,
+  (newIds) => {
+    selectedMatchedResults.value = [...newIds];
+  }
+);
 </script>
 
 <style scoped>
