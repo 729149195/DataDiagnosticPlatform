@@ -112,9 +112,14 @@
               </span>
               <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
                 <el-scrollbar :height="chartAreaHeight" :always="false">
-                  <keep-alive>
-                    <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true && selectedChannels.length > 0" />
-                    <MultiChannelSingleRow ref="MultiChannelRef" v-else-if="SingleChannelMultiRow_channel_number === false && selectedChannels.length > 0" :containerRef="chartAreaRef" :height="chartAreaHeight" />
+                  <template v-if="selectedChannels.length === 0">
+                    <div :style="{ height: chartAreaHeight, display: 'flex', alignItems: 'center', justifyContent: 'center' }">
+                      <el-empty description="请选择通道" />
+                    </div>
+                  </template>
+                  <keep-alive v-else>
+                    <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true" />
+                    <MultiChannelSingleRow v-else ref="MultiChannelRef" :containerRef="chartAreaRef" :height="chartAreaHeight" />
                   </keep-alive>
                 </el-scrollbar>
                 <OverviewBrush ref="overviewBrushRef" />
