@@ -1,9 +1,6 @@
 <template>
   <div class="chart-container">
-    <div v-if="!selectedChannels || selectedChannels.length === 0">
-      <el-empty description="请选择通道" style="margin-top: 15vh;" />
-    </div>
-    <div v-else>
+    <div>
       <div class="chart-wrapper" v-for="(channel, index) in selectedChannels" :key="channel.channel_name + '_' + channel.shot_number">
         <div :id="'chart-' + channel.channel_name + '_' + channel.shot_number" :ref="el => channelSvgElementsRefs[index] = el" :style="{
           opacity: renderingStates[channel.channel_name + '_' + channel.shot_number] === 100 ? 1 : 0,
