@@ -426,6 +426,20 @@ onActivated(() => {
       }
     });
   }
+  nextTick(() => {
+    selectedChannels.value.forEach(channel => {
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      const chart = window.chartInstances?.[channelKey];
+      if (chart) {
+        // 获取当前曲线颜色
+        const currentColor = chart.series.find(s => s.options.id === 'original')?.color;
+        // 如果颜色不一致，强制刷新
+        if (currentColor && currentColor !== channel.color) {
+          updateChartColor(channel, channel.color);
+        }
+      }
+    });
+  });
 });
 onDeactivated(() => {
   isActive.value = false;
