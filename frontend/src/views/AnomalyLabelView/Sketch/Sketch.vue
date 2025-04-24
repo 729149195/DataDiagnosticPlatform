@@ -564,9 +564,12 @@ const submitData = async () => {
 const clearCanvas = () => {
   // 设置清除状态为true
   isClearing.value = true;
-
+  resultsDrawerVisible.value = false;
   // 清除匹配结果
   store.dispatch('clearMatchedResults');
+
+  // 清空通道选择
+  selectedGunNumbers.value = [];
 
   // 立即清除路径
   if (paperScope) {
