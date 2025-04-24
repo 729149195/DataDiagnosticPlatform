@@ -563,55 +563,56 @@ watch(selectedChannels, (newChannels, oldChannels) => {
     }
   }
 
-  // 检查是否只是颜色发生变化
-  const isOnlyColorChange = newChannels.length === oldChannels.length &&
-    newChannels.every(newCh => {
+  // 判断是否仅 color 变化
+  let onlyColorChanged = false;
+  if (newChannels.length === oldChannels.length) {
+    onlyColorChanged = true;
+    for (let i = 0; i < newChannels.length; i++) {
+      const newCh = newChannels[i];
       const oldCh = oldChannels.find(
         old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
       );
-      return oldCh &&
-        JSON.stringify({ ...oldCh, color: newCh.color }) === JSON.stringify(newCh);
-    });
+      if (!oldCh) {
+        onlyColorChanged = false;
+        break;
+      }
+      // 比较除 color 外的所有字段
+      const { color: newColor, ...newRest } = newCh;
+      const { color: oldColor, ...oldRest } = oldCh;
+      if (JSON.stringify(newRest) !== JSON.stringify(oldRest)) {
+        onlyColorChanged = false;
+        break;
+      }
+      // 如果 color 不一样，后面会处理
+    }
+  }
 
-  // 如果是仅颜色变化，更新每个通道的颜色
-  if (isOnlyColorChange) {
-    // 获取现有图表实例
+  if (onlyColorChanged) {
+    // 只更新颜色
     const chart = Highcharts.charts.find(chart => chart && chart.renderTo.id === 'combined-chart');
     if (chart) {
       let seriesUpdated = false;
-
-      // 逐个检查并更新图表中的颜色
       newChannels.forEach(newCh => {
         const oldCh = oldChannels.find(
           old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
         );
-
         if (oldCh && oldCh.color !== newCh.color) {
           const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
           const color = newCh.color;
-
           // 更新 channelsData 中的颜色
           const channelDataIndex = channelsData.value.findIndex(
             d => d.channelName === newCh.channel_name && d.channelshotnumber === newCh.shot_number
           );
-
           if (channelDataIndex !== -1) {
             channelsData.value[channelDataIndex].color = color;
           }
-
           // 更新图表中的所有相关系列颜色
           chart.series.forEach(series => {
-            // 检查系列名称是否为当前通道的主线或平滑线
             if (series.name === channelKey || series.name === `${channelKey}_smoothed`) {
-              // 使用 series.update 而不是直接修改属性
-              series.update({
-                color: color
-              }, false); // 不立即重绘
-
+              series.update({ color: color }, false);
               seriesUpdated = true;
             }
           });
-
           // 更新图例文字颜色
           const legendText = document.querySelector(`.legend-text[data-channel="${channelKey}"]`);
           if (legendText) {
@@ -619,27 +620,17 @@ watch(selectedChannels, (newChannels, oldChannels) => {
           }
         }
       });
-
-      // 更新 store 中的颜色
-      newChannels.forEach(newCh => {
-        const oldCh = oldChannels.find(
-          old => `${old.channel_name}_${old.shot_number}` === `${newCh.channel_name}_${newCh.shot_number}`
-        );
-
-        if (oldCh && oldCh.color !== newCh.color) {
-          const channelKey = `${newCh.channel_name}_${newCh.shot_number}`;
-          store.commit('updateChannelColor', { channel_key: channelKey, color: newCh.color });
-        }
-      });
+      // 不重绘图表，只更新颜色
     }
-  } else {
-    // 如果不是仅颜色变化，则执行完整的重新渲染
-    channelsData.value = [];
-    exposeData.value = [];
-    nextTick().then(() => {
-      renderCharts();
-    });
+    return;
   }
+
+  // 其他情况，重绘
+  channelsData.value = [];
+  exposeData.value = [];
+  nextTick().then(() => {
+    renderCharts();
+  });
 }, { deep: true });
 
 watch(sampling, (newSamplingRate, oldSamplingRate) => {
