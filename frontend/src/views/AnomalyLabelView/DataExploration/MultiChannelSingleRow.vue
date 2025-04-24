@@ -620,11 +620,6 @@ watch(selectedChannels, (newChannels, oldChannels) => {
         }
       });
 
-      // 一次性重绘图表，提高性能
-      if (seriesUpdated) {
-        chart.redraw();
-      }
-
       // 更新 store 中的颜色
       newChannels.forEach(newCh => {
         const oldCh = oldChannels.find(
@@ -2181,19 +2176,6 @@ watch(
     }
   }
 );
-
-// 优化 watch(selectedChannels, ...) 只在数据变化时渲染
-watch(selectedChannels, (newChannels, oldChannels) => {
-  if (!isActive.value) return;
-  // 只有通道真正变化时才重新渲染
-  if (JSON.stringify(newChannels) !== JSON.stringify(oldChannels)) {
-    channelsData.value = [];
-    exposeData.value = [];
-    nextTick().then(() => {
-      renderCharts();
-    });
-  }
-}, { deep: true });
 
 
 let chartResizeObserver = null
