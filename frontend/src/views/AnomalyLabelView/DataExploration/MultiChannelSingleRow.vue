@@ -1,7 +1,6 @@
 <template>
   <div class="chart-container">
     <div class="legend-container">
-      <!-- 移除 LegendComponent，改为直接使用 ChannelColorPicker -->
       <div class="legend" id="channelLegendContainer">
         <div class="legend-item" v-for="(channel, index) in selectedChannels" :key="`${channel.channel_name}_${channel.shot_number}`">
           <ChannelColorPicker :color="channel.color" :predefineColors="predefineColors" @change="updateChannelColor({ channelKey: `${channel.channel_name}_${channel.shot_number}`, color: $event })" @update:color="updateChartColor(channel, $event)" :channelName="channel.channel_name" :shotNumber="channel.shot_number" />

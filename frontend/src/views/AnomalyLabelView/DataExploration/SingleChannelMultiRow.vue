@@ -1,6 +1,6 @@
 <template>
   <div class="chart-container">
-    <div v-if="selectedChannels.length === 0">
+    <div v-if="!selectedChannels || selectedChannels.length === 0">
       <el-empty description="请选择通道" style="margin-top: 15vh;" />
     </div>
     <div v-else>
