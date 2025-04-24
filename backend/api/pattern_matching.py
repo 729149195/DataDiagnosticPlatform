@@ -406,20 +406,6 @@ def match_pattern(normalized_query_pattern, channel_data_list):
                 for m in matches_scale:
                     m['scale'] = scale
                 all_matches.extend(matches_scale)
-        # 按 scale 分组并在每个尺度内进行 min-max 归一化
-        if all_matches:
-            groups = {}
-            for m in all_matches:
-                scale = m.get('scale', 1.0)
-                groups.setdefault(scale, []).append(m)
-            for scale, group in groups.items():
-                vals = [item['match'] for item in group]
-                minv, maxv = min(vals), max(vals)
-                for item in group:
-                    if maxv > minv:
-                        item['match'] = (item['match'] - minv) / (maxv - minv)
-                    else:
-                        item['match'] = 0.0
         return all_matches
     
     # =====================================================
