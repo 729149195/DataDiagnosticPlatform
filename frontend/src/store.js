@@ -147,6 +147,9 @@ const store = createStore({
       state.sampling = value;
       state.samplingVersion++;
     },
+    setSamplingVersion(state, newVersion) {
+      state.samplingVersion = newVersion
+    },
     setSmoothness(state, value) {
       state.smoothness = value;
     },
