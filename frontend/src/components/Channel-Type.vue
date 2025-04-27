@@ -12,7 +12,10 @@
       </table>
     </div>
     <div class="table-content">
-      <div v-for="(item, index) in displayedData" :key="index" class="card">
+      <div v-if="!displayedData || displayedData.length === 0" :style="{ height: 'calc(70vh - 180px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }">
+        <el-empty description='请使用⬆"过滤器"获得通道' :image-size="150"/>
+      </div>
+      <div v-else v-for="(item, index) in displayedData" :key="index" class="card">
         <table class="channel-table content-table">
           <tbody>
             <template v-for="(channel, cIndex) in item.channels" :key="`channel-${cIndex}`">
