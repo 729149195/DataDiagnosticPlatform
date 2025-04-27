@@ -13,11 +13,9 @@ import random
 import os
 import logging
 import traceback
-import queue
 import threading
 
 import MDSplus # type: ignore
-from MDSplus import Connection # type: ignore
 import numpy as np
 from pymongo import MongoClient, IndexModel, ASCENDING, UpdateMany
 from tqdm import tqdm
@@ -45,80 +43,6 @@ class JsonEncoder(json.JSONEncoder):
         else:
             return super(JsonEncoder, self).default(obj)
 
-# MDS连接池类，用于复用MDSplus连接
-class MDSConnectionPool:
-    """MDSplus连接池，用于复用连接，减少连接创建和销毁的开销"""
-    def __init__(self, max_connections=20):
-        self.max_connections = max_connections
-        self.pools = {}  # 每个数据库一个连接池
-        self.locks = {}  # 每个数据库一个锁
-        
-    def get_connection(self, db_name, path):
-        """从连接池获取连接"""
-        if db_name not in self.pools:
-            self.pools[db_name] = queue.Queue(self.max_connections)
-            self.locks[db_name] = threading.Lock()
-            
-        with self.locks[db_name]:
-            try:
-                # 尝试从池中获取连接
-                conn = self.pools[db_name].get(block=False)
-                logger.debug(f"复用连接 - 数据库: {db_name}")
-                return conn
-            except queue.Empty:
-                # 池中没有可用连接，创建新连接
-                try:
-                    # 提取服务器地址
-                    server = path.split('::')[0]
-                    conn = Connection(server)
-                    logger.debug(f"创建新连接 - 数据库: {db_name}, 服务器: {server}")
-                    return conn
-                except Exception as e:
-                    logger.error(f"创建连接失败 - 数据库: {db_name}, 错误: {e}")
-                    raise
-    
-    def release_connection(self, db_name, conn):
-        """释放连接回池中"""
-        if db_name not in self.pools:
-            return
-            
-        try:
-            # 尝试将连接放回池中
-            if not self.pools[db_name].full():
-                self.pools[db_name].put(conn, block=False)
-                logger.debug(f"连接返回池中 - 数据库: {db_name}")
-            else:
-                # 池已满，关闭连接
-                try:
-                    conn.closeAllTrees()
-                    conn.disconnect()
-                    logger.debug(f"关闭多余连接 - 数据库: {db_name}")
-                except:
-                    pass
-        except:
-            # 放回池失败，关闭连接
-            try:
-                conn.closeAllTrees()
-                conn.disconnect()
-            except:
-                pass
-                
-    def close_all(self):
-        """关闭所有连接池中的连接"""
-        for db_name, pool in self.pools.items():
-            while not pool.empty():
-                try:
-                    conn = pool.get(block=False)
-                    try:
-                        conn.closeAllTrees()
-                        conn.disconnect()
-                    except:
-                        pass
-                except queue.Empty:
-                    break
-        self.pools.clear()
-        self.locks.clear()
-        
 def import_module_from_path(module_name, file_path):
     """动态导入指定路径的模块"""
     spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -178,10 +102,13 @@ def preload_algorithms(algorithm_channel_map):
                 logger.error(f"预加载算法模块 {error} 失败: {e}")
     return algorithm_modules
 
-# 使用连接池处理单个通道的函数
-def process_channel_pool(args):
-    """使用连接池处理单个通道"""
-    shot_num, DB, channel_name, tree_path, subtrees, algorithm_channel_map, connection_pool = args
+# 处理单个通道的函数，通过多线程增强而非连接池
+def process_channel(channel_args):
+    shot_num, DB, channel_name, tree_path, subtrees, algorithm_channel_map, lock_id = channel_args
+    
+    # 添加随机延迟，避免同时连接
+    delay = random.uniform(0.1, 0.5)
+    time.sleep(delay)
     
     channel_type = remove_digits(channel_name).upper()
     if channel_type == 'MIR':
@@ -198,39 +125,28 @@ def process_channel_pool(args):
         'status_message': ''  # 状态说明信息
     }
     
-    # 从连接池获取连接
-    conn = None
-    try:
-        conn = connection_pool.get_connection(DB, tree_path)
-    except Exception as e:
-        temp['status'] = 'failed'
-        temp['status_message'] = f'无法获取数据库连接: {str(e)}'
-        return temp, None
+    # 创建独立的MdsTree连接，添加重试机制
+    tree = None
+    max_retries = 3
+    for retry in range(max_retries):
+        try:
+            tree = MdsTree(shot_num, dbname=DB, path=tree_path, subtrees=subtrees)
+            break
+        except Exception as e:
+            if retry < max_retries - 1:
+                # 指数退避策略
+                wait_time = (2 ** retry) * 0.5 + random.uniform(0, 0.5)
+                time.sleep(wait_time)
+                continue
+            logger.warning(f"创建通道 {channel_name} 的MdsTree连接失败: {e}")
+            temp['status'] = 'failed'
+            temp['status_message'] = f'MdsTree连接失败: {str(e)}'
+            return temp, None
     
     # 为批量插入准备的数据
     error_data_list = []
     
     try:
-        # 打开树
-        max_retries = 3
-        tree_opened = False
-        
-        for retry in range(max_retries):
-            try:
-                conn.openTree(DB, int(shot_num))
-                tree_opened = True
-                break
-            except Exception as e:
-                if retry < max_retries - 1:
-                    # 指数退避策略
-                    wait_time = (2 ** retry) * 0.1 + random.uniform(0, 0.2)
-                    time.sleep(wait_time)
-                    continue
-                temp['status'] = 'failed'
-                temp['status_message'] = f'打开树失败: {str(e)}'
-                connection_pool.release_connection(DB, conn)
-                return temp, None
-        
         detect_type = channel_type
         if detect_type in ['MP', 'FLUX', 'IPF']:
             detect_type = 'MP'
@@ -240,47 +156,36 @@ def process_channel_pool(args):
         if not has_matching_algorithm:
             temp['status'] = 'no_algorithm'
             temp['status_message'] = f'没有匹配的算法类型: {detect_type}'
-            if tree_opened:
-                try:
-                    conn.closeTree(DB, int(shot_num))
-                except:
-                    pass
-            connection_pool.release_connection(DB, conn)
+            if tree is not None:
+                tree.close()
             return temp, None
         
-        # 读取通道数据
+        # 读取通道数据，添加重试机制
         X_value, Y_value = None, None
-        try:
-            if detect_type == 'MP':
-                # 设置时间上下文
-                conn.get('SetTimeContext(-7, 5, 0)')
-            
-            # 读取X和Y值
-            data_x = conn.get(f"dim_of(\\{channel_name})").data()
-            data_y = conn.get(f"\\{channel_name}").data()
-            
-            X_value = np.array(data_x)
-            Y_value = np.array(data_y)
-        except Exception as e:
-            temp['status'] = 'data_read_failed'
-            temp['status_message'] = f'数据读取失败: {str(e)}'
-            if tree_opened:
-                try:
-                    conn.closeTree(DB, int(shot_num))
-                except:
-                    pass
-            connection_pool.release_connection(DB, conn)
-            return temp, None
+        for retry in range(max_retries):
+            try:
+                if detect_type == 'MP':
+                    X_value, Y_value = tree.getData(channel_name, -7, 5)
+                else:
+                    X_value, Y_value = tree.getData(channel_name)
+                break
+            except Exception as e:
+                if retry < max_retries - 1:
+                    wait_time = (2 ** retry) * 0.5 + random.uniform(0, 0.5)
+                    time.sleep(wait_time)
+                    continue
+                # 最后一次重试失败
+                temp['status'] = 'data_read_failed'
+                temp['status_message'] = f'数据读取失败: {str(e)}'
+                if tree is not None:
+                    tree.close()
+                return temp, None
             
         if X_value is None or Y_value is None or len(Y_value) == 0:
             temp['status'] = 'empty_data'
             temp['status_message'] = '数据为空或无效'
-            if tree_opened:
-                try:
-                    conn.closeTree(DB, int(shot_num))
-                except:
-                    pass
-            connection_pool.release_connection(DB, conn)
+            if tree is not None:
+                tree.close()
             return temp, None
             
         X_unit = 's'
@@ -290,17 +195,21 @@ def process_channel_pool(args):
         # 预先获取可能需要的辅助通道数据
         aux_channel_data = {}
         if 'error_axuv_Detector_channel_damage' in algorithm_channel_map.get(detect_type, {}) or 'error_sxr_spectra_saturation' in algorithm_channel_map.get(detect_type, {}):
-            try:
-                if 'error_axuv_Detector_channel_damage' in algorithm_channel_map.get(detect_type, {}):
-                    aux_data = conn.get('\\ECRH0_UA').data()
-                    aux_channel_data['ECRH0_UA'] = np.array(aux_data)
-                
-                if 'error_sxr_spectra_saturation' in algorithm_channel_map.get(detect_type, {}):
-                    aux_data = conn.get('\\IP').data()
-                    aux_channel_data['IP'] = np.array(aux_data)
-            except Exception as e:
-                # 获取辅助数据失败，继续执行
-                logger.warning(f"获取辅助通道数据失败: {e}")
+            for retry in range(max_retries):
+                try:
+                    if 'error_axuv_Detector_channel_damage' in algorithm_channel_map.get(detect_type, {}):
+                        _, aux_data = tree.getData('ECRH0_UA')
+                        aux_channel_data['ECRH0_UA'] = aux_data
+                    
+                    if 'error_sxr_spectra_saturation' in algorithm_channel_map.get(detect_type, {}):
+                        _, aux_data = tree.getData('IP')
+                        aux_channel_data['IP'] = aux_data
+                    break
+                except Exception as e:
+                    if retry < max_retries - 1:
+                        wait_time = (2 ** retry) * 0.5 + random.uniform(0, 0.5)
+                        time.sleep(wait_time)
+                        continue
         
         error_channel_map = algorithm_channel_map[detect_type]
         error_type_list = error_channel_map.keys()
@@ -380,16 +289,13 @@ def process_channel_pool(args):
         logger.warning(f"处理通道 {channel_name} 时发生异常: {traceback.format_exc()}")
         temp['status'] = 'processing_error'
         temp['status_message'] = f'处理异常: {str(e)}'
-    finally:
-        # 确保关闭树并释放连接
-        if tree_opened:
-            try:
-                conn.closeTree(DB, int(shot_num))
-            except:
-                pass
-        
-        # 释放连接回池中
-        connection_pool.release_connection(DB, conn)
+    
+    # 确保关闭连接
+    if tree is not None:
+        try:
+            tree.close()
+        except:
+            pass
             
     return temp, error_data_list
 
@@ -411,23 +317,6 @@ def get_channel_pool(shot_num, DB, path, subtrees, retries=3):
                 logger.error(f"获取通道池失败，已达最大重试次数: {e}")
                 raise
     return []
-
-def process_channels_batch(args):
-    """处理一批通道的函数，用于多进程处理"""
-    shot_num, DB, channels, db_path, subtrees, algorithm_channel_map, local_connection_pool_size = args
-    
-    # 创建本地连接池
-    connection_pool = MDSConnectionPool(max_connections=local_connection_pool_size)
-    
-    results = []
-    for channel_name in channels:
-        result = process_channel_pool((shot_num, DB, channel_name, db_path, subtrees, algorithm_channel_map, connection_pool))
-        results.append(result)
-    
-    # 关闭本地连接池
-    connection_pool.close_all()
-    
-    return results
 
 def RUN(shot_list, channel_list):
     # 连接MongoDB
@@ -463,6 +352,7 @@ def RUN(shot_list, channel_list):
 
     all_struct_tree = []  # 所有炮号的结构树
     shot_range = list(range(*shot_list))
+    read_time = 0
     
     # 统计数据
     data_statistics = {
@@ -550,17 +440,11 @@ def RUN(shot_list, channel_list):
     print(f"总计需要处理 {len(shot_range)} 个炮号, {total_channels} 个通道")
     processed_channels = 0
     
-    # 获取CPU核心数，用于设置进程数和每进程连接池大小
+    # 获取CPU核心数，合理限制进程数
+    # 注意：因为我们看到原始方式在处理MDSplus连接时性能更好，所以使用原始的进程池方法
     num_cores = mp.cpu_count()
-    # 使用128个核心，但限制最大进程数
-    num_processes = min(64, max(1, num_cores - 2))
-    # 每个进程的连接池大小，总连接数约为num_connections_per_db * num_processes * len(DB_list)
-    # 控制总连接数在合理范围内，避免MDSplus服务器连接过载
-    num_connections_per_db = 5  # 每个进程的每个数据库的连接池大小
-    
+    num_processes = min(96, max(1, num_cores - 4))  # 最多使用96个进程，留一些核心给系统
     print(f"CPU核心数: {num_cores}，将使用 {num_processes} 个进程并行处理数据")
-    print(f"每个进程每个数据库的连接池大小: {num_connections_per_db}")
-    print(f"估计总连接数上限: {num_connections_per_db * num_processes * len(DB_list)}")
     
     # 处理每个炮号
     for shot_num in shot_range:
@@ -589,49 +473,39 @@ def RUN(shot_list, channel_list):
                     
                 print(f"  炮号 {shot_num} 在 {DB} 数据库共有 {len(channels_to_process)} 个通道需要处理")
                 
-                # 分批处理通道
-                db_results = []
-                
-                # 动态计算批大小，基于进程数和通道总数
-                # 保证每个进程至少有一批任务，且批大小不超过通道总数除以进程数的两倍
-                # 这样可以更好地利用CPU资源，减少负载不均衡
-                batch_size = max(1, min(500, len(channels_to_process) // (num_processes * 2) + 1))
+                # 批量处理，分组处理通道以限制并发连接数
+                # 使用动态计算的批大小以优化性能
+                batch_size = max(50, min(500, len(channels_to_process) // (num_processes) + 1))
                 num_batches = (len(channels_to_process) + batch_size - 1) // batch_size
-                
                 print(f"  将以 {batch_size} 个通道为一批，分成 {num_batches} 批处理")
                 
-                # 准备批处理参数
-                batch_args = []
-                for i in range(0, len(channels_to_process), batch_size):
-                    batch_channels = channels_to_process[i:i+batch_size]
-                    batch_args.append((
-                        shot_num, 
-                        DB, 
-                        batch_channels, 
-                        DBS[DB]['path'], 
-                        DBS[DB]['subtrees'], 
-                        algorithm_channel_map, 
-                        num_connections_per_db
-                    ))
+                # 当前数据库的处理结果
+                db_results = []
                 
-                # 使用进程池并行处理
-                with mp.Pool(processes=min(num_processes, len(batch_args))) as pool:
-                    results = list(tqdm(
-                        pool.imap_unordered(process_channels_batch, batch_args),
-                        total=len(batch_args),
-                        desc=f"  处理炮号 {shot_num} 在 {DB} 数据库的通道"
-                    ))
+                for batch_idx in range(0, len(channels_to_process), batch_size):
+                    batch_channels = channels_to_process[batch_idx:batch_idx + batch_size]
                     
-                    # 展平结果
-                    for batch_result in results:
-                        db_results.extend(batch_result)
+                    # 准备多进程处理的参数
+                    channel_args = [(shot_num, DB, channel_name, DBS[DB]['path'], DBS[DB]['subtrees'], algorithm_channel_map, idx) 
+                                    for idx, channel_name in enumerate(batch_channels)]
+                    
+                    # 使用进程池并行处理通道
+                    with mp.Pool(processes=min(num_processes, len(channel_args))) as pool:
+                        results = list(tqdm(
+                            pool.imap_unordered(process_channel, channel_args),
+                            total=len(channel_args),
+                            desc=f"  处理炮号 {shot_num} 在 {DB} 数据库的通道 (批次 {batch_idx//batch_size + 1}/{num_batches})"
+                        ))
+                        db_results.extend(results)
                 
                 # 收集当前数据库的结果和统计数据
-                for channel_data, error_list in db_results:
+                for result in db_results:
                     processed_channels += 1
                     data_statistics["total_channels_processed"] += 1
                     data_statistics["by_db"][DB]["processed"] += 1
                     data_statistics["by_shot"][str(shot_num)]["processed"] += 1
+                    
+                    channel_data, error_list = result
                     
                     if channel_data:
                         # 添加到structtree（无论成功与否，只要有通道数据）
@@ -683,14 +557,16 @@ def RUN(shot_list, channel_list):
                 )
             
             if operations:
-                # 批量执行操作，每100个一批以提高性能
-                for batch_idx in range(0, len(operations), 100):
-                    batch = operations[batch_idx:batch_idx+100]
+                # 批量执行操作，使用较大的批次以提高性能
+                for batch_idx in range(0, len(operations), 50):
+                    batch = operations[batch_idx:batch_idx+50]
                     if batch:
                         try:
                             errors_collection.bulk_write(batch)
                         except Exception as e:
                             logger.error(f"批量写入MongoDB失败: {e}")
+                
+                print(f"  成功将 {len(operations)} 条异常数据写入MongoDB")
         
         # 将当前炮号的结构树存入MongoDB (合并了所有数据库的结果)
         try:
@@ -802,7 +678,7 @@ def create_shot_index(db, shot_number, struct_tree_data):
 if __name__ == "__main__":
     with open('RunDetectAlgorithm/algorithmChannelMap.json', encoding='utf-8') as f:
         algorithm_channel_map = json.load(f)
-    shot_list = [4571, 4580]
+    shot_list = [4571, 4573]
     channel_list = []
     RUN(shot_list, channel_list)
 

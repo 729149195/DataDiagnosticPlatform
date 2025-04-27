@@ -1,0 +1,21 @@
+GetMdsMsg shutdown connection 0: bad msg header, header.ndims=101, client_type=15
+Error in GetAnswerInfoTS: mode = 12, status = 65554
+Error in GetAnswerInfoTS: mode = 12, status = 65554
+Error in GetAnswerInfoTS: mode = 3, status = 65554
+Corrupted/truncated tree file: 192.168.20.11::
+send_bytes: Error sending data to remote server: Broken pipe
+send_bytes: Error sending data to remote server: Broken pipe
+W, 1745749113.685:  remote_disconnect()           Host(conid=0, links=2, unique='tcp://192.168.20.11:8000') disconnected
+Error in SendArg: mode = 12, status = 65554
+send_bytes: Error sending data to remote server: Broken pipe
+Error in SendArg: mode = 12, status = 65554
+W, 1745749113.685:  remote_disconnect()           Host(conid=0, links=3, unique='tcp://192.168.20.11:8000') disconnected
+Error in SendArg: mode = 3, status = 65554
+W, 1745749113.685:  remote_disconnect()           Host(conid=0, links=3, unique='tcp://192.168.20.11:8000') disconnected
+W, 1745749113.685:  remote_disconnect()           Host(conid=0, links=3, unique='tcp://192.168.20.11:8000') disconnected
+Corrupted/truncated tree file: 192.168.20.11::/media/ennfusion/trees/exl50u/exl50u_4571.tree
+send_bytes: Error sending data to remote server: Broken pipe
+Error in SendArg: mode = 12, status = 65554
+W, 1745749113.686:  remote_disconnect()           Host(conid=0, links=3, unique='tcp://192.168.20.11:8000') disconnected
+send_bytes: Error sending data to remote server: Broken pipe
+W, 1745749113.687:  remote_disconnect()           Host(conid=0, links=3, unique='tcp://192.168.20.11:8000') disconnected
