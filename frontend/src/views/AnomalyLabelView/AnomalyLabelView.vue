@@ -692,6 +692,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  selectedButton.value = 'anay';
   if (chartAreaResizeObserver && chartAreaRef.value) {
     chartAreaResizeObserver.unobserve(chartAreaRef.value)
     chartAreaResizeObserver.disconnect()
@@ -2320,13 +2321,6 @@ watch(
     })
   }
 )
-
-onBeforeUnmount(() => {
-  if (chartAreaResizeObserver && chartAreaRef.value) {
-    chartAreaResizeObserver.unobserve(chartAreaRef.value)
-    chartAreaResizeObserver.disconnect()
-  }
-})
 
 const chartAreaHeight = computed(() => {
   // 使用减去一些像素的方式，确保高度略微小于容器，避免滚动条

@@ -180,7 +180,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useStore } from 'vuex';
 import { useRouter } from 'vue-router';
 import { User, SwitchButton, Delete, InfoFilled, DataAnalysis, Odometer } from '@element-plus/icons-vue'
@@ -190,6 +190,10 @@ import indexedDBService from '@/services/indexedDBService';
 const store = useStore()
 const router = useRouter()
 const selectedButton = ref('anay');
+
+onBeforeUnmount(() => {
+  selectedButton.value = 'anay';
+})
 
 // 添加缓存服务性能优化
 let isCachePreloading = false;
