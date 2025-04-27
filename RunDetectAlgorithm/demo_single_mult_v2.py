@@ -7,19 +7,17 @@ from datetime import datetime
 import importlib
 import json
 import multiprocessing as mp
-from functools import partial
 import importlib.util
 import random
-import os
 import logging
 import traceback
 
 import MDSplus # type: ignore
 import numpy as np
-from pymongo import MongoClient, IndexModel, ASCENDING, UpdateMany
+from pymongo import MongoClient, ASCENDING, UpdateMany
 from tqdm import tqdm
 
-from mdsConn import MdsTree, formChaPool
+from mdsConn import MdsTree
 
 # 配置日志
 logging.basicConfig(
