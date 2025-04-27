@@ -370,49 +370,67 @@ const filterGunNumbers = () => {
 
 // 在 setup 中添加新的计算属性和监听器
 const filteredChannelNameOptions = computed(() => {
-  if (!selectedChannelTypes.value.length) {
-    return channelNameOptions.value;
+  let options = channelNameOptions.value;
+
+  // 按通道类别过滤
+  if (selectedChannelTypes.value.length) {
+    const validIndices = new Set();
+    selectedChannelTypes.value.forEach(type => {
+      const indices = channelTypeData.value[type] || [];
+      indices.forEach(index => validIndices.add(index));
+    });
+    options = options.filter(option => {
+      const channelIndices = channelNameData.value[option.value] || [];
+      return channelIndices.some(index => validIndices.has(index));
+    });
   }
 
-  // 获取所选通道类别下的所有通道名索引
-  const validIndices = new Set();
-  selectedChannelTypes.value.forEach(type => {
-    const indices = channelTypeData.value[type] || [];
-    indices.forEach(index => validIndices.add(index));
-  });
+  // 按异常名过滤（只遍历已选异常名）
+  if (selectederrorsNames.value.length) {
+    const validIndices = new Set();
+    selectederrorsNames.value.forEach(errorName => {
+      const indices = errorsNameData.value[errorName] || [];
+      indices.forEach(idx => validIndices.add(idx));
+    });
+    options = options.filter(option => {
+      const channelIndices = channelNameData.value[option.value] || [];
+      return channelIndices.some(idx => validIndices.has(idx));
+    });
+  }
 
-  // 只返回在选中通道类别下有效的通道名选项
-  return channelNameOptions.value.filter(option => {
-    const channelIndices = channelNameData.value[option.value] || [];
-    return channelIndices.some(index => validIndices.has(index));
-  });
+  return options;
 });
 
 const filteredErrorsNameOptions = computed(() => {
-  if (!selectedChannelTypes.value.length && !selectedChannelNames.value.length) {
-    return errorsNameOptions.value;
+  let options = errorsNameOptions.value;
+
+  // 按通道类别和通道名过滤
+  if (selectedChannelTypes.value.length) {
+    const validIndices = new Set();
+    selectedChannelTypes.value.forEach(type => {
+      const indices = channelTypeData.value[type] || [];
+      indices.forEach(index => validIndices.add(index));
+    });
+    options = options.filter(option => {
+      const errorIndices = errorsNameData.value[option.value] || [];
+      return errorIndices.some(idx => validIndices.has(idx));
+    });
   }
 
-  // 获取所有有效的索引
-  const validIndices = new Set();
+  // 按通道名过滤（只遍历已选通道名）
+  if (selectedChannelNames.value.length) {
+    const validIndices = new Set();
+    selectedChannelNames.value.forEach(channelName => {
+      const indices = channelNameData.value[channelName] || [];
+      indices.forEach(idx => validIndices.add(idx));
+    });
+    options = options.filter(option => {
+      const errorIndices = errorsNameData.value[option.value] || [];
+      return errorIndices.some(idx => validIndices.has(idx));
+    });
+  }
 
-  // 从选中的通道类别获取索引
-  selectedChannelTypes.value.forEach(type => {
-    const indices = channelTypeData.value[type] || [];
-    indices.forEach(index => validIndices.add(index));
-  });
-
-  // 从选中的通道名获取索引
-  selectedChannelNames.value.forEach(name => {
-    const indices = channelNameData.value[name] || [];
-    indices.forEach(index => validIndices.add(index));
-  });
-
-  // 只返回在有效索引范围内的异常名选项
-  return errorsNameOptions.value.filter(option => {
-    const errorIndices = errorsNameData.value[option.value] || [];
-    return errorIndices.some(index => validIndices.has(index));
-  });
+  return options;
 });
 
 // 添加监听器来清理无效选项
