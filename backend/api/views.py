@@ -666,6 +666,160 @@ def upsample_to_frequency(x_values, y_values, target_freq=1000):
     print(f"插值采样: 从 {len(x_values)} 点 增至 {len(new_times)} 点")
     return new_times, new_values
 
+# 添加表达式解析类
+class ExpressionParser:
+    def __init__(self, get_channel_data_func):
+        self.get_channel_data_func = get_channel_data_func
+        self.tokens = []
+        self.current = 0
+    
+    def parse(self, expression):
+        """解析表达式并计算结果"""
+        self.tokenize(expression)
+        self.current = 0
+        return self.expression()
+    
+    def tokenize(self, expression):
+        """将表达式分词"""
+        # 去除所有空格
+        expression = expression.replace(" ", "")
+        
+        # 实现一个简单的分词器
+        self.tokens = []
+        i = 0
+        
+        while i < len(expression):
+            char = expression[i]
+            
+            # 处理运算符和括号
+            if char in "+-*/()":
+                self.tokens.append(char)
+                i += 1
+            # 处理通道标识符（字母、数字、下划线的组合）
+            elif char.isalnum() or char == '_':
+                start = i
+                # 继续读取直到遇到非标识符字符
+                while i < len(expression) and (expression[i].isalnum() or expression[i] == '_'):
+                    i += 1
+                self.tokens.append(expression[start:i])
+            else:
+                i += 1
+        
+        return self.tokens
+    
+    def expression(self):
+        """解析加减运算"""
+        result = self.term()
+        
+        while self.current < len(self.tokens) and self.tokens[self.current] in ['+', '-']:
+            operator = self.tokens[self.current]
+            self.current += 1
+            right = self.term()
+            
+            if operator == '+':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行加法
+                result['Y_value'] = [x + y for x, y in zip(result['Y_value'], right['Y_value'])]
+            elif operator == '-':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行减法
+                result['Y_value'] = [x - y for x, y in zip(result['Y_value'], right['Y_value'])]
+        
+        return result
+    
+    def term(self):
+        """解析乘除运算"""
+        result = self.factor()
+        
+        while self.current < len(self.tokens) and self.tokens[self.current] in ['*', '/']:
+            operator = self.tokens[self.current]
+            self.current += 1
+            right = self.factor()
+            
+            if operator == '*':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行乘法
+                result['Y_value'] = [x * y for x, y in zip(result['Y_value'], right['Y_value'])]
+            elif operator == '/':
+                # 确保X轴数据匹配
+                min_len = min(len(result['X_value']), len(right['X_value']))
+                result['X_value'] = result['X_value'][:min_len]
+                result['Y_value'] = result['Y_value'][:min_len]
+                right['X_value'] = right['X_value'][:min_len]
+                right['Y_value'] = right['Y_value'][:min_len]
+                
+                # 执行除法，避免除以0
+                result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], right['Y_value'])]
+        
+        return result
+    
+    def factor(self):
+        """解析括号和通道标识符"""
+        if self.current < len(self.tokens):
+            token = self.tokens[self.current]
+            
+            # 处理括号表达式
+            if token == '(':
+                self.current += 1
+                result = self.expression()
+                
+                # 必须有匹配的右括号
+                if self.current < len(self.tokens) and self.tokens[self.current] == ')':
+                    self.current += 1
+                    return result
+                else:
+                    raise ValueError("缺少右括号")
+            
+            # 处理通道标识符
+            elif token.isalnum() or '_' in token:
+                self.current += 1
+                # 获取通道数据
+                channel_key = token
+                
+                # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
+                response = self.get_channel_data_func(None, channel_key)
+                
+                if hasattr(response, 'content'):
+                    # 对于HttpResponse对象
+                    try:
+                        channel_data = json.loads(response.content.decode('utf-8'))
+                    except Exception:
+                        raise ValueError(f"解析通道 {channel_key} 返回数据失败")
+                else:
+                    # 对于JsonResponse对象
+                    channel_data = response
+                
+                # 检查返回的数据是否有效
+                if 'error' in channel_data:
+                    raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
+                
+                # 确保返回的数据包含所需的键
+                if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                    raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+                
+                return channel_data
+        
+        raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
+
+
 def init_calculation(request):
     """初始化计算任务，返回唯一任务ID"""
     try:
