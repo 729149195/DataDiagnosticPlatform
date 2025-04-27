@@ -16,12 +16,12 @@ const pendingRequests = new Map();
 // 从IndexedDB加载缓存数据到内存缓存
 async function loadCacheFromIndexedDB() {
   if (!indexedDBService.isSupported) {
-    console.log('当前浏览器不支持IndexedDB，跳过加载缓存数据');
+    console.log("当前浏览器不支持IndexedDB，跳过加载缓存数据");
     return;
   }
   try {
     const keys = await indexedDBService.getAllKeys();
-    
+
     for (const key of keys) {
       const cacheItem = await indexedDBService.getChannelData(key);
       if (cacheItem && cacheItem.data) {
@@ -30,7 +30,7 @@ async function loadCacheFromIndexedDB() {
           // 将数据放入内存缓存，使用当前时间戳
           dataCache.put(key, {
             data: reactive(cacheItem.data),
-            timestamp: Date.now() // 使用当前时间戳，而不是原始时间戳
+            timestamp: Date.now(), // 使用当前时间戳，而不是原始时间戳
           });
         } else {
           console.log(`跳过过期的缓存数据: ${key}`);
@@ -38,7 +38,7 @@ async function loadCacheFromIndexedDB() {
       }
     }
   } catch (error) {
-    console.error('从IndexedDB加载缓存数据失败:', error);
+    console.error("从IndexedDB加载缓存数据失败:", error);
   }
 }
 
@@ -92,8 +92,8 @@ const store = createStore({
       userMessage: "",
       isCalculating: false,
       calculatingProgress: {
-        step: '',
-        progress: 0
+        step: "",
+        progress: 0,
       },
       queryPattern: null,
       samplingVersion: 0,
@@ -148,16 +148,16 @@ const store = createStore({
       state.samplingVersion++;
     },
     setSamplingVersion(state, newVersion) {
-      state.samplingVersion = newVersion
+      state.samplingVersion = newVersion;
     },
     setSmoothness(state, value) {
       state.smoothness = value;
     },
     setSelectedChannels(state, channels) {
       state.selectedChannels = channels;
-      
+
       // 触发缓存重新评估
-      dataCache.keys().forEach(key => {
+      dataCache.keys().forEach((key) => {
         dataCache.touch(key);
       });
     },
@@ -210,31 +210,35 @@ const store = createStore({
     deleteAnomaly(state, { channelName, anomalyId }) {
       if (state.anomalies[channelName]) {
         // 查找要删除的异常，以获取更多信息
-        const anomalyToDelete = state.anomalies[channelName].find(a => a.id === anomalyId);
-        
+        const anomalyToDelete = state.anomalies[channelName].find(
+          (a) => a.id === anomalyId
+        );
+
         // 删除内存中的异常
         state.anomalies[channelName] = state.anomalies[channelName].filter(
           (a) => a.id !== anomalyId
         );
-        
+
         // 如果找到了异常
         if (anomalyToDelete) {
           // 构造异常缓存的key
           const channelKey = channelName; // 通道key就是channelName
-          
+
           // 尝试找到与该异常相关的所有缓存，并删除它们
-          dataCache.keys().forEach(key => {
+          dataCache.keys().forEach((key) => {
             // 检查是否是该通道的异常缓存
             if (key.startsWith(`error-${channelKey}`)) {
               // 从内存缓存中移除
               dataCache.remove(key);
-              
+
               // 异步从IndexedDB中移除
               setTimeout(() => {
-                indexedDBService.deleteChannelData(key)
-                  .catch(error => {
-                    console.error(`从IndexedDB中删除异常缓存失败 (${key}):`, error);
-                  });
+                indexedDBService.deleteChannelData(key).catch((error) => {
+                  console.error(
+                    `从IndexedDB中删除异常缓存失败 (${key}):`,
+                    error
+                  );
+                });
               }, 0);
             }
           });
@@ -293,9 +297,9 @@ const store = createStore({
           color: error.color,
         })),
       }));
-      
+
       // 触发缓存重新评估
-      dataCache.keys().forEach(key => {
+      dataCache.keys().forEach((key) => {
         dataCache.touch(key);
       });
     },
@@ -340,9 +344,9 @@ const store = createStore({
           }
         });
       }
-      
+
       // 触发缓存重新评估
-      dataCache.keys().forEach(key => {
+      dataCache.keys().forEach((key) => {
         dataCache.touch(key);
       });
     },
@@ -352,10 +356,10 @@ const store = createStore({
     clearMatchedResults(state) {
       // 先将数组清空
       state.matchedResults.length = 0;
-      
+
       // 然后重新赋值为空数组，确保引用也更新
       state.matchedResults = [];
-      
+
       // 添加一个特殊标记，表示这是一次清除操作，而不是普通的更新
       state.matchedResultsCleared = Date.now();
     },
@@ -418,7 +422,7 @@ const store = createStore({
     refreshStructTree(state, data) {
       // 保存当前选中状态和异常展示状态
       const selectedStates = new Map();
-      
+
       // 1. 首先从displayedData中获取当前可见通道的选中状态和异常展示状态
       if (state.displayedData) {
         state.displayedData.forEach((item) => {
@@ -429,17 +433,19 @@ const store = createStore({
                 channelChecked: channel.checked,
                 typeChecked: item.checked,
                 showAllErrors: channel.showAllErrors,
-                displayedErrors: channel.displayedErrors.map(e => e.error_name), // 保存显示的异常类别
-                errors: channel.errors.map(e => ({
+                displayedErrors: channel.displayedErrors.map(
+                  (e) => e.error_name
+                ), // 保存显示的异常类别
+                errors: channel.errors.map((e) => ({
                   error_name: e.error_name,
-                  color: e.color
-                })) // 保存完整的异常信息
+                  color: e.color,
+                })), // 保存完整的异常信息
               });
             });
           }
         });
       }
-      
+
       // 2. 从selectedChannels中获取额外的选中状态信息
       // 这确保了不在当前显示页面的选中通道信息也被保存
       if (state.selectedChannels && state.selectedChannels.length > 0) {
@@ -451,18 +457,20 @@ const store = createStore({
               typeChecked: false, // 先设为false，后面会根据通道类型进行更新
               showAllErrors: false,
               displayedErrors: [],
-              errors: channel.errors?.map(e => ({
-                error_name: e.error_name,
-                color: e.color
-              })) || []
+              errors:
+                channel.errors?.map((e) => ({
+                  error_name: e.error_name,
+                  color: e.color,
+                })) || [],
             });
           } else {
             // 更新selectedStates中的errors，确保使用最新的错误数据
             const stateEntry = selectedStates.get(key);
-            stateEntry.errors = channel.errors?.map(e => ({
-              error_name: e.error_name,
-              color: e.color
-            })) || [];
+            stateEntry.errors =
+              channel.errors?.map((e) => ({
+                error_name: e.error_name,
+                color: e.color,
+              })) || [];
           }
         });
       }
@@ -477,7 +485,7 @@ const store = createStore({
             // 记录该通道类型中有选中通道的数量
             let checkedChannelsCount = 0;
             let totalChannelsCount = item.channels.length;
-            
+
             item.channels.forEach((channel) => {
               const key = `${channel.channel_name}_${channel.shot_number}`;
               const savedState = selectedStates.get(key);
@@ -487,34 +495,42 @@ const store = createStore({
                 if (channel.checked) {
                   checkedChannelsCount++;
                 }
-                
+
                 // 保留展开/折叠状态
                 channel.showAllErrors = savedState.showAllErrors;
-                
+
                 // 如果新数据中存在之前保存的错误，则优先使用新数据中的错误
                 // 否则保留原来的错误信息
                 if (savedState.errors && savedState.errors.length > 0) {
                   // 查找新数据中相同名称的错误类别
                   channel.errors.forEach((newError, index) => {
-                    const matchingError = savedState.errors.find(e => e.error_name === newError.error_name);
+                    const matchingError = savedState.errors.find(
+                      (e) => e.error_name === newError.error_name
+                    );
                     if (matchingError) {
                       // 保留颜色信息
                       newError.color = matchingError.color;
                     }
                   });
                 }
-                
+
                 // 恢复显示的错误类别
                 if (channel.showAllErrors) {
                   channel.displayedErrors = channel.errors;
                 } else {
                   // 如果之前有显示特定的错误，尝试恢复相同名称的错误
-                  if (savedState.displayedErrors && savedState.displayedErrors.length > 0) {
-                    channel.displayedErrors = channel.errors.filter(error => 
+                  if (
+                    savedState.displayedErrors &&
+                    savedState.displayedErrors.length > 0
+                  ) {
+                    channel.displayedErrors = channel.errors.filter((error) =>
                       savedState.displayedErrors.includes(error.error_name)
                     );
                     // 如果没有匹配的错误，显示第一个错误
-                    if (channel.displayedErrors.length === 0 && channel.errors.length > 0) {
+                    if (
+                      channel.displayedErrors.length === 0 &&
+                      channel.errors.length > 0
+                    ) {
                       channel.displayedErrors = [channel.errors[0]];
                     }
                   } else {
@@ -526,10 +542,10 @@ const store = createStore({
                 channel.displayedErrors = channel.errors.slice(0, 1);
               }
             });
-            
+
             // 如果该通道类型中所有通道都被选中，则该类型也被选中
             if (checkedChannelsCount > 0) {
-              item.checked = (checkedChannelsCount === totalChannelsCount);
+              item.checked = checkedChannelsCount === totalChannelsCount;
             } else {
               item.checked = false;
             }
@@ -540,77 +556,81 @@ const store = createStore({
     updateChannelDataCache(state, { channelKey, data }) {
       // 使用Object.assign进行浅拷贝，比创建新对象更高效
       // 只设置必要的默认值，减少属性访问和条件判断
-      const enhancedData = Object.assign({
-        X_value: data.X_value || [],
-        Y_value: data.Y_value || [],
-        originalFrequency: data.originalFrequency || 1.0,
-        originalDataPoints: data.points || 0,
-        channel_number: data.channel_number || channelKey.split('_')[0],
-        X_unit: data.X_unit || 's',
-        Y_unit: data.Y_unit || '',
-      }, data);
-      
+      const enhancedData = Object.assign(
+        {
+          X_value: data.X_value || [],
+          Y_value: data.Y_value || [],
+          originalFrequency: data.originalFrequency || 1.0,
+          originalDataPoints: data.points || 0,
+          channel_number: data.channel_number || channelKey.split("_")[0],
+          X_unit: data.X_unit || "s",
+          Y_unit: data.Y_unit || "",
+        },
+        data
+      );
+
       const timestamp = Date.now();
-      
+
       // 更新内存缓存
       dataCache.put(channelKey, {
         data: reactive(enhancedData),
         timestamp: timestamp,
       });
-      
+
       // 异步保存到IndexedDB，不阻塞UI线程
       setTimeout(() => {
-        indexedDBService.saveChannelData(channelKey, enhancedData, timestamp)
-          .catch(error => {
-            console.error(`保存通道数据到IndexedDB失败 (${channelKey}):`, error);
+        indexedDBService
+          .saveChannelData(channelKey, enhancedData, timestamp)
+          .catch((error) => {
+            console.error(
+              `保存通道数据到IndexedDB失败 (${channelKey}):`,
+              error
+            );
           });
       }, 0);
     },
     clearChannelDataCache(state) {
       // 清空内存缓存
       dataCache.removeAll();
-      
+
       // 异步清空IndexedDB缓存，不阻塞UI线程
       setTimeout(() => {
-        indexedDBService.clearAllChannelData()
-          .catch(error => {
-            console.error('清空IndexedDB缓存失败:', error);
-          });
+        indexedDBService.clearAllChannelData().catch((error) => {
+          console.error("清空IndexedDB缓存失败:", error);
+        });
       }, 0);
     },
     removeChannelDataCache(state, channelKey) {
       // 从内存缓存中移除
       dataCache.remove(channelKey);
-      
+
       // 异步从IndexedDB中移除，不阻塞UI线程
       setTimeout(() => {
-        indexedDBService.deleteChannelData(channelKey)
-          .catch(error => {
-            console.error(`从IndexedDB中删除缓存失败 (${channelKey}):`, error);
-          });
+        indexedDBService.deleteChannelData(channelKey).catch((error) => {
+          console.error(`从IndexedDB中删除缓存失败 (${channelKey}):`, error);
+        });
       }, 0);
     },
     clearAnomalies(state) {
       // 获取所有通道keys
       const channelKeys = Object.keys(state.anomalies);
-      
+
       // 清空内存中的 anomalies 对象
-      state.anomalies = {}; 
-      
+      state.anomalies = {};
+
       // 清理相关缓存
-      channelKeys.forEach(channelKey => {
+      channelKeys.forEach((channelKey) => {
         // 查找并删除该通道相关的所有异常缓存
-        dataCache.keys().forEach(key => {
+        dataCache.keys().forEach((key) => {
           if (key.startsWith(`error-${channelKey}`)) {
             // 从内存缓存中移除
             dataCache.remove(key);
-            
+
             // 异步从IndexedDB中移除
             setTimeout(() => {
-              indexedDBService.deleteChannelData(key)
-                .catch(error => {
-                  console.error(`从IndexedDB中删除异常缓存失败 (${key}):`, error);
-                });
+              indexedDBService.deleteChannelData(key).catch((error) => {
+                console.error(`从IndexedDB中删除异常缓存失败 (${key}):`, error);
+              });
             }, 0);
           }
         });
@@ -628,44 +648,55 @@ const store = createStore({
     updateChannelErrors(state, { channelName, shotNumber, errors }) {
       // 更新选中通道中的错误数据
       if (state.selectedChannels && state.selectedChannels.length > 0) {
-        state.selectedChannels.forEach(channel => {
-          if (channel.channel_name === channelName && channel.shot_number === shotNumber) {
-            channel.errors = errors.map(error => ({
+        state.selectedChannels.forEach((channel) => {
+          if (
+            channel.channel_name === channelName &&
+            channel.shot_number === shotNumber
+          ) {
+            channel.errors = errors.map((error) => ({
               error_key: error.error_key || null,
               error_name: error.error_name,
-              color: error.color || "rgba(220, 20, 60, 0.3)"
+              color: error.color || "rgba(220, 20, 60, 0.3)",
             }));
           }
         });
       }
-      
+
       // 更新显示数据中的错误信息
       if (state.displayedData && state.displayedData.length > 0) {
-        state.displayedData.forEach(item => {
+        state.displayedData.forEach((item) => {
           if (item.channels && item.channels.length > 0) {
-            item.channels.forEach(channel => {
-              if (channel.channel_name === channelName && channel.shot_number === shotNumber) {
+            item.channels.forEach((channel) => {
+              if (
+                channel.channel_name === channelName &&
+                channel.shot_number === shotNumber
+              ) {
                 // 保存当前显示状态
                 const showAllErrors = channel.showAllErrors;
-                const oldDisplayedErrorNames = channel.displayedErrors.map(error => error.error_name);
-                
+                const oldDisplayedErrorNames = channel.displayedErrors.map(
+                  (error) => error.error_name
+                );
+
                 // 更新错误列表
-                channel.errors = errors.map(error => ({
+                channel.errors = errors.map((error) => ({
                   error_name: error.error_name,
-                  color: error.color || "rgba(220, 20, 60, 0.3)"
+                  color: error.color || "rgba(220, 20, 60, 0.3)",
                 }));
-                
+
                 // 恢复显示状态
                 if (showAllErrors) {
                   channel.displayedErrors = channel.errors;
                 } else {
                   // 尝试保留之前显示的错误类别
-                  channel.displayedErrors = channel.errors.filter(error => 
+                  channel.displayedErrors = channel.errors.filter((error) =>
                     oldDisplayedErrorNames.includes(error.error_name)
                   );
-                  
+
                   // 如果没有匹配的错误，显示第一个错误
-                  if (channel.displayedErrors.length === 0 && channel.errors.length > 0) {
+                  if (
+                    channel.displayedErrors.length === 0 &&
+                    channel.errors.length > 0
+                  ) {
                     channel.displayedErrors = [channel.errors[0]];
                   }
                 }
@@ -679,7 +710,7 @@ const store = createStore({
       // 递增版本号，并记录本次变动的通道key数组
       state.errorNamesVersion = {
         version: (state.errorNamesVersion.version || 0) + 1,
-        channels: payload.channels || []
+        channels: payload.channels || [],
       };
       // console.log(state.errorNamesVersion);
     },
@@ -747,22 +778,25 @@ const store = createStore({
     },
     updateSampling({ commit, state, dispatch }, value) {
       commit("setSampling", value);
-      
+
       // 当采样率更改时，刷新所有选定通道的数据
       if (state.selectedChannels && state.selectedChannels.length > 0) {
         // console.log(`采样率更改为 ${value} KHz，重新加载所有选定通道数据`);
-        
+
         // 为每个选定的通道创建强制刷新请求
-        const refreshPromises = state.selectedChannels.map(channel => {
-          return dispatch('fetchChannelData', { 
-            channel, 
-            forceRefresh: true 
-          }).catch(error => {
-            console.error(`刷新通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`, error);
+        const refreshPromises = state.selectedChannels.map((channel) => {
+          return dispatch("fetchChannelData", {
+            channel,
+            forceRefresh: true,
+          }).catch((error) => {
+            console.error(
+              `刷新通道 ${channel.channel_name}_${channel.shot_number} 数据失败:`,
+              error
+            );
             return null;
           });
         });
-        
+
         // 无需等待所有请求完成，让它们并行执行
         // 各个组件会通过监听数据缓存的变化来更新自己
         return Promise.all(refreshPromises).then(() => {
@@ -835,16 +869,25 @@ const store = createStore({
     },
     async fetchChannelData(
       { state, commit },
-      { channel, forceRefresh = false, sample_mode = 'downsample', sample_freq = null }
+      {
+        channel,
+        forceRefresh = false,
+        sample_mode = "downsample",
+        sample_freq = null,
+      }
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
 
       // 如果需要原始频率数据，使用新的缓存键
-      const useOriginalFrequency = sample_mode === 'full';
+      const useOriginalFrequency = sample_mode === "full";
       // 为自定义频率创建特定的缓存键
-      const hasCustomFreq = sample_freq !== null && sample_mode === 'downsample';
-      const cacheKey = useOriginalFrequency ? `original_${channelKey}` : 
-                      (hasCustomFreq ? `custom_${sample_freq}_${channelKey}` : channelKey);
+      const hasCustomFreq =
+        sample_freq !== null && sample_mode === "downsample";
+      const cacheKey = useOriginalFrequency
+        ? `original_${channelKey}`
+        : hasCustomFreq
+        ? `custom_${sample_freq}_${channelKey}`
+        : channelKey;
 
       // 如果强制刷新，跳过所有缓存检查
       if (forceRefresh) {
@@ -869,22 +912,22 @@ const store = createStore({
             // 检查IndexedDB缓存是否在有效期内（7天）
             if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
               // console.log(`从IndexedDB加载通道数据: ${channelKey}`);
-              
+
               // 直接使用缓存数据，不做额外处理
               const cachedData = dbCached.data;
-              
+
               // 将数据放入内存缓存，更新时间戳为当前时间
               // 使用reactive包装，但不做额外处理
               const reactiveData = reactive(cachedData);
-              
+
               // 异步更新内存缓存，不阻塞主流程
               setTimeout(() => {
                 dataCache.put(cacheKey, {
                   data: reactiveData,
-                  timestamp: Date.now()
+                  timestamp: Date.now(),
                 });
               }, 0);
-              
+
               return reactiveData;
             } else {
               // console.log(`IndexedDB缓存已过期: ${channelKey}，从服务器获取`);
@@ -906,7 +949,7 @@ const store = createStore({
       const params = {
         channel_key: channelKey,
         channel_type: channel.channel_type,
-        sample_mode: sample_mode // 添加采样模式参数
+        sample_mode: sample_mode, // 添加采样模式参数
       };
 
       // 使用传入的自定义频率或当前状态的采样率
@@ -925,7 +968,7 @@ const store = createStore({
           );
           // 获取原始数据
           const originalData = response.data;
-          
+
           // 直接使用后端返回的数据，不做额外处理
           // 使用后端预计算的统计数据
           const enhancedData = {
@@ -934,8 +977,8 @@ const store = createStore({
             channel_number: originalData.channel_number || channel.channel_name,
             originalDataPoints: originalData.points || 0,
             originalFrequency: originalData.originalFrequency || 1.0,
-            X_unit: originalData.X_unit || 's',
-            Y_unit: originalData.Y_unit || '',
+            X_unit: originalData.X_unit || "s",
+            Y_unit: originalData.Y_unit || "",
             // 如果后端提供了统计数据，直接使用
             stats: originalData.stats || {
               y_min: 0,
@@ -946,18 +989,21 @@ const store = createStore({
               x_min: 0,
               x_max: 0,
               y_axis_min: 0,
-              y_axis_max: 0
+              y_axis_max: 0,
             },
             channel_type: originalData.channel_type || channel.channel_type,
             is_digital: originalData.is_digital || false,
-            Y_normalized: originalData.Y_normalized || []
+            Y_normalized: originalData.Y_normalized || [],
           };
-          
+
           // 异步存储到缓存，不阻塞主流程
           setTimeout(() => {
-            commit("updateChannelDataCache", { channelKey: cacheKey, data: enhancedData });
+            commit("updateChannelDataCache", {
+              channelKey: cacheKey,
+              data: enhancedData,
+            });
           }, 0);
-          
+
           resolve(enhancedData);
         } catch (error) {
           reject(error);
@@ -1002,17 +1048,19 @@ const store = createStore({
 
           // 如果内存中没有缓存或已过期，尝试从IndexedDB获取
           try {
-            const dbCached = await indexedDBService.getChannelData(errorCacheKey);
+            const dbCached = await indexedDBService.getChannelData(
+              errorCacheKey
+            );
             if (dbCached && dbCached.data) {
               // 检查IndexedDB缓存是否在有效期内（7天）
               if (Date.now() - dbCached.timestamp < 7 * 24 * 60 * 60 * 1000) {
                 // console.log(`从IndexedDB加载错误数据: ${errorCacheKey}`);
-                
+
                 // 将数据放入内存缓存，更新时间戳为当前时间
                 const reactiveData = reactive(dbCached.data);
                 dataCache.put(errorCacheKey, {
                   data: reactiveData,
-                  timestamp: Date.now() // 更新时间戳为当前时间
+                  timestamp: Date.now(), // 更新时间戳为当前时间
                 });
                 errorResults.push(reactiveData);
                 continue;
@@ -1021,7 +1069,10 @@ const store = createStore({
               }
             }
           } catch (error) {
-            console.error(`从IndexedDB获取错误数据失败 (${errorCacheKey}):`, error);
+            console.error(
+              `从IndexedDB获取错误数据失败 (${errorCacheKey}):`,
+              error
+            );
           }
 
           try {
@@ -1076,19 +1127,23 @@ const store = createStore({
             // 将处理后的数据存入缓存
             const timestamp = Date.now();
             const reactiveErrorData = reactive(errorData);
-            
+
             // 更新内存缓存
             dataCache.put(errorCacheKey, {
               data: reactiveErrorData,
               timestamp: timestamp,
             });
-            
+
             // 同时保存到IndexedDB
-            indexedDBService.saveChannelData(errorCacheKey, errorData, timestamp)
-              .catch(error => {
-                console.error(`保存错误数据到IndexedDB失败 (${errorCacheKey}):`, error);
+            indexedDBService
+              .saveChannelData(errorCacheKey, errorData, timestamp)
+              .catch((error) => {
+                console.error(
+                  `保存错误数据到IndexedDB失败 (${errorCacheKey}):`,
+                  error
+                );
               });
-              
+
             errorResults.push(reactiveErrorData);
           } catch (err) {
             console.warn(
@@ -1112,17 +1167,19 @@ const store = createStore({
         // 获取IndexedDB存储使用情况
         const usage = await indexedDBService.getStorageUsage();
         // console.log('IndexedDB存储使用情况:', usage);
-        
+
         // 如果存储超过100MB，清理过期数据
         if (usage.size > 100 * 1024 * 1024) {
           // console.log('IndexedDB存储超过100MB，开始清理过期数据...');
-          const cleanedCount = await indexedDBService.cleanupExpiredData(3 * 24 * 60 * 60 * 1000); // 3天
+          const cleanedCount = await indexedDBService.cleanupExpiredData(
+            3 * 24 * 60 * 60 * 1000
+          ); // 3天
           // console.log(`清理了 ${cleanedCount} 条过期数据`);
         }
-        
+
         return usage;
       } catch (error) {
-        console.error('管理缓存存储失败:', error);
+        console.error("管理缓存存储失败:", error);
         return { count: 0, size: 0 };
       }
     },
@@ -1130,7 +1187,7 @@ const store = createStore({
       commit("setQueryPattern", patternData);
     },
     updateChannelErrors({ commit }, { channelName, shotNumber, errors }) {
-      commit('updateChannelErrors', { channelName, shotNumber, errors });
+      commit("updateChannelErrors", { channelName, shotNumber, errors });
     },
     /**
      * 更新通道异常数据而不刷新整个表格
@@ -1141,46 +1198,46 @@ const store = createStore({
         // 获取当前显示的所有通道
         const displayedChannels = [];
         if (state.displayedData) {
-          state.displayedData.forEach(item => {
+          state.displayedData.forEach((item) => {
             if (item.channels) {
-              item.channels.forEach(channel => {
+              item.channels.forEach((channel) => {
                 displayedChannels.push({
                   channel_name: channel.channel_name,
                   shot_number: channel.shot_number,
-                  channel_type: item.channel_type
+                  channel_type: item.channel_type,
                 });
               });
             }
           });
         }
-        
+
         // 获取通道异常数据
         if (displayedChannels.length > 0) {
           const response = await fetch(
-            "https://10.1.108.231:5000/api/get-channels-errors/", 
+            "https://10.1.108.231:5000/api/get-channels-errors/",
             {
-              method: 'POST',
+              method: "POST",
               headers: {
-                'Content-Type': 'application/json',
+                "Content-Type": "application/json",
               },
-              body: JSON.stringify({ channels: displayedChannels })
+              body: JSON.stringify({ channels: displayedChannels }),
             }
           );
-          
+
           if (!response.ok) {
             throw new Error(`获取通道异常数据失败: ${response.statusText}`);
           }
-          
+
           const data = await response.json();
-          
+
           // 更新每个通道的异常数据
-          data.forEach(channelData => {
+          data.forEach((channelData) => {
             const { channel_name, shot_number, errors } = channelData;
             // 使用刚刚创建的updateChannelErrors操作更新异常数据
-            commit('updateChannelErrors', {
+            commit("updateChannelErrors", {
               channelName: channel_name,
               shotNumber: shot_number,
-              errors: errors || []
+              errors: errors || [],
             });
           });
         }
@@ -1190,10 +1247,12 @@ const store = createStore({
     },
     async refreshErrorNames({ commit }) {
       try {
-        const response = await axios.get('https://10.1.108.231:5000/api/get-errors-name-index');
+        const response = await axios.get(
+          "https://10.1.108.231:5000/api/get-errors-name-index"
+        );
         return response.data;
       } catch (error) {
-        console.error('异常名索引获取失败:', error);
+        console.error("异常名索引获取失败:", error);
         throw error;
       }
     },
@@ -1205,21 +1264,21 @@ dataCache.setOptions({
   onExpire: (key, value, reason) => {
     // 检查通道是否在selectedChannels中
     const isSelected = isChannelSelected(key, store.state.selectedChannels);
-    
+
     // 如果通道在selectedChannels中，则不允许过期（返回false）
     // 如果通道不在selectedChannels中，则允许从内存中过期（返回true）
     // 注意：这里只影响内存缓存，不会删除IndexedDB中的数据
     return !isSelected;
-  }
+  },
 });
 
 // 定期检查和管理缓存存储（每小时一次）
 setTimeout(() => {
-  store.dispatch('manageCacheStorage');
+  store.dispatch("manageCacheStorage");
 }, 5000); // 页面加载5秒后进行第一次检查
 
 setInterval(() => {
-  store.dispatch('manageCacheStorage');
+  store.dispatch("manageCacheStorage");
 }, 60 * 60 * 1000); // 之后每小时检查一次
 
 // 添加新的合并函数
@@ -1267,21 +1326,21 @@ function processData(rawData) {
   const selectedChannelKeys = new Set(
     store.state.selectedChannels.map((channel) => channel.channel_key)
   );
-  
+
   // 保存当前显示的通道的错误状态和颜色信息
   const existingErrorStates = new Map();
   if (store.state.displayedData) {
-    store.state.displayedData.forEach(item => {
+    store.state.displayedData.forEach((item) => {
       if (item.channels) {
-        item.channels.forEach(channel => {
+        item.channels.forEach((channel) => {
           const key = `${channel.channel_name}_${channel.shot_number}`;
           existingErrorStates.set(key, {
-            errors: channel.errors.map(e => ({ 
-              error_name: e.error_name, 
-              color: e.color 
+            errors: channel.errors.map((e) => ({
+              error_name: e.error_name,
+              color: e.color,
             })),
-            displayedErrors: channel.displayedErrors.map(e => e.error_name),
-            showAllErrors: channel.showAllErrors
+            displayedErrors: channel.displayedErrors.map((e) => e.error_name),
+            showAllErrors: channel.showAllErrors,
           });
         });
       }
@@ -1355,15 +1414,17 @@ function processData(rawData) {
       if (errorName === "NO ERROR") {
         errorColor = "rgba(0, 0, 0, 0)";
       } else if (existingErrorState) {
-        const existingError = existingErrorState.errors.find(e => e.error_name === errorName);
+        const existingError = existingErrorState.errors.find(
+          (e) => e.error_name === errorName
+        );
         if (existingError) {
           errorColor = existingError.color;
         }
       }
-      
+
       const error = {
         error_name: errorName,
-        color: errorColor
+        color: errorColor,
       };
       channelEntry.errors.push(error);
     });
@@ -1371,15 +1432,15 @@ function processData(rawData) {
     // 恢复之前的错误显示状态
     if (existingErrorState) {
       channelEntry.showAllErrors = existingErrorState.showAllErrors;
-      
+
       if (channelEntry.showAllErrors) {
         channelEntry.displayedErrors = channelEntry.errors;
       } else {
         // 尝试恢复之前显示的错误
-        const matchingErrors = channelEntry.errors.filter(error => 
+        const matchingErrors = channelEntry.errors.filter((error) =>
           existingErrorState.displayedErrors.includes(error.error_name)
         );
-        
+
         if (matchingErrors.length > 0) {
           channelEntry.displayedErrors = matchingErrors;
         } else {

@@ -993,24 +993,27 @@ onMounted(async () => {
 }
 
 :deep(.tag-select) {
-  width: 100%; /* 确保选择器占满整行宽度 */
-  
+  width: 100%;
+  /* 确保选择器占满整行宽度 */
+
   /* 自定义宽度控制，基于容器宽度 */
   &.el-select {
     width: 100%;
   }
-  
+
   /* 整体标签容器 */
   .el-select__tags {
     display: flex;
     flex-wrap: nowrap;
     overflow-x: hidden;
-    max-width: calc(100% - 30px); /* 给下拉箭头留出空间 */
-    padding-right: 30px; /* 为下拉箭头留出空间 */
+    max-width: calc(100% - 30px);
+    /* 给下拉箭头留出空间 */
+    padding-right: 30px;
+    /* 为下拉箭头留出空间 */
     align-items: center;
     min-height: 28px;
   }
-  
+
   /* 标签容器内部滚动区域 */
   .el-select__tags-wrap {
     display: flex;
@@ -1018,23 +1021,24 @@ onMounted(async () => {
     width: 100%;
     overflow-x: hidden;
   }
-  
+
   /* 输入框 */
   .el-input__inner {
     line-height: 28px;
     height: 28px;
   }
-  
+
   /* 标签文字部分 */
   .el-select__tags-text {
     display: inline-block;
-    max-width: 100px; /* 标签默认最大宽度 */
+    max-width: 100px;
+    /* 标签默认最大宽度 */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 11px;
   }
-  
+
   /* 标签基本样式 */
   .el-tag {
     display: inline-flex;
@@ -1047,7 +1051,7 @@ onMounted(async () => {
     line-height: 18px;
     white-space: nowrap;
   }
-  
+
   /* 关闭按钮 */
   .el-tag .el-tag__close {
     margin-left: 1px;
@@ -1057,7 +1061,7 @@ onMounted(async () => {
     right: 0;
     transform: translateY(0);
   }
-  
+
   /* 调整折叠标签的样式 */
   .el-select__collapse-tags {
     display: inline-flex;
@@ -1068,7 +1072,7 @@ onMounted(async () => {
     line-height: 18px;
     flex-shrink: 0;
   }
-  
+
   /* 折叠标签样式 */
   .el-select__collapse-tag,
   .el-select__collapse-tags .el-tag {
@@ -1081,12 +1085,12 @@ onMounted(async () => {
     color: #909399;
     margin-right: 0;
   }
-  
+
   /* 使折叠标签比其他标签更靠右显示 */
   .el-select-dropdown__wrap {
     max-width: 100%;
   }
-  
+
   /* 确保+N标签始终显示且位置正确 */
   .el-select--collapse-tags {
     .el-select__tags {
