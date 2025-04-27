@@ -11,7 +11,6 @@
             @select="handleGunNumberSelect"
             @input="handleInput"
             @clear="handleGunNumberClear"
-            @focus="handleGunNumberFocus"
             @blur="handleGunNumberBlur"
             class="gun-number-input"
           >
@@ -206,24 +205,12 @@ const parseGunNumberInput = () => {
 
 // 处理自动补全建议
 const querySearchGunNumbers = debounce((queryString, cb) => {
-  // 如果输入为空，显示初始建议
+  // 如果输入为空，显示前20个真实炮号建议
   if (!queryString.trim()) {
-    // 获取前20个炮号作为建议
     const initialSuggestions = gunNumberOptions.value
       .slice(0, 20)
       .map(item => ({ value: item.value }));
-
-    // 保存当前搜索结果
     gunNumberSearchResults.value = initialSuggestions;
-
-    // 如果有很多炮号，添加一个提示选项
-    if (gunNumberOptions.value.length > 20) {
-      initialSuggestions.push({
-        value: `输入数字或范围查看更多，共 ${gunNumberOptions.value.length} 个炮号`,
-        disabled: true
-      });
-    }
-
     cb(initialSuggestions);
     return;
   }
@@ -235,25 +222,24 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
   let suggestions = [];
 
   // 检查是否有范围符号 '-'
-  const rangeMatch = currentInput.match(/^(\d+)-(\d*)$/); // 匹配 'a-' 或 'a-b'
+  const rangeMatch = currentInput.match(/^\d+-\d*$/); // 匹配 'a-' 或 'a-b'
 
   if (rangeMatch) {
-    const start = parseInt(rangeMatch[1], 10);
-    const partialEnd = rangeMatch[2];
-
+    const start = parseInt(currentInput.split('-')[0], 10);
+    const partialEnd = currentInput.split('-')[1];
     if (!isNaN(start)) {
       if (partialEnd) {
         // 用户正在输入范围的结束部分，如 '1-5'
         suggestions = gunNumberOptions.value
           .filter(item => item.value.startsWith(partialEnd) && parseInt(item.value, 10) >= start)
-          .slice(0, 10) // 限制最多10个建议
+          .slice(0, 10)
           .map(item => ({ value: item.value }));
       } else {
         // 用户输入范围的起始部分，如 '1-'
         suggestions = gunNumberOptions.value
-          .filter(item => parseInt(item.value, 10) > start) // 确保建议的值大于起始值
-          .sort((a, b) => parseInt(a.value, 10) - parseInt(b.value, 10)) // 按数值排序
-          .slice(0, 10) // 限制最多10个建议
+          .filter(item => parseInt(item.value, 10) > start)
+          .sort((a, b) => parseInt(a.value, 10) - parseInt(b.value, 10))
+          .slice(0, 10)
           .map(item => ({ value: item.value }));
       }
     }
@@ -261,21 +247,12 @@ const querySearchGunNumbers = debounce((queryString, cb) => {
     // 普通建议，根据最后一个部分匹配
     suggestions = gunNumberOptions.value
       .filter(item => item.value.startsWith(currentInput))
-      .slice(0, 10) // 限制最多10个建议
+      .slice(0, 10)
       .map(item => ({ value: item.value }));
   }
 
-  // 保存当前搜索结果
+  // 只显示真实炮号建议，不插入任何"全选搜索结果"或提示项
   gunNumberSearchResults.value = suggestions;
-
-  // 如果有搜索结果，添加"全选搜索结果"选项到第一位
-  if (suggestions.length > 1) {
-    suggestions.unshift({
-      value: `全选 ${suggestions.length} 个搜索结果`,
-      isSelectAll: true
-    });
-  }
-
   cb(suggestions);
 }, 300); // 延迟300ms触发
 
@@ -387,8 +364,6 @@ const filterGunNumbers = () => {
     channel_names: selectedChannelNames.value,
     error_names: selectederrorsNames.value,
   };
-
-  console.log(filterParams);
 
   store.dispatch('fetchStructTree', filterParams);
 };
@@ -774,36 +749,6 @@ const selectAllGunNumberResults = () => {
     gunNumberSearchResults.value = [];
 
     ElMessage.success(`已选择 ${resultValues.length} 个炮号`);
-  }
-};
-
-// 处理炮号输入框获取焦点事件
-const handleGunNumberFocus = () => {
-  // 当输入框为空时，显示所有可用的炮号选项（限制数量以避免过多）
-  if (!gunNumberInput.value.trim()) {
-    // 获取前20个炮号作为建议
-    const initialSuggestions = gunNumberOptions.value
-      .slice(0, 20)
-      .map(item => ({ value: item.value }));
-
-    // 如果有多个选项，添加全选选项
-    if (initialSuggestions.length > 1) {
-      initialSuggestions.unshift({
-        value: `全选 ${initialSuggestions.length} 个炮号`,
-        isSelectAll: true
-      });
-    }
-
-    // 保存当前搜索结果
-    gunNumberSearchResults.value = initialSuggestions;
-
-    // 如果有很多炮号，添加一个提示选项
-    if (gunNumberOptions.value.length > 20) {
-      gunNumberSearchResults.value.push({
-        value: `输入数字或范围查看更多，共 ${gunNumberOptions.value.length} 个炮号`,
-        disabled: true
-      });
-    }
   }
 };
 

@@ -67,7 +67,18 @@ def get_struct_tree(request):
                 continue
             if error_names:
                 item_errors = item.get('error_name', [])
-                if not set(item_errors).intersection(error_names):
+                # 兼容各种"无异常"情况
+                if item_errors is None or item_errors == "" or item_errors == []:
+                    item_errors_set = set(["NO ERROR"])
+                else:
+                    if isinstance(item_errors, str):
+                        item_errors_set = set([item_errors])
+                    else:
+                        item_errors_set = set(item_errors)
+                if "NO ERROR" in error_names:
+                    if not (not item_errors_set or "NO ERROR" in item_errors_set):
+                        continue
+                elif not item_errors_set.intersection(error_names):
                     continue
             result.append(item)
     # 整体排序：先按channel_type，再按channel_name
