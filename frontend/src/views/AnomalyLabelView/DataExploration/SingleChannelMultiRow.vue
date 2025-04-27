@@ -188,6 +188,12 @@ watch(() => store.state.anomalies, (newAnomalies) => {
         // 移除plotBand
         chart.xAxis[0].removePlotBand(`band-${anomaly.id}`);
         chart.xAxis[0].removePlotBand(`band-end-${anomaly.id}`);
+        
+        // 移除高亮系列
+        const highlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${anomaly.id}`);
+        if (highlightSeries) {
+          highlightSeries.remove(false);
+        }
 
         // 移除按钮
         const deleteButton = document.querySelector(`.delete-button-${anomaly.id}`);
@@ -199,9 +205,6 @@ watch(() => store.state.anomalies, (newAnomalies) => {
         if (editButton) {
           editButton.remove();
         }
-
-        // 重绘图表
-        chart.redraw();
       }
     });
   });
@@ -212,7 +215,7 @@ watch(() => store.state.anomalies, (newAnomalies) => {
   // 如果当前正在编辑的异常还存在，更新其数据
   if (showAnomalyForm.value && currentAnomaly.id) {
     const storedAnomalies = store.getters.getAnomaliesByChannel(currentAnomaly.channelName);
-    const storedAnomaly = storedAnomalies?.find(a => a.id === currentAnomaly.id);
+    const storedAnomaly = storedAnomalies?.find(a => a.id === currentAnomaly.id); 
 
     if (storedAnomaly) {
       Object.assign(currentAnomaly, storedAnomaly);
