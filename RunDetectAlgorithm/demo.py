@@ -4,7 +4,7 @@ from datetime import datetime
 import importlib
 import json
 
-import MDSplus
+import MDSplus ## type: ignore
 import numpy as np
 
 from mdsConn import MdsTree, formChaPool
