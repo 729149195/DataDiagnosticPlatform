@@ -520,7 +520,7 @@ const submitData = async () => {
       }).filter(channel => channel !== null);
 
       // 发送请求到后端
-      const response = await fetch('https://10.1.108.231:5000/api/sketch-query/', {
+      const response = await fetch('https://10.1.108.231:5000/api/sketch-query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

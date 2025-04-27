@@ -769,7 +769,7 @@ const syncUpload = async () => {
     const reorganizedData = Object.values(groupedByChannel);
 
     // 发送到后端
-    const response = await fetch('https://10.1.108.231:5000/api/sync-error-data/', {
+    const response = await fetch('https://10.1.108.231:5000/api/sync-error-data', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2282,7 +2282,7 @@ const deleteErrorData = (errorData, type) => {
           throw new Error('删除失败: 缺少必要的字段');
         }
 
-        const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+        const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2621,7 +2621,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
                 }
 
                 try {
-                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -2896,7 +2896,7 @@ const batchDeleteUploaded = async () => {
 
                 try {
                   // console.log(`删除异常类别: ${errorType}`, requestData);
-                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -2949,7 +2949,7 @@ const batchDeleteUploaded = async () => {
 
                 try {
                   // console.log(`删除异常类别: ${errorType}`, requestData);
-                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -3325,7 +3325,7 @@ const deleteBatchUploaded = async (channelKey) => {
 
               try {
                 // console.log(`删除异常类别: ${errorType}`, requestData);
-                const response = await fetch('https://10.1.108.231:5000/api/delete-error-data/', {
+                const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',

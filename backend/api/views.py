@@ -20,6 +20,7 @@ from api.Mds import MdsTree
 from api.verify_user import send_post_request
 from api.pattern_matching import match_pattern  # 只导入模式匹配函数
 from pymongo import MongoClient, ASCENDING, UpdateMany
+from collections import defaultdict
 
 # 存储计算任务状态的字典
 calculation_tasks = {}
@@ -44,59 +45,112 @@ class JsonEncoder(json.JSONEncoder):
             return super(JsonEncoder, self).default(obj)
 
 def get_struct_tree(request):
-    try:
-        with open(os.path.join('static', 'StructTree.json'), encoding='unicode_escape') as f:
-            data = json.load(f)
-        indices_param = request.GET.get('indices', '')
-        if indices_param:
-            indices = [int(i) for i in indices_param.split(',') if i.strip().isdigit()]
-            filtered_data = [data[i] for i in indices if 0 <= i < len(data)]
-            return OrJsonResponse(filtered_data)
-        else:
-            return OrJsonResponse(data)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)})
-    
+    """
+    获取结构树数据，支持shot_numbers, channel_names, error_names多条件过滤
+    返回时整体按channel_type、channel_name排序。
+    """
+    shot_numbers = request.GET.get('shot_numbers')
+    channel_names = request.GET.get('channel_names')
+    error_names = request.GET.get('error_names')
+    shot_numbers = shot_numbers.split(',') if shot_numbers else []
+    channel_names = channel_names.split(',') if channel_names else []
+    error_names = error_names.split(',') if error_names else []
+
+    query = {}
+    if shot_numbers:
+        query['shot_number'] = {'$in': shot_numbers}
+    docs = struct_trees_collection.find(query)
+    result = []
+    for doc in docs:
+        for item in doc.get('struct_tree', []):
+            if channel_names and item.get('channel_name') not in channel_names:
+                continue
+            if error_names:
+                item_errors = item.get('error_name', [])
+                if not set(item_errors).intersection(error_names):
+                    continue
+            result.append(item)
+    # 整体排序：先按channel_type，再按channel_name
+    result.sort(key=lambda x: (x.get('channel_type', ''), x.get('channel_name', '')))
+    return OrJsonResponse(result)
+
 def get_shot_number_index(request):
-    try:
-        with open(os.path.join('static', 'IndexFile', 'shot_number_index.json'), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return OrJsonResponse(data)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)})
-    
+    """
+    获取所有炮号列表
+    """
+    all_docs = list(index_collection.find({}))
+    shot_numbers = set()
+    for doc in all_docs:
+        shot_numbers.update(doc.get("index_data", {}).keys())
+    return OrJsonResponse(sorted(list(shot_numbers)))
+
+def get_index_by_key(key, request):
+    """
+    通用索引获取函数，支持按炮号过滤
+    """
+    shot_numbers = request.GET.getlist('shot_numbers[]') or request.GET.get('shot_numbers')
+    if isinstance(shot_numbers, str):
+        shot_numbers = [shot_numbers]
+    doc = index_collection.find_one({'key': key})
+    result = {}
+    if doc and "index_data" in doc:
+        if shot_numbers:
+            for shot in shot_numbers:
+                for name, indices in doc["index_data"].get(shot, {}).items():
+                    if name not in result:
+                        result[name] = set()
+                    result[name].update(indices)
+            result = {k: list(v) for k, v in result.items()}
+        else:
+            for shot, name_dict in doc["index_data"].items():
+                for name, indices in name_dict.items():
+                    if name not in result:
+                        result[name] = set()
+                    result[name].update(indices)
+            result = {k: list(v) for k, v in result.items()}
+    return OrJsonResponse(result)
+
 def get_channel_type_index(request):
-    try:
-        with open(os.path.join('static', 'IndexFile', 'channel_type_index.json'), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return OrJsonResponse(data)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)})
-    
+    return get_index_by_key('channel_type', request)
+
 def get_channel_name_index(request):
-    try:
-        with open(os.path.join('static', 'IndexFile', 'channel_name_index.json'), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return OrJsonResponse(data)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)})
-    
+    return get_index_by_key('channel_name', request)
+
 def get_errors_name_index(request):
-    try:
-        with open(os.path.join('static', 'IndexFile', 'error_name_index.json'), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return OrJsonResponse(data)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)})   
-     
+    return get_index_by_key('error_name', request)
+
 def get_error_origin_index(request):
-    try:
-        with open(os.path.join('static', 'IndexFile', 'error_origin_index.json'), 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        return OrJsonResponse(data)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)})
-    
+    return get_index_by_key('error_origin', request)
+
+def get_error_data(request):
+    """
+    获取异常数据，直接查MongoDB
+    """
+    channel_key = request.GET.get('channel_key')
+    channel_type = request.GET.get('channel_type')
+    error_name = request.GET.get('error_name')
+    error_index = request.GET.get('error_index')
+    if channel_key and channel_type and error_name and error_index is not None:
+        try:
+            error_index = int(error_index)
+        except ValueError:
+            return OrJsonResponse({'error': 'Invalid error_index'}, status=400)
+        if '_' in channel_key:
+            channel_name, shot_number = channel_key.rsplit('_', 1)
+        else:
+            return OrJsonResponse({'error': 'Invalid channel_key format'}, status=400)
+        doc = errors_collection.find_one({
+            "shot_number": str(shot_number),
+            "channel_number": channel_name,
+            "error_type": error_name
+        })
+        if doc and "data" in doc:
+            return OrJsonResponse(doc["data"])
+        else:
+            return OrJsonResponse({'error': 'Not found'}, status=404)
+    else:
+        return OrJsonResponse({'error': 'Required parameters are missing'}, status=400)
+
 def downsample_to_frequency(x_values, y_values, target_freq=1000):
     """
     对数据进行高效降采样到指定频率，同时保留信号特征
@@ -600,199 +654,6 @@ def upsample_to_frequency(x_values, y_values, target_freq=1000):
     
     print(f"插值采样: 从 {len(x_values)} 点 增至 {len(new_times)} 点")
     return new_times, new_values
-
-def get_error_data(request):
-    """
-    获取异常数据
-    """
-    try:
-        channel_key = request.GET.get('channel_key')
-        channel_type = request.GET.get('channel_type')
-        error_name = request.GET.get('error_name')
-        error_index = request.GET.get('error_index')
-
-        if channel_key and channel_type and error_name and error_index is not None:
-            try:
-                error_index = int(error_index)
-            except ValueError:
-                return OrJsonResponse({'error': 'Invalid error_index'}, status=400)
-
-            if '_' in channel_key:
-                channel_name, shot_number = channel_key.rsplit('_', 1)
-            else:
-                return OrJsonResponse({'error': 'Invalid channel_key format'}, status=400)
-
-            anomaly_file_name = f"{error_name}{error_index}.json"
-
-            file_path = os.path.join(
-                'static', 'ErrorData', f'{shot_number}_{channel_name}_{error_name}.json'
-            )
-
-            if os.path.exists(file_path):
-                with open(file_path, encoding='unicode_escape') as f:
-                    data = json.load(f)
-                return OrJsonResponse(data)
-            else:
-                return OrJsonResponse({'error': 'File not found'}, status=404)
-
-
-        else:
-            return OrJsonResponse({'error': 'Required parameters are missing'}, status=400)
-    except Exception as e:
-        return OrJsonResponse({'error': str(e)}, status=500)
-
-# 添加表达式解析类
-class ExpressionParser:
-    def __init__(self, get_channel_data_func):
-        self.get_channel_data_func = get_channel_data_func
-        self.tokens = []
-        self.current = 0
-    
-    def parse(self, expression):
-        """解析表达式并计算结果"""
-        self.tokenize(expression)
-        self.current = 0
-        return self.expression()
-    
-    def tokenize(self, expression):
-        """将表达式分词"""
-        # 去除所有空格
-        expression = expression.replace(" ", "")
-        
-        # 实现一个简单的分词器
-        self.tokens = []
-        i = 0
-        
-        while i < len(expression):
-            char = expression[i]
-            
-            # 处理运算符和括号
-            if char in "+-*/()":
-                self.tokens.append(char)
-                i += 1
-            # 处理通道标识符（字母、数字、下划线的组合）
-            elif char.isalnum() or char == '_':
-                start = i
-                # 继续读取直到遇到非标识符字符
-                while i < len(expression) and (expression[i].isalnum() or expression[i] == '_'):
-                    i += 1
-                self.tokens.append(expression[start:i])
-            else:
-                i += 1
-        
-        return self.tokens
-    
-    def expression(self):
-        """解析加减运算"""
-        result = self.term()
-        
-        while self.current < len(self.tokens) and self.tokens[self.current] in ['+', '-']:
-            operator = self.tokens[self.current]
-            self.current += 1
-            right = self.term()
-            
-            if operator == '+':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行加法
-                result['Y_value'] = [x + y for x, y in zip(result['Y_value'], right['Y_value'])]
-            elif operator == '-':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行减法
-                result['Y_value'] = [x - y for x, y in zip(result['Y_value'], right['Y_value'])]
-        
-        return result
-    
-    def term(self):
-        """解析乘除运算"""
-        result = self.factor()
-        
-        while self.current < len(self.tokens) and self.tokens[self.current] in ['*', '/']:
-            operator = self.tokens[self.current]
-            self.current += 1
-            right = self.factor()
-            
-            if operator == '*':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行乘法
-                result['Y_value'] = [x * y for x, y in zip(result['Y_value'], right['Y_value'])]
-            elif operator == '/':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行除法，避免除以0
-                result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], right['Y_value'])]
-        
-        return result
-    
-    def factor(self):
-        """解析括号和通道标识符"""
-        if self.current < len(self.tokens):
-            token = self.tokens[self.current]
-            
-            # 处理括号表达式
-            if token == '(':
-                self.current += 1
-                result = self.expression()
-                
-                # 必须有匹配的右括号
-                if self.current < len(self.tokens) and self.tokens[self.current] == ')':
-                    self.current += 1
-                    return result
-                else:
-                    raise ValueError("缺少右括号")
-            
-            # 处理通道标识符
-            elif token.isalnum() or '_' in token:
-                self.current += 1
-                # 获取通道数据
-                channel_key = token
-                
-                # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
-                response = self.get_channel_data_func(None, channel_key)
-                
-                if hasattr(response, 'content'):
-                    # 对于HttpResponse对象
-                    try:
-                        channel_data = json.loads(response.content.decode('utf-8'))
-                    except Exception:
-                        raise ValueError(f"解析通道 {channel_key} 返回数据失败")
-                else:
-                    # 对于JsonResponse对象
-                    channel_data = response
-                
-                # 检查返回的数据是否有效
-                if 'error' in channel_data:
-                    raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
-                
-                # 确保返回的数据包含所需的键
-                if 'X_value' not in channel_data or 'Y_value' not in channel_data:
-                    raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
-                
-                return channel_data
-        
-        raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
 
 def init_calculation(request):
     """初始化计算任务，返回唯一任务ID"""
@@ -1887,66 +1748,46 @@ def get_channels_errors(request):
     """
     if request.method != 'POST':
         return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
-    
     try:
-        # 获取请求数据
         data = json.loads(request.body)
         channels = data.get('channels', [])
-        
         if not channels:
             return JsonResponse({'error': 'No channels provided'}, status=400)
-        
-        # 读取结构树数据
-        with open(os.path.join('static', 'StructTree.json'), encoding='unicode_escape') as f:
-            struct_tree = json.load(f)
-        
-        # 准备返回的结果
         result = []
-        
-        # 遍历请求的通道，获取每个通道的异常数据
         for channel_info in channels:
             channel_name = channel_info.get('channel_name')
             shot_number = channel_info.get('shot_number')
             channel_type = channel_info.get('channel_type')
-            
             if not channel_name or not shot_number:
                 continue
-            
-            # 查找通道在结构树中的数据
+            doc = struct_trees_collection.find_one({'shot_number': str(shot_number)})
             channel_errors = []
-            for item in struct_tree:
-                if (item.get('channel_type') == channel_type and 
-                    item.get('channel_name') == channel_name and 
-                    item.get('shot_number') == shot_number):
-                    # 找到匹配的通道，获取其异常数据
-                    error_names = item.get('error_name', [])
-                    if not error_names:
-                        error_names = ["NO ERROR"]
-                    
-                    # 构建异常数据
-                    channel_errors = [
-                        {
-                            "error_name": error_name,
-                            "color": "rgba(0, 0, 0, 0)" if error_name == "NO ERROR" else "rgba(220, 20, 60, 0.3)"
-                        }
-                        for error_name in error_names
-                    ]
-                    break
-            
-            # 添加到结果中
+            if doc and "struct_tree" in doc:
+                for item in doc["struct_tree"]:
+                    if (item.get('channel_type') == channel_type and 
+                        item.get('channel_name') == channel_name and 
+                        str(item.get('shot_number')) == str(shot_number)):
+                        error_names = item.get('error_name', [])
+                        if not error_names:
+                            error_names = ["NO ERROR"]
+                        channel_errors = [
+                            {
+                                "error_name": error_name,
+                                "color": "rgba(0, 0, 0, 0)" if error_name == "NO ERROR" else "rgba(220, 20, 60, 0.3)"
+                            }
+                            for error_name in error_names
+                        ]
+                        break
             result.append({
                 "channel_name": channel_name,
                 "shot_number": shot_number,
                 "errors": channel_errors
             })
-        
         return JsonResponse(result, safe=False)
-    
     except Exception as e:
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
- 
 
 
 

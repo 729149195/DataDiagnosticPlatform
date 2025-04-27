@@ -4,13 +4,27 @@
       <div class="form-item">
         <span class="label">炮　号：</span>
         <div class="input-container">
-          <el-autocomplete :model-value="gunNumberInput" :fetch-suggestions="querySearchGunNumbers" placeholder="请输入炮号，例如 1-5,7,9-12" @select="handleGunNumberSelect" @input="handleInput" @clear="handleGunNumberClear" @focus="handleGunNumberFocus" @blur="handleGunNumberBlur" clearable class="gun-number-input"></el-autocomplete>
+          <el-autocomplete
+            :model-value="gunNumberInput"
+            :fetch-suggestions="querySearchGunNumbers"
+            placeholder="请输入炮号，例如 1-5,7,9-12"
+            @select="handleGunNumberSelect"
+            @input="handleInput"
+            @clear="handleGunNumberClear"
+            @focus="handleGunNumberFocus"
+            @blur="handleGunNumberBlur"
+            class="gun-number-input"
+          >
+            <template #append>
+              <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
+            </template>
+          </el-autocomplete>
         </div>
       </div>
       <div class="form-item">
         <span class="label">通道名：</span>
         <div class="input-container">
-          <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword class="tag-select">
+          <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword class="tag-select" :disabled="isChannelNameDisabled || isIndexLoading || !hasIndexLoaded">
             <el-option v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
             <el-option v-for="item in filteredChannelNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
           </el-select>
@@ -19,7 +33,7 @@
       <div class="form-item">
         <span class="label">异常名：</span>
         <div class="input-container">
-          <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword class="tag-select">
+          <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword class="tag-select" :disabled="isErrorNameDisabled || isIndexLoading || !hasIndexLoaded">
             <el-option v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
             <el-option v-for="item in filteredErrorsNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
           </el-select>
@@ -66,11 +80,6 @@ const errorsNameOptions = ref([]);
 const selectederrorsNames = ref([]);
 const errorsNameData = ref({});
 
-// 添加全选状态管理
-const channelTypesAllSelected = ref(false);
-const channelNamesAllSelected = ref(false);
-const errorsNamesAllSelected = ref(false);
-
 // 添加新的输入变量
 const channelTypeInput = ref('');
 const channelNameInput = ref('');
@@ -86,6 +95,10 @@ const filteredErrorsNameKeyword = ref('');
 const filteredErrorsNameResultOptions = ref([]);
 const filteredErrorsNameOptionsList = ref([]);
 
+// 添加索引加载状态
+const isIndexLoading = ref(false);
+const hasIndexLoaded = ref(false);
+
 // 通用函数，用于设置选项和默认选中值
 const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
   optionsRef.value = Object.keys(data).map(key => ({
@@ -97,36 +110,17 @@ const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
   dataRef.value = data; // 保存原始数据
 };
 
-// 获取数据
-const fetData = async () => {
+// 只获取炮号索引
+const fetchGunNumberOptions = async () => {
   try {
-    const [
-      gunNumberResponse,
-      channelTypeResponse,
-      channelNameResponse,
-      errorsNameResponse,
-      // errorsOriginResponse
-    ] = await Promise.all([
-      axios.get('https://10.1.108.231:5000/api/get-shot-number-index'),
-      axios.get('https://10.1.108.231:5000/api/get-channel-type-index'),
-      axios.get('https://10.1.108.231:5000/api/get-channel-name-index'),
-      axios.get('https://10.1.108.231:5000/api/get-errors-name-index'),
-    ]);
-
-    // 设置炮号选项和保存原始数据
-    setOptionsAndSelectAll(gunNumberOptions, selectedGunNumbers, gunNumberData, gunNumberResponse.data);
-
-    // 设置通道类别选项和保存原始数据
-    setOptionsAndSelectAll(channelTypeOptions, selectedChannelTypes, channelTypeData, channelTypeResponse.data);
-
-    // 设置通道名选项和保存原始数据
-    setOptionsAndSelectAll(channelNameOptions, selectedChannelNames, channelNameData, channelNameResponse.data);
-
-    // 设置异常名选项和保存原始数据
-    setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorsNameResponse.data);
+    const gunNumberResponse = await axios.get('https://10.1.108.231:5000/api/get-shot-number-index');
+    // 构造数据格式
+    const gunData = {};
+    (gunNumberResponse.data || []).forEach(key => { gunData[key] = [key]; });
+    setOptionsAndSelectAll(gunNumberOptions, selectedGunNumbers, gunNumberData, gunData);
   } catch (error) {
-    console.error('Failed to fetch data:', error);
-    ElMessage.error('数据获取失败，请稍后再试。');
+    console.error('Failed to fetch gun numbers:', error);
+    ElMessage.error('炮号数据获取失败，请稍后再试。');
   }
 };
 
@@ -368,14 +362,6 @@ const selectederrorsNamesWithValues = computed(() => {
   }));
 });
 
-// // 计算属性：获取选中异常来源及其对应的值
-// const selectederrorsOriginWithValues = computed(() => {
-//     return selectederrorsOrigin.value.map(key => ({
-//         key,
-//         values: errorsOriginData.value[key] || [],
-//     }));
-// });
-
 // 计算属性：判断是否有任何选中的数据
 const hasSelectedData = computed(() => {
   return (
@@ -383,62 +369,28 @@ const hasSelectedData = computed(() => {
     selectedChannelTypesWithValues.value.length ||
     selectedChannelNamesWithValues.value.length ||
     selectederrorsNamesWithValues.value.length
-    // selectederrorsOriginWithValues.value.length
   );
 });
 
 // 过滤函数
 const filterGunNumbers = () => {
-  // 首先解析炮号输入
   parseGunNumberInput();
 
-  // 检查是否有任何选中的数据
-  if (!selectedGunNumbers.value.length && !selectedChannelNames.value.length && !selectederrorsNames.value.length) {
-    ElMessage.warning('请至少输入一个搜索条件。');
+  if (!selectedGunNumbers.value.length) {
+    ElMessage.warning('请至少输入一个炮号。');
     return;
   }
 
-  const filterData = {
-    gunNumbers: selectedGunNumbersWithValues.value,
-    channelNames: selectedChannelNamesWithValues.value,
-    errorsNames: selectederrorsNamesWithValues.value,
+  // 构造过滤条件对象
+  const filterParams = {
+    shot_numbers: selectedGunNumbers.value,
+    channel_names: selectedChannelNames.value,
+    error_names: selectederrorsNames.value,
   };
 
-  // 收集所有有选中值的选项的 values 数组
-  let selectedValuesArrays = [];
+  console.log(filterParams);
 
-  Object.entries(filterData).forEach(([key, value]) => {
-    if (value.length > 0) {  // 只处理有选中值的选项
-      let values = [];
-      value.forEach(item => {
-        values = values.concat(item.values);
-      });
-      selectedValuesArrays.push(values);
-    }
-  });
-
-  // 如果没有任何选中的值，返回空结果
-  if (selectedValuesArrays.length === 0) {
-    ElMessage.warning('请至少选择一个过滤条件。');
-    return;
-  }
-
-  // 计算所有选中选项的交集
-  let intersectionArray = selectedValuesArrays[0];
-
-  for (let i = 1; i < selectedValuesArrays.length; i++) {
-    intersectionArray = _.intersection(intersectionArray, selectedValuesArrays[i]);
-  }
-
-  // 最终结果
-  const finalResult = intersectionArray;
-
-  if (!finalResult || finalResult.length === 0) {
-    ElMessage.warning('没有找到符合条件的结果。');
-    return;
-  }
-
-  store.dispatch('fetchStructTree', finalResult);
+  store.dispatch('fetchStructTree', filterParams);
 };
 
 // 在 setup 中添加新的计算属性和监听器
@@ -873,15 +825,50 @@ watch(
   }
 );
 
+// 初始化时只请求炮号索引
 onMounted(async () => {
-  await fetData();
-  // 初始化时所有选择都为空
+  await fetchGunNumberOptions();
   selectedChannelNames.value = [];
   selectederrorsNames.value = [];
-  filteredChannelNameOptionsList.value = filteredChannelNameOptions.value;
-  filteredErrorsNameOptionsList.value = filteredErrorsNameOptions.value;
-  store.dispatch('fetchStructTree');
+  filteredChannelNameOptionsList.value = [];
+  filteredErrorsNameOptionsList.value = [];
 });
+
+// 通道名和异常名下拉禁用逻辑
+const isChannelNameDisabled = computed(() => selectedGunNumbers.value.length === 0);
+const isErrorNameDisabled = computed(() => selectedGunNumbers.value.length === 0);
+
+const onGunNumberConfirm = async () => {
+  parseGunNumberInput();
+  hasIndexLoaded.value = false;
+  if (selectedGunNumbers.value.length > 0) {
+    isIndexLoading.value = true;
+    try {
+      // 请求通道名索引
+      const channelNameRes = await axios.get('https://10.1.108.231:5000/api/get-channel-name-index', {
+        params: { shot_numbers: selectedGunNumbers.value }
+      });
+      setOptionsAndSelectAll(channelNameOptions, selectedChannelNames, channelNameData, channelNameRes.data);
+      // 请求异常名索引
+      const errorNameRes = await axios.get('https://10.1.108.231:5000/api/get-errors-name-index', {
+        params: { shot_numbers: selectedGunNumbers.value }
+      });
+      setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorNameRes.data);
+      hasIndexLoaded.value = true;
+    } catch (error) {
+      ElMessage.error('通道名或异常名索引获取失败');
+      hasIndexLoaded.value = false;
+    } finally {
+      isIndexLoading.value = false;
+    }
+  } else {
+    channelNameOptions.value = [];
+    errorsNameOptions.value = [];
+    selectedChannelNames.value = [];
+    selectederrorsNames.value = [];
+    hasIndexLoaded.value = false;
+  }
+};
 </script>
 
 <style scoped lang="scss">
@@ -1048,7 +1035,6 @@ onMounted(async () => {
     max-width: fit-content;
     padding: 0 2px 0 4px;
     height: 20px;
-    line-height: 18px;
     white-space: nowrap;
   }
 
@@ -1069,7 +1055,6 @@ onMounted(async () => {
     position: relative;
     margin-left: 2px;
     height: 20px;
-    line-height: 18px;
     flex-shrink: 0;
   }
 
@@ -1077,7 +1062,6 @@ onMounted(async () => {
   .el-select__collapse-tag,
   .el-select__collapse-tags .el-tag {
     height: 20px;
-    line-height: 18px;
     padding: 0 4px;
     font-size: 11px;
     background-color: #f4f4f5;

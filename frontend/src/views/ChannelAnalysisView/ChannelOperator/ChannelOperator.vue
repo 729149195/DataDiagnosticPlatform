@@ -232,7 +232,7 @@ const handleSubmit = async () => {
   }));
 
   try {
-    const response = await axios.post('https://10.1.108.231:5000/api/upload/', formData, {
+    const response = await axios.post('https://10.1.108.231:5000/api/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -242,7 +242,7 @@ const handleSubmit = async () => {
     let ttda = ["Pca()"]
     let ttcp = ['FFT()']
     // 更新 detect anomaly functions
-    const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions/`);
+    const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
     for (let func of response2.data.imported_functions) {
       if (func.type === '诊断分析') {
         ttda.push(func['name'] + '()')
@@ -491,7 +491,7 @@ onMounted(async () => {
   document.addEventListener("click", handleClickOutside);
 
   // 更新 detect anomaly functions
-  const response = await axios.get(`https://10.1.108.231:5000/api/view-functions/`);
+  const response = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
   let ttda = ["Pca()"]
   let ttcp = ['FFT()']
   for (let func of response.data.imported_functions) {

@@ -716,12 +716,28 @@ const store = createStore({
     },
   },
   actions: {
-    async fetchStructTree({ commit, dispatch }, indices = []) {
+    async fetchStructTree({ commit, dispatch }, filterParams = []) {
       try {
         let url = "https://10.1.108.231:5000/api/struct-tree";
-        if (indices.length > 0) {
-          const indicesParam = indices.join(",");
-          url += `?indices=${encodeURIComponent(indicesParam)}`;
+        let params = [];
+        // 兼容老用法：如果传的是数组，视为shot_numbers
+        if (Array.isArray(filterParams)) {
+          if (filterParams.length > 0) {
+            params.push(`shot_numbers=${filterParams.join(",")}`);
+          }
+        } else if (typeof filterParams === 'object' && filterParams !== null) {
+          if (filterParams.shot_numbers && filterParams.shot_numbers.length > 0) {
+            params.push(`shot_numbers=${filterParams.shot_numbers.join(",")}`);
+          }
+          if (filterParams.channel_names && filterParams.channel_names.length > 0) {
+            params.push(`channel_names=${filterParams.channel_names.join(",")}`);
+          }
+          if (filterParams.error_names && filterParams.error_names.length > 0) {
+            params.push(`error_names=${filterParams.error_names.join(",")}`);
+          }
+        }
+        if (params.length > 0) {
+          url += "?" + params.join("&");
         }
         const response = await fetch(url);
         const rawData = await response.json();
@@ -963,7 +979,7 @@ const store = createStore({
       const requestPromise = new Promise(async (resolve, reject) => {
         try {
           const response = await axios.get(
-            `https://10.1.108.231:5000/api/channel-data/`,
+            `https://10.1.108.231:5000/api/channel-data`,
             { params }
           );
           // 获取原始数据
@@ -1087,7 +1103,7 @@ const store = createStore({
 
             // 发送请求获取错误数据
             const response = await fetch(
-              `https://10.1.108.231:5000/api/error-data/?${new URLSearchParams(
+              `https://10.1.108.231:5000/api/error-data?${new URLSearchParams(
                 params
               ).toString()}`
             );
@@ -1214,7 +1230,7 @@ const store = createStore({
         // 获取通道异常数据
         if (displayedChannels.length > 0) {
           const response = await fetch(
-            "https://10.1.108.231:5000/api/get-channels-errors/",
+            "https://10.1.108.231:5000/api/get-channels-errors",
             {
               method: "POST",
               headers: {

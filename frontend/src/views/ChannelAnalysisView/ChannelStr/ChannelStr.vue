@@ -138,7 +138,7 @@ const pollCalculationProgress = async (taskId) => {
             
             try {
                 isRequestPending = true;
-                const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}/`);
+                const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}`);
                 isRequestPending = false;
                 
                 const { step, progress, status } = response.data;
@@ -203,7 +203,7 @@ const sendClickedChannelNames = async () => {
         
         try {
             // 发送计算请求，并获取后端返回的任务ID
-            const initResponse = await axios.post('https://10.1.108.231:5000/api/operator-strs/init/', {
+            const initResponse = await axios.post('https://10.1.108.231:5000/api/operator-strs/init', {
                 expression: formulasarea.value
             });
             
@@ -213,7 +213,7 @@ const sendClickedChannelNames = async () => {
             pollCalculationProgress(taskId);
             
             // 发送实际计算请求
-            const response = await axios.post('https://10.1.108.231:5000/api/operator-strs/', {
+            const response = await axios.post('https://10.1.108.231:5000/api/operator-strs', {
                 clickedChannelNames: formulasarea.value,
                 anomaly_func_str: formulasarea.value,
                 channel_mess: selectedChannels.value,
