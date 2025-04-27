@@ -299,7 +299,7 @@ def process_channel(channel_args):
 def RUN(shot_list, channel_list):
     # 连接MongoDB
     client = MongoClient("mongodb://localhost:27017")
-    db = client["DataDiagnosticPlatform_current"]
+    db = client["DataDiagnosticPlatform_v2"]
     errors_collection = db["errors_data"]
     struct_trees_collection = db["struct_trees"]
     data_stats_collection = db["data_statistics"]  # 新增统计集合
