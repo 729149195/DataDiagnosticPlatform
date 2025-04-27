@@ -19,9 +19,18 @@ from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
 from api.verify_user import send_post_request
 from api.pattern_matching import match_pattern  # 只导入模式匹配函数
+from pymongo import MongoClient, ASCENDING, UpdateMany
 
 # 存储计算任务状态的字典
 calculation_tasks = {}
+
+# MongoDB 配置：
+client = MongoClient("mongodb://localhost:27017")
+db = client["DataDiagnosticPlatform_v2"]
+index_collection = db["index"]
+struct_trees_collection = db["struct_trees"]
+errors_collection = db["errors_data"]
+
 
 class JsonEncoder(json.JSONEncoder):
     """Convert numpy classes to JSON serializable objects."""
