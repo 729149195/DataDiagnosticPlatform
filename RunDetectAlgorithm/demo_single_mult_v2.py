@@ -301,7 +301,7 @@ def process_channel(channel_args):
 def RUN(shot_list, channel_list):
     # 连接MongoDB
     client = MongoClient("mongodb://localhost:27017")
-    db = client["DataDiagnosticPlatform_v2"]
+    db = client["DataDiagnosticPlatform_current"]
     errors_collection = db["errors_data"]
     struct_trees_collection = db["struct_trees"]
     data_stats_collection = db["data_statistics"]  # 新增统计集合
@@ -671,7 +671,7 @@ def create_shot_index(db, shot_number, struct_tree_data):
     
 with open('RunDetectAlgorithm/algorithmChannelMap.json', encoding='utf-8') as f:
     algorithm_channel_map = json.load(f)
-shot_list = [4571, 4573]
+shot_list = [4571, 5071]
 channel_list = []
 RUN(shot_list, channel_list)
 
