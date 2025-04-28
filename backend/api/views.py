@@ -28,33 +28,134 @@ calculation_tasks = {}
 
 # MongoDB 配置：
 client = MongoClient("mongodb://localhost:27017")
-db = client["DataDiagnosticPlatform_4949_5071"]
-index_collection = db["index"]
-struct_trees_collection = db["struct_trees"]
-errors_collection = db["errors_data"]
+# 移除固定的db赋值，改为根据请求参数动态选择数据库
+# db = client["DataDiagnosticPlatform_4949_5071"]
+# 改为在各函数中动态获取数据库参数
 
-
-class JsonEncoder(json.JSONEncoder):
-    """Convert numpy classes to JSON serializable objects."""
-
-    def default(self, obj):
-        if isinstance(obj, (np.integer, np.floating, np.bool_)):
-            return obj.item()
-        elif isinstance(obj, np.ndarray):
-            return obj.tolist()
+# 获取数据库实例的辅助函数
+def get_db(db_suffix=None):
+    """
+    根据参数动态获取MongoDB数据库实例
+    
+    Args:
+        db_suffix: 数据库名后缀，如 '4949_5071'
+    
+    Returns:
+        MongoDB数据库实例
+    """
+    if not db_suffix:
+        # 默认使用第一个DataDiagnosticPlatform数据库
+        db_names = client.list_database_names()
+        filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+        if filtered_db_names:
+            db = client[filtered_db_names[0]]
         else:
-            return super(JsonEncoder, self).default(obj)
-        
-@require_GET
-def get_datadiagnosticplatform_dbs(request):
-    """
-    获取所有以DataDiagnosticPlatform开头的数据库名
-    """
-    client = MongoClient("mongodb://localhost:27017")
-    db_names = client.list_database_names()
-    filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
-    return JsonResponse({"db_names": filtered_db_names})
+            db = client["DataDiagnosticPlatform_4949_5071"]  # 如果没有找到，使用默认值
+    else:
+        db_name = f"DataDiagnosticPlatform_{db_suffix}"
+        db = client[db_name]
+    
+    # 确保数据库具有必要的索引
+    return ensure_db_indices(db)
 
+def ensure_db_indices(db):
+    """
+    确保数据库具有必要的索引集合
+    如果不存在，尝试从其他集合生成基本索引结构
+    
+    Args:
+        db: MongoDB数据库实例
+    """
+    collections = db.list_collection_names()
+    
+    # 检查是否需要创建索引
+    if 'index' not in collections and 'struct_trees' in collections:
+        print(f"数据库 {db.name} 中不存在index集合，尝试创建基本索引...")
+        
+        try:
+            # 创建索引集合
+            index_collection = db["index"]
+            
+            # 从struct_trees获取数据
+            struct_trees = db["struct_trees"].find({})
+            
+            # 准备索引数据
+            channel_type_index = {}
+            channel_name_index = {}
+            error_name_index = {}
+            
+            # 遍历struct_trees数据构建索引
+            for tree_doc in struct_trees:
+                shot_number = tree_doc.get("shot_number", "unknown")
+                
+                if "struct_tree" in tree_doc:
+                    for item in tree_doc["struct_tree"]:
+                        channel_type = item.get("channel_type")
+                        channel_name = item.get("channel_name")
+                        error_names = item.get("error_name", [])
+                        
+                        # 确保是列表
+                        if error_names and not isinstance(error_names, list):
+                            error_names = [error_names]
+                        
+                        # 更新channel_type索引
+                        if channel_type:
+                            if shot_number not in channel_type_index:
+                                channel_type_index[shot_number] = {}
+                            if channel_type not in channel_type_index[shot_number]:
+                                channel_type_index[shot_number][channel_type] = []
+                            if channel_name not in channel_type_index[shot_number][channel_type]:
+                                channel_type_index[shot_number][channel_type].append(channel_name)
+                        
+                        # 更新channel_name索引
+                        if channel_name:
+                            if shot_number not in channel_name_index:
+                                channel_name_index[shot_number] = {}
+                            if channel_name not in channel_name_index[shot_number]:
+                                channel_name_index[shot_number][channel_name] = []
+                            if channel_type not in channel_name_index[shot_number][channel_name]:
+                                channel_name_index[shot_number][channel_name].append(channel_type)
+                        
+                        # 更新error_name索引
+                        for error_name in error_names:
+                            if error_name:
+                                if shot_number not in error_name_index:
+                                    error_name_index[shot_number] = {}
+                                if error_name not in error_name_index[shot_number]:
+                                    error_name_index[shot_number][error_name] = []
+                                if channel_name not in error_name_index[shot_number][error_name]:
+                                    error_name_index[shot_number][error_name].append(channel_name)
+            
+            # 保存索引数据
+            if channel_type_index:
+                index_collection.insert_one({
+                    "key": "channel_type",
+                    "index_data": channel_type_index
+                })
+                print(f"已创建channel_type索引，包含 {len(channel_type_index)} 个炮号")
+            
+            if channel_name_index:
+                index_collection.insert_one({
+                    "key": "channel_name",
+                    "index_data": channel_name_index
+                })
+                print(f"已创建channel_name索引，包含 {len(channel_name_index)} 个炮号")
+            
+            if error_name_index:
+                index_collection.insert_one({
+                    "key": "error_name",
+                    "index_data": error_name_index
+                })
+                print(f"已创建error_name索引，包含 {len(error_name_index)} 个炮号")
+            
+            print(f"数据库 {db.name} 基本索引创建完成")
+            
+        except Exception as e:
+            print(f"创建索引时出错: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    return db
 
 def get_struct_tree(request):
     """
@@ -64,9 +165,15 @@ def get_struct_tree(request):
     shot_numbers = request.GET.get('shot_numbers')
     channel_names = request.GET.get('channel_names')
     error_names = request.GET.get('error_names')
+    db_suffix = request.GET.get('db_suffix')  # 新增参数
+    
     shot_numbers = shot_numbers.split(',') if shot_numbers else []
     channel_names = channel_names.split(',') if channel_names else []
     error_names = error_names.split(',') if error_names else []
+
+    # 获取对应的数据库
+    db = get_db(db_suffix)
+    struct_trees_collection = db["struct_trees"]
 
     query = {}
     if shot_numbers:
@@ -101,37 +208,96 @@ def get_shot_number_index(request):
     """
     获取所有炮号列表
     """
-    all_docs = list(index_collection.find({}))
-    shot_numbers = set()
-    for doc in all_docs:
-        shot_numbers.update(doc.get("index_data", {}).keys())
-    return OrJsonResponse(sorted(list(shot_numbers)))
+    db_suffix = request.GET.get('db_suffix')  # 新增参数
+    db = get_db(db_suffix)
+    index_collection = db["index"]
+    
+    try:
+        # 检查集合是否存在
+        collections = db.list_collection_names()
+        if 'index' not in collections:
+            print(f"警告: 数据库 {db.name} 中不存在'index'集合，从struct_trees集合获取炮号")
+            
+            # 如果索引集合不存在，尝试从struct_trees集合获取炮号
+            if 'struct_trees' in collections:
+                # 从struct_trees集合获取炮号
+                shot_numbers = set(db["struct_trees"].distinct("shot_number"))
+                return OrJsonResponse(sorted(list(shot_numbers)))
+            else:
+                print(f"警告: 数据库 {db.name} 中不存在struct_trees集合")
+                return OrJsonResponse([])
+        
+        all_docs = list(index_collection.find({}))
+        shot_numbers = set()
+        for doc in all_docs:
+            shot_numbers.update(doc.get("index_data", {}).keys())
+        return OrJsonResponse(sorted(list(shot_numbers)))
+    except Exception as e:
+        import traceback
+        error_msg = f"获取炮号索引出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({"error": error_msg}, status=500)
 
 def get_index_by_key(key, request):
     """
     通用索引获取函数，支持按炮号过滤
     """
     shot_numbers = request.GET.getlist('shot_numbers[]') or request.GET.get('shot_numbers')
+    db_suffix = request.GET.get('db_suffix')  # 新增参数
+    
+    print(f"获取索引，key={key}, db_suffix={db_suffix}, shot_numbers={shot_numbers}")
+    
     if isinstance(shot_numbers, str):
         shot_numbers = [shot_numbers]
-    doc = index_collection.find_one({'key': key})
-    result = {}
-    if doc and "index_data" in doc:
-        if shot_numbers:
-            for shot in shot_numbers:
-                for name, indices in doc["index_data"].get(shot, {}).items():
-                    if name not in result:
-                        result[name] = set()
-                    result[name].update(indices)
-            result = {k: list(v) for k, v in result.items()}
+    
+    db = get_db(db_suffix)
+    index_collection = db["index"]
+    
+    try:
+        # 检查集合是否存在
+        collections = db.list_collection_names()
+        if 'index' not in collections:
+            print(f"警告: 数据库 {db.name} 中不存在'index'集合")
+            return OrJsonResponse({"error": f"数据库 {db.name} 中不存在索引集合", "collections": collections}, status=404)
+        
+        # 检查索引数据是否存在
+        doc = index_collection.find_one({'key': key})
+        print(f"查询索引集合结果: key={key}, 结果={doc is not None}")
+        
+        result = {}
+        if doc and "index_data" in doc:
+            print(f"索引数据大小: {len(doc['index_data'])}")
+            if shot_numbers:
+                # 检查每个炮号是否在索引中
+                for shot in shot_numbers:
+                    if shot in doc["index_data"]:
+                        for name, indices in doc["index_data"].get(shot, {}).items():
+                            if name not in result:
+                                result[name] = set()
+                            result[name].update(indices)
+                    else:
+                        print(f"炮号 {shot} 不在索引中")
+                result = {k: list(v) for k, v in result.items()}
+            else:
+                for shot, name_dict in doc["index_data"].items():
+                    for name, indices in name_dict.items():
+                        if name not in result:
+                            result[name] = set()
+                        result[name].update(indices)
+                result = {k: list(v) for k, v in result.items()}
+            
+            print(f"处理后的结果大小: {len(result)}")
+            return OrJsonResponse(result)
         else:
-            for shot, name_dict in doc["index_data"].items():
-                for name, indices in name_dict.items():
-                    if name not in result:
-                        result[name] = set()
-                    result[name].update(indices)
-            result = {k: list(v) for k, v in result.items()}
-    return OrJsonResponse(result)
+            print(f"索引数据不存在: key={key}")
+            return OrJsonResponse({})
+    except Exception as e:
+        import traceback
+        error_msg = f"获取索引出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({"error": error_msg}, status=500)
 
 def get_channel_type_index(request):
     return get_index_by_key('channel_type', request)
@@ -153,6 +319,8 @@ def get_error_data(request):
     channel_type = request.GET.get('channel_type')
     error_name = request.GET.get('error_name')
     error_index = request.GET.get('error_index')
+    db_suffix = request.GET.get('db_suffix')  # 新增参数
+    
     if channel_key and channel_type and error_name and error_index is not None:
         try:
             error_index = int(error_index)
@@ -162,6 +330,10 @@ def get_error_data(request):
             channel_name, shot_number = channel_key.rsplit('_', 1)
         else:
             return OrJsonResponse({'error': 'Invalid channel_key format'}, status=400)
+            
+        db = get_db(db_suffix)
+        errors_collection = db["errors_data"]
+        
         doc = errors_collection.find_one({
             "shot_number": str(shot_number),
             "channel_number": channel_name,
@@ -317,6 +489,7 @@ def get_channel_data(request, channel_key=None):
         # 获取采样参数，默认采用降采样
         sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
         sample_freq = float(request.GET.get('sample_freq', 1000))   # 默认1KHz，改为float类型
+        db_suffix = request.GET.get('db_suffix')  # 新增参数
         
         # 收集日志信息，最后统一打印
         logs = []
@@ -1433,7 +1606,13 @@ def sync_error_data(request):
         }
     try:
         data = json.loads(request.body)
-        for channel_data in data:
+        db_suffix = data.get('db_suffix')  # 新增参数
+        db = get_db(db_suffix)
+        errors_collection = db["errors_data"]
+        struct_trees_collection = db["struct_trees"]
+        index_collection = db["index"]
+        
+        for channel_data in data.get('channels', []):  # 假设数据结构调整为包含channels字段
             channel_key = channel_data['channelKey']
             manual_errors, machine_errors = channel_data['errorData']
             channel_name, shot_number = channel_key.rsplit('_', 1)
@@ -1507,8 +1686,16 @@ def delete_error_data(request):
         channel_number = data.get('channel_number')
         shot_number = data.get('shot_number')
         error_type = data.get('error_type')
+        db_suffix = data.get('db_suffix')  # 新增参数
+        
         if not all([diagnostic_name, channel_number, shot_number, error_type]):
             return JsonResponse({'error': '缺少必要参数', 'data': data}, status=400)
+            
+        db = get_db(db_suffix)
+        errors_collection = db["errors_data"]
+        struct_trees_collection = db["struct_trees"]
+        index_collection = db["index"]
+        
         shot_number = str(shot_number)
         # 1. 删除 errors_collection 中的异常（只移除diagnostic_name对应的异常，若人工和机器都空则整个记录删除）
         doc = errors_collection.find_one({
@@ -1635,6 +1822,9 @@ def sketch_query(request):
     """
     # 从请求中获取 JSON 数据
     data = json.loads(request.body)
+    # 获取数据库后缀
+    db_suffix = data.get('db_suffix')  # 新增参数
+    db = get_db(db_suffix)
     # 获取采样率  单位KHz
     sampling = data.get('sampling')
     # 获取选择的通道列表
@@ -1651,20 +1841,21 @@ def sketch_query(request):
         normalized_curve = bezier_to_points(raw_query_pattern)
         
         # 创建修改后的通道数据获取函数
-        def get_channel_data_local(channel, sampling_rate):
+        def get_channel_data_local(channel, sampling_rate, db_suffix):
             """为模式匹配专门定制的获取通道数据的函数"""
             channel_key = f"{channel['channel_name']}_{channel['shot_number']}"
             
             # 创建一个模拟请求对象
             class MockRequest:
-                def __init__(self, channel_key, sample_freq):
+                def __init__(self, channel_key, sample_freq, db_suffix):
                     self.GET = {
                         'channel_key': channel_key,
                         'sample_mode': 'downsample',
-                        'sample_freq': sample_freq
+                        'sample_freq': sample_freq,
+                        'db_suffix': db_suffix  # 添加数据库参数
                     }
                 
-            mock_request = MockRequest(channel_key, sampling_rate)
+            mock_request = MockRequest(channel_key, sampling_rate, db_suffix)
             
             # 直接调用views中的get_channel_data函数
             response = get_channel_data(mock_request)
@@ -1684,7 +1875,7 @@ def sketch_query(request):
         # 准备通道数据
         channel_data_list = []
         for channel in selected_channels:
-            channel_data = get_channel_data_local(channel, sampling)
+            channel_data = get_channel_data_local(channel, sampling, db_suffix)
             if channel_data:
                 # 添加通道信息到数据中
                 channel_data['channel_name'] = channel['channel_name']
@@ -1718,6 +1909,7 @@ def get_channels_errors(request):
     获取多个通道的异常数据，专门用于更新通道异常数据而不刷新整个列表
     POST请求，参数格式：
     {
+        "db_suffix": "4949_5071",  // 新增参数
         "channels": [
             {
                 "channel_name": "通道名",
@@ -1733,8 +1925,14 @@ def get_channels_errors(request):
     try:
         data = json.loads(request.body)
         channels = data.get('channels', [])
+        db_suffix = data.get('db_suffix')  # 新增参数
+        
         if not channels:
             return JsonResponse({'error': 'No channels provided'}, status=400)
+            
+        db = get_db(db_suffix)
+        struct_trees_collection = db["struct_trees"]
+        
         result = []
         for channel_info in channels:
             channel_name = channel_info.get('channel_name')
@@ -1770,5 +1968,104 @@ def get_channels_errors(request):
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
+
+class JsonEncoder(json.JSONEncoder):
+    """Convert numpy classes to JSON serializable objects."""
+
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating, np.bool_)):
+            return obj.item()
+        elif isinstance(obj, np.ndarray):
+            return obj.tolist()
+        else:
+            return super(JsonEncoder, self).default(obj)
+
+@require_GET
+def get_datadiagnosticplatform_dbs(request):
+    """
+    获取所有以DataDiagnosticPlatform开头的数据库名
+    """
+    client = MongoClient("mongodb://localhost:27017")
+    db_names = client.list_database_names()
+    filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+    
+    # 只返回后缀部分，去掉前缀"DataDiagnosticPlatform_"
+    db_suffixes = [name.replace("DataDiagnosticPlatform_", "") for name in filtered_db_names]
+    
+    return JsonResponse({"db_names": filtered_db_names, "db_suffixes": db_suffixes})
+
+@require_GET
+def initialize_db_indices(request):
+    """
+    初始化指定数据库的索引结构
+    可用于修复索引问题
+    """
+    db_suffix = request.GET.get('db_suffix')
+    
+    if not db_suffix:
+        return JsonResponse({"error": "必须指定数据库后缀"}, status=400)
+    
+    try:
+        db = get_db(db_suffix)
+        
+        # 检查索引集合
+        collections = db.list_collection_names()
+        
+        # 检查索引集合状态
+        index_status = {
+            "database": db.name,
+            "has_index_collection": 'index' in collections, 
+            "has_struct_trees": 'struct_trees' in collections,
+            "collections": collections
+        }
+        
+        # 如果索引集合存在，获取各索引的数据量
+        if 'index' in collections:
+            # 获取索引数据统计信息
+            index_stats = []
+            for key in ['channel_type', 'channel_name', 'error_name']:
+                doc = db['index'].find_one({"key": key})
+                if doc and "index_data" in doc:
+                    shot_count = len(doc["index_data"])
+                    total_items = sum(len(shot_data) for shot_data in doc["index_data"].values())
+                    index_stats.append({
+                        "key": key,
+                        "shot_count": shot_count,
+                        "total_items": total_items
+                    })
+                else:
+                    index_stats.append({
+                        "key": key,
+                        "shot_count": 0,
+                        "total_items": 0,
+                        "exists": False
+                    })
+            
+            index_status["index_stats"] = index_stats
+            
+        # 验证struct_trees数据
+        if 'struct_trees' in collections:
+            shot_count = db['struct_trees'].count_documents({})
+            index_status["struct_trees_shot_count"] = shot_count
+        
+        # 如果指定了强制重建标志，删除现有索引并重建
+        if request.GET.get('force_rebuild') == 'true' and 'index' in collections:
+            db['index'].drop()
+            index_status["rebuild_started"] = True
+            # 重新获取数据库实例，触发索引重建
+            db = get_db(db_suffix)
+            
+            # 更新状态
+            collections = db.list_collection_names()
+            index_status["has_index_collection"] = 'index' in collections
+        
+        return JsonResponse(index_status)
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"初始化数据库索引出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return JsonResponse({"error": error_msg}, status=500)
 
 

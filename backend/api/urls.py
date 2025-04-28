@@ -28,4 +28,5 @@ urlpatterns = [
     path('sync-error-data', views.sync_error_data, name='sync_error_data'),
     path('delete-error-data', views.delete_error_data, name='delete_error_data'),
     path('get-ddp-dbs', views.get_datadiagnosticplatform_dbs, name='get_ddp_dbs'),
+    path('initialize-db-indices', views.initialize_db_indices, name='initialize_db_indices'),
 ]

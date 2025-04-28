@@ -99,6 +99,7 @@ const store = createStore({
       samplingVersion: 0,
       visibleMatchedResultIds: [],
       errorNamesVersion: { version: 0, channels: [] }, // 新增：异常名索引版本号，包含变动通道key数组
+      currentDbSuffix: null, // 新增：当前数据库后缀
     };
   },
   getters: {
@@ -714,6 +715,9 @@ const store = createStore({
       };
       // console.log(state.errorNamesVersion);
     },
+    setSelectedDbSuffix(state, value) {
+      state.currentDbSuffix = value;
+    },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, filterParams = []) {
@@ -734,6 +738,10 @@ const store = createStore({
           }
           if (filterParams.error_names && filterParams.error_names.length > 0) {
             params.push(`error_names=${filterParams.error_names.join(",")}`);
+          }
+          // 添加数据库参数
+          if (filterParams.db_suffix) {
+            params.push(`db_suffix=${filterParams.db_suffix}`);
           }
         }
         if (params.length > 0) {
@@ -890,6 +898,7 @@ const store = createStore({
         forceRefresh = false,
         sample_mode = "downsample",
         sample_freq = null,
+        db_suffix = null, // 新增数据库参数
       }
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -899,11 +908,13 @@ const store = createStore({
       // 为自定义频率创建特定的缓存键
       const hasCustomFreq =
         sample_freq !== null && sample_mode === "downsample";
+      // 在缓存键中增加数据库后缀
+      const dbSuffixPart = db_suffix ? `_db_${db_suffix}` : '';
       const cacheKey = useOriginalFrequency
-        ? `original_${channelKey}`
+        ? `original_${channelKey}${dbSuffixPart}`
         : hasCustomFreq
-        ? `custom_${sample_freq}_${channelKey}`
-        : channelKey;
+        ? `custom_${sample_freq}_${channelKey}${dbSuffixPart}`
+        : `${channelKey}${dbSuffixPart}`;
 
       // 如果强制刷新，跳过所有缓存检查
       if (forceRefresh) {
@@ -974,6 +985,11 @@ const store = createStore({
       } else {
         params.sample_freq = state.sampling;
       }
+      
+      // 添加数据库参数
+      if (db_suffix) {
+        params.db_suffix = db_suffix;
+      }
 
       // 创建请求的 Promise 并将其存储
       const requestPromise = new Promise(async (resolve, reject) => {
@@ -1039,6 +1055,7 @@ const store = createStore({
     async fetchAllErrorData({ state, commit }, channel) {
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+        const db_suffix = channel.db_suffix; // 获取通道中的数据库参数
         const errorResults = [];
 
         // 对每个错误类型进行处理
@@ -1046,8 +1063,9 @@ const store = createStore({
           // 如果是 NO ERROR，跳过
           if (error.error_name === "NO ERROR") continue;
 
-          // 构建缓存键
-          const errorCacheKey = `error-${channelKey}-${error.error_name}-${errorIndex}`;
+          // 构建缓存键（加入数据库参数）
+          const dbSuffixPart = db_suffix ? `_db_${db_suffix}` : '';
+          const errorCacheKey = `error-${channelKey}-${error.error_name}-${errorIndex}${dbSuffixPart}`;
 
           // 检查内存缓存中是否已有数据
           const cached = dataCache.get(errorCacheKey);
@@ -1100,6 +1118,11 @@ const store = createStore({
               error_name: error.error_name,
               error_index: errorIndex,
             };
+            
+            // 添加数据库参数
+            if (db_suffix) {
+              params.db_suffix = db_suffix;
+            }
 
             // 发送请求获取错误数据
             const response = await fetch(
@@ -1213,6 +1236,8 @@ const store = createStore({
       try {
         // 获取当前显示的所有通道
         const displayedChannels = [];
+        const db_suffix = state.currentDbSuffix; // 从state中获取当前数据库后缀
+        
         if (state.displayedData) {
           state.displayedData.forEach((item) => {
             if (item.channels) {
@@ -1236,7 +1261,10 @@ const store = createStore({
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ channels: displayedChannels }),
+              body: JSON.stringify({ 
+                channels: displayedChannels,
+                db_suffix: db_suffix  // 添加数据库参数
+              }),
             }
           );
 
@@ -1261,16 +1289,24 @@ const store = createStore({
         console.error("Failed to update channel errors:", error);
       }
     },
-    async refreshErrorNames({ commit }) {
+    async refreshErrorNames({ commit, state }) {
       try {
         const response = await axios.get(
-          "https://10.1.108.231:5000/api/get-errors-name-index"
+          "https://10.1.108.231:5000/api/get-errors-name-index",
+          {
+            params: {
+              db_suffix: state.currentDbSuffix // 添加数据库参数
+            }
+          }
         );
         return response.data;
       } catch (error) {
         console.error("异常名索引获取失败:", error);
         throw error;
       }
+    },
+    updateSelectedDbSuffix({ commit }, dbSuffix) {
+      commit("setSelectedDbSuffix", dbSuffix);
     },
   },
 });

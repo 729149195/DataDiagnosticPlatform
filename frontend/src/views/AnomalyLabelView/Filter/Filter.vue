@@ -2,6 +2,14 @@
   <div class="filter-container">
     <div class="form-items">
       <div class="form-item">
+        <span class="label">数据库：</span>
+        <div class="input-container">
+          <el-select v-model="selectedDbSuffix" placeholder="请选择数据库" @change="handleDbSuffixChange" :loading="isDbLoading" clearable class="db-select">
+            <el-option v-for="item in dbSuffixOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+      </div>
+      <div class="form-item">
         <span class="label">炮　号：</span>
         <div class="input-container">
           <el-autocomplete
@@ -13,6 +21,7 @@
             @clear="handleGunNumberClear"
             @blur="handleGunNumberBlur"
             class="gun-number-input"
+            :disabled="!selectedDbSuffix"
           >
             <template #append>
               <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
@@ -56,6 +65,11 @@ import { debounce } from 'lodash';
 import _ from 'lodash';
 
 const store = useStore();
+
+// 数据库选择相关数据
+const dbSuffixOptions = ref([]);
+const selectedDbSuffix = ref('');
+const isDbLoading = ref(false);
 
 // 炮号相关数据
 const gunNumberOptions = ref([]);
@@ -112,7 +126,14 @@ const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
 // 只获取炮号索引
 const fetchGunNumberOptions = async () => {
   try {
-    const gunNumberResponse = await axios.get('https://10.1.108.231:5000/api/get-shot-number-index');
+    if (!selectedDbSuffix.value) {
+      gunNumberOptions.value = [];
+      return;
+    }
+    
+    const gunNumberResponse = await axios.get('https://10.1.108.231:5000/api/get-shot-number-index', {
+      params: { db_suffix: selectedDbSuffix.value }
+    });
     // 构造数据格式
     const gunData = {};
     (gunNumberResponse.data || []).forEach(key => { gunData[key] = [key]; });
@@ -120,6 +141,58 @@ const fetchGunNumberOptions = async () => {
   } catch (error) {
     console.error('Failed to fetch gun numbers:', error);
     ElMessage.error('炮号数据获取失败，请稍后再试。');
+  }
+};
+
+// 获取数据库列表函数
+const fetchDbSuffixOptions = async () => {
+  isDbLoading.value = true;
+  try {
+    const response = await axios.get('https://10.1.108.231:5000/api/get-ddp-dbs');
+    // 使用服务器返回的db_suffixes，它已经去掉了前缀
+    dbSuffixOptions.value = response.data.db_suffixes || [];
+    
+    if (dbSuffixOptions.value.length > 0) {
+      // 如果之前有选择过数据库，优先使用上次选择的
+      const savedDbSuffix = localStorage.getItem('selectedDbSuffix');
+      if (savedDbSuffix && dbSuffixOptions.value.includes(savedDbSuffix)) {
+        selectedDbSuffix.value = savedDbSuffix;
+      } else {
+        // 否则默认使用第一个
+        selectedDbSuffix.value = dbSuffixOptions.value[0];
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch database options:', error);
+    ElMessage.error('获取数据库列表失败，请稍后再试。');
+  } finally {
+    isDbLoading.value = false;
+  }
+};
+
+// 处理数据库选择变化
+const handleDbSuffixChange = (value) => {
+  // 保存当前选择的数据库到localStorage
+  if (value) {
+    localStorage.setItem('selectedDbSuffix', value);
+  } else {
+    localStorage.removeItem('selectedDbSuffix');
+  }
+  
+  // 通知store更新当前数据库
+  store.dispatch('updateSelectedDbSuffix', value);
+  
+  // 清空已加载的数据
+  gunNumberOptions.value = [];
+  selectedGunNumbers.value = [];
+  gunNumberInput.value = '';
+  selectedChannelNames.value = [];
+  selectederrorsNames.value = [];
+  hasIndexLoaded.value = false;
+  
+  // 如果选择了数据库，获取炮号索引
+  if (value) {
+    fetchGunNumberOptions();
   }
 };
 
@@ -361,6 +434,7 @@ const filterGunNumbers = () => {
     shot_numbers: selectedGunNumbers.value,
     channel_names: selectedChannelNames.value,
     error_names: selectederrorsNames.value,
+    db_suffix: selectedDbSuffix.value  // 添加数据库参数
   };
 
   store.dispatch('fetchStructTree', filterParams);
@@ -788,7 +862,14 @@ watch(
 
 // 初始化时只请求炮号索引
 onMounted(async () => {
-  await fetchGunNumberOptions();
+  // 首先获取数据库列表
+  await fetchDbSuffixOptions();
+  
+  // 如果已经选择了数据库，才获取炮号列表
+  if (selectedDbSuffix.value) {
+    await fetchGunNumberOptions();
+  }
+  
   selectedChannelNames.value = [];
   selectederrorsNames.value = [];
   filteredChannelNameOptionsList.value = [];
@@ -807,17 +888,49 @@ const onGunNumberConfirm = async () => {
     try {
       // 请求通道名索引
       const channelNameRes = await axios.get('https://10.1.108.231:5000/api/get-channel-name-index', {
-        params: { shot_numbers: selectedGunNumbers.value }
+        params: { 
+          shot_numbers: selectedGunNumbers.value,
+          db_suffix: selectedDbSuffix.value  // 添加数据库参数
+        }
       });
+      
+      // 检查响应是否包含错误信息
+      if (channelNameRes.data.error) {
+        throw new Error(`获取通道名索引失败: ${channelNameRes.data.error}`);
+      }
+      
+      // 检查是否为空对象（没有任何通道名数据）
+      if (Object.keys(channelNameRes.data).length === 0) {
+        console.warn(`数据库 ${selectedDbSuffix.value} 中未找到炮号 ${selectedGunNumbers.value.join(', ')} 的通道名索引`);
+        ElMessage.warning(`未在当前数据库中找到选中炮号的通道名数据，请检查炮号是否存在于该数据库或数据库索引是否已建立`);
+      }
+      
       setOptionsAndSelectAll(channelNameOptions, selectedChannelNames, channelNameData, channelNameRes.data);
+      
       // 请求异常名索引
       const errorNameRes = await axios.get('https://10.1.108.231:5000/api/get-errors-name-index', {
-        params: { shot_numbers: selectedGunNumbers.value }
+        params: { 
+          shot_numbers: selectedGunNumbers.value,
+          db_suffix: selectedDbSuffix.value  // 添加数据库参数
+        }
       });
+      
+      // 检查响应是否包含错误信息
+      if (errorNameRes.data.error) {
+        throw new Error(`获取异常名索引失败: ${errorNameRes.data.error}`);
+      }
+      
+      // 检查是否为空对象（没有任何异常名数据）
+      if (Object.keys(errorNameRes.data).length === 0) {
+        console.warn(`数据库 ${selectedDbSuffix.value} 中未找到炮号 ${selectedGunNumbers.value.join(', ')} 的异常名索引`);
+        // 这里不显示警告，因为可能确实没有异常
+      }
+      
       setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorNameRes.data);
       hasIndexLoaded.value = true;
     } catch (error) {
-      ElMessage.error('通道名或异常名索引获取失败');
+      console.error('通道名或异常名索引获取失败:', error);
+      ElMessage.error(`获取索引失败: ${error.message || '未知错误'}`);
       hasIndexLoaded.value = false;
     } finally {
       isIndexLoading.value = false;
@@ -868,6 +981,10 @@ const onGunNumberConfirm = async () => {
 }
 
 .gun-number-input {
+  width: 100%;
+}
+
+.db-select {
   width: 100%;
 }
 
