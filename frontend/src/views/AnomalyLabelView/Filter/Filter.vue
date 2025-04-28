@@ -20,6 +20,7 @@
             @input="handleInput"
             @clear="handleGunNumberClear"
             @blur="handleGunNumberBlur"
+            @keyup.enter="onGunNumberConfirm"
             class="gun-number-input"
             :disabled="!selectedDbSuffix"
           >
