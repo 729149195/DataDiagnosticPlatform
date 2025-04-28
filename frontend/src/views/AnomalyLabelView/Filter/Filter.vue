@@ -207,9 +207,7 @@ const parseGunNumberInput = () => {
 const querySearchGunNumbers = debounce((queryString, cb) => {
   // 如果输入为空，显示前20个真实炮号建议
   if (!queryString.trim()) {
-    const initialSuggestions = gunNumberOptions.value
-      .slice(0, 20)
-      .map(item => ({ value: item.value }));
+    const initialSuggestions = gunNumberOptions.value;
     gunNumberSearchResults.value = initialSuggestions;
     cb(initialSuggestions);
     return;
