@@ -11,6 +11,7 @@ import importlib.util
 import random
 import logging
 import traceback
+import sys
 
 import MDSplus # type: ignore
 import numpy as np
@@ -329,7 +330,7 @@ def RUN(shot_list, channel_list):
     DB_list = ["exl50u", "eng50u"]
 
     all_struct_tree = []  # 所有炮号的结构树
-    shot_range = list(range(*shot_list))
+    shot_range = list(range(shot_list[0], shot_list[1] + 1))
     read_time = 0
     
     # 统计数据
@@ -667,11 +668,18 @@ def create_shot_index(db, shot_number, struct_tree_data):
     # 确保索引集合有适当的索引以提高查询性能
     index_collection.create_index([("key", ASCENDING)])
     
-with open('RunDetectAlgorithm/algorithmChannelMap.json', encoding='utf-8') as f:
-    algorithm_channel_map = json.load(f)
-shot_list = [4571, 5071]
-channel_list = []
-RUN(shot_list, channel_list)
+if __name__ == "__main__":
+    # 检查命令行参数
+    if len(sys.argv) >= 3:
+        # 从命令行获取两个参数，并转为整数
+        shot_start = int(sys.argv[1])
+        shot_end = int(sys.argv[2])
+        shot_list = [shot_start, shot_end]
+    else:
+        # 默认值
+        shot_list = [4571, 4671]
+    channel_list = []
+    RUN(shot_list, channel_list)
 
 
 
