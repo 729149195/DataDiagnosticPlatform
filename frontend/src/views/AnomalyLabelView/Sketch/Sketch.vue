@@ -22,7 +22,8 @@
           </el-select>
         </span>
         <el-button type="primary" @click="toggleResultsDrawer" :icon="List" style="width: 100%; bottom: 6px">
-          展开查询结果 ({{ sortedMatchedResults.length }})
+          <!-- 展开查询结果 ({{ sortedMatchedResults.length }}) -->
+          展开查询结果
         </el-button>
       </span>
     </div>
