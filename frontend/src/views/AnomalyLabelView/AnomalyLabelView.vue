@@ -69,11 +69,6 @@
                         <span class="control-unit">KHz</span>
                       </div>
 
-                      <!-- <div class="control-item">
-                        <span class="control-label">平滑度</span>
-                        <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
-                      </div> -->
-
                       <div class="control-item">
                         <el-button-group>
                           <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 0.9em;">
@@ -176,7 +171,7 @@
                     <span class="title">通道分析结果</span>
                     <span>
                       <el-dropdown trigger="click" @command="handleResultExportCommand">
-                        <el-button type="primary" style="margin-right: 10px;" title="导出数据">
+                        <el-button type="primary" title="导出数据">
                           导出<el-icon class="el-icon--right">
                             <Upload />
                           </el-icon>
@@ -1514,10 +1509,6 @@ const updateSampling = (value) => {
   store.commit('setSamplingVersion', store.state.samplingVersion + 1)
 }
 
-const updateSmoothness = (value) => {
-  store.dispatch('updateSmoothness', value)
-}
-
 // 导出配置对话框状态
 const showExportDialog = ref(false)
 const exportConfig = reactive({
@@ -2405,7 +2396,6 @@ const chartAreaHeight = computed(() => {
 }
 
 .filtandsearch {
-  margin-bottom: 2px;
   flex-shrink: 0;
 }
 
@@ -2704,7 +2694,6 @@ const chartAreaHeight = computed(() => {
 .control-panel {
   display: flex;
   align-items: center;
-  gap: 10px;
 }
 
 .control-item {
