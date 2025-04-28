@@ -1,5 +1,8 @@
 """
 该模块用于批量读取MDSplus数据库中的实验数据，自动调用各类异常检测算法，对指定通道和炮号的数据进行异常诊断，并将检测结果存储到MongoDB中，便于后续分析和可视化。
+(mdsplus) diagdiag-2288H-V7:~/DataDiagnostic/DatapiagnosticPlatforn/RunDetectAlgorithms$ 
+python /home/diag/DataDiagnostic/DataDiagnosticPlatform/RunDetectAlgorithm/get_structtrees_errors_indexs.py 1 100
+获取处理1-100炮号（包含1和100）的数据，数据会在名为 DataDiagnosticPlatform_[1_100] 的数据库中
 """
 import re
 import time
@@ -677,7 +680,7 @@ if __name__ == "__main__":
         shot_list = [shot_start, shot_end]
     else:
         # 默认值
-        shot_list = [4571, 4671]
+        shot_list = [1, 100]
     channel_list = []
     # 动态设置数据库名
     db_name = f"DataDiagnosticPlatform_[{shot_list[0]}_{shot_list[1]}]"
