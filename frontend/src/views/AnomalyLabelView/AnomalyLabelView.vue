@@ -130,7 +130,7 @@
                   </div>
                 </el-card>
 
-                <div class="arc-toggle-container" :style="{ marginBottom: isSecondSectionCollapsed ? '0' : '5px' }">
+                <div class="arc-toggle-container">
                   <div class="arc-toggle" @click="toggleCollapse">
                     <el-icon class="arc-toggle-icon">
                       <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
@@ -2356,7 +2356,7 @@ const chartAreaHeight = computed(() => {
 }
 
 .el-main {
-  padding: 5px 5px 5px 0 !important;
+  padding: 0px !important;
 }
 
 .all-layout {
@@ -2374,7 +2374,6 @@ const chartAreaHeight = computed(() => {
   width: 25vw;
   background-color: #e9e9e9;
   height: 95vh;
-  padding: 5px;
   box-sizing: border-box;
   display: flex;
 }
@@ -2536,7 +2535,6 @@ const chartAreaHeight = computed(() => {
     display: flex;
     flex: 1;
     flex-grow: 1;
-    gap: 5px;
     position: relative;
     transition: all 0.3s ease;
   }
@@ -2645,7 +2643,7 @@ const chartAreaHeight = computed(() => {
 .arc-toggle {
   position: absolute;
   top: -20px;
-  padding: 3px 20px 5px 20px;
+  padding: 3px 20px 0px 20px;
   background-color: #f2f6fc;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
