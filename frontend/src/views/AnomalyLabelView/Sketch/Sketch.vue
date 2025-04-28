@@ -91,19 +91,21 @@
         </span>
       </div>
       <div class="panel-content">
-        <el-table :data="sortedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border>
+        <el-table :data="groupedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border :span-method="objectSpanMethod">
           <el-table-column type="selection" width="40" align="center" />
+          <el-table-column label="区间幅度" min-width="110" align="center">
+            <template #default="scope">
+              <div class="amplitude-cell">
+                <span class="group-value">≈{{ scope.row.groupAmplitude?.toFixed(2) }}</span>
+              </div>
+            </template>
+          </el-table-column>
           <el-table-column label="通道名" min-width="90" align="center" show-overflow-tooltip prop="channelName" />
           <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
           <el-table-column label="平滑" min-width="60" align="center" prop="smoothLevel" />
           <el-table-column label="匹配度" min-width="70" align="center">
             <template #default="scope">
               <span class="cell-number">{{ scope.row.confidence?.toFixed(3) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="区间幅度" min-width="110" show-overflow-tooltip align="center">
-            <template #default="scope">
-              {{ (scope.row.range?.[0]?.[1] - scope.row.range?.[0]?.[0])?.toFixed(2) }}
             </template>
           </el-table-column>
         </el-table>
@@ -1033,6 +1035,65 @@ const sortedMatchedResults = computed(() => {
   // 按confidence降序排列
   return [...store.state.matchedResults].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
 });
+
+// 根据区间幅度自动分组后的结果
+const groupedMatchedResults = computed(() => {
+  if (sortedMatchedResults.value.length === 0) return [];
+  
+  // 1. 提取所有区间幅度值并排序
+  const amplitudes = sortedMatchedResults.value.map(item => {
+    const amplitude = item.range?.[0]?.[1] - item.range?.[0]?.[0] || 0;
+    return { ...item, amplitude };
+  }).sort((a, b) => b.amplitude - a.amplitude);
+  
+  // 2. 使用简单的聚类方法确定分组
+  const groups = [];
+  let currentGroup = [amplitudes[0]];
+  
+  // 计算相邻值差异的平均值作为分组阈值
+  const diffs = [];
+  for (let i = 1; i < amplitudes.length; i++) {
+    diffs.push(amplitudes[i-1].amplitude - amplitudes[i].amplitude);
+  }
+  
+  // 使用差值平均值的1.5倍作为分组阈值
+  const avgDiff = diffs.reduce((sum, diff) => sum + diff, 0) / Math.max(1, diffs.length);
+  const threshold = avgDiff * 1.5;
+  
+  // 根据阈值进行分组
+  for (let i = 1; i < amplitudes.length; i++) {
+    const diff = Math.abs(amplitudes[i-1].amplitude - amplitudes[i].amplitude);
+    
+    if (diff > threshold) {
+      // 差值大于阈值，创建新组
+      groups.push([...currentGroup]);
+      currentGroup = [amplitudes[i]];
+    } else {
+      // 差值小于阈值，添加到当前组
+      currentGroup.push(amplitudes[i]);
+    }
+  }
+  
+  // 添加最后一组
+  if (currentGroup.length > 0) {
+    groups.push(currentGroup);
+  }
+  
+  // 3. 为每个结果项添加组信息、组内排序和平均幅度值
+  return groups.map((group, groupIndex) => {
+    // 计算组内平均幅度值
+    const avgAmplitude = group.reduce((sum, item) => sum + item.amplitude, 0) / group.length;
+    
+    return group.map(item => ({
+      ...item,
+      groupIndex,
+      groupSize: group.length,
+      // 使用组内平均幅度值作为统一显示
+      groupAmplitude: avgAmplitude
+    }));
+  }).flat();
+});
+
 // 获取所有匹配结果id
 const allMatchedIds = computed(() => sortedMatchedResults.value.map((r, idx) => `${r.channelName}_${r.shotNumber}_${r.smoothLevel}_${idx}`));
 
@@ -1090,6 +1151,56 @@ watch(
     selectedMatchedResults.value = [...newIds];
   }
 );
+
+// 表格单元格合并方法
+const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
+  // 选择框列不参与合并
+  if (columnIndex === 0) {
+    return {
+      rowspan: 1,
+      colspan: 1
+    };
+  }
+  
+  // 区间幅度列需要合并
+  if (columnIndex === 1) {
+    if (isGroupStart(rowIndex)) {
+      // 计算当前组有多少行
+      let rowCount = 1;
+      for (let i = rowIndex + 1; i < groupedMatchedResults.value.length; i++) {
+        if (groupedMatchedResults.value[i].groupIndex === row.groupIndex) {
+          rowCount++;
+        } else {
+          break;
+        }
+      }
+      
+      return {
+        rowspan: rowCount,
+        colspan: 1
+      };
+    } else {
+      // 非组的第一行，区间幅度不显示
+      return {
+        rowspan: 0,
+        colspan: 0
+      };
+    }
+  }
+  
+  return {
+    rowspan: 1,
+    colspan: 1
+  };
+};
+
+// 判断是否是组的第一个元素（用于显示组标签）
+const isGroupStart = (index) => {
+  if (index === 0) return true;
+  const currentRow = groupedMatchedResults.value[index];
+  const prevRow = groupedMatchedResults.value[index - 1];
+  return currentRow.groupIndex !== prevRow.groupIndex;
+};
 </script>
 
 <style scoped>
@@ -1438,5 +1549,86 @@ watch(
   gap: 6px;
   align-items: center;
   justify-content: center;
+}
+
+/* 添加组样式 */
+:deep(.group-0) {
+  background-color: rgba(240, 249, 235, 0.4);
+}
+
+:deep(.group-1) {
+  background-color: rgba(230, 247, 255, 0.4);
+}
+
+:deep(.group-2) {
+  background-color: rgba(253, 246, 236, 0.4);
+}
+
+:deep(.group-3) {
+  background-color: rgba(245, 243, 254, 0.4);
+}
+
+/* 组分隔线 */
+:deep(.el-table__row.group-0:first-child),
+:deep(.el-table__row.group-1:first-child),
+:deep(.el-table__row.group-2:first-child),
+:deep(.el-table__row.group-3:first-child) {
+  border-top: 2px dashed #dcdfe6;
+}
+
+/* 组标记样式 */
+.group-marker {
+  position: relative;
+}
+
+.group-tag {
+  display: none;
+}
+
+.amplitude-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.group-value {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.group-label {
+  margin-top: 4px;
+  background-color: #409eff;
+  color: white;
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+/* 修改分组样式 */
+:deep(.el-table__row.group-0) {
+  background-color: rgba(240, 249, 235, 0.6);
+}
+
+:deep(.el-table__row.group-1) {
+  background-color: rgba(230, 247, 255, 0.6);
+}
+
+:deep(.el-table__row.group-2) {
+  background-color: rgba(253, 246, 236, 0.6);
+}
+
+:deep(.el-table__row.group-3) {
+  background-color: rgba(245, 243, 254, 0.6);
+}
+
+/* 删除之前的组标记和标签样式 */
+.group-marker {
+  position: relative;
+}
+
+.group-tag {
+  display: none;
 }
 </style>
