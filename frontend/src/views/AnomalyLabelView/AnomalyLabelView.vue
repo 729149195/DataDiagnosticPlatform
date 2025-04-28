@@ -2561,7 +2561,7 @@ const chartAreaHeight = computed(() => {
   height: 100%;
 
   .operator {
-    margin-bottom: 5px;
+    margin-bottom: 0;
   }
 
   .data_exploration {
@@ -2574,9 +2574,7 @@ const chartAreaHeight = computed(() => {
     display: flex;
     flex: 1;
     flex-grow: 1;
-    gap: 5px;
     height: 100%;
-    margin-bottom: 5px;
   }
 
   .two_left {
