@@ -100,9 +100,9 @@
               <span class="cell-number">{{ scope.row.confidence?.toFixed(3) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="区间" min-width="110" show-overflow-tooltip align="center">
+          <el-table-column label="区间幅度" min-width="110" show-overflow-tooltip align="center">
             <template #default="scope">
-              [{{ scope.row.range?.[0]?.[0]?.toFixed(2) }}, {{ scope.row.range?.[0]?.[1]?.toFixed(2) }}]
+              {{ (scope.row.range?.[0]?.[1] - scope.row.range?.[0]?.[0])?.toFixed(2) }}
             </template>
           </el-table-column>
         </el-table>
