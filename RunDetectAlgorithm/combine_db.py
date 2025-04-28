@@ -27,18 +27,43 @@ def find_intervals(numbers):
     intervals.append(f"[{start}_{prev}]")
     return "_".join(intervals)
 
-def copy_collections(src_db, dst_db, collections):
-    """将指定集合从src_db复制到dst_db"""
+def merge_index_collections(client, db_names, dst_db):
+    """合并所有数据库的index集合，按key聚合index_data"""
+    key_indexdata_map = {}
+    # 遍历所有数据库
+    for db_name in tqdm(db_names, desc="Collecting index data"):
+        src_col = client[db_name]['index']
+        for doc in src_col.find({}):
+            key = doc['key']
+            index_data = doc.get('index_data', {})
+            if key not in key_indexdata_map:
+                key_indexdata_map[key] = {}
+            # 合并index_data
+            for shot_number, value in index_data.items():
+                key_indexdata_map[key][shot_number] = value
+    # 写入目标数据库
+    dst_col = dst_db['index']
+    for key, index_data in tqdm(key_indexdata_map.items(), desc="Writing merged index"):
+        dst_col.update_one(
+            {"key": key},
+            {"$set": {"key": key, "index_data": index_data}},
+            upsert=True
+        )
+
+def copy_collections(client, db_names, dst_db, collections):
     for col_name in collections:
-        src_col = src_db[col_name]
-        dst_col = dst_db[col_name]
-        docs = list(src_col.find({}))
-        if docs:
-            # 文档级进度条
-            for doc in tqdm(docs, desc=f"Inserting docs to {col_name}", leave=False):
-                if 'shot_number' in doc:
-                    dst_col.delete_many({'shot_number': doc['shot_number']})
-                dst_col.insert_one(doc)
+        if col_name == 'index':
+            merge_index_collections(client, db_names, dst_db)
+        else:
+            for db_name in tqdm(db_names, desc=f"Migrating {col_name}"):
+                src_col = client[db_name][col_name]
+                dst_col = dst_db[col_name]
+                docs = list(src_col.find({}))
+                if docs:
+                    for doc in tqdm(docs, desc=f"Inserting docs to {col_name} from {db_name}", leave=False):
+                        if 'shot_number' in doc:
+                            dst_col.delete_many({'shot_number': doc['shot_number']})
+                        dst_col.insert_one(doc)
 
 def main():
     client = MongoClient("mongodb://localhost:27017")
@@ -61,11 +86,7 @@ def main():
     # 只迁移这三个集合
     collections = ['errors_data', 'struct_trees', 'index']
     # 数据库级进度条
-    for db_name in tqdm(db_names, desc="Migrating databases"):
-        print(f"Migrating database: {db_name}")
-        # 集合级进度条
-        for col_name in tqdm(collections, desc=f"Migrating collections in {db_name}", leave=False):
-            copy_collections(client[db_name], new_db, [col_name])
+    copy_collections(client, db_names, new_db, collections)
     print("Data aggregation completed!")
 
 if __name__ == "__main__":
