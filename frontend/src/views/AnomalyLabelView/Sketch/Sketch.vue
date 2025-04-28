@@ -94,7 +94,7 @@
           <el-table-column type="selection" width="40" align="center" />
           <el-table-column label="通道名" min-width="90" align="center" show-overflow-tooltip prop="channelName" />
           <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
-          <el-table-column label="平滑" min-width="60" align="center" prop="smooth" />
+          <el-table-column label="平滑" min-width="60" align="center" prop="smoothLevel" />
           <el-table-column label="匹配度" min-width="70" align="center">
             <template #default="scope">
               <span class="cell-number">{{ scope.row.confidence?.toFixed(3) }}</span>
