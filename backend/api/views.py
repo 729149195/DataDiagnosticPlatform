@@ -27,7 +27,7 @@ calculation_tasks = {}
 
 # MongoDB 配置：
 client = MongoClient("mongodb://localhost:27017")
-db = client["DataDiagnosticPlatform_v2"]
+db = client["DataDiagnosticPlatform_[4571_4948]"]
 index_collection = db["index"]
 struct_trees_collection = db["struct_trees"]
 errors_collection = db["errors_data"]
