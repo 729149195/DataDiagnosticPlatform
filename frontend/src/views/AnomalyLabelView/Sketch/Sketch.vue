@@ -1,57 +1,57 @@
 <template>
   <div class="container" :class="{ 'panel-open': resultsDrawerVisible }">
-    <!-- 顶部操作栏 -->
+    <!-- 顶部操作栏，保留并恢复为中文 -->
     <div class="header">
       <span class="title">手绘查询</span>
-
       <span class="channel-and-results-select">
         <span class="operate">
           <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
-            <!-- 添加全部全选选项 -->
             <el-option key="select-all" value="select-all" label="全选所有通道">
               <el-checkbox v-model="allSelected" @change="handleSelectAll">
                 全选所有通道
               </el-checkbox>
             </el-option>
-
-            <!-- 添加分组全选选项 -->
             <el-option v-for="group in selectV2Options" :key="'select-all-' + group.value" :value="'select-all-' + group.value" :label="'全选' + group.label">
               <el-checkbox v-model="groupSelectAll[group.value]" @change="(val) => handleSelectAllGroup(val, group)">
                 全选{{ group.label }}
               </el-checkbox>
             </el-option>
-
-            <!-- 原有的分组选项 -->
             <el-option-group v-for="group in selectV2Options" :key="group.value" :label="group.label">
               <el-option v-for="option in group.children" :key="option.value" :label="option.label" :value="option.value" />
             </el-option-group>
           </el-select>
         </span>
-
-        <span class="matched-results-select">
-          <el-button type="primary" @click="toggleResultsDrawer" :icon="List">
-            {{ matchedResultsButtonText }} ({{ sortedMatchedResults.length }})
-          </el-button>
-        </span>
+        <el-button type="primary" @click="toggleResultsDrawer" :icon="List" style="width: 100%; bottom: 6px">
+          展开查询结果 ({{ sortedMatchedResults.length }})
+        </el-button>
       </span>
     </div>
-
-    <!-- 绘图区域 -->
-    <div class="sketch-container">
-      <div class="canvas-container">
-        <!-- 使用canvas替代SVG作为Paper.js的绘图区域 -->
-        <canvas ref="paperCanvas" id="paperCanvas" class="whiteboard-canvas" resize></canvas>
-        <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
-        <div class="buttons">
-          <el-button type="danger" class="clear-button" @click="clearCanvas">
-            清除
-          </el-button>
-          <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
-            查询
-          </el-button>
+    <!-- 主体区域，左右分栏 -->
+    <div class="main-content">
+      <!-- 左侧2/3画板区域 -->
+      <div class="sketch-area">
+        <div class="canvas-container">
+          <canvas ref="paperCanvas" id="paperCanvas" class="whiteboard-canvas" resize></canvas>
+          <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
+          <div class="buttons">
+            <el-button type="danger" class="clear-button" @click="clearCanvas">
+              清除
+            </el-button>
+            <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
+              查询
+            </el-button>
+          </div>
+          <div class="zoom-button">
+            <el-button type="primary" :icon="FullScreen" circle @click="openFullscreenCanvas"></el-button>
+          </div>
         </div>
-        <div class="zoom-button">
-          <el-button type="primary" :icon="FullScreen" circle @click="openFullscreenCanvas"></el-button>
+      </div>
+      <!-- 右侧1/3操作区 -->
+      <div class="operation-panel">
+         <!-- 参数设置区，先空着 -->
+         过滤参数区...(开发中)
+        <div class="params-area">
+          <!-- 这里可以添加参数设置控件 -->
         </div>
       </div>
     </div>
@@ -1095,8 +1095,7 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
-  position: relative;
+  width: 100%;
 }
 
 .header {
@@ -1117,15 +1116,34 @@ watch(
   width: 200px;
 }
 
-.sketch-container {
-  position: relative;
-  width: 100%;
+.main-content {
+  display: flex;
+  flex: 1;
   height: 100%;
-  border: 0.5px solid #ccc;
-  border-radius: 5px;
-  overflow: hidden;
-  touch-action: none;
-  overscroll-behavior: contain;
+  width: 100%;
+}
+
+.sketch-area {
+  flex: 2;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.operation-panel {
+  flex: 1;
+  border: 1px solid #eee;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  box-sizing: border-box;
+}
+
+.params-area {
+  flex: 1;
+  /* 这里可以添加参数设置区的样式 */
 }
 
 .canvas-container {
@@ -1176,13 +1194,6 @@ watch(
   position: absolute;
   bottom: 6px;
   right: 6px;
-}
-
-.title {
-  color: #333;
-  font-weight: bold;
-  font-size: 12pt;
-  margin-left: 5px;
 }
 
 .zoom-button {
@@ -1236,44 +1247,15 @@ watch(
 }
 
 .custom-dialog-header .title {
-  font-size: 16px;
+  color: #333;
   font-weight: bold;
-  margin-left: 0;
+  font-size: 12pt;
+  margin-left: 5px;
 }
 
 .exit-fullscreen-btn {
   margin-left: auto;
   font-size: 14px;
-}
-
-.drawer-content {
-  padding: 10px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.drawer-header {
-  margin-bottom: 15px;
-}
-
-:deep(.el-drawer__body) {
-  padding: 0;
-  overflow: hidden;
-}
-
-:deep(.el-drawer__header) {
-  margin-bottom: 0;
-  padding: 15px;
-  border-bottom: 1px solid #eee;
-}
-
-:deep(.el-drawer__container) {
-  pointer-events: none;
-}
-
-:deep(.el-drawer) {
-  pointer-events: auto;
 }
 
 .results-panel {
@@ -1433,16 +1415,25 @@ watch(
   text-align: right;
 }
 
-.channel-and-results-select{
-  display: flex;
-  flex-direction: row;
-  gap: 10px;
-}
-
 .collapse-button{
   display: flex;
   flex-direction: row;
   gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+
+.title {
+  color: #333;
+  font-weight: bold;
+  font-size: 12pt;
+  margin-left: 5px;
+}
+
+.channel-and-results-select{
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
   align-items: center;
   justify-content: center;
 }
