@@ -2675,10 +2675,6 @@ const chartAreaHeight = computed(() => {
   margin: 0;
 }
 
-/* 视图切换按钮组样式 */
-.el-button-group {
-  margin: 0 8px;
-}
 
 .el-button-group .el-button {
   font-size: 12px;
@@ -2694,6 +2690,7 @@ const chartAreaHeight = computed(() => {
 .control-panel {
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .control-item {
