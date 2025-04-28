@@ -1193,7 +1193,7 @@ watch(
 
 .buttons {
   position: absolute;
-  bottom: 6px;
+  bottom: 0px;
   right: 6px;
 }
 
