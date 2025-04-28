@@ -42,156 +42,166 @@
           </div>
         </el-aside>
         <el-container>
-          <el-main class="test_main" v-if="selectedButton === 'anay'">
-            <el-card class="data_exploration" shadow="never">
-              <span style="display: flex; align-items: center; justify-content: space-between; ">
-                <span class="title">实验数据探索</span>
-                <div class="control-panel">
+          <!-- KeepAlive wraps the single el-main -->
+          <keep-alive>
+            <el-main :class="mainClass">
+              <!-- Analysis/Labeling View ('anay') content -->
+              <template v-if="selectedButton === 'anay'">
+                <el-card class="data_exploration" shadow="never">
+                  <span style="display: flex; align-items: center; justify-content: space-between; ">
+                    <span class="title">实验数据探索</span>
+                    <div class="control-panel">
 
-                  <!-- 是否显示异常区域的按钮 -->
-                  <div class="control-item">
-                    <el-tooltip :content="showAnomaly ? '点击隐藏异常区域' : '点击显示异常区域'" placement="top">
-                      <el-button circle :type="showAnomaly ? 'primary' : 'info'" @click="updateShowAnomaly(!showAnomaly)">
-                        <el-icon>
-                          <component :is="showAnomaly ? 'View' : 'Hide'" />
-                        </el-icon>
-                      </el-button>
-                    </el-tooltip>
-                  </div>
+                      <!-- 是否显示异常区域的按钮 -->
+                      <div class="control-item">
+                        <el-tooltip :content="showAnomaly ? '点击隐藏异常区域' : '点击显示异常区域'" placement="top">
+                          <el-button circle :type="showAnomaly ? 'primary' : 'info'" @click="updateShowAnomaly(!showAnomaly)">
+                            <el-icon>
+                              <component :is="showAnomaly ? 'View' : 'Hide'" />
+                            </el-icon>
+                          </el-button>
+                        </el-tooltip>
+                      </div>
 
-                  <div class="control-item">
-                    <span class="control-label">采样频率</span>
-                    <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
-                    <span class="control-unit">KHz</span>
-                  </div>
+                      <div class="control-item">
+                        <span class="control-label">采样频率</span>
+                        <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
+                        <span class="control-unit">KHz</span>
+                      </div>
 
-                  <!-- <div class="control-item">
-                    <span class="control-label">平滑度</span>
-                    <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
-                  </div> -->
+                      <!-- <div class="control-item">
+                        <span class="control-label">平滑度</span>
+                        <el-input-number v-model="smoothness" :precision="3" :step="0.025" :max="1" :min="0.0" @change="updateSmoothness" />
+                      </div> -->
 
-                  <div class="control-item">
-                    <el-button-group>
-                      <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 0.9em;">
-                        框选标注/编辑
-                      </el-button>
-                      <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)" style="font-size: 0.9em;">
-                        局部缩放
-                      </el-button>
-                    </el-button-group>
-                  </div>
+                      <div class="control-item">
+                        <el-button-group>
+                          <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 0.9em;">
+                            框选标注/编辑
+                          </el-button>
+                          <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)" style="font-size: 0.9em;">
+                            局部缩放
+                          </el-button>
+                        </el-button-group>
+                      </div>
 
-                  <div class="control-item">
-                    <el-button-group>
-                      <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)" style="font-size: 0.9em;">
-                        单通道多行
-                      </el-button>
-                      <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)" style="font-size: 0.9em;">
-                        多通道单行
-                      </el-button>
-                    </el-button-group>
-                  </div>
+                      <div class="control-item">
+                        <el-button-group>
+                          <el-button type="primary" :plain="!SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(true)" style="font-size: 0.9em;">
+                            单通道多行
+                          </el-button>
+                          <el-button type="primary" :plain="SingleChannelMultiRow_channel_number" @click="toggleChannelDisplayMode(false)" style="font-size: 0.9em;">
+                            多通道单行
+                          </el-button>
+                        </el-button-group>
+                      </div>
 
-                  <div class="control-item">
-                    <el-dropdown trigger="click" @command="handleExportCommand">
-                      <el-button type="primary" class="menu-button" title="更多操作">
-                        导出
-                        <el-icon>
-                          <Download />
-                        </el-icon>
-                      </el-button>
-                      <template #dropdown>
-                        <el-dropdown-menu>
-                          <el-dropdown-item command="exportSvg">导出图片</el-dropdown-item>
-                          <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
-                        </el-dropdown-menu>
-                      </template>
-                    </el-dropdown>
-                  </div>
-                </div>
-              </span>
-              <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
-                <el-scrollbar :height="chartAreaHeight" :always="false">
-                  <template v-if="selectedChannels.length === 0">
-                    <div :style="{ height: chartAreaHeight, display: 'flex', alignItems: 'center', justifyContent: 'center' }">
-                      <el-empty description="请选择通道" />
+                      <div class="control-item">
+                        <el-dropdown trigger="click" @command="handleExportCommand">
+                          <el-button type="primary" class="menu-button" title="更多操作">
+                            导出
+                            <el-icon>
+                              <Download />
+                            </el-icon>
+                          </el-button>
+                          <template #dropdown>
+                            <el-dropdown-menu>
+                              <el-dropdown-item command="exportSvg">导出图片</el-dropdown-item>
+                              <el-dropdown-item command="exportData">导出数据</el-dropdown-item>
+                            </el-dropdown-menu>
+                          </template>
+                        </el-dropdown>
+                      </div>
                     </div>
-                  </template>
-                  <keep-alive v-else>
-                    <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true" />
-                    <MultiChannelSingleRow v-else ref="MultiChannelRef" :containerRef="chartAreaRef" :height="chartAreaHeight" />
-                  </keep-alive>
-                </el-scrollbar>
-                <OverviewBrush ref="overviewBrushRef" />
-              </div>
-            </el-card>
+                  </span>
+                  <div style="height: 100%; position: relative; display: flex; flex-direction: column;">
+                    <el-scrollbar :height="chartAreaHeight" :always="false">
+                      <template v-if="selectedChannels.length === 0">
+                        <div :style="{ height: chartAreaHeight, display: 'flex', alignItems: 'center', justifyContent: 'center' }">
+                          <el-empty description="请选择通道" />
+                        </div>
+                      </template>
+                      <keep-alive v-else>
+                        <SingleChannelMultiRow v-if="SingleChannelMultiRow_channel_number === true" />
+                        <MultiChannelSingleRow v-else ref="MultiChannelRef" :containerRef="chartAreaRef" :height="chartAreaHeight" />
+                      </keep-alive>
+                    </el-scrollbar>
+                    <OverviewBrush ref="overviewBrushRef" />
+                  </div>
+                </el-card>
 
-            <div class="arc-toggle-container" :style="{ marginBottom: isSecondSectionCollapsed ? '0' : '5px' }">
-              <div class="arc-toggle" @click="toggleCollapse">
-                <el-icon class="arc-toggle-icon">
-                  <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
-                </el-icon>
-              </div>
-            </div>
-            <div class="two" v-show="!isSecondSectionCollapsed" v-if="selectedButton === 'anay'">
-              <el-card class="two_left" shadow="never">
-                <Sketch :key="selectedButton" />
-              </el-card>
-              <el-card class="two_right" shadow="never">
-                <HeatMap ref="heatMapRef" />
-              </el-card>
-            </div>
-          </el-main>
-          <el-main class="channel_main" v-if="selectedButton === 'channel'">
-            <el-card class="operator">
-              <span style="display: flex;">
-                <span class="title">运算符列表</span>
-                <ChannelOperator />
-              </span>
-            </el-card>
-            <div class="two">
-              <el-card class="two_left" shadow="never">
-                <span style="display: flex; justify-content: space-between;">
-                  <span class="title">待选择通道</span>
-                  <span>统一频率 <el-input-number v-model="unit_sampling" :precision="1" :step="10" :max="200" />
-                    KHz</span>
-                </span>
-                <div style="display: flex; justify-content: center; align-items: center;">
-                  <ChannelCards />
+                <div class="arc-toggle-container" :style="{ marginBottom: isSecondSectionCollapsed ? '0' : '5px' }">
+                  <div class="arc-toggle" @click="toggleCollapse">
+                    <el-icon class="arc-toggle-icon">
+                      <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
+                    </el-icon>
+                  </div>
                 </div>
-              </el-card>
-              <el-card class="two_right" shadow="never">
-                <span class="title">通道分析公式</span>
-                <ChannelStr />
-              </el-card>
-            </div>
-            <el-card class="data_exploration" shadow="never">
-              <span style="display: flex; justify-content: space-between;">
-                <span class="title">通道分析结果</span>
-                <span>
-                  <el-dropdown trigger="click" @command="handleResultExportCommand">
-                    <el-button type="primary" style="margin-right: 10px;" title="导出数据">
-                      导出<el-icon class="el-icon--right">
-                        <Upload />
-                      </el-icon>
-                    </el-button>
-                    <template #dropdown>
-                      <el-dropdown-menu>
-                        <el-dropdown-item command="exportSvg">导出计算图片</el-dropdown-item>
-                        <el-dropdown-item command="exportData">导出计算数据</el-dropdown-item>
-                      </el-dropdown-menu>
-                    </template>
-                  </el-dropdown>
-                  <!-- <el-button type="primary" :icon="FolderChecked">另存为新通道</el-button> -->
-                </span>
-              </span>
-              <div style="display: flex; justify-content: center; align-items: center;">
-                <div style="width: 100%">
-                  <ChannelCalculationResults ref="resultRef" />
+                <div class="two" v-show="!isSecondSectionCollapsed" v-if="selectedButton === 'anay'">
+                  <el-card class="two_left" shadow="never">
+                    <Sketch :key="selectedButton" />
+                  </el-card>
+                  <el-card class="two_right" shadow="never">
+                    <HeatMap ref="heatMapRef" />
+                  </el-card>
                 </div>
-              </div>
-            </el-card>
-          </el-main>
+              </template>
+
+              <!-- Channel Analysis View ('channel') content -->
+              <template v-else-if="selectedButton === 'channel'">
+                <el-card class="operator">
+                  <span style="display: flex;">
+                    <span class="title">运算符列表</span>
+                    <ChannelOperator />
+                  </span>
+                </el-card>
+                <div class="two">
+                  <el-card class="two_left" shadow="never">
+                    <span style="display: flex; justify-content: space-between;">
+                      <span class="title">待选择通道</span>
+                      <span>统一频率 <el-input-number v-model="unit_sampling" :precision="1" :step="10" :max="200" />
+                        KHz</span>
+                    </span>
+                    <div style="display: flex; justify-content: center; align-items: center;">
+                      <ChannelCards />
+                    </div>
+                  </el-card>
+                  <el-card class="two_right" shadow="never">
+                    <span class="title">通道分析公式</span>
+                    <ChannelStr />
+                  </el-card>
+                </div>
+                <el-card class="data_exploration" shadow="never">
+                  <span style="display: flex; justify-content: space-between;">
+                    <span class="title">通道分析结果</span>
+                    <span>
+                      <el-dropdown trigger="click" @command="handleResultExportCommand">
+                        <el-button type="primary" style="margin-right: 10px;" title="导出数据">
+                          导出<el-icon class="el-icon--right">
+                            <Upload />
+                          </el-icon>
+                        </el-button>
+                        <template #dropdown>
+                          <el-dropdown-menu>
+                            <el-dropdown-item command="exportSvg">导出计算图片</el-dropdown-item>
+                            <el-dropdown-item command="exportData">导出计算数据</el-dropdown-item>
+                          </el-dropdown-menu>
+                        </template>
+                      </el-dropdown>
+                      <!-- <el-button type="primary" :icon="FolderChecked">另存为新通道</el-button> -->
+                    </span>
+                  </span>
+                  <div style="display: flex; justify-content: center; align-items: center;">
+                    <div style="width: 100%">
+                      <ChannelCalculationResults ref="resultRef" />
+                    </div>
+                  </div>
+                </el-card>
+              </template>
+
+              <!-- Add v-else for other potential views if they exist -->
+            </el-main>
+          </keep-alive>
         </el-container>
       </el-container>
     </el-container>
@@ -604,6 +614,11 @@ Highcharts.setOptions({
   accessibility: {
     enabled: false // 禁用无障碍功能，避免相关错误
   }
+});
+
+// 计算属性，用于动态设置 el-main 的 class
+const mainClass = computed(() => {
+  return selectedButton.value === 'anay' ? 'test_main' : (selectedButton.value === 'channel' ? 'channel_main' : '');
 });
 
 let chartAreaResizeObserver = null

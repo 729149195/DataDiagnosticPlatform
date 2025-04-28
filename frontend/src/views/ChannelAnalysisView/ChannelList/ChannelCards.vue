@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch, nextTick, onBeforeUnmount } from 'vue';
+import { computed, ref, onMounted, watch, nextTick, onBeforeUnmount, onActivated } from 'vue';
 import { useStore } from 'vuex';
 import debounce from 'lodash/debounce';
 import Highcharts from 'highcharts';
@@ -237,6 +237,14 @@ const renderCharts = debounce(async () => {
         await renderChannelChart(channel);
     }
 }, 150);
+
+// 添加 onActivated 钩子
+onActivated(() => {
+    // 组件激活时，重新渲染图表以确保状态最新
+    nextTick(() => {
+        renderCharts();
+    });
+});
 
 watch(
     selectedChannels,

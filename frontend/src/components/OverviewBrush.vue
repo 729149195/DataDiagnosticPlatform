@@ -24,7 +24,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick, onBeforeUnmount, onActivated, onDeactivated } from 'vue';
 import { useStore } from 'vuex';
 import * as Highcharts from 'highcharts';
 import debounce from 'lodash/debounce';
@@ -52,6 +52,7 @@ const isLoading = ref(false);
 const extremes = ref(null);
 const processedDataCache = ref({}); // 缓存处理后的数据
 const lastContainerWidth = ref(0); // 记录上次宽度
+const isResizeListenerActive = ref(false); // 跟踪resize监听器状态
 
 // 从store获取数据
 const brush_begin = computed({
@@ -97,6 +98,7 @@ const handleResize = debounce(async () => {
 // 组件挂载和卸载
 onMounted(() => {
   window.addEventListener('resize', handleResize);
+  isResizeListenerActive.value = true;
 
   // 设置Worker消息处理函数
   setupWorkerHandler();
@@ -108,7 +110,10 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize);
+  if (isResizeListenerActive.value) {
+    window.removeEventListener('resize', handleResize);
+    isResizeListenerActive.value = false;
+  }
 
   // 销毁Highcharts实例
   if (chartInstance.value) {
@@ -118,6 +123,31 @@ onUnmounted(() => {
 
   // 终止Worker
   overviewWorkerManager.terminate();
+});
+
+// 添加 activated 和 deactivated 钩子
+onActivated(() => {
+  // 重新添加 resize listener
+  if (!isResizeListenerActive.value) {
+    window.addEventListener('resize', handleResize);
+    isResizeListenerActive.value = true;
+  }
+  // 触发 reflow
+  nextTick(() => {
+    if (chartInstance.value) {
+      chartInstance.value.reflow();
+      // 可能需要重新检查数据和渲染，以防在后台发生变化
+      checkDataAndRender();
+    }
+  });
+});
+
+onDeactivated(() => {
+  // 移除 resize listener
+  if (isResizeListenerActive.value) {
+    window.removeEventListener('resize', handleResize);
+    isResizeListenerActive.value = false;
+  }
 });
 
 // 设置Worker消息处理

@@ -2144,6 +2144,7 @@ const isActive = ref(true);
 const isChartReady = ref(false);
 
 onActivated(() => {
+  isActive.value = true; // 标记为激活
   const currentChannels = JSON.stringify(toRaw(selectedChannels.value));
   const currentSampling = sampling.value;
   if (currentChannels !== lastSelectedChannels.value || currentSampling !== lastSampling.value) {
@@ -2152,10 +2153,28 @@ onActivated(() => {
     });
     lastSelectedChannels.value = currentChannels;
     lastSampling.value = currentSampling;
+  } else {
+    // 如果数据未变，尝试 reflow 图表并重新连接 observer
+    nextTick(() => {
+      const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart');
+      if (chart) {
+        chart.reflow();
+      }
+      // 重新连接 ResizeObserver
+      if (chartResizeObserver && props.containerRef && props.containerRef.value && !isObserving.value) {
+        chartResizeObserver.observe(props.containerRef.value);
+        isObserving.value = true;
+      }
+    });
   }
 });
 onDeactivated(() => {
   isActive.value = false;
+  // 断开 ResizeObserver
+  if (chartResizeObserver && props.containerRef && props.containerRef.value && isObserving.value) {
+    chartResizeObserver.unobserve(props.containerRef.value);
+    isObserving.value = false;
+  }
 });
 
 // 首次渲染后设置 isChartReady
@@ -2170,6 +2189,8 @@ watch(
 
 
 let chartResizeObserver = null
+const isObserving = ref(false); // 添加一个状态来跟踪观察者是否活动
+
 onMounted(() => {
   // 监听父容器尺寸变化，宽高都自适应
   if (props.containerRef && props.containerRef.value) {
@@ -2181,6 +2202,7 @@ onMounted(() => {
       }
     })
     chartResizeObserver.observe(props.containerRef.value)
+    isObserving.value = true; // 标记为正在观察
     // 初始化时也 setSize 一次
     nextTick(() => {
       const chart = Highcharts.charts.find(c => c && c.renderTo.id === 'combined-chart')
@@ -2195,6 +2217,7 @@ onUnmounted(() => {
   if (chartResizeObserver && props.containerRef && props.containerRef.value) {
     chartResizeObserver.unobserve(props.containerRef.value)
     chartResizeObserver.disconnect()
+    isObserving.value = false; // 标记为未观察
   }
 })
 
