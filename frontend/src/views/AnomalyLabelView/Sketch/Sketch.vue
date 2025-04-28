@@ -1041,9 +1041,9 @@ const groupedMatchedResults = computed(() => {
   if (sortedMatchedResults.value.length === 0) return [];
   
   // 1. 提取所有区间幅度值并排序
-  const amplitudes = sortedMatchedResults.value.map(item => {
+  const amplitudes = sortedMatchedResults.value.map((item, originalIndex) => {
     const amplitude = item.range?.[0]?.[1] - item.range?.[0]?.[0] || 0;
-    return { ...item, amplitude };
+    return { ...item, amplitude, originalIndex }; // 保存原始索引
   }).sort((a, b) => b.amplitude - a.amplitude);
   
   // 2. 使用简单的聚类方法确定分组
@@ -1094,8 +1094,10 @@ const groupedMatchedResults = computed(() => {
   }).flat();
 });
 
-// 获取所有匹配结果id
-const allMatchedIds = computed(() => sortedMatchedResults.value.map((r, idx) => `${r.channelName}_${r.shotNumber}_${r.smoothLevel}_${idx}`));
+// 获取所有匹配结果id，使用原始索引
+const allMatchedIds = computed(() => groupedMatchedResults.value.map(item => 
+  `${item.channelName}_${item.shotNumber}_${item.smoothLevel}_${item.originalIndex}`
+));
 
 // 动态按钮文本，抽屉展开时显示Collapse，收起时显示Expand
 const matchedResultsButtonText = computed(() =>
@@ -1117,14 +1119,14 @@ const toggleResultsDrawer = () => {
 
 // 表格选择变化处理
 const handleTableSelectionChange = (selection) => {
-  // 将选中的行转换为ID格式
-  selectedMatchedResults.value = selection.map((row, idx) =>
-    `${row.channelName}_${row.shotNumber}_${row.smoothLevel}_${idx}`
+  // 将选中的行转换为ID格式，使用原始索引而不是当前表格索引
+  selectedMatchedResults.value = selection.map(row => 
+    `${row.channelName}_${row.shotNumber}_${row.smoothLevel}_${row.originalIndex}`
   );
   // 同步到store
   store.commit('setVisibleMatchedResultIds', selectedMatchedResults.value);
   // 更新全选状态
-  allMatchedSelected.value = selection.length === sortedMatchedResults.value.length && selection.length > 0;
+  allMatchedSelected.value = selection.length === groupedMatchedResults.value.length && selection.length > 0;
 };
 
 // 监听selectedMatchedResults变化，更新全选状态

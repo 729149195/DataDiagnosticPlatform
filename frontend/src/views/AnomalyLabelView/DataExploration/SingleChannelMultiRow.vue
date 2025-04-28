@@ -110,8 +110,17 @@ const filteredMatchedResults = computed(() => {
   if (!visibleMatchedResultIds.value || visibleMatchedResultIds.value.length === 0) {
     return [];
   }
-  return matchedResults.value.filter((result, idx) =>
-    visibleMatchedResultIds.value.includes(`${result.channelName}_${result.shotNumber}_${result.smoothLevel}_${idx}`)
+  
+  // 从ID中解析出原始索引
+  const selectedOriginalIndices = visibleMatchedResultIds.value.map(id => {
+    const parts = id.split('_');
+    // 获取最后一部分作为原始索引
+    return parseInt(parts[parts.length - 1], 10);
+  });
+  
+  // 使用原始索引过滤匹配结果
+  return matchedResults.value.filter((result, idx) => 
+    selectedOriginalIndices.includes(idx)
   );
 });
 const matchedResultsCleared = computed(() => store.state.matchedResultsCleared);
@@ -2024,10 +2033,21 @@ watch(filteredMatchedResults, (newMatchedResults) => {
       const tasks = [];
       
       // 预先收集所有需要执行的任务
-      newMatchedResults.forEach((matchResult, index) => {
+      newMatchedResults.forEach((matchResult) => {
         // 获取通道名称和炮号
         const { channelName, shotNumber, range, confidence } = matchResult;
         const channelKey = `${channelName}_${shotNumber}`;
+
+        // 查找此匹配结果在原始数组中的索引
+        const originalIndex = matchedResults.value.findIndex(item => 
+          item.channelName === channelName && 
+          item.shotNumber === shotNumber && 
+          item.smoothLevel === matchResult.smoothLevel &&
+          JSON.stringify(item.range) === JSON.stringify(range)
+        );
+
+        // 使用原始索引(如果找到)，否则使用其它唯一值
+        const indexToUse = originalIndex !== -1 ? originalIndex : Date.now();
 
         // 获取匹配区域的范围
         if (range && range.length > 0) {
@@ -2044,8 +2064,8 @@ watch(filteredMatchedResults, (newMatchedResults) => {
                 const alpha = Math.max(0.1, Math.min(0.8, confidence)/2);
                 
                 // 使用唯一的ID确保不重复
-                const uniqueBandId = `match-band-${index}-${rangeIndex}-${Date.now()}`;
-                const uniqueSeriesId = `match-highlight-${index}-${rangeIndex}-${Date.now()}`;
+                const uniqueBandId = `match-band-${indexToUse}-${rangeIndex}`;
+                const uniqueSeriesId = `match-highlight-${indexToUse}-${rangeIndex}`;
                 
                 // 添加高亮区域
                 chart.xAxis[0].addPlotBand({
@@ -2076,7 +2096,7 @@ watch(filteredMatchedResults, (newMatchedResults) => {
                   if (pointsInRange.length > 0) {
                     chart.addSeries({
                       id: uniqueSeriesId,
-                      name: `匹配区域-${index}-${rangeIndex}`,
+                      name: `匹配区域-${indexToUse}-${rangeIndex}`,
                       data: pointsInRange,
                       color: `rgba(255, 215, 0, ${alpha + 0.2})`,
                       lineWidth: 2,
@@ -2150,10 +2170,18 @@ const updateMatchedHighlights = (chart, channelKey) => {
   });
 
   // 处理匹配结果
-  filteredMatchedResults.value.forEach((matchResult, index) => {
+  filteredMatchedResults.value.forEach((matchResult, arrayIndex) => {
     // 获取通道名称和炮号
     const { channelName, shotNumber, range, confidence } = matchResult;
     const matchChannelKey = `${channelName}_${shotNumber}`;
+
+    // 查找此匹配结果在原始数组中的索引
+    const originalIndex = matchedResults.value.findIndex(item => 
+      item.channelName === channelName && 
+      item.shotNumber === shotNumber && 
+      item.smoothLevel === matchResult.smoothLevel &&
+      JSON.stringify(item.range) === JSON.stringify(range)
+    );
 
     // 只处理当前通道的匹配结果
     if (matchChannelKey === channelKey && range && range.length > 0) {
@@ -2165,9 +2193,12 @@ const updateMatchedHighlights = (chart, channelKey) => {
         // 根据置信度计算透明度
         const alpha = Math.max(0.1, Math.min(0.8, confidence)/2);
 
+        // 使用原始索引(如果找到)或数组索引创建唯一ID
+        const indexToUse = originalIndex !== -1 ? originalIndex : arrayIndex;
+
         // 添加高亮区域
         chart.xAxis[0].addPlotBand({
-          id: `match-band-${index}-${rangeIndex}`,
+          id: `match-band-${indexToUse}-${rangeIndex}`,
           from: startTime,
           to: endTime,
           color: `rgba(255, 255, 0, ${alpha})`,
@@ -2193,8 +2224,8 @@ const updateMatchedHighlights = (chart, channelKey) => {
           // 添加高亮线条
           if (pointsInRange.length > 0) {
             chart.addSeries({
-              id: `match-highlight-${index}-${rangeIndex}`,
-              name: `匹配区域-${index}-${rangeIndex}`,
+              id: `match-highlight-${indexToUse}-${rangeIndex}`,
+              name: `匹配区域-${indexToUse}-${rangeIndex}`,
               data: pointsInRange,
               color: `rgba(255, 215, 0, ${alpha + 0.2})`,
               lineWidth: 2,
