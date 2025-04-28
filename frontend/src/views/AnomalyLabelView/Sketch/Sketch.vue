@@ -49,7 +49,7 @@
       <!-- 右侧1/3操作区 -->
       <div class="operation-panel">
          <!-- 参数设置区，先空着 -->
-         过滤参数区...(开发中)
+         <span style="color: #999; font-size: 12px;">过滤参数区...</br>(开发中,不影响目前使用)</span>
         <div class="params-area">
           <!-- 这里可以添加参数设置控件 -->
         </div>
@@ -1124,7 +1124,7 @@ watch(
 }
 
 .sketch-area {
-  flex: 2;
+  flex: 3;
   min-width: 0;
   display: flex;
   flex-direction: column;
