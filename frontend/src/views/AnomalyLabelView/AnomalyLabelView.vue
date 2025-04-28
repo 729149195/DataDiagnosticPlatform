@@ -618,7 +618,6 @@ const color_table_value = ref(true)
 const SingleChannelMultiRow_channel_number = ref(true)
 const unit_sampling = ref(10)
 const selectedButton = ref('anay');
-const samplingVersion = computed(() => store.state.samplingVersion);
 
 // 添加监听函数，当unit_sampling改变时更新store
 watch(unit_sampling, (newValue) => {
