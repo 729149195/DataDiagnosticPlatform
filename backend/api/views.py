@@ -14,6 +14,7 @@ from django.utils import timezone
 from datetime import datetime
 import unicodedata  # 添加这一行来导入unicodedata模块
 from django.views.decorators.csrf import csrf_exempt  # 添加CSRF豁免
+from django.views.decorators.http import require_GET
 
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
@@ -27,7 +28,7 @@ calculation_tasks = {}
 
 # MongoDB 配置：
 client = MongoClient("mongodb://localhost:27017")
-db = client["DataDiagnosticPlatform_[4571_4948]"]
+db = client["DataDiagnosticPlatform_4949_5071"]
 index_collection = db["index"]
 struct_trees_collection = db["struct_trees"]
 errors_collection = db["errors_data"]
@@ -43,6 +44,17 @@ class JsonEncoder(json.JSONEncoder):
             return obj.tolist()
         else:
             return super(JsonEncoder, self).default(obj)
+        
+@require_GET
+def get_datadiagnosticplatform_dbs(request):
+    """
+    获取所有以DataDiagnosticPlatform开头的数据库名
+    """
+    client = MongoClient("mongodb://localhost:27017")
+    db_names = client.list_database_names()
+    filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+    return JsonResponse({"db_names": filtered_db_names})
+
 
 def get_struct_tree(request):
     """
@@ -1758,6 +1770,5 @@ def get_channels_errors(request):
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
-
 
 
