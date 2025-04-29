@@ -421,7 +421,7 @@ def RUN(shot_list, channel_list, db_name):
     processed_channels = 0
     
     # 获取可用CPU核心数，合理限制进程数
-    num_processes = min(32, max(1, mp.cpu_count() - 1))
+    num_processes = min(64, max(1, mp.cpu_count() - 1))
     print(f"将使用 {num_processes} 个进程并行处理数据")
     
     # 处理每个炮号
@@ -583,14 +583,25 @@ def RUN(shot_list, channel_list, db_name):
         shot_end = time.time()
         print(f'已完成炮号 {shot_num} 的全部处理，总运行时间: {round(shot_end-shot_start, 2)}s')
     
-    # 存储统计数据到MongoDB
+    # 存储统计数据到MongoDB（先存summary，再分拆problem_channels）
     try:
+        # 1. 只存summary（不包含problem_channels）
+        summary_statistics = data_statistics.copy()
+        problem_channels = summary_statistics.pop("problem_channels", {})
         data_stats_collection.update_one(
-            {"shot_range": data_statistics["shot_range"]},
-            {"$set": data_statistics},
+            {"shot_range": summary_statistics["shot_range"]},
+            {"$set": summary_statistics},
             upsert=True
         )
-        print(f"已将数据统计信息保存到MongoDB")
+        # 2. 分拆存储problem_channels
+        for status, channels in problem_channels.items():
+            if channels:
+                data_stats_collection.update_one(
+                    {"shot_range": data_statistics["shot_range"], "status": status},
+                    {"$set": {"channels": channels}},
+                    upsert=True
+                )
+        print(f"已将数据统计信息保存到MongoDB（分拆problem_channels）")
     except Exception as e:
         logger.error(f"保存统计数据到MongoDB时发生异常: {e}")
     
