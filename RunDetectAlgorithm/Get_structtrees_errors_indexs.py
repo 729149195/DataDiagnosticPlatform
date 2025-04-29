@@ -392,7 +392,9 @@ def RUN(shot_list, channel_list, db_name):
                         "failed": 0,
                         "data_read_failed": 0,
                         "empty_data": 0,
-                        "no_algorithm": 0, 
+                        # no_algorithm 代表该通道类型在算法映射表（algorithm_channel_map）中没有对应的异常检测算法。（比如某种新通道类型还没开发算法）
+                        "no_algorithm": 0,  
+                        # no_matched_algorithm 代表通道类型在算法映射表中有算法，但该具体通道没有被分配到任何一个具体算法。（比如MP类型有算法，但某个通道名没有被分配到任何一个MP算法）
                         "no_matched_algorithm": 0,
                         "processing_error": 0
                     }
@@ -582,28 +584,29 @@ def RUN(shot_list, channel_list, db_name):
         
         shot_end = time.time()
         print(f'已完成炮号 {shot_num} 的全部处理，总运行时间: {round(shot_end-shot_start, 2)}s')
-    
-    # 存储统计数据到MongoDB（先存summary，再分拆problem_channels）
-    try:
-        # 1. 只存summary（不包含problem_channels）
-        summary_statistics = data_statistics.copy()
-        problem_channels = summary_statistics.pop("problem_channels", {})
+
+        # === 新增：每炮统计信息单独存储 ===
+        # 构建当前炮号的统计信息
+        shot_statistics = {
+            "shot_number": str(shot_num),
+            "total_channels_expected": data_statistics["by_shot"][str(shot_num)]["total"],
+            "total_channels_processed": data_statistics["by_shot"][str(shot_num)]["processed"],
+            "status_counts": data_statistics["by_shot"][str(shot_num)]["status_counts"],
+            "problem_channels": {
+                status: [
+                    c for c in data_statistics["problem_channels"][status]
+                    if c["shot_number"] == str(shot_num)
+                ]
+                for status in data_statistics["problem_channels"]
+            },
+            # 可以根据需要添加其它字段
+        }
+        # 存储到MongoDB
         data_stats_collection.update_one(
-            {"shot_range": summary_statistics["shot_range"]},
-            {"$set": summary_statistics},
+            {"shot_number": str(shot_num)},
+            {"$set": shot_statistics},
             upsert=True
         )
-        # 2. 分拆存储problem_channels
-        for status, channels in problem_channels.items():
-            if channels:
-                data_stats_collection.update_one(
-                    {"shot_range": data_statistics["shot_range"], "status": status},
-                    {"$set": {"channels": channels}},
-                    upsert=True
-                )
-        print(f"已将数据统计信息保存到MongoDB（分拆problem_channels）")
-    except Exception as e:
-        logger.error(f"保存统计数据到MongoDB时发生异常: {e}")
     
     # 打印统计信息
     print("\n---- 数据处理统计 ----")
