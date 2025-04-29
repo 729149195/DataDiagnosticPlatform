@@ -19,7 +19,7 @@ from django.views.decorators.http import require_GET
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
 from api.verify_user import send_post_request
-from api.pattern_matching import match_pattern  # 只导入模式匹配函数
+from api.pattern_matching_Qetch import match_pattern  # 只导入模式匹配函数
 from pymongo import MongoClient, ASCENDING, UpdateMany
 from collections import defaultdict
 
