@@ -14,7 +14,7 @@
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
               <span style="display: flex; align-items: center; margin-bottom: 5px;">
                 <span class="title">可视化配置</span>
-                <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" />
+                <!-- <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" /> -->
               </span>
               <div class="scrollbar-container">
                 <el-scrollbar :always="false">
