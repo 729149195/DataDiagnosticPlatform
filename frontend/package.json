@@ -19,6 +19,7 @@
     "highcharts": "^12.1.2",
     "html2canvas": "^1.4.1",
     "jquery": "^3.7.1",
+    "jszip": "^3.10.1",
     "lodash": "^4.17.21",
     "mathjs": "^14.0.0",
     "ml-savitzky-golay": "^5.0.0",

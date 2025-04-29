@@ -257,7 +257,7 @@
 
 <script setup>
 import * as d3 from 'd3';
-import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive, defineExpose } from 'vue';
+import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive} from 'vue';
 import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';

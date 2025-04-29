@@ -43,7 +43,7 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
-    plugins: []
+    plugins: () => [myPlugin()]
   },
   optimizeDeps: {
     exclude: ['d3']
