@@ -128,7 +128,7 @@ def process_channel(channel_args):
     
     # 创建独立的MdsTree连接，添加重试机制
     tree = None
-    max_retries = 3
+    max_retries = 10
     for retry in range(max_retries):
         try:
             tree = MdsTree(shot_num, dbname=DB, path=tree_path, subtrees=subtrees)
@@ -438,13 +438,13 @@ def RUN(shot_list, channel_list, db_name):
             print(f"\n  处理数据库: {DB}")
             start = time.time()
             channel_pool = []
-            max_db_retries = 3
+            max_db_retries = 10
             
             # 获取通道列表，增加重试机制
             for db_retry in range(max_db_retries):
                 try:
                     # 随机延迟以避免同时连接
-                    delay = random.uniform(0.5, 2.0)
+                    delay = random.uniform(1.0, 3.0)
                     time.sleep(delay)
                     
                     tree = MdsTree(shot_num, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
