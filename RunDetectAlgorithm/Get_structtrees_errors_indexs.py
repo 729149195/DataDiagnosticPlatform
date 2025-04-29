@@ -435,6 +435,11 @@ def RUN(shot_list, channel_list, db_name):
         combined_shot_struct_tree = []
         combined_error_data = []
         
+        # 用于实现每秒批量写入的变量
+        last_write_time = time.time()
+        pending_struct_tree_items = []
+        pending_error_items = []
+        
         # 处理每个数据库
         for DB in DB_list:
             print(f"\n  处理数据库: {DB}")
@@ -489,7 +494,6 @@ def RUN(shot_list, channel_list, db_name):
             
             # 批量处理，分组处理通道以限制并发连接数
             batch_size = 100  # 每批处理的通道数
-            db_results = []  # 当前数据库的处理结果
             
             for batch_idx in range(0, len(channels_to_process), batch_size):
                 batch_channels = channels_to_process[batch_idx:batch_idx + batch_size]
@@ -500,87 +504,135 @@ def RUN(shot_list, channel_list, db_name):
                 
                 # 使用进程池并行处理通道
                 with mp.Pool(processes=num_processes) as pool:
-                    results = list(tqdm(
+                    for result in tqdm(
                         pool.imap(process_channel, channel_args),
                         total=len(channel_args),
                         desc=f"  处理炮号 {shot_num} 在 {DB} 数据库的通道 ({batch_idx+1}-{min(batch_idx+batch_size, len(channels_to_process))})"
-                    ))
-                    db_results.extend(results)
-            
-            # 收集当前数据库的结果和统计数据
-            for result in db_results:
-                processed_channels += 1
-                data_statistics["total_channels_processed"] += 1
-                data_statistics["by_db"][DB]["processed"] += 1
-                data_statistics["by_shot"][str(shot_num)]["processed"] += 1
-                
-                channel_data, error_list = result
-                
-                if channel_data:
-                    # 添加到structtree（无论成功与否，只要有通道数据）
-                    combined_shot_struct_tree.append(channel_data)
-                    all_struct_tree.append(channel_data)
-                    
-                    # 更新统计数据
-                    status = channel_data.get('status', 'unknown')
-                    data_statistics["status_counts"][status] += 1
-                    data_statistics["by_db"][DB]["status_counts"][status] += 1
-                    data_statistics["by_shot"][str(shot_num)]["status_counts"][status] += 1
-                    
-                    # 记录问题通道的详细信息
-                    if status != 'success' and status in data_statistics["problem_channels"]:
-                        channel_info = {
-                            "shot_number": str(shot_num),
-                            "db_name": DB,
-                            "channel_name": channel_data.get("channel_name", ""),
-                            "channel_type": channel_data.get("channel_type", ""),
-                            "message": channel_data.get("status_message", "")
-                        }
-                        data_statistics["problem_channels"][status].append(channel_info)
-                
-                if error_list:
-                    combined_error_data.extend(error_list)
+                    ):
+                        processed_channels += 1
+                        data_statistics["total_channels_processed"] += 1
+                        data_statistics["by_db"][DB]["processed"] += 1
+                        data_statistics["by_shot"][str(shot_num)]["processed"] += 1
+                        
+                        channel_data, error_list = result
+                        
+                        if channel_data:
+                            # 添加到临时数据中
+                            pending_struct_tree_items.append(channel_data)
+                            combined_shot_struct_tree.append(channel_data)
+                            all_struct_tree.append(channel_data)
+                            
+                            # 更新统计数据
+                            status = channel_data.get('status', 'unknown')
+                            data_statistics["status_counts"][status] += 1
+                            data_statistics["by_db"][DB]["status_counts"][status] += 1
+                            data_statistics["by_shot"][str(shot_num)]["status_counts"][status] += 1
+                            
+                            # 记录问题通道的详细信息
+                            if status != 'success' and status in data_statistics["problem_channels"]:
+                                channel_info = {
+                                    "shot_number": str(shot_num),
+                                    "db_name": DB,
+                                    "channel_name": channel_data.get("channel_name", ""),
+                                    "channel_type": channel_data.get("channel_type", ""),
+                                    "message": channel_data.get("status_message", "")
+                                }
+                                data_statistics["problem_channels"][status].append(channel_info)
+                        
+                        if error_list:
+                            pending_error_items.extend(error_list)
+                            combined_error_data.extend(error_list)
+                        
+                        # 每秒检查一次是否需要写入数据
+                        current_time = time.time()
+                        if current_time - last_write_time >= 1.0 and (pending_struct_tree_items or pending_error_items):
+                            # 写入结构树数据
+                            if pending_struct_tree_items:
+                                try:
+                                    # 合并更新操作，仅添加新处理的通道数据
+                                    struct_trees_collection.update_one(
+                                        {"shot_number": str(shot_num)},
+                                        {"$push": {"struct_tree": {"$each": pending_struct_tree_items}}},
+                                        upsert=True
+                                    )
+                                    print(f"已将炮号 {shot_num} 的 {len(pending_struct_tree_items)} 个处理完成的通道结构添加到MongoDB")
+                                    pending_struct_tree_items = []  # 清空待写入的数据
+                                except Exception as e:
+                                    logger.error(f"保存炮号 {shot_num} 的部分结构树到MongoDB时发生异常: {e}")
+                            
+                            # 写入错误数据
+                            if pending_error_items:
+                                operations = []
+                                for item in pending_error_items:
+                                    operations.append(
+                                        UpdateMany(
+                                            item["query"],
+                                            {"$set": {"data": item["data"]}},
+                                            upsert=True
+                                        )
+                                    )
+                                
+                                if operations:
+                                    try:
+                                        errors_collection.bulk_write(operations)
+                                        print(f"已将炮号 {shot_num} 的 {len(operations)} 个错误数据项写入MongoDB")
+                                        pending_error_items = []  # 清空待写入的错误数据
+                                    except Exception as e:
+                                        logger.error(f"批量写入错误数据到MongoDB失败: {e}")
+                            
+                            last_write_time = current_time  # 更新上次写入时间
             
             end = time.time()
             print(f'  已完成 {DB} 数据库处理，运行时间: {round(end-start, 2)}s')
         
-        # 在处理完所有数据库后，批量更新MongoDB
-        if combined_error_data:
-            operations = []
-            for item in combined_error_data:
-                operations.append(
-                    UpdateMany(
-                        item["query"],
-                        {"$set": {"data": item["data"]}},
+        # 处理完所有数据库后，确保所有剩余的数据都被写入
+        if pending_struct_tree_items or pending_error_items:
+            # 写入剩余的结构树数据
+            if pending_struct_tree_items:
+                try:
+                    struct_trees_collection.update_one(
+                        {"shot_number": str(shot_num)},
+                        {"$push": {"struct_tree": {"$each": pending_struct_tree_items}}},
                         upsert=True
                     )
-                )
+                    print(f"已将炮号 {shot_num} 的剩余 {len(pending_struct_tree_items)} 个通道结构添加到MongoDB")
+                except Exception as e:
+                    logger.error(f"保存炮号 {shot_num} 的剩余结构树到MongoDB时发生异常: {e}")
             
-            if operations:
-                # 批量执行操作，每10个一批
-                for batch_idx in range(0, len(operations), 10):
-                    batch = operations[batch_idx:batch_idx+10]
-                    if batch:
-                        try:
-                            errors_collection.bulk_write(batch)
-                        except Exception as e:
-                            logger.error(f"批量写入MongoDB失败: {e}")
+            # 写入剩余的错误数据
+            if pending_error_items:
+                operations = []
+                for item in pending_error_items:
+                    operations.append(
+                        UpdateMany(
+                            item["query"],
+                            {"$set": {"data": item["data"]}},
+                            upsert=True
+                        )
+                    )
+                
+                if operations:
+                    try:
+                        errors_collection.bulk_write(operations)
+                        print(f"已将炮号 {shot_num} 的剩余 {len(operations)} 个错误数据项写入MongoDB")
+                    except Exception as e:
+                        logger.error(f"批量写入剩余错误数据到MongoDB失败: {e}")
         
-        # 将当前炮号的结构树存入MongoDB (合并了所有数据库的结果)
+        # 最后修正整个结构树（覆盖写入完整数据，确保数据一致性）
         try:
             struct_trees_collection.update_one(
                 {"shot_number": str(shot_num)},
                 {"$set": {"struct_tree": combined_shot_struct_tree}},
                 upsert=True
             )
-            print(f"已将炮号 {shot_num} 的结构树保存到MongoDB (包含所有数据库的结果)")
+            print(f"已更新炮号 {shot_num} 的完整结构树到MongoDB (包含所有数据库的结果)")
             
             # 为当前炮号创建索引数据并存储到MongoDB
             print(f"  为炮号 {shot_num} 创建索引数据...")
             create_shot_index(db, str(shot_num), combined_shot_struct_tree)
             
         except Exception as e:
-            logger.error(f"保存炮号 {shot_num} 的结构树到MongoDB时发生异常: {e}")
+            logger.error(f"更新炮号 {shot_num} 的完整结构树到MongoDB时发生异常: {e}")
         
         shot_end = time.time()
         print(f'已完成炮号 {shot_num} 的全部处理，总运行时间: {round(shot_end-shot_start, 2)}s')

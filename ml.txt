@@ -1,0 +1,14 @@
+numactl --interleave=all mongod --dbpath mongodb_errors_data --bind_ip 0.0.0.0 --port 27017
+python -m gunicorn -w 8 -b 0.0.0.0:5000 --certfile=10.1.108.231.pem --keyfile=10.1.108.231-key.pem config.wsgi:application
+npm run dev
+
+python run_concurrent.py --start 1 --end 6000 --step 100 --concurrency 5
+
+(base) diag@diag-2288H-V7:~/DataDiagnostic/DataDiagnosticPlatform$ python run_concurrent.py --start 1 --end 6000 --step 100 --concurrency 5
+Traceback (most recent call last):
+  File "/home/diag/DataDiagnostic/DataDiagnosticPlatform/run_concurrent.py", line 136, in <module>
+    main()
+  File "/home/diag/DataDiagnostic/DataDiagnosticPlatform/run_concurrent.py", line 73, in main
+    TextColumn("Debug: {task.fields[debug]}", overflow="ellipsis", justify="left"),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: TextColumn.__init__() got an unexpected keyword argument 'overflow'
