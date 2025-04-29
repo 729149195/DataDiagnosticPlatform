@@ -1,11 +1,14 @@
+"""
+该模块封装了MDSplus数据库的连接与数据获取操作，支持单通道和多通道数据的批量读取、通道池构建、数据缓存、时间窗口设置等功能，便于实验数据的高效管理与分析。
+"""
 # -*- coding: utf-8 -*-
 import importlib.util as iu
 import re
 import time
 
 import numpy as np
-from MDSplus import Tree, mdsExceptions, Connection
-import MDSplus
+from MDSplus import Tree, mdsExceptions, Connection # type: ignore
+import MDSplus # type: ignore
 import matplotlib.pyplot as plt
 
 
