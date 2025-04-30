@@ -92,10 +92,10 @@
       <div class="panel-content">
         <el-table :data="groupedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border :span-method="objectSpanMethod">
           <el-table-column type="selection" width="40" align="center" />
-          <el-table-column label="区间幅度" min-width="110" align="center">
+          <el-table-column label="区间幅度s" min-width="110" align="center">
             <template #default="scope">
               <div class="amplitude-cell">
-                <span class="group-value">≈{{ scope.row.groupAmplitude?.toFixed(2) }}</span>
+                <span class="group-value">≈{{ scope.row.groupAmplitude?.toFixed(6) }}</span>
               </div>
             </template>
           </el-table-column>

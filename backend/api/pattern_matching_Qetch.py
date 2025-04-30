@@ -24,38 +24,30 @@ def match_pattern(normalized_query_pattern, channel_data_list):
     
     # 定义Qetch算法参数，完全匹配原始JavaScript实现
     Parameters = {
-        'DEBUG': False,
-        'X_TICK_WIDTH': 2,
-        'MAX_MATCH_GOOD': 5,
-        'MAX_MATCH_MEDIUM': 40,
-        'ALGORITHM_TO_USE': 'qetch',
-        'ASP_RATIO': [0.1, 10],
-        'MAX_REGEX_IT': 25,
-        'GROUPING_EQUAL_MATCH_TOLERANCE': 10,
+        'DEBUG': False,  # 是否开启调试模式，输出调试信息
+        'MAX_REGEX_IT': 25,  # 正则匹配最大递归深度，防止死循环
+        'GROUPING_EQUAL_MATCH_TOLERANCE': 10,  # 匹配去重时允许的起止点误差
         
-        'VALUE_DIFFERENCE_WEIGHT': 1,  # 点差异权重
-        'RESCALING_COST_WEIGHT': 0.1,  # 缩放成本权重
-        'RESCALING_Y': True,
+        'VALUE_DIFFERENCE_WEIGHT': 1,  # 点差异权重，控制点差异对总分的影响
+        'RESCALING_COST_WEIGHT': 0.1,  # 缩放成本权重，控制缩放因子对总分的影响
+        'RESCALING_Y': True,  # 是否对y轴进行缩放（True为y轴独立缩放，False为跟随x轴）
         
-        'QUERYLENGTH_SLIDING_WINDOW_STEP': 1,
-        'QUERYLENGTH_INITIAL_STRICT_MODE': False,
+        'QUERYLENGTH_SLIDING_WINDOW_STEP': 1,  # 滑动窗口步长，单位为查询长度的百分比
         
-        'START_END_CUT_IN_SUBPARTS': True,
-        'START_END_CUT_IN_SUBPARTS_IN_RESULTS': True,
+        'START_END_CUT_IN_SUBPARTS': True,  # 是否对首尾段进行子段切分以提升拟合
+        'START_END_CUT_IN_SUBPARTS_IN_RESULTS': True,  # 匹配结果中是否对子段进行切分
         
-        'DIVIDE_SECTION_MIN_HEIGHT_DATA': 0.01,
-        'DIVIDE_SECTION_MIN_HEIGHT_QUERY': 0.01,
+        'DIVIDE_SECTION_MIN_HEIGHT_DATA': 0.01,  # 数据分段的最小高度比例，防止噪声产生过多段
+        'DIVIDE_SECTION_MIN_HEIGHT_QUERY': 0.01,  # 查询分段的最小高度比例
         
-        'SMOOTH_MIN_SIGN_VARIATION_RATIO': 0.9,
-        'SMOOTH_MINIMUM_SIGN_VARIATIONS_NUM': 10,
-        'SMOOTH_SMOOTHED_HEIGHT_HEIGHT_MIN_RATIO': 0.5,
-        'SMOOTH_ITERATIONS_STEPS': 6,
-        'SMOOTH_MAXIMUM_ATTEMPTS': 100,
+        'SMOOTH_SMOOTHED_HEIGHT_HEIGHT_MIN_RATIO': 0.5,  # 平滑后最小高度与原始高度的比例
+        'SMOOTH_ITERATIONS_STEPS': 6,  # 平滑迭代步数
+        'SMOOTH_MAXIMUM_ATTEMPTS': 100,  # 平滑最大尝试次数
         
-        'QUERY_SIGN_MAXIMUM_TOLERABLE_DIFFERENT_SIGN_SECTIONS': 0.5,
-        'MATCH_METRIC_MAXIMUM_VALUE': 100,
-        'CHECK_QUERY_COMPATIBILITY': True,
-        'REMOVE_EQUAL_MATCHES': True
+        'QUERY_SIGN_MAXIMUM_TOLERABLE_DIFFERENT_SIGN_SECTIONS': 0.5,  # 匹配时允许的最大符号不一致段比例
+        'MATCH_METRIC_MAXIMUM_VALUE': 100,  # 匹配分数最大阈值，超过则视为不匹配
+        'CHECK_QUERY_COMPATIBILITY': True,  # 是否检查段兼容性（符号、数量等）
+        'REMOVE_EQUAL_MATCHES': False  # 是否去除重复匹配（起止点相近的只保留最优）
     }
     
     # =====================================================
@@ -727,5 +719,7 @@ def match_pattern(normalized_query_pattern, channel_data_list):
     
     # 按置信度排序
     results.sort(key=lambda r: r['confidence'], reverse=True)
+    # 只保留前50个结果
+    # results = results[:50]
     
     return results 
