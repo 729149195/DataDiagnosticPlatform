@@ -1571,7 +1571,6 @@ const drawCombinedChart = () => {
         type: 'line',
         zoomType: isBoxSelect.value ? 'x' : 'xy',
         panning: true,
-        panKey: 'shift',
         animation: false,
         marginBottom: 80,
         marginTop: 30,
