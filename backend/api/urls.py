@@ -21,7 +21,7 @@ urlpatterns = [
     path('sketch-query', views.sketch_query, name='sketch_query'),
 
     path('upload', views.upload_file, name='upload_file'),
-    # path('function-details/<str:function_name>/', views.function_details, name='function_details'),
+
     path('view-functions', views.view_imported_functions, name='view_imported_functions'),
     path('execute', views.execute_function, name='execute_function'),
     path('verify-user', views.verify_user, name='verify_user'),

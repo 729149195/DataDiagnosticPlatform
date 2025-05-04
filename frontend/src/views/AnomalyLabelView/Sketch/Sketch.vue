@@ -48,8 +48,8 @@
       </div>
       <!-- 右侧1/3操作区 -->
       <div class="operation-panel">
-         <!-- 参数设置区，先空着 -->
-         <span style="color: #999; font-size: 12px;">过滤参数区...</br>(开发中,不影响目前使用)</span>
+        <!-- 参数设置区，先空着 -->
+        <span style="color: #999; font-size: 12px;">过滤参数区...</br>(开发中,不影响目前使用)</span>
         <div class="params-area">
           <!-- 这里可以添加参数设置控件 -->
         </div>
@@ -1038,31 +1038,31 @@ const sortedMatchedResults = computed(() => {
 // 根据区间幅度自动分组后的结果
 const groupedMatchedResults = computed(() => {
   if (sortedMatchedResults.value.length === 0) return [];
-  
+
   // 1. 提取所有区间幅度值并排序
   const amplitudes = sortedMatchedResults.value.map((item, originalIndex) => {
     const amplitude = item.range?.[0]?.[1] - item.range?.[0]?.[0] || 0;
     return { ...item, amplitude, originalIndex }; // 保存原始索引
   }).sort((a, b) => b.amplitude - a.amplitude);
-  
+
   // 2. 使用简单的聚类方法确定分组
   const groups = [];
   let currentGroup = [amplitudes[0]];
-  
+
   // 计算相邻值差异的平均值作为分组阈值
   const diffs = [];
   for (let i = 1; i < amplitudes.length; i++) {
-    diffs.push(amplitudes[i-1].amplitude - amplitudes[i].amplitude);
+    diffs.push(amplitudes[i - 1].amplitude - amplitudes[i].amplitude);
   }
-  
+
   // 使用差值平均值的1.5倍作为分组阈值
   const avgDiff = diffs.reduce((sum, diff) => sum + diff, 0) / Math.max(1, diffs.length);
   const threshold = avgDiff * 1.5;
-  
+
   // 根据阈值进行分组
   for (let i = 1; i < amplitudes.length; i++) {
-    const diff = Math.abs(amplitudes[i-1].amplitude - amplitudes[i].amplitude);
-    
+    const diff = Math.abs(amplitudes[i - 1].amplitude - amplitudes[i].amplitude);
+
     if (diff > threshold) {
       // 差值大于阈值，创建新组
       groups.push([...currentGroup]);
@@ -1072,17 +1072,17 @@ const groupedMatchedResults = computed(() => {
       currentGroup.push(amplitudes[i]);
     }
   }
-  
+
   // 添加最后一组
   if (currentGroup.length > 0) {
     groups.push(currentGroup);
   }
-  
+
   // 3. 为每个结果项添加组信息、组内排序和平均幅度值
   return groups.map((group, groupIndex) => {
     // 计算组内平均幅度值
     const avgAmplitude = group.reduce((sum, item) => sum + item.amplitude, 0) / group.length;
-    
+
     return group.map(item => ({
       ...item,
       groupIndex,
@@ -1094,7 +1094,7 @@ const groupedMatchedResults = computed(() => {
 });
 
 // 获取所有匹配结果id，使用原始索引
-const allMatchedIds = computed(() => groupedMatchedResults.value.map(item => 
+const allMatchedIds = computed(() => groupedMatchedResults.value.map(item =>
   `${item.channelName}_${item.shotNumber}_${item.smoothLevel}_${item.originalIndex}`
 ));
 
@@ -1119,7 +1119,7 @@ const toggleResultsDrawer = () => {
 // 表格选择变化处理
 const handleTableSelectionChange = (selection) => {
   // 将选中的行转换为ID格式，使用原始索引而不是当前表格索引
-  selectedMatchedResults.value = selection.map(row => 
+  selectedMatchedResults.value = selection.map(row =>
     `${row.channelName}_${row.shotNumber}_${row.smoothLevel}_${row.originalIndex}`
   );
   // 同步到store
@@ -1162,7 +1162,7 @@ const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
       colspan: 1
     };
   }
-  
+
   // 区间幅度列需要合并
   if (columnIndex === 1) {
     if (isGroupStart(rowIndex)) {
@@ -1175,7 +1175,7 @@ const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
           break;
         }
       }
-      
+
       return {
         rowspan: rowCount,
         colspan: 1
@@ -1188,7 +1188,7 @@ const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
       };
     }
   }
-  
+
   return {
     rowspan: 1,
     colspan: 1
@@ -1529,7 +1529,7 @@ const isGroupStart = (index) => {
   text-align: right;
 }
 
-.collapse-button{
+.collapse-button {
   display: flex;
   flex-direction: row;
   gap: 10px;
@@ -1544,7 +1544,7 @@ const isGroupStart = (index) => {
   margin-left: 5px;
 }
 
-.channel-and-results-select{
+.channel-and-results-select {
   display: flex;
   flex-direction: row;
   gap: 6px;
