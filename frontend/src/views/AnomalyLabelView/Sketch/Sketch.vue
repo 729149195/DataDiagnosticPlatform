@@ -49,13 +49,19 @@
       <!-- 右侧1/3操作区 -->
       <div class="operation-panel">
         <div class="params-area">
-          <el-form label-width="auto" label-position="left">
+          <el-form label-width="80px" label-position="left">
             <!-- 平滑幅度 -->
-            <el-form-item label="平滑幅度">
+            <el-form-item label-position="top">
+              <template #label>
+                <div style="display: flex; flex-direction: column;">
+                  <span>低通滤波平滑幅度s</span>
+                  <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动</span>
+                </div>
+              </template>
               <el-input v-model.number="lowpassAmplitude" :min="0.0001" :max="0.1" style="width: 100%;" />
             </el-form-item>
             <!-- X区间 -->
-            <el-form-item label="X区间（默认全局）" label-position="top">
+            <el-form-item label="X区间s（默认全局）" label-position="top">
               <div style="display: flex; align-items: center; width: 100%;">
                 <el-input v-model="xFilterStart" placeholder="起点" style="width: 48%;" />
                 <span style="margin: 0 4px;">~</span>
@@ -71,7 +77,7 @@
               </div>
             </el-form-item>
             <!--  模式重复数 -->
-            <el-form-item label="模式重复数">
+            <el-form-item label="模式重复">
               <el-input v-model="patternRepeatCount" style="width: 100%;" />
             </el-form-item>
             <!-- 匹配上限 -->
@@ -1305,10 +1311,6 @@ const isGroupStart = (index) => {
   justify-content: flex-start;
 }
 
-.el-form-item {
-  margin-bottom: 10px;
-}
-
 .canvas-container {
   position: relative;
   width: 100%;
@@ -1682,4 +1684,32 @@ const isGroupStart = (index) => {
   display: none;
 }
 
+:deep(.el-input__wrapper) {
+  padding: 2px 4px;
+  margin-bottom: 0px !important;
+}
+
+:deep(.el-form-item__label) {
+  padding: 0px 0px 0px 0px !important;
+  margin-bottom: 0px !important;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 4px !important;
+}
+
+:deep(.el-input__inner) {
+  padding: 2px 4px;
+  font-size: 13px;
+}
+
+:deep(.el-input-number) {
+  width: 100%;
+  margin-bottom: 4px !important;
+}
+
+:deep(.el-input-number .el-input__inner) {
+  padding: 2px 4px;
+  font-size: 13px;
+}
 </style>
