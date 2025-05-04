@@ -729,32 +729,25 @@ const syncUpload = async () => {
   });
 
   try {
-    // 深拷贝数据以避免修改原始数据
     let processedData = JSON.parse(JSON.stringify(errorResults));
-
-    // 按通道分组数据
     const groupedByChannel = processedData.reduce((acc, result) => {
       const { channelKey } = result;
       if (!acc[channelKey]) {
         acc[channelKey] = {
           channelKey,
           errorIdx: result.errorIdx,
-          errorData: [[], []] // [人工标注数据, 机器识别数据]
+          errorData: [[], []]
         };
       }
       return acc;
     }, {});
 
-    // 处理每条数据
     processedData.forEach(result => {
       const { channelKey, errorData, isAnomaly } = result;
       const channelGroup = groupedByChannel[channelKey];
-
       if (isAnomaly) {
-        // 前端标注的异常数据
         channelGroup.errorData[0].push(processObject(errorData));
       } else if (Array.isArray(errorData)) {
-        // 后端返回的数据
         const [manualErrors, machineErrors] = errorData;
         if (manualErrors && manualErrors.length > 0) {
           channelGroup.errorData[0].push(...processObject(manualErrors));
@@ -765,35 +758,32 @@ const syncUpload = async () => {
       }
     });
 
-    // 转换为数组
+    // 这里补充 db_suffix 字段，并用 channels 字段包裹
     const reorganizedData = Object.values(groupedByChannel);
+    const dbSuffix = store.state.currentDbSuffix;
+    const postData = {
+      db_suffix: dbSuffix,
+      channels: reorganizedData
+    };
 
-    // 发送到后端
     const response = await fetch('https://10.1.108.231:5000/api/sync-error-data', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(reorganizedData)
+      body: JSON.stringify(postData)
     });
-
-    // console.log(JSON.stringify(reorganizedData));
-    // console.log(JSON.stringify(response));
 
     if (!response.ok) {
       throw new Error('同步失败');
     }
 
-    // 同步成功后清空 store 中的 anomalies
     await store.commit('clearAnomalies');
-
-    // 使用新的action更新通道异常数据而不刷新整个表格
     await store.dispatch('updateChannelErrorsData');
-    // 新增：通知异常名下拉刷新
     const changedChannelKeys = Object.keys(groupedByChannel);
     store.commit('incrementErrorNamesVersion', { channels: changedChannelKeys });
 
-    return true; // 返回成功状态
+    return true;
   } catch (error) {
     console.error('同步失败：', error);
     loadingInstance.close();
@@ -2262,20 +2252,14 @@ const deleteErrorData = (errorData, type) => {
       });
 
       try {
-        // 打印错误数据，帮助调试
-        // console.log('要删除的异常数据:', errorData);
-
-        // 处理字段名称映射，确保使用正确的字段名
         const requestData = {
           diagnostic_name: errorData.diagnostic_name || errorData.诊断名称,
           channel_number: errorData.channel_number || errorData.通道编号,
           shot_number: errorData.shot_number || errorData.炮号,
-          error_type: errorData.error_type || errorData.错误类型
+          error_type: errorData.error_type || errorData.错误类型,
+          db_suffix: store.state.currentDbSuffix // 这里补充 db_suffix
         };
 
-        // console.log('处理后的请求数据:', requestData);
-
-        // 检查是否所有必要字段都存在
         if (!requestData.diagnostic_name || !requestData.channel_number ||
           !requestData.shot_number || !requestData.error_type) {
           console.error('删除失败: 缺少必要的字段', errorData);
@@ -2296,16 +2280,10 @@ const deleteErrorData = (errorData, type) => {
           throw new Error('删除失败');
         }
 
-        // 删除成功后刷新数据
         await store.dispatch('updateChannelErrorsData');
         ElMessage.success('异常标注已删除');
-
-        // 关闭对话框
         showAnomalyDialog.value = false;
-
-        // 立即更新对话框内容
         updateAnomalyDialogContent();
-        // 新增：通知异常名下拉刷新
         let channelKey = errorData.channel_key;
         if (!channelKey) {
           const channelName = errorData.channel_name || errorData['通道名称'] || errorData['通道编号'] || errorData['channel_number'];
