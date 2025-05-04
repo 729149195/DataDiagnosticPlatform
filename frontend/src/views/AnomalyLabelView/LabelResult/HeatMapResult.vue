@@ -1365,7 +1365,7 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
     // 设置绘图尺寸
     const margin = { top: 8, right: 10, bottom: 100, left: 5 };
     const width = 1080 - margin.left - margin.right;
-    const rectH = 40; // 固定每个矩形的高度
+    const rectH = 35; // 固定每个矩形的高度
     const XaxisH = 30;
     const YaxisW = 140; // 调整宽度以适应通道名和炮号
     const height = rectH * channelNames.length + XaxisH;
@@ -1452,17 +1452,27 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                 );
 
                 if (errorData) {
-                  // 对于机器识别的异常，使用错误名称作为类型标识
+                  // 机器识别异常
                   if (!errorData.isAnomaly && Array.isArray(errorData.errorData)) {
-                    const [, machineErrors] = errorData.errorData;
+                    const [manualErrors, machineErrors] = errorData.errorData;
+                    // 统计machineErrors的异常类别
                     if (machineErrors && machineErrors.length > 0) {
-                      // 使用错误名称作为类型标识
-                      const errorName = machineErrors[0].error_name || 'unknown';
-                      errorTypes.add(errorName);
+                      machineErrors.forEach(me => {
+                        const errorName = me.error_name || me.error_type || 'unknown';
+                        errorTypes.add(errorName);
+                      });
+                    }
+                    // 统计manualErrors的异常类别
+                    if (manualErrors && manualErrors.length > 0) {
+                      manualErrors.forEach(ma => {
+                        const errorName = ma.error_name || ma.error_type || 'manual';
+                        errorTypes.add(errorName);
+                      });
                     }
                   } else if (errorData.isAnomaly) {
-                    // 对于用户标注的异常，使用固定的类型标识
-                    errorTypes.add('user_anomaly');
+                    // 前端人工标注异常
+                    const errorName = errorData.errorData.anomalyCategory || 'user_anomaly';
+                    errorTypes.add(errorName);
                   }
                 }
               }
