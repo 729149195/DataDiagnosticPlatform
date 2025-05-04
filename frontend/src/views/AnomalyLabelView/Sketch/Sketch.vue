@@ -48,10 +48,37 @@
       </div>
       <!-- 右侧1/3操作区 -->
       <div class="operation-panel">
-        <!-- 参数设置区，先空着 -->
-        <span style="color: #999; font-size: 12px;">过滤参数区...</br>(开发中,不影响目前使用)</span>
         <div class="params-area">
-          <!-- 这里可以添加参数设置控件 -->
+          <el-form label-width="auto" label-position="left">
+            <!-- 平滑幅度 -->
+            <el-form-item label="平滑幅度">
+              <el-input v-model.number="lowpassAmplitude" :min="0.0001" :max="0.1" style="width: 100%;" />
+            </el-form-item>
+            <!-- X区间 -->
+            <el-form-item label="X区间（默认全局）" label-position="top">
+              <div style="display: flex; align-items: center; width: 100%;">
+                <el-input v-model="xFilterStart" placeholder="起点" style="width: 48%;" />
+                <span style="margin: 0 4px;">~</span>
+                <el-input v-model="xFilterEnd" placeholder="终点" style="width: 48%;" />
+              </div>
+            </el-form-item>
+            <!-- Y区间 -->
+            <el-form-item label="Y区间（默认全局）" label-position="top">
+              <div style="display: flex; align-items: center; width: 100%;">
+                <el-input v-model="yFilterStart" placeholder="起点" style="width: 48%;" />
+                <span style="margin: 0 4px;">~</span>
+                <el-input v-model="yFilterEnd" placeholder="终点" style="width: 48%;" />
+              </div>
+            </el-form-item>
+            <!--  模式重复数 -->
+            <el-form-item label="模式重复数">
+              <el-input v-model="patternRepeatCount" style="width: 100%;" />
+            </el-form-item>
+            <!-- 匹配上限 -->
+            <el-form-item label="匹配上限">
+              <el-input v-model="maxMatchPerChannel" style="width: 100%;" />
+            </el-form-item>
+          </el-form>
         </div>
       </div>
     </div>
@@ -467,6 +494,16 @@ const startVisibilityCheck = () => {
   }, 500);
 };
 
+// 参数区相关变量
+import { reactive } from 'vue';
+const lowpassAmplitude = ref(0.01); // 低通滤波幅度，默认0.01
+const xFilterStart = ref('');
+const xFilterEnd = ref('');
+const yFilterStart = ref('');
+const yFilterEnd = ref('');
+const patternRepeatCount = ref(0); // 模式重复数量，默认0
+const maxMatchPerChannel = ref(100); // 单通道获取匹配最大数量，默认100
+
 // 提交数据函数
 const submitData = async () => {
   // 获取绘制的路径数据（包括控制点信息以便重现曲线）
@@ -522,7 +559,7 @@ const submitData = async () => {
         return null;
       }).filter(channel => channel !== null);
 
-      // 发送请求到后端
+      // 发送请求到后端，增加参数
       const response = await fetch('https://10.1.108.231:5000/api/sketch-query', {
         method: 'POST',
         headers: {
@@ -530,9 +567,13 @@ const submitData = async () => {
         },
         body: JSON.stringify({
           rawQueryPattern,
-          // sampling: sampling.value,
           sampling: 5,
-          selectedChannels
+          selectedChannels,
+          lowpassAmplitude: lowpassAmplitude.value,
+          xFilterRange: [xFilterStart.value, xFilterEnd.value],
+          yFilterRange: [yFilterStart.value, yFilterEnd.value],
+          patternRepeatCount: patternRepeatCount.value,
+          maxMatchPerChannel: maxMatchPerChannel.value
         })
       });
 
@@ -1242,22 +1283,30 @@ const isGroupStart = (index) => {
   min-width: 0;
   display: flex;
   flex-direction: column;
+  border: 1px solid #eee;
+  border-radius: 4px;
 }
 
 .operation-panel {
   flex: 1;
-  border: 1px solid #eee;
-  padding: 6px;
+  padding: 3px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
-  box-sizing: border-box;
+  border: 1px solid #eee;
+  border-radius: 4px;
 }
 
 .params-area {
-  flex: 1;
-  /* 这里可以添加参数设置区的样式 */
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.el-form-item {
+  margin-bottom: 10px;
 }
 
 .canvas-container {
@@ -1320,7 +1369,7 @@ const isGroupStart = (index) => {
 .fullscreen-canvas-container {
   position: relative;
   width: 100%;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 121px);
   background-color: white;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -1632,4 +1681,5 @@ const isGroupStart = (index) => {
 .group-tag {
   display: none;
 }
+
 </style>

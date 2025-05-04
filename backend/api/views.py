@@ -1831,6 +1831,12 @@ def sketch_query(request):
     selected_channels = data.get('selectedChannels')
     # 获取路径数据
     raw_query_pattern = data.get('rawQueryPattern')
+    # 新增参数获取
+    lowpass_amplitude = data.get('lowpassAmplitude')
+    x_filter_range = data.get('xFilterRange')
+    y_filter_range = data.get('yFilterRange')
+    pattern_repeat_count = data.get('patternRepeatCount')
+    max_match_per_channel = data.get('maxMatchPerChannel')
         
     # selected_channels 格式为 [{'channel_name': 'B07_H', 'shot_number': '4470', 'channel_type': 'B'},...]
     # raw_query_pattern 格式为 [{'x': 0.1, 'y': 0.1, 'handleOut': {'x': 0.1, 'y': 0.1}, 'handleIn': {'x': 0.1, 'y': 0.1}},...] 为贝塞尔曲线
@@ -1884,7 +1890,14 @@ def sketch_query(request):
         
         # 执行模式匹配
         
-        results = match_pattern(normalized_curve, channel_data_list)
+        results = match_pattern(
+            normalized_curve, channel_data_list,
+            lowpass_amplitude=lowpass_amplitude,
+            x_filter_range=x_filter_range,
+            y_filter_range=y_filter_range,
+            pattern_repeat_count=pattern_repeat_count,
+            max_match_per_channel=max_match_per_channel
+        )
         
         print(f"模式匹配完成, 耗时: {time.time() - start_time:.2f}秒, 找到匹配结果: {len(results)}个")
         

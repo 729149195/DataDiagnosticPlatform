@@ -1,9 +1,21 @@
-def match_pattern(normalized_query_pattern, channel_data_list):
+def match_pattern(
+    normalized_query_pattern, channel_data_list,
+    lowpass_amplitude=None,
+    x_filter_range=None,
+    y_filter_range=None,
+    pattern_repeat_count=None,
+    max_match_per_channel=None
+):
     """
     在多个通道数据channel_data_list中查找与查询模式normalized_query_pattern匹配的部分
     Args:
         normalized_query_pattern: 归一化后的查询模式点序列 [(x1, y1), (x2, y2), ...]
         channel_data_list: 通道数据列表，每个元素包含通道信息和数据
+        lowpass_amplitude: 低通滤波幅度（0.0001~0.1），过滤该幅度内的扰动
+        x_filter_range: X过滤区间（默认"ALL"）
+        y_filter_range: Y过滤区间（默认"ALL"）
+        pattern_repeat_count: 模式重复数量（默认0），所需要匹配的手绘模式的连续重复数量
+        max_match_per_channel: 单通道获取匹配最大数量（默认100）
         
     Returns:
         匹配结果列表，每个元素包含通道信息、匹配范围和相似度
