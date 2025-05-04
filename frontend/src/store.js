@@ -1055,7 +1055,7 @@ const store = createStore({
     async fetchAllErrorData({ state, commit }, channel) {
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const db_suffix = channel.db_suffix; // 获取通道中的数据库参数
+        const db_suffix = state.currentDbSuffix; // 获取通道中的数据库参数
         const errorResults = [];
 
         // 对每个错误类型进行处理

@@ -152,17 +152,6 @@ const fetchDbSuffixOptions = async () => {
     const response = await axios.get('https://10.1.108.231:5000/api/get-ddp-dbs');
     // 使用服务器返回的db_suffixes，它已经去掉了前缀
     dbSuffixOptions.value = response.data.db_suffixes || [];
-    
-    if (dbSuffixOptions.value.length > 0) {
-      // 如果之前有选择过数据库，优先使用上次选择的
-      const savedDbSuffix = localStorage.getItem('selectedDbSuffix');
-      if (savedDbSuffix && dbSuffixOptions.value.includes(savedDbSuffix)) {
-        selectedDbSuffix.value = savedDbSuffix;
-      } else {
-        // 否则默认使用第一个
-        selectedDbSuffix.value = dbSuffixOptions.value[0];
-      }
-    }
   } catch (error) {
     console.error('Failed to fetch database options:', error);
     ElMessage.error('获取数据库列表失败，请稍后再试。');
@@ -674,53 +663,6 @@ const querySearchErrorNames = debounce((queryString, cb) => {
   cb(results.map(item => ({ value: item.value })));
 }, 300);
 
-// 处理选择事件
-const handleChannelTypeSelect = (item) => {
-  if (!selectedChannelTypes.value.includes(item.value)) {
-    selectedChannelTypes.value.push(item.value);
-  }
-  channelTypeInput.value = selectedChannelTypesText.value;
-};
-
-const handleChannelNameSelect = (item) => {
-  if (!selectedChannelNames.value.includes(item.value)) {
-    selectedChannelNames.value.push(item.value);
-  }
-  channelNameInput.value = selectedChannelNamesText.value;
-};
-
-const handleErrorNameSelect = (item) => {
-  if (!selectederrorsNames.value.includes(item.value)) {
-    selectederrorsNames.value.push(item.value);
-  }
-  errorNameInput.value = selectedErrorNamesText.value;
-};
-
-// 添加移除标签的处理函数
-const removeChannelType = (type) => {
-  selectedChannelTypes.value = selectedChannelTypes.value.filter(t => t !== type);
-};
-
-const removeChannelName = (name) => {
-  selectedChannelNames.value = selectedChannelNames.value.filter(n => n !== name);
-};
-
-const removeErrorName = (name) => {
-  selectederrorsNames.value = selectederrorsNames.value.filter(n => n !== name);
-};
-
-// 添加计算属性来处理选中选项的文本显示
-const selectedChannelTypesText = computed(() => {
-  return selectedChannelTypes.value.join(', ');
-});
-
-const selectedChannelNamesText = computed(() => {
-  return selectedChannelNames.value.join(', ');
-});
-
-const selectedErrorNamesText = computed(() => {
-  return selectederrorsNames.value.join(', ');
-});
 
 // 添加输入监听
 watch(channelTypeInput, (newVal) => {
