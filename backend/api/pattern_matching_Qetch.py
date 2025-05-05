@@ -52,10 +52,6 @@ def match_pattern(
         'DIVIDE_SECTION_MIN_HEIGHT_DATA': 0.01,  # 数据分段的最小高度比例，防止噪声产生过多段
         'DIVIDE_SECTION_MIN_HEIGHT_QUERY': 0.01,  # 查询分段的最小高度比例
         
-        'SMOOTH_SMOOTHED_HEIGHT_HEIGHT_MIN_RATIO': 0.5,  # 平滑后最小高度与原始高度的比例
-        'SMOOTH_ITERATIONS_STEPS': 6,  # 平滑迭代步数
-        'SMOOTH_MAXIMUM_ATTEMPTS': 100,  # 平滑最大尝试次数
-        
         'QUERY_SIGN_MAXIMUM_TOLERABLE_DIFFERENT_SIGN_SECTIONS': 0.5,  # 匹配时允许的最大符号不一致段比例
         'MATCH_METRIC_MAXIMUM_VALUE': 100,  # 匹配分数最大阈值，超过则视为不匹配
         'CHECK_QUERY_COMPATIBILITY': True,  # 是否检查段兼容性（符号、数量等）
@@ -569,7 +565,7 @@ def match_pattern(
                 match_in(query_sections[0], data_sections, dsi, [], {
                     'matches': matches,
                     'snum': dataset_idx,
-                    'smoothIteration': 0,
+                    'smoothIteration': lowpass_amplitude,
                     'datasetSize': dataset_size,
                     'dataPoints': data_points,
                     'shotNumber': channel_data.get('shot_number', 0),
@@ -689,35 +685,58 @@ def match_pattern(
         """处理单个通道数据"""
         # 调用查询执行
         channel_matches = execute_query(normalized_query_pattern, channel_data)
-        
         if not channel_matches:
             return []
-            
-        # 获取通道信息
+
         channel_name = channel_data.get('channel_name', '')
         shot_number = channel_data.get('shot_number', 0)
-        
         results = []
-        
-        # 将匹配结果转换为所需格式
         for match in sorted(channel_matches, key=lambda m: m['match']):
-            # 计算置信度（使用指数变换）
             confidence = math.exp(-match['match'])
-            
-            # 创建匹配范围（使用原始X值）
-            orig_min_pos = match['points'][0].origX  
+            orig_min_pos = match['points'][0].origX
             orig_max_pos = match['points'][-1].origX
             match_range = [[orig_min_pos, orig_max_pos]]
-            
-            # 添加结果
             results.append({
                 'range': match_range,
                 'channelName': channel_name,
                 'shotNumber': shot_number,
                 'confidence': confidence,
-                'smoothLevel': match['smoothIteration']  # 添加平滑级别信息
+                'smoothLevel': match['smoothIteration'],
+                'points': match['points'],  # 保留points用于y过滤
             })
-            
+
+        # ========== 新增：X/Y过滤 ==========
+        # x_filter_range/y_filter_range 形如 [min, max]，可能为 None
+        def in_x_range(result):
+            if not x_filter_range or x_filter_range[0] is None or x_filter_range[1] is None:
+                return True
+            r_min, r_max = result['range'][0]
+            f_min, f_max = x_filter_range
+            return not (r_max < f_min or r_min > f_max)
+
+        def in_y_range(result):
+            if not y_filter_range or y_filter_range[0] is None or y_filter_range[1] is None:
+                return True
+            f_min, f_max = y_filter_range
+            # points 里只要有一个y在区间内就保留
+            for pt in result['points']:
+                y = getattr(pt, 'origY', None)
+                if y is None and isinstance(pt, dict):
+                    y = pt.get('origY', None)
+                if y is not None and f_min <= y <= f_max:
+                    return True
+            return False
+
+        results = [r for r in results if in_x_range(r) and in_y_range(r)]
+
+        # ========== 数量过滤 ==========
+        if max_match_per_channel is not None:
+            results = results[:max_match_per_channel]
+
+        # 去掉points字段，防止前端报错
+        for r in results:
+            r.pop('points', None)
+
         return results
     
     # =====================================================
@@ -728,10 +747,7 @@ def match_pattern(
     results = []
     for channel_data in channel_data_list:
         results.extend(process_channel(channel_data))
-    
     # 按置信度排序
     results.sort(key=lambda r: r['confidence'], reverse=True)
-    # 只保留前50个结果
-    # results = results[:50]
     
     return results 

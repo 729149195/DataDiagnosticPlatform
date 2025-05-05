@@ -123,7 +123,16 @@
         </span>
       </div>
       <div class="panel-content">
-        <el-table :data="groupedMatchedResults" style="width: 100%" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border :span-method="objectSpanMethod">
+        <el-table
+          ref="resultsTable"
+          :data="groupedMatchedResults"
+          v-model:selection="selectedMatchedResults"
+          @selection-change="handleTableSelectionChange"
+          height="calc(100vh - 83px)"
+          size="default"
+          border
+          :span-method="objectSpanMethod"
+        >
           <el-table-column type="selection" width="40" align="center" />
           <el-table-column label="区间幅度s" min-width="110" align="center">
             <template #default="scope">
@@ -502,7 +511,7 @@ const startVisibilityCheck = () => {
 
 // 参数区相关变量
 import { reactive } from 'vue';
-const lowpassAmplitude = ref(0.01); // 低通滤波幅度，默认0.01
+const lowpassAmplitude = ref(0.03); // 低通滤波幅度，默认0.03
 const xFilterStart = ref('');
 const xFilterEnd = ref('');
 const yFilterStart = ref('');
@@ -575,11 +584,17 @@ const submitData = async () => {
           rawQueryPattern,
           sampling: 5,
           selectedChannels,
-          lowpassAmplitude: lowpassAmplitude.value,
-          xFilterRange: [xFilterStart.value, xFilterEnd.value],
-          yFilterRange: [yFilterStart.value, yFilterEnd.value],
-          patternRepeatCount: patternRepeatCount.value,
-          maxMatchPerChannel: maxMatchPerChannel.value
+          lowpassAmplitude: Number(lowpassAmplitude.value),
+          xFilterRange: [
+            xFilterStart.value === '' ? null : Number(xFilterStart.value),
+            xFilterEnd.value === '' ? null : Number(xFilterEnd.value)
+          ],
+          yFilterRange: [
+            yFilterStart.value === '' ? null : Number(yFilterStart.value),
+            yFilterEnd.value === '' ? null : Number(yFilterEnd.value)
+          ],
+          patternRepeatCount: Number(patternRepeatCount.value),
+          maxMatchPerChannel: Number(maxMatchPerChannel.value)
         })
       });
 
@@ -1156,38 +1171,37 @@ const toggleResultsDrawer = () => {
 
   // 当打开面板时，确保所有结果都被选中
   if (resultsDrawerVisible.value && sortedMatchedResults.value.length > 0) {
-    // 默认全选
-    selectedMatchedResults.value = allMatchedIds.value;
-    // 同步到store
+    // 关键：直接赋值为所有行对象，实现el-table自动全选
+    selectedMatchedResults.value = [...groupedMatchedResults.value];
+    // 同步id到store
     store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
 };
 
 // 表格选择变化处理
 const handleTableSelectionChange = (selection) => {
-  // 将选中的行转换为ID格式，使用原始索引而不是当前表格索引
-  selectedMatchedResults.value = selection.map(row =>
+  // selection是被选中的行对象数组
+  selectedMatchedResults.value = selection;
+  // 同步id到store
+  const ids = selection.map(row =>
     `${row.channelName}_${row.shotNumber}_${row.smoothLevel}_${row.originalIndex}`
   );
-  // 同步到store
-  store.commit('setVisibleMatchedResultIds', selectedMatchedResults.value);
-  // 更新全选状态
+  store.commit('setVisibleMatchedResultIds', ids);
   allMatchedSelected.value = selection.length === groupedMatchedResults.value.length && selection.length > 0;
 };
 
 // 监听selectedMatchedResults变化，更新全选状态
 watch(selectedMatchedResults, (newVal) => {
-  allMatchedSelected.value = newVal.length === allMatchedIds.value.length && newVal.length > 0;
+  allMatchedSelected.value = newVal.length === groupedMatchedResults.value.length && newVal.length > 0;
 });
 
 // 监听匹配结果，有新结果时自动展开抽屉
 watch(sortedMatchedResults, (newVal) => {
   if (newVal.length > 0) {
-    // 自动展开抽屉
     resultsDrawerVisible.value = true;
-    // 默认全选
-    selectedMatchedResults.value = allMatchedIds.value;
-    // 同步到store
+    // 关键：直接赋值为所有行对象，实现el-table自动全选
+    selectedMatchedResults.value = [...groupedMatchedResults.value];
+    // 同步id到store
     store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
 }, { immediate: true });
@@ -1196,7 +1210,8 @@ watch(sortedMatchedResults, (newVal) => {
 watch(
   () => store.state.visibleMatchedResultIds,
   (newIds) => {
-    selectedMatchedResults.value = [...newIds];
+    // 只同步高亮，不自动改变表格选中（防止死循环）
+    // 如需根据id反选行对象，可在此实现
   }
 );
 
