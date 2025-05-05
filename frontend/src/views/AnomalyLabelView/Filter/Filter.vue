@@ -871,6 +871,7 @@ const onGunNumberConfirm = async () => {
       
       setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorNameRes.data);
       hasIndexLoaded.value = true;
+      ElMessage.success('炮号确认成功，通道/异常名列表已更新');
     } catch (error) {
       console.error('通道名或异常名索引获取失败:', error);
       ElMessage.error(`获取索引失败: ${error.message || '未知错误'}`);
