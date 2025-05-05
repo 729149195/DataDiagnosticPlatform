@@ -134,7 +134,7 @@
           </el-table-column>
           <el-table-column label="通道名" min-width="90" align="center" show-overflow-tooltip prop="channelName" />
           <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
-          <el-table-column label="平滑" min-width="60" align="center" prop="smoothLevel" />
+          <!-- <el-table-column label="平滑" min-width="60" align="center" prop="smoothLevel" /> -->
           <el-table-column label="匹配度" min-width="70" align="center">
             <template #default="scope">
               <span class="cell-number">{{ scope.row.confidence?.toFixed(3) }}</span>
@@ -1144,7 +1144,7 @@ const groupedMatchedResults = computed(() => {
 
 // 获取所有匹配结果id，使用原始索引
 const allMatchedIds = computed(() => groupedMatchedResults.value.map(item =>
-  `${item.channelName}_${item.shotNumber}_${item.smoothLevel}_${item.originalIndex}`
+  `${item.channelName}_${item.shotNumber}_${item.originalIndex}`
 ));
 
 // 动态按钮文本，抽屉展开时显示Collapse，收起时显示Expand
@@ -1171,7 +1171,7 @@ const handleTableSelectionChange = (selection) => {
   selectedMatchedResults.value = selection;
   // 同步id到store
   const ids = selection.map(row =>
-    `${row.channelName}_${row.shotNumber}_${row.smoothLevel}_${row.originalIndex}`
+    `${row.channelName}_${row.shotNumber}_${row.originalIndex}`
   );
   store.commit('setVisibleMatchedResultIds', ids);
   allMatchedSelected.value = selection.length === groupedMatchedResults.value.length && selection.length > 0;

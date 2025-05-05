@@ -695,8 +695,106 @@ def match_pattern(
             'shotNumber': query_ctx['shotNumber']
         }
     
+    def fast_savitzky_golay_smooth(x_arr, y_arr, width, passes=2):
+        """
+        对输入的x_arr和y_arr进行Savitzky-Golay平滑，width为窗口宽度，passes为平滑次数。
+        """
+        def lower_bound(arr, value):
+            left, right = 0, len(arr)
+            while left < right:
+                mid = (left + right) // 2
+                if arr[mid] < value:
+                    left = mid + 1
+                else:
+                    right = mid
+            return left
+
+        def upper_bound(arr, value):
+            left, right = 0, len(arr)
+            while left < right:
+                mid = (left + right) // 2
+                if arr[mid] <= value:
+                    left = mid + 1
+                else:
+                    right = mid
+            return left
+
+        def adaptive_poly_order(window_point_count, total_point_count):
+            ratio = window_point_count / total_point_count
+            if ratio < 0.05:
+                return 2
+            elif ratio < 0.1:
+                return 3
+            elif ratio < 0.2:
+                return 4
+            else:
+                return 5
+
+        def dynamic_max_points(y_win, min_points=100, max_points=2000):
+        # 如果窗口为空或方差不可用，返回最小点数
+            if len(y_win) == 0:
+                return min_points
+            var = np.var(y_win)
+            if not np.isfinite(var):
+                return min_points
+            max_var = 1.0  # 可根据实际数据调整
+            norm_var = min(var / max_var, 1.0)
+            return int(min_points + (max_points - min_points) * norm_var)
+
+
+        # 定义单次平滑内部函数，消除细微相移与切线振动
+        def _single_pass(x_arr_in, y_arr_in):
+            result = []
+            total_count = len(x_arr_in)
+            for i in range(total_count):
+                x0 = x_arr_in[i]
+                left = lower_bound(x_arr_in, x0 - width / 2)
+                right = upper_bound(x_arr_in, x0 + width / 2)
+                x_win = [x - x0 for x in x_arr_in[left:right]]
+                y_win = y_arr_in[left:right]
+                cur_max = dynamic_max_points(y_win)
+                if len(x_win) > cur_max:
+                    step = int(np.ceil(len(x_win) / cur_max))
+                    x_win = x_win[::step]
+                    y_win = y_win[::step]
+                poly = adaptive_poly_order(len(x_win), total_count)
+                if len(x_win) < poly + 1:
+                    result.append([float(x_arr_in[i]), float(y_arr_in[i])])
+                    continue
+                X = np.vander(x_win, poly + 1, increasing=True)
+                a = np.linalg.solve(X.T @ X, X.T @ y_win)
+                result.append([float(x_arr_in[i]), float(a[0])])
+            return np.array([d[0] for d in result]), np.array([d[1] for d in result])
+    
+        # 前向平滑
+        x_forward, y_forward = np.array(x_arr), np.array(y_arr)
+        for _ in range(passes):
+            x_forward, y_forward = _single_pass(x_forward, y_forward)
+        # 反向平滑
+        x_back, y_back = x_forward[::-1], y_forward[::-1]
+        for _ in range(passes):
+            x_back, y_back = _single_pass(x_back, y_back)
+        # 返回零相位零切线振动结果
+        return [[float(x), float(y)] for x, y in zip(x_back[::-1], y_back[::-1])]
+    
     def process_channel(channel_data):
         """处理单个通道数据"""
+        # 如果需要平滑，先对Y数据进行平滑处理
+        x_arr = channel_data.get('X_value', None)
+        y_arr = channel_data.get('Y_normalized', channel_data.get('Y_value', None))
+        if x_arr is not None and y_arr is not None and lowpass_amplitude is not None:
+            window_width = lowpass_amplitude * 0.4
+            # 保证输入为numpy数组
+            x_np = np.array(x_arr)
+            y_np = np.array(y_arr)
+            # 排序，保证x单调递增
+            sort_idx = np.argsort(x_np)
+            x_sorted = x_np[sort_idx]
+            y_sorted = y_np[sort_idx]
+            smooth_result = fast_savitzky_golay_smooth(x_sorted, y_sorted, window_width, passes=2)
+            # 只取y平滑结果，x与原始一致
+            y_smooth = [pt[1] for pt in smooth_result]
+            channel_data['Y_normalized'] = y_smooth
         # 调用查询执行
         channel_matches = execute_query(normalized_query_pattern, channel_data)
         if not channel_matches:
