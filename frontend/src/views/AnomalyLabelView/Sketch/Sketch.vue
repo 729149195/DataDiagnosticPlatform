@@ -55,10 +55,10 @@
               <template #label>
                 <div style="display: flex; flex-direction: column;">
                   <span>低通滤波平滑幅度s</span>
-                  <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动</span>
+                  <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动(0.0001~0.1)</span>
                 </div>
               </template>
-              <el-input v-model.number="lowpassAmplitude" :min="0.0001" :max="0.1" style="width: 100%;" />
+              <el-input v-model="lowpassAmplitude" style="width: 100%;" />
             </el-form-item>
             <!-- X区间 -->
             <el-form-item label="X区间s（默认全局）" label-position="top">
@@ -123,16 +123,7 @@
         </span>
       </div>
       <div class="panel-content">
-        <el-table
-          ref="resultsTable"
-          :data="groupedMatchedResults"
-          v-model:selection="selectedMatchedResults"
-          @selection-change="handleTableSelectionChange"
-          height="calc(100vh - 83px)"
-          size="default"
-          border
-          :span-method="objectSpanMethod"
-        >
+        <el-table ref="resultsTable" :data="groupedMatchedResults" v-model:selection="selectedMatchedResults" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border :span-method="objectSpanMethod">
           <el-table-column type="selection" width="40" align="center" />
           <el-table-column label="区间幅度s" min-width="110" align="center">
             <template #default="scope">
@@ -223,7 +214,6 @@ const store = useStore();
 
 // 选中的炮号数组
 const selectedGunNumbers = ref([]);
-const sampling = computed(() => store.state.sampling);
 
 // 从 Vuex 获取 selectedChannels
 const selectedChannels = computed(() => store.state.selectedChannels);
@@ -632,9 +622,6 @@ const clearCanvas = () => {
   resultsDrawerVisible.value = false;
   // 清除匹配结果
   store.dispatch('clearMatchedResults');
-
-  // 清空通道选择
-  selectedGunNumbers.value = [];
 
   // 立即清除路径
   if (paperScope) {
@@ -1205,15 +1192,6 @@ watch(sortedMatchedResults, (newVal) => {
     store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
 }, { immediate: true });
-
-// 监听高亮id变化，自动同步复选框选中状态
-watch(
-  () => store.state.visibleMatchedResultIds,
-  (newIds) => {
-    // 只同步高亮，不自动改变表格选中（防止死循环）
-    // 如需根据id反选行对象，可在此实现
-  }
-);
 
 // 表格单元格合并方法
 const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {

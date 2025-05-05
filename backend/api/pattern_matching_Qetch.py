@@ -34,6 +34,20 @@ def match_pattern(
     import numpy as np
     from collections import defaultdict
     
+    # ========== 新增：查询模式重复 ==========
+    repeat_count = pattern_repeat_count if pattern_repeat_count and pattern_repeat_count > 0 else 1
+    if repeat_count > 1:
+        pattern = normalized_query_pattern
+        if len(pattern) < 2:
+            pass  # 点数太少无法重复
+        else:
+            x_offset = pattern[-1][0] - pattern[0][0]
+            repeated = []
+            for i in range(repeat_count):
+                for pt in pattern:
+                    repeated.append((pt[0] + i * x_offset, pt[1]))
+            normalized_query_pattern = repeated
+    
     # 定义Qetch算法参数，完全匹配原始JavaScript实现
     Parameters = {
         'DEBUG': False,  # 是否开启调试模式，输出调试信息
