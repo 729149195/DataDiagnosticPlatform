@@ -54,7 +54,7 @@ def match_pattern(
         'MAX_REGEX_IT': 25,  # 正则匹配最大递归深度，防止死循环
         'GROUPING_EQUAL_MATCH_TOLERANCE': 10,  # 匹配去重时允许的起止点误差
         
-        'VALUE_DIFFERENCE_WEIGHT': 1,  # 点差异权重，控制点差异对总分的影响
+        'VALUE_DIFFERENCE_WEIGHT': 0.9,  # 点差异权重，控制点差异对总分的影响
         'RESCALING_COST_WEIGHT': 0.1,  # 缩放成本权重，控制缩放因子对总分的影响
         'RESCALING_Y': True,  # 是否对y轴进行缩放（True为y轴独立缩放，False为跟随x轴）
         
@@ -765,7 +765,7 @@ def match_pattern(
                 a = np.linalg.solve(X.T @ X, X.T @ y_win)
                 result.append([float(x_arr_in[i]), float(a[0])])
             return np.array([d[0] for d in result]), np.array([d[1] for d in result])
-    
+
         # 前向平滑
         x_forward, y_forward = np.array(x_arr), np.array(y_arr)
         for _ in range(passes):
