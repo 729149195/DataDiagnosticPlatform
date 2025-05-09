@@ -1,0 +1,26 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Project Structure Overview
+
+This is a Data Diagnostic Platform project with the following main components:
+
+## Frontend
+The frontend application is located in the `frontend/` directory. It provides the user interface for data visualization and interaction.
+
+## Backend
+The backend services are located in the `backend/` directory. It handles data processing and business logic.
+
+## Batch Processing
+The batch processing functionality is implemented in `run_batch_processing.py`, which handles large-scale data processing tasks.
+
+## Project Setup
+- Use `start.bat` to launch the application
+- Dependencies are managed through `package.json` and `package-lock.json`
+
+## Key Files
+- [run_batch_processing.py](mdc:run_batch_processing.py) - Main batch processing script
+- [start.bat](mdc:start.bat) - Application startup script
+- [package.json](mdc:package.json) - Project dependencies configuration

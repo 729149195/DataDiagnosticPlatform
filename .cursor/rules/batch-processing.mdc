@@ -1,0 +1,33 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Batch Processing Guidelines
+
+## Overview
+Batch processing functionality is implemented in `run_batch_processing.py` and related modules in the `RunDetectAlgorithm/` directory.
+
+## Key Components
+- Data Processing Pipeline
+- Algorithm Implementation
+- Result Generation
+- Error Handling
+
+## Development Standards
+1. Follow Python best practices
+2. Implement proper logging
+3. Handle large datasets efficiently
+4. Ensure proper error recovery
+
+## Best Practices
+1. Write modular, reusable code
+2. Implement proper error handling
+3. Use appropriate data structures
+4. Document algorithm parameters
+5. Include progress tracking
+
+## Related Files
+- [run_batch_processing.py](mdc:run_batch_processing.py) - Main batch processing script
+- [RunDetectAlgorithm/](mdc:RunDetectAlgorithm/) - Algorithm implementation directory
+- [ml.txt](mdc:ml.txt) - Machine learning related configurations

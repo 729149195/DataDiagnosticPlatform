@@ -1,0 +1,32 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Frontend Development Guidelines
+
+## Directory Structure
+The frontend code is organized in the `frontend/` directory. Key components and features should be properly modularized.
+
+## Development Standards
+1. Use modern JavaScript/TypeScript practices
+2. Follow component-based architecture
+3. Implement responsive design principles
+4. Ensure proper error handling and user feedback
+
+## Key Components
+- UI Components
+- Data Visualization
+- User Interaction Handlers
+- API Integration
+
+## Best Practices
+1. Keep components small and focused
+2. Implement proper state management
+3. Use consistent styling approach
+4. Write unit tests for critical components
+5. Document component props and usage
+
+## Related Files
+- [frontend/package.json](mdc:frontend/package.json) - Frontend dependencies
+- [frontend/src/](mdc:frontend/src/) - Source code directory
