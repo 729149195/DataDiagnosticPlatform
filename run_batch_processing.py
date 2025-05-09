@@ -186,7 +186,7 @@ REFRESH_INTERVAL = 1.0   # 进度更新频率(秒)
 class ProcessRunner:
     """处理单个批次的炮号范围的进程管理类"""
     
-    def __init__(self, process_id, start_shot, end_shot, working_dir, script_path, conda_env, global_expected_channels_map):
+    def __init__(self, process_id, start_shot, end_shot, working_dir, script_path, conda_env, global_expected_channels_map, db_name=None):
         self.process_id = process_id
         self.start_shot = start_shot
         self.end_shot = end_shot
@@ -194,7 +194,10 @@ class ProcessRunner:
         self.script_path = script_path
         self.conda_env = conda_env
         self.process = None
-        self.db_name = f"DataDiagnosticPlatform_[{start_shot}_{end_shot}]"
+        if db_name:
+            self.db_name = db_name
+        else:
+            self.db_name = f"DataDiagnosticPlatform_[{start_shot}_{end_shot}]"
         self.start_time = None
         self.status = "等待中"  # 等待中, 运行中, 已完成
         self.current_shot = "N/A"
@@ -222,7 +225,7 @@ class ProcessRunner:
         with self.lock:
             self.status = "运行中"
             self.start_time = datetime.now()
-            cmd = f"cd {self.working_dir} && conda run -n {self.conda_env} python {self.script_path} {self.start_shot} {self.end_shot}"
+            cmd = f"cd {self.working_dir} && conda run -n {self.conda_env} python {self.script_path} {self.start_shot} {self.end_shot} {self.db_name}"
             self.process = subprocess.Popen(
                 cmd,
                 shell=True,
@@ -374,7 +377,7 @@ class BatchProcessor:
     """批量处理管理类"""
     
     def __init__(self, start_shot, end_shot, batch_size, concurrent_processes, 
-                 working_dir, script_path, conda_env):
+                 working_dir, script_path, conda_env, db_name=None):
         self.start_shot = start_shot
         self.end_shot = end_shot
         self.batch_size = batch_size
@@ -382,6 +385,7 @@ class BatchProcessor:
         self.working_dir = working_dir
         self.script_path = script_path
         self.conda_env = conda_env
+        self.db_name = db_name
         
         # 计算批次
         self.batches = []
@@ -451,7 +455,11 @@ class BatchProcessor:
             
         batch = self.batches[self.current_batch_index]
         start_shot, end_shot = batch
-        
+        # 生成本批次db_name
+        if self.db_name:
+            batch_db_name = self.db_name
+        else:
+            batch_db_name = f"DataDiagnosticPlatform_[{start_shot}_{end_shot}]"
         # 创建并启动新进程
         proc = ProcessRunner(
             process_id=self.current_batch_index + 1,
@@ -460,12 +468,11 @@ class BatchProcessor:
             working_dir=self.working_dir,
             script_path=self.script_path,
             conda_env=self.conda_env,
-            global_expected_channels_map=self.global_expected_channels_map
+            global_expected_channels_map=self.global_expected_channels_map,
+            db_name=batch_db_name
         )
-        
         self.processes.append(proc)
         proc.run()
-        
         with self.progress_lock:
             self.current_batch_index += 1
     
@@ -567,6 +574,7 @@ def main():
     parser.add_argument('--working-dir', type=str, default=WORKING_DIR, help=f'工作目录 (默认: {WORKING_DIR})')
     parser.add_argument('--script', type=str, default=PROCESS_SCRIPT, help=f'处理脚本路径 (默认: {PROCESS_SCRIPT})')
     parser.add_argument('--conda-env', type=str, default=CONDA_ENV, help=f'Conda环境名称 (默认: {CONDA_ENV})')
+    parser.add_argument('--db-name', type=str, default=None, help='自定义数据库名（可选），如未指定则自动生成（默认：DataDiagnosticPlatform_[start_shot_end_shot]）')
     
     args = parser.parse_args()
     
@@ -577,7 +585,8 @@ def main():
         concurrent_processes=args.concurrent,
         working_dir=args.working_dir,
         script_path=args.script,
-        conda_env=args.conda_env
+        conda_env=args.conda_env,
+        db_name=args.db_name
     )
     
     processor.start()

@@ -107,7 +107,7 @@ def extract_shot_range(db_name):
         return int(match.group(1)), int(match.group(2))
     return None, None
 
-def process_channel(channel_data, algorithm_module):
+def process_channel(channel_data, algorithm_module, tree):
     """对单个通道运行指定算法并返回检测结果"""
     shot_num = channel_data["shot_number"]
     channel_name = channel_data["channel_name"]
@@ -121,22 +121,7 @@ def process_channel(channel_data, algorithm_module):
         "message": ""
     }
     
-    # 创建MdsTree连接
-    tree = None
     max_retries = 5
-    for retry in range(max_retries):
-        try:
-            tree = MdsTree(int(shot_num), dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
-            break
-        except Exception as e:
-            if retry < max_retries - 1:
-                wait_time = (2 ** retry) * 0.5 + random.uniform(0, 0.5)
-                time.sleep(wait_time)
-                continue
-            result["status"] = "failed"
-            result["message"] = f"MdsTree连接失败: {str(e)}"
-            return result
-    
     try:
         # 读取通道数据
         X_value, Y_value = None, None
@@ -241,13 +226,6 @@ def process_channel(channel_data, algorithm_module):
     except Exception as e:
         result["status"] = "processing_error"
         result["message"] = f"处理异常: {str(e)}"
-    finally:
-        # 确保关闭连接
-        if tree is not None:
-            try:
-                tree.close()
-            except:
-                pass
     
     return result
 
@@ -446,9 +424,21 @@ def main():
                 for channel_data in channels_to_process:
                     channel_name = channel_data.get("channel_name", "未知通道")
                     pbar_total.set_description(f"总进度 - 当前: 炮号{shot_number} 通道{channel_name}")
-                    
                     processed_channels += 1
-                    result = process_channel(channel_data, algorithm_module)
+                    # 新增：为每个shot只建立一次MdsTree连接
+                    if len(channels_to_process) > 0:
+                        # 只在第一个通道时建立连接
+                        if channel_data == channels_to_process[0]:
+                            try:
+                                tree = MdsTree(int(shot_number), dbname=channel_data["db_name"], path=DBS[channel_data["db_name"]]['path'], subtrees=DBS[channel_data["db_name"]]['subtrees'])
+                            except Exception as e:
+                                logger.warning(f"MdsTree连接失败 - 炮号: {shot_number}, 错误: {str(e)}")
+                                failed_channels += len(channels_to_process)
+                                break
+                        # 传递tree对象
+                        result = process_channel(channel_data, algorithm_module, tree)
+                    else:
+                        result = process_channel(channel_data, algorithm_module, None)
                     
                     if result["status"] == "success" and result["error_data"]:
                         # 更新errors_data集合
@@ -511,6 +501,12 @@ def main():
                     
                     # 更新总进度条
                     pbar_total.update(1)
+                    # 在最后一个通道后关闭tree连接
+                    if channel_data == channels_to_process[-1]:
+                        try:
+                            tree.close()
+                        except:
+                            pass
         
         # 打印统计信息
         print(f"\n数据库 {db_name} 处理完成:")
