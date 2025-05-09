@@ -174,7 +174,7 @@ class MdsTree:
         """ 设置起止时间及采样率，参数单位s """
         self.tree.setTimeContext(begin, end, delta)
 
-    def getData(self, channel_name, begin=-2, end=5, delta=None, isSetTime=True):
+    def getData(self, channel_name, begin=-7, end=5, delta=None, isSetTime=True):
         """ 
         返回x, y, unit数据
         """
@@ -267,18 +267,17 @@ def import_module_from_path(module_name, file_path):
     return module
 
 
-path = 'RunDetectAlgorithm/algorithm/HCN_NE/error_hcn_hop.py'
-channel_name = 'HCN_NE001'
-error = 'error_hcn_hop'
+path = 'RunDetectAlgorithm/algorithm/MP/error_magnetics_drift.py'
+channel_name = 'MP051t'
+error = 'error_magnetics_drift'
 DB = 'exl50u'
-tree = MdsTree(4471, DB, DBS[DB]['path'], DBS[DB]['subtrees'])
+tree = MdsTree(4579, DB, DBS[DB]['path'], DBS[DB]['subtrees'])
 moduleX = import_module_from_path(error, path)
 start = time.time()
 data_x, data_y = tree.getData(channel_name)
 print(len(data_y))
 print(data_x[0], data_x[-1])
 error_indexes = moduleX.func(data_y)
-print(data_x[500000])
 print(data_y[error_indexes[0][0]], data_y[error_indexes[0][0]+24999])
 print(data_x[error_indexes[0][0]], data_x[error_indexes[0][0]+24999])
 print(error_indexes)

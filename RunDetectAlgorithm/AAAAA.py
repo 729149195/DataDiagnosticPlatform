@@ -1,5 +1,10 @@
-import MDSplus
+"""
+该模块用于从EXL50U数据库批量读取多通道色散仪（polychromator）原始数据，并按指定分段长度切片，返回五种不同波长的原始数据数组，便于后续数据分析和处理。
+"""
+import MDSplus # type: ignore
 import numpy as np
+import sys
+
 def get_data(shot, nperseg=1024, total_polys=15):
     # 建立 MDSplus 数据库连接
     conn = MDSplus.Connection('192.168.20.11') # EXL50 database
