@@ -245,7 +245,7 @@ def update_index_for_channel(db, shot_number, channel_name, error_name, has_erro
     # 找到通道在结构树中的索引
     channel_idx = None
     for idx, item in enumerate(struct_tree):
-        if item.get("channel_name") == channel_name:
+        if item.get("channel_name", "").lower() == channel_name.lower():
             channel_idx = idx
             # 更新error_name字段
             if has_error and error_name not in item.get("error_name", []):
@@ -394,31 +394,30 @@ def main():
         
         # 首先计算总通道数以便显示整体进度
         print("正在统计需要处理的通道数量...")
-        for shot_number in tqdm(shot_numbers, desc="统计通道数量"):
-            struct_data = struct_trees_collection.find_one({"shot_number": shot_number})
-            if struct_data and "struct_tree" in struct_data:
-                for item in struct_data["struct_tree"]:
-                    if item.get("channel_name") in target_channels:
-                        total_channels += 1
-        
+        total_channels = len(target_channels) * len(shot_numbers)
         print(f"找到 {total_channels} 个需要处理的通道")
         
         # 创建总进度条
         with tqdm(total=total_channels, desc="总进度") as pbar_total:
             # 扫描每个炮号
             for shot_number in tqdm(shot_numbers, desc=f"炮号"):
-                # 获取该炮的结构树
                 struct_data = struct_trees_collection.find_one({"shot_number": shot_number})
-                if not struct_data or "struct_tree" not in struct_data:
-                    continue
-                
-                struct_tree = struct_data["struct_tree"]
+                if struct_data and "struct_tree" in struct_data:
+                    struct_tree = struct_data["struct_tree"]
+                else:
+                    struct_tree = []
                 
                 # 找到目标通道
                 channels_to_process = []
-                for item in struct_tree:
-                    if item.get("channel_name") in target_channels:
-                        channels_to_process.append(item)
+                # 以target_channels为主循环，确保所有通道都被处理
+                for channel_name in target_channels:
+                    # 构造一个最基本的channel_data，保证算法能运行
+                    channels_to_process.append({
+                        "channel_name": channel_name,
+                        "shot_number": shot_number,
+                        "db_name": (struct_tree[0]["db_name"] if struct_tree and "db_name" in struct_tree[0] else "exl50u"),
+                        "channel_type": channel_type
+                    })
                 
                 # 处理每个通道
                 for channel_data in channels_to_process:
@@ -441,21 +440,19 @@ def main():
                         result = process_channel(channel_data, algorithm_module, None)
                     
                     if result["status"] == "success" and result["error_data"]:
-                        # 更新errors_data集合
+                        # 无论是否在struct_tree中，都写入errors_data
                         error_data = result["error_data"]
                         query = {
                             "shot_number": channel_data["shot_number"],
                             "channel_number": channel_data["channel_name"],
                             "error_type": algorithm_name
                         }
-                        
                         errors_collection.update_one(
                             query,
                             {"$set": {"data": error_data}},
                             upsert=True
                         )
-                        
-                        # 更新索引
+                        # 只有在struct_tree中有通道时才尝试更新索引
                         update_index_for_channel(
                             db, 
                             channel_data["shot_number"], 
