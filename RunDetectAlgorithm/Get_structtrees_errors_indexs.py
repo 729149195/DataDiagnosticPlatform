@@ -218,7 +218,7 @@ def process_channel(channel_args):
         
         # 动态导入算法模块
         for error in error_type_list:
-            if channel_name in error_channel_map[error]:
+            if any(channel_name.lower() == c.lower() for c in error_channel_map[error]):
                 algorithm_applied = True
                 path = f'RunDetectAlgorithm/algorithm/{detect_type}/{error}.py'
                 try:
