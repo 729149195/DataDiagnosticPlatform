@@ -34,9 +34,6 @@
           <canvas ref="paperCanvas" id="paperCanvas" class="whiteboard-canvas" resize></canvas>
           <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
           <div class="buttons">
-            <el-button type="danger" class="clear-button" @click="clearCanvas">
-              清除
-            </el-button>
             <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
               查询
             </el-button>
@@ -103,9 +100,6 @@
         <canvas ref="fullscreenCanvas" id="fullscreenCanvas" class="fullscreen-whiteboard-canvas" resize></canvas>
         <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
         <div class="fullscreen-buttons">
-          <el-button type="danger" @click="clearFullscreenCanvas">
-            清除
-          </el-button>
           <el-button type="primary" @click="applyFullscreenDrawing">
             应用
           </el-button>
@@ -244,6 +238,7 @@ const selectV2Options = computed(() => {
 let path = null;
 let grid = null;
 let paperScope = null;
+let highlightGroup = null; // 用于存放高亮区间
 const segmentInfo = ref('');
 // 添加清除状态标记
 const isClearing = ref(false);
@@ -324,6 +319,66 @@ const resizeCanvas = () => {
   }
 };
 
+// 计算并绘制切线符号区间高亮背景
+function updateHighlightBackground() {
+  if (highlightGroup) {
+    highlightGroup.remove();
+    highlightGroup = null;
+  }
+  if (!path || !path.segments || path.segments.length < 2 || !paperScope) return;
+
+  highlightGroup = new paperScope.Group();
+  const colors = ['#ffcccc', '#ccffcc'];
+  const segments = path.segments;
+  let lastSign = null;
+  let startIdx = 0;
+  let colorIdx = 0;
+  for (let i = 1; i < segments.length; i++) {
+    const dx = segments[i].point.x - segments[i - 1].point.x;
+    const dy = segments[i].point.y - segments[i - 1].point.y;
+    if (dx === 0) continue; // 跳过竖直段
+    const sign = Math.sign(dy / dx);
+    if (sign === 0) continue; // 跳过水平段
+    if (lastSign === null) lastSign = sign;
+    if (sign !== lastSign) {
+      // 画区间背景
+      const left = segments[startIdx].point.x;
+      const right = segments[i - 1].point.x;
+      if (right > left) {
+        const rect = new paperScope.Path.Rectangle({
+          from: [left, 0],
+          to: [right, paperCanvas.value.offsetHeight],
+          fillColor: colors[colorIdx % 2],
+          opacity: 0.3,
+          insert: false
+        });
+        highlightGroup.addChild(rect);
+      }
+      startIdx = i - 1;
+      lastSign = sign;
+      colorIdx++;
+    }
+  }
+  // 补画最后一个区间
+  if (startIdx < segments.length - 1) {
+    const left = segments[startIdx].point.x;
+    const right = segments[segments.length - 1].point.x;
+    if (right > left) {
+      const rect = new paperScope.Path.Rectangle({
+        from: [left, 0],
+        to: [right, paperCanvas.value.offsetHeight],
+        fillColor: colors[colorIdx % 2],
+        opacity: 0.3,
+        insert: false
+      });
+      highlightGroup.addChild(rect);
+    }
+  }
+  highlightGroup.sendToBack();
+  if (grid) highlightGroup.insertBelow(grid);
+  else if (path) highlightGroup.insertBelow(path);
+}
+
 // 初始化Paper.js
 const initPaperJs = () => {
   if (!paperCanvas.value) return;
@@ -346,35 +401,20 @@ const initPaperJs = () => {
 
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
-    // 如果正在清除过程中，忽略鼠标按下事件
     if (isClearing.value) return;
-
     selectedSegment = null;
     selectedHandle = null;
-
-    // 检查是否点击了现有路径上的段点或手柄
-    if (path) {
-      const hitResult = path.hitTest(event.point, hitOptions);
-      if (hitResult) {
-        if (hitResult.type === 'segment') {
-          selectedSegment = hitResult.segment;
-          return;
-        } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
-          selectedHandle = hitResult;
-          return;
-        }
-      }
-    }
-
-    // 如果已有路径，先清除它
     if (path) {
       path.remove();
       path = null;
       segmentInfo.value = '';
       store.dispatch('updateMatchedResults', []);
+      // 清除高亮
+      if (highlightGroup) {
+        highlightGroup.remove();
+        highlightGroup = null;
+      }
     }
-
-    // 创建新路径
     path = new paperScope.Path({
       segments: [event.point],
       strokeColor: 'black',
@@ -382,59 +422,52 @@ const initPaperJs = () => {
       strokeCap: 'round',
       strokeJoin: 'round'
     });
+    updateHighlightBackground();
   };
 
   // 鼠标拖动事件
   tool.onMouseDrag = (event) => {
-    // 如果正在拖动段点
     if (selectedSegment) {
       selectedSegment.point = selectedSegment.point.add(event.delta);
+      updateHighlightBackground();
       return;
     }
-
-    // 如果正在拖动手柄
     if (selectedHandle) {
       if (selectedHandle.type === 'handle-in') {
         selectedHandle.segment.handleIn = selectedHandle.segment.handleIn.add(event.delta);
       } else if (selectedHandle.type === 'handle-out') {
         selectedHandle.segment.handleOut = selectedHandle.segment.handleOut.add(event.delta);
       }
+      updateHighlightBackground();
       return;
     }
-
-    // 否则绘制新路径
     if (path && (!path.lastSegment || event.point.x >= path.lastSegment.point.x)) {
       path.add(event.point);
       segmentInfo.value = `点数: ${path.segments.length}`;
+      updateHighlightBackground();
     }
   };
 
   // 鼠标释放事件
   tool.onMouseUp = (event) => {
-    // 如果是在拖动段点或手柄，不进行简化操作
     if (selectedSegment || selectedHandle) {
       selectedSegment = null;
       selectedHandle = null;
+      updateHighlightBackground();
       return;
     }
-
     if (path && path.segments.length > 1) {
       const segmentCount = path.segments.length;
-
-      // 只有在绘制新路径时才简化路径
       if (!path.fullySelected) {
         path.simplify(10);
-
-        // 设置路径为选中状态，显示控制点和手柄
         path.fullySelected = true;
-
         const newSegmentCount = path.segments.length;
-        const difference = segmentCount - newSegmentCount;
         const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
-
         segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
+        updateHighlightBackground();
       }
     }
+    updateHighlightBackground();
   };
 };
 
@@ -617,24 +650,22 @@ const submitData = async () => {
 
 // 修改清除画布函数
 const clearCanvas = () => {
-  // 设置清除状态为true
   isClearing.value = true;
   resultsDrawerVisible.value = false;
-  // 清除匹配结果
   store.dispatch('clearMatchedResults');
-
-  // 立即清除路径
   if (paperScope) {
     if (path) {
       path.remove();
       path = null;
     }
     segmentInfo.value = '';
+    // 清除高亮
+    if (highlightGroup) {
+      highlightGroup.remove();
+      highlightGroup = null;
+    }
   }
-
-  // 使用requestAnimationFrame确保UI更新完成后再允许新绘制
   requestAnimationFrame(() => {
-    // 延迟一帧后再设置为false，确保清除操作和UI更新完成
     requestAnimationFrame(() => {
       isClearing.value = false;
     });
@@ -781,6 +812,9 @@ const dialogVisible = ref(false);
 const fullscreenCanvas = ref(null);
 let fullscreenPaperScope = null;
 let fullscreenPath = null;
+let fullscreenHighlightGroup = null; // 全屏高亮区间
+let fullscreenSelectedSegment = null; // 全屏选中段点
+let fullscreenSelectedHandle = null;  // 全屏选中手柄
 
 // 打开全屏绘图弹窗
 const openFullscreenCanvas = () => {
@@ -806,54 +840,38 @@ const openFullscreenCanvas = () => {
 // 初始化全屏Paper.js
 const initFullscreenPaper = () => {
   if (!fullscreenCanvas.value) return;
-
-  // 确保Paper.js还没有初始化
   if (fullscreenPaperScope) {
     fullscreenPaperScope.remove();
   }
-
-  // 初始化Paper.js
   fullscreenPaperScope = new Paper.PaperScope();
-
   fullscreenPaperScope.setup(fullscreenCanvas.value);
-
-  // 创建网格
   createFullscreenGrid(fullscreenCanvas.value.offsetWidth, fullscreenCanvas.value.offsetHeight);
-
-  // 设置工具事件
   const tool = new fullscreenPaperScope.Tool();
-
-  // 将selectedSegment和selectedHandle提升到函数作用域顶部
-  let selectedSegment = null;
-  let selectedHandle = null;
-
-  // 鼠标按下事件
   tool.onMouseDown = (event) => {
-    selectedSegment = null;
-    selectedHandle = null;
-
+    fullscreenSelectedSegment = null;
+    fullscreenSelectedHandle = null;
     // 检查是否点击了现有路径上的段点或手柄
     if (fullscreenPath) {
       const hitResult = fullscreenPath.hitTest(event.point, hitOptions);
       if (hitResult) {
         if (hitResult.type === 'segment') {
-          selectedSegment = hitResult.segment;
+          fullscreenSelectedSegment = hitResult.segment;
           return;
         } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
-          selectedHandle = hitResult;
+          fullscreenSelectedHandle = hitResult;
           return;
         }
       }
     }
-
-    // 如果已有路径，先清除它
     if (fullscreenPath) {
       fullscreenPath.remove();
       fullscreenPath = null;
       segmentInfo.value = '';
+      if (fullscreenHighlightGroup) {
+        fullscreenHighlightGroup.remove();
+        fullscreenHighlightGroup = null;
+      }
     }
-
-    // 创建新路径
     fullscreenPath = new fullscreenPaperScope.Path({
       segments: [event.point],
       strokeColor: 'black',
@@ -861,59 +879,48 @@ const initFullscreenPaper = () => {
       strokeCap: 'round',
       strokeJoin: 'round'
     });
+    updateFullscreenHighlightBackground();
   };
-
-  // 鼠标拖动事件
   tool.onMouseDrag = (event) => {
-    // 如果正在拖动段点
-    if (selectedSegment) {
-      selectedSegment.point = selectedSegment.point.add(event.delta);
+    if (fullscreenSelectedSegment) {
+      fullscreenSelectedSegment.point = fullscreenSelectedSegment.point.add(event.delta);
+      updateFullscreenHighlightBackground();
       return;
     }
-
-    // 如果正在拖动手柄
-    if (selectedHandle) {
-      if (selectedHandle.type === 'handle-in') {
-        selectedHandle.segment.handleIn = selectedHandle.segment.handleIn.add(event.delta);
-      } else if (selectedHandle.type === 'handle-out') {
-        selectedHandle.segment.handleOut = selectedHandle.segment.handleOut.add(event.delta);
+    if (fullscreenSelectedHandle) {
+      if (fullscreenSelectedHandle.type === 'handle-in') {
+        fullscreenSelectedHandle.segment.handleIn = fullscreenSelectedHandle.segment.handleIn.add(event.delta);
+      } else if (fullscreenSelectedHandle.type === 'handle-out') {
+        fullscreenSelectedHandle.segment.handleOut = fullscreenSelectedHandle.segment.handleOut.add(event.delta);
       }
+      updateFullscreenHighlightBackground();
       return;
     }
-
-    // 否则绘制新路径
     if (fullscreenPath && (!fullscreenPath.lastSegment || event.point.x >= fullscreenPath.lastSegment.point.x)) {
       fullscreenPath.add(event.point);
       segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
+      updateFullscreenHighlightBackground();
     }
   };
-
-  // 鼠标释放事件
   tool.onMouseUp = (event) => {
-    // 如果是在拖动段点或手柄，不进行简化操作
-    if (selectedSegment || selectedHandle) {
-      selectedSegment = null;
-      selectedHandle = null;
+    if (fullscreenSelectedSegment || fullscreenSelectedHandle) {
+      fullscreenSelectedSegment = null;
+      fullscreenSelectedHandle = null;
+      updateFullscreenHighlightBackground();
       return;
     }
-
     if (fullscreenPath && fullscreenPath.segments.length > 1) {
       const segmentCount = fullscreenPath.segments.length;
-
-      // 只有在绘制新路径时才简化路径
       if (!fullscreenPath.fullySelected) {
         fullscreenPath.simplify(10);
-
-        // 设置路径为选中状态，显示控制点和手柄
         fullscreenPath.fullySelected = true;
-
         const newSegmentCount = fullscreenPath.segments.length;
-        const difference = segmentCount - newSegmentCount;
         const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
-
         segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
+        updateFullscreenHighlightBackground();
       }
     }
+    updateFullscreenHighlightBackground();
   };
 };
 
@@ -974,8 +981,7 @@ const copyPathToFullscreen = () => {
     strokeColor: 'black',
     strokeWidth: 2,
     strokeCap: 'round',
-    strokeJoin: 'round',
-    fullySelected: true
+    strokeJoin: 'round'
   });
 
   // 复制所有段点和手柄
@@ -1000,6 +1006,8 @@ const copyPathToFullscreen = () => {
 
     fullscreenPath.add(newSegment);
   });
+  // 复制完路径后，更新全屏高亮辅助
+  updateFullscreenHighlightBackground();
 };
 
 // 将全屏画布的路径应用到原始画布
@@ -1023,8 +1031,7 @@ const applyFullscreenDrawing = () => {
     strokeColor: 'black',
     strokeWidth: 2,
     strokeCap: 'round',
-    strokeJoin: 'round',
-    fullySelected: true
+    strokeJoin: 'round'
   });
 
   // 复制所有段点和手柄
@@ -1053,6 +1060,9 @@ const applyFullscreenDrawing = () => {
   // 更新段点信息
   segmentInfo.value = `点数: ${path.segments.length}`;
 
+  // 复制完路径后，更新主画板高亮辅助
+  updateHighlightBackground();
+
   // 关闭弹窗
   closeFullscreenCanvas();
 };
@@ -1065,6 +1075,13 @@ const clearFullscreenCanvas = () => {
       fullscreenPath = null;
     }
     segmentInfo.value = '';
+    if (fullscreenHighlightGroup) {
+      fullscreenHighlightGroup.remove();
+      fullscreenHighlightGroup = null;
+    }
+    // 重置全屏选中段点和手柄
+    fullscreenSelectedSegment = null;
+    fullscreenSelectedHandle = null;
   }
 };
 
@@ -1072,6 +1089,67 @@ const clearFullscreenCanvas = () => {
 const closeFullscreenCanvas = () => {
   dialogVisible.value = false;
 };
+
+// 全屏高亮区间绘制方法
+function updateFullscreenHighlightBackground() {
+  if (fullscreenHighlightGroup) {
+    fullscreenHighlightGroup.remove();
+    fullscreenHighlightGroup = null;
+  }
+  if (!fullscreenPath || !fullscreenPath.segments || fullscreenPath.segments.length < 2 || !fullscreenPaperScope) return;
+
+  fullscreenHighlightGroup = new fullscreenPaperScope.Group();
+  const colors = ['#ffcccc', '#ccffcc'];
+  const segments = fullscreenPath.segments;
+  let lastSign = null;
+  let startIdx = 0;
+  let colorIdx = 0;
+  for (let i = 1; i < segments.length; i++) {
+    const dx = segments[i].point.x - segments[i - 1].point.x;
+    const dy = segments[i].point.y - segments[i - 1].point.y;
+    if (dx === 0) continue;
+    const sign = Math.sign(dy / dx);
+    if (sign === 0) continue;
+    if (lastSign === null) lastSign = sign;
+    if (sign !== lastSign) {
+      const left = segments[startIdx].point.x;
+      const right = segments[i - 1].point.x;
+      if (right > left) {
+        const rect = new fullscreenPaperScope.Path.Rectangle({
+          from: [left, 0],
+          to: [right, fullscreenCanvas.value.offsetHeight],
+          fillColor: colors[colorIdx % 2],
+          opacity: 0.3,
+          insert: false
+        });
+        fullscreenHighlightGroup.addChild(rect);
+      }
+      startIdx = i - 1;
+      lastSign = sign;
+      colorIdx++;
+    }
+  }
+  // 补画最后一个区间
+  if (startIdx < segments.length - 1) {
+    const left = segments[startIdx].point.x;
+    const right = segments[segments.length - 1].point.x;
+    if (right > left) {
+      const rect = new fullscreenPaperScope.Path.Rectangle({
+        from: [left, 0],
+        to: [right, fullscreenCanvas.value.offsetHeight],
+        fillColor: colors[colorIdx % 2],
+        opacity: 0.3,
+        insert: false
+      });
+      fullscreenHighlightGroup.addChild(rect);
+    }
+  }
+  fullscreenHighlightGroup.sendToBack();
+  // 保证在网格下方
+  const grid = fullscreenPaperScope.project.activeLayer.children.find(child => child.name === 'grid');
+  if (grid) fullscreenHighlightGroup.insertBelow(grid);
+  else if (fullscreenPath) fullscreenHighlightGroup.insertBelow(fullscreenPath);
+}
 
 // 匹配结果抽屉相关变量
 const resultsDrawerVisible = ref(false);
