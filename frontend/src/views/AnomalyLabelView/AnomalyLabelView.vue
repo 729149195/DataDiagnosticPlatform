@@ -343,6 +343,7 @@
                       <el-radio v-model="svgExportConfig.exportMode" label="multiChannel">
                         多通道单图（所有通道合并导出）
                       </el-radio>
+                      <el-tag type="warning" size="small">原始 Y 数值，非归一化</el-tag>
                     </div>
                   </div>
                 </el-form-item>
