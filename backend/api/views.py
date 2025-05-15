@@ -2005,6 +2005,18 @@ def get_datadiagnosticplatform_dbs(request):
     # 只返回后缀部分，去掉前缀"DataDiagnosticPlatform_"
     db_suffixes = [name.replace("DataDiagnosticPlatform_", "") for name in filtered_db_names]
     
+    # 对db_suffixes按区间起始数字排序
+    # 修正排序逻辑，先去掉中括号再分割
+    def parse_range(s):
+        try:
+            s = s.strip('[]')
+            start, end = s.split('_')
+            return (int(start), int(end))
+        except Exception:
+            return (float('inf'), float('inf'))
+
+    db_suffixes.sort(key=parse_range)
+
     return JsonResponse({"db_names": filtered_db_names, "db_suffixes": db_suffixes})
 
 @require_GET
