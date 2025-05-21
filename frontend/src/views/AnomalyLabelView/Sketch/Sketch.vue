@@ -46,6 +46,9 @@
       <!-- 右侧1/3操作区 -->
       <div class="operation-panel">
         <div class="params-area">
+        
+
+          
           <el-form label-width="80px" label-position="left">
             <!-- 平滑幅度 -->
             <el-form-item label-position="top">
