@@ -1,6 +1,6 @@
 <template>
   <span style="display: flex; align-items: center; justify-content: space-between;">
-    <span class="title">自动识别和人工标注结果</span>
+    <span class="title">自动识别和人工标注结果<el-icon><InfoFilled /></el-icon></span>
     <!-- <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend"> -->
     <div>
       <el-dropdown trigger="click" @command="handleHeatmapExport">
@@ -262,7 +262,7 @@ import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
 import debounce from 'lodash/debounce';  // 添加 debounce 导入
-import { Search, Delete, Edit, ArrowDown, ArrowUp, Upload } from '@element-plus/icons-vue';
+import { Search, Delete, Edit, ArrowDown, ArrowUp, Upload, InfoFilled } from '@element-plus/icons-vue';
 
 // 添加进度相关的响应式变量
 const loading = ref(false);
@@ -3728,6 +3728,10 @@ const batchUploadAnomalies = async () => {
   font-weight: bold;
   font-size: 12pt;
   margin-left: 5px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
 }
 
 .channelName {

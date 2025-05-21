@@ -2,7 +2,7 @@
   <div class="container" :class="{ 'panel-open': resultsDrawerVisible }">
     <!-- 顶部操作栏，保留并恢复为中文 -->
     <div class="header">
-      <span class="title">手绘查询</span>
+      <span class="title">手绘查询<el-icon><InfoFilled /></el-icon></span>
       <span class="channel-and-results-select">
         <span class="operate">
           <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
@@ -1482,7 +1482,7 @@ const isGroupStart = (index) => {
   border-bottom: 1px solid #eee;
 }
 
-.custom-dialog-header .title {
+.custom-dialog-header{
   color: #333;
   font-weight: bold;
   font-size: 12pt;
@@ -1664,6 +1664,10 @@ const isGroupStart = (index) => {
   font-weight: bold;
   font-size: 12pt;
   margin-left: 5px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
 }
 
 .channel-and-results-select {

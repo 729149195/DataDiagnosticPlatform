@@ -7,13 +7,13 @@
           <div class="aside-content">
             <el-card class="filtandsearch" shadow="never">
               <span style="display: flex; margin-bottom: 5px; justify-content: space-between;">
-                <span class="title">过滤器</span>
+                <span class="title">过滤器<el-icon><InfoFilled /></el-icon></span>
               </span>
               <Filter />
             </el-card>
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
               <span style="display: flex; align-items: center; margin-bottom: 5px;">
-                <span class="title">可视化配置</span>
+                <span class="title">可视化配置<el-icon><InfoFilled /></el-icon></span>
                 <!-- <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" /> -->
               </span>
               <div class="scrollbar-container">
@@ -29,7 +29,7 @@
             </el-card>
             <el-card class="table" shadow="never" v-if="selectedButton === 'channel'">
               <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
-                <span class="title">可视化配置</span>
+                <span class="title">可视化配置<el-icon><InfoFilled /></el-icon></span>
               </span>
               <div class="scrollbar-container">
                 <el-scrollbar :always="false">
@@ -49,7 +49,7 @@
               <template v-if="selectedButton === 'anay'">
                 <el-card class="data_exploration" shadow="never">
                   <span style="display: flex; align-items: center; justify-content: space-between; ">
-                    <span class="title">实验数据探索</span>
+                    <span class="title">实验数据探索<el-icon><InfoFilled /></el-icon></span>
                     <div class="control-panel">
 
                       <!-- 是否显示异常区域的按钮 -->
@@ -146,14 +146,14 @@
               <template v-else-if="selectedButton === 'channel'">
                 <el-card class="operator">
                   <span style="display: flex;">
-                    <span class="title">运算符列表</span>
+                    <span class="title">运算符列表<el-icon><InfoFilled /></el-icon></span>
                     <ChannelOperator />
                   </span>
                 </el-card>
                 <div class="two">
                   <el-card class="two_left" shadow="never">
                     <span style="display: flex; justify-content: space-between;">
-                      <span class="title">待选择通道</span>
+                      <span class="title">待选择通道<el-icon><InfoFilled /></el-icon></span>
                       <span>统一频率 <el-input-number v-model="unit_sampling" :precision="1" :step="10" :max="200" />
                         KHz</span>
                     </span>
@@ -162,13 +162,13 @@
                     </div>
                   </el-card>
                   <el-card class="two_right" shadow="never">
-                    <span class="title">通道分析公式</span>
+                    <span class="title">通道分析公式<el-icon><InfoFilled /></el-icon></span>
                     <ChannelStr />
                   </el-card>
                 </div>
                 <el-card class="data_exploration" shadow="never">
                   <span style="display: flex; justify-content: space-between;">
-                    <span class="title">通道分析结果</span>
+                    <span class="title">通道分析结果<el-icon><InfoFilled /></el-icon></span>
                     <span>
                       <el-dropdown trigger="click" @command="handleResultExportCommand">
                         <el-button type="primary" title="导出数据">
@@ -2341,6 +2341,10 @@ const chartAreaHeight = computed(() => {
   color: #333;
   font-weight: bold;
   margin-left: 5px;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
 }
 
 .el-card {
