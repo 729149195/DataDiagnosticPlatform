@@ -46,45 +46,67 @@
       <!-- 右侧1/3操作区 -->
       <div class="operation-panel">
         <div class="params-area">
-        
-
-          
-          <el-form label-width="80px" label-position="left">
-            <!-- 平滑幅度 -->
-            <el-form-item label-position="top">
+          <el-tabs v-model="activeTab" tab-position="top">
+            <!-- 查找范围 -->
+            <el-tab-pane name="range">
               <template #label>
-                <div style="display: flex; flex-direction: column;">
-                  <span>低通滤波平滑幅度s</span>
-                  <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动(0.0001~0.1)</span>
-                </div>
+                <span style=" text-align: center;">查找<br/>范围</span>
               </template>
-              <el-input v-model="lowpassAmplitude" style="width: 100%;" />
-            </el-form-item>
-            <!-- X区间 -->
-            <el-form-item label="X区间s（默认全局）" label-position="top">
-              <div style="display: flex; align-items: center; width: 100%;">
-                <el-input v-model="xFilterStart" placeholder="起点" style="width: 48%;" />
-                <span style="margin: 0 4px;">~</span>
-                <el-input v-model="xFilterEnd" placeholder="终点" style="width: 48%;" />
-              </div>
-            </el-form-item>
-            <!-- Y区间 -->
-            <el-form-item label="Y区间（默认全局）" label-position="top">
-              <div style="display: flex; align-items: center; width: 100%;">
-                <el-input v-model="yFilterStart" placeholder="起点" style="width: 48%;" />
-                <span style="margin: 0 4px;">~</span>
-                <el-input v-model="yFilterEnd" placeholder="终点" style="width: 48%;" />
-              </div>
-            </el-form-item>
-            <!--  模式重复数 -->
-            <el-form-item label="模式重复">
-              <el-input v-model="patternRepeatCount" style="width: 100%;" />
-            </el-form-item>
-            <!-- 匹配上限 -->
-            <el-form-item label="匹配上限">
-              <el-input v-model="maxMatchPerChannel" style="width: 100%;" />
-            </el-form-item>
-          </el-form>
+              <el-form label-width="80px" label-position="left">
+                <el-form-item label="时间区间（单位s）" label-position="top">
+                  <div style="display: flex; align-items: center; width: 100%;">
+                    <el-input v-model="xFilterStart" placeholder="起点" style="width: 48%;" />
+                    <span style="margin: 0 4px;">~</span>
+                    <el-input v-model="xFilterEnd" placeholder="终点" style="width: 48%;" />
+                  </div>
+                </el-form-item>
+                <el-form-item label="数值区间" label-position="top">
+                  <div style="display: flex; align-items: center; width: 100%;">
+                    <el-input v-model="yFilterStart" placeholder="起点" style="width: 48%;" />
+                    <span style="margin: 0 4px;">~</span>
+                    <el-input v-model="yFilterEnd" placeholder="终点" style="width: 48%;" />
+                  </div>
+                </el-form-item>
+              </el-form>
+            </el-tab-pane>
+            <!-- 匹配方法 -->
+            <el-tab-pane name="method">
+              <template #label>
+                <span style=" text-align: center;">匹配<br/>方法</span>
+              </template>
+              <el-form label-width="80px" label-position="left">
+                <el-form-item label-position="top">
+                  <template #label>
+                    <div style="display: flex; flex-direction: column;">
+                      <span>低通滤波平滑幅度s</span>
+                      <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动(0.0001~0.1)</span>
+                    </div>
+                  </template>
+                  <el-input v-model="lowpassAmplitude" style="width: 100%;" />
+                </el-form-item>
+                <el-form-item label="匹配上限">
+                  <el-input v-model="maxMatchPerChannel" style="width: 100%;" />
+                </el-form-item>
+              </el-form>
+            </el-tab-pane>
+            <!-- 目标模式 -->
+            <el-tab-pane name="target">
+              <template #label>
+                <span style=" text-align: center;">目标<br/>模式</span>
+              </template>
+              <el-form label-width="80px" label-position="left">
+                <el-form-item label="模式重复数">
+                  <el-input v-model="patternRepeatCount" style="width: 100%;" />
+                </el-form-item>
+                <el-form-item label="指标幅度">
+                  <el-input v-model="amplitudeLimit" placeholder="留空为不限制" style="width: 100%;" />
+                </el-form-item>
+                <el-form-item label="时间跨度">
+                  <el-input v-model="timeSpanLimit" placeholder="留空为不限制" style="width: 100%;" />
+                </el-form-item>
+              </el-form>
+            </el-tab-pane>
+          </el-tabs>
         </div>
       </div>
     </div>
@@ -544,6 +566,9 @@ const yFilterStart = ref('');
 const yFilterEnd = ref('');
 const patternRepeatCount = ref(0); // 模式重复数量，默认0
 const maxMatchPerChannel = ref(100); // 单通道获取匹配最大数量，默认100
+const activeTab = ref('range');
+const amplitudeLimit = ref(''); // 新增：指标幅度限制
+const timeSpanLimit = ref(''); // 新增：时间跨度限制
 
 // 提交数据函数
 const submitData = async () => {
@@ -620,7 +645,9 @@ const submitData = async () => {
             yFilterEnd.value === '' ? null : Number(yFilterEnd.value)
           ],
           patternRepeatCount: Number(patternRepeatCount.value),
-          maxMatchPerChannel: Number(maxMatchPerChannel.value)
+          maxMatchPerChannel: Number(maxMatchPerChannel.value),
+          amplitudeLimit: amplitudeLimit.value === '' ? null : Number(amplitudeLimit.value),
+          timeSpanLimit: timeSpanLimit.value === '' ? null : Number(timeSpanLimit.value)
         })
       });
 
@@ -1789,5 +1816,17 @@ const isGroupStart = (index) => {
 :deep(.el-input-number .el-input__inner) {
   padding: 2px 4px;
   font-size: 13px;
+}
+
+:deep(.el-tabs__item) {
+  min-width: 56px;
+  width: 64px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 18px;
+  padding: 8px 0 !important;
+  height: auto !important;
+  word-break: keep-all;
+  letter-spacing: 2px;
 }
 </style>

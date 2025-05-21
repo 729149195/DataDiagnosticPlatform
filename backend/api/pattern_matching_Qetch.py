@@ -4,7 +4,9 @@ def match_pattern(
     x_filter_range=None,
     y_filter_range=None,
     pattern_repeat_count=None,
-    max_match_per_channel=None
+    max_match_per_channel=None,
+    amplitude_limit=None,  # 新增：指标幅度限制
+    time_span_limit=None   # 新增：时间跨度限制
 ):
     """
     在多个通道数据channel_data_list中查找与查询模式normalized_query_pattern匹配的部分
@@ -16,6 +18,8 @@ def match_pattern(
         y_filter_range: Y过滤区间（默认"ALL"）
         pattern_repeat_count: 模式重复数量（默认0），所需要匹配的手绘模式的连续重复数量
         max_match_per_channel: 单通道获取匹配最大数量（默认100）
+        amplitude_limit: 匹配区间Y值幅度限制（新增）
+        time_span_limit: 匹配区间X值跨度限制（新增）
         
     Returns:
         匹配结果列表，每个元素包含通道信息、匹配范围和相似度
@@ -808,6 +812,11 @@ def match_pattern(
             orig_min_pos = match['points'][0].origX
             orig_max_pos = match['points'][-1].origX
             match_range = [[orig_min_pos, orig_max_pos]]
+            # 计算指标幅度和时间跨度
+            y_vals = [pt.origY if hasattr(pt, 'origY') else pt.get('origY', None) for pt in match['points']]
+            y_vals = [y for y in y_vals if y is not None]
+            amplitude = max(y_vals) - min(y_vals) if y_vals else None
+            time_span = orig_max_pos - orig_min_pos
             results.append({
                 'range': match_range,
                 'channelName': channel_name,
@@ -815,6 +824,8 @@ def match_pattern(
                 'confidence': confidence,
                 'smoothLevel': match['smoothIteration'],
                 'points': match['points'],  # 保留points用于y过滤
+                'amplitude': amplitude,     # 新增：指标幅度
+                'timeSpan': time_span       # 新增：时间跨度
             })
 
         # ========== 新增：X/Y过滤 ==========
@@ -840,6 +851,12 @@ def match_pattern(
             return False
 
         results = [r for r in results if in_x_range(r) and in_y_range(r)]
+
+        # ========== 新增：指标幅度和时间跨度过滤 ==========
+        if amplitude_limit is not None:
+            results = [r for r in results if r['amplitude'] is not None and r['amplitude'] <= amplitude_limit]
+        if time_span_limit is not None:
+            results = [r for r in results if r['timeSpan'] is not None and r['timeSpan'] <= time_span_limit]
 
         # ========== 数量过滤 ==========
         if max_match_per_channel is not None:

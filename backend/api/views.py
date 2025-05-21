@@ -1837,7 +1837,9 @@ def sketch_query(request):
     y_filter_range = data.get('yFilterRange')
     pattern_repeat_count = data.get('patternRepeatCount')
     max_match_per_channel = data.get('maxMatchPerChannel')
-        
+    amplitude_limit = data.get('amplitudeLimit')
+    time_span_limit = data.get('timeSpanLimit')
+    
     # selected_channels 格式为 [{'channel_name': 'B07_H', 'shot_number': '4470', 'channel_type': 'B'},...]
     # raw_query_pattern 格式为 [{'x': 0.1, 'y': 0.1, 'handleOut': {'x': 0.1, 'y': 0.1}, 'handleIn': {'x': 0.1, 'y': 0.1}},...] 为贝塞尔曲线
     print(f"接收到手绘查询请求: 采样率={sampling}KHz, 选择通道数={len(selected_channels)}, 路径点数={len(raw_query_pattern)}")
@@ -1896,7 +1898,9 @@ def sketch_query(request):
             x_filter_range=x_filter_range,
             y_filter_range=y_filter_range,
             pattern_repeat_count=pattern_repeat_count,
-            max_match_per_channel=max_match_per_channel
+            max_match_per_channel=max_match_per_channel,
+            amplitude_limit=amplitude_limit,
+            time_span_limit=time_span_limit
         )
         
         print(f"模式匹配完成, 耗时: {time.time() - start_time:.2f}秒, 找到匹配结果: {len(results)}个")
