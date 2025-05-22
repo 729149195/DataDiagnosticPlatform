@@ -19,7 +19,7 @@
               </ul>
             </div>
           </template>
-          <el-icon>
+          <el-icon style="color: #409EFF">
             <InfoFilled />
           </el-icon>
         </el-tooltip>

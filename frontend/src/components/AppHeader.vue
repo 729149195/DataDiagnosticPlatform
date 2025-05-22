@@ -34,7 +34,7 @@
             </div>
           </div>
           <el-dropdown-item divided class="info" @click="viewCacheInfo">
-            <el-icon>
+            <el-icon style="color: #409EFF">
               <InfoFilled />
             </el-icon>
             <span>查看缓存信息</span>

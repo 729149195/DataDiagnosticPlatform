@@ -25,7 +25,7 @@
                         </ul>
                       </div>
                     </template>
-                    <el-icon>
+                    <el-icon style="color: #409EFF">
                       <InfoFilled />
                     </el-icon>
                   </el-tooltip></span>
@@ -48,7 +48,7 @@
                         </ul>
                       </div>
                     </template>
-                    <el-icon>
+                    <el-icon style="color: #409EFF">
                       <InfoFilled />
                     </el-icon>
                   </el-tooltip></span>
@@ -81,7 +81,7 @@
                         </ul>
                       </div>
                     </template>
-                    <el-icon>
+                    <el-icon style="color: #409EFF">
                       <InfoFilled />
                     </el-icon>
                   </el-tooltip></span>
@@ -122,7 +122,7 @@
                             </ul>
                           </div>
                         </template>
-                        <el-icon>
+                        <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>
                       </el-tooltip></span>
@@ -224,7 +224,7 @@
                   <span style="display: flex;">
                     <span class="title">运算符列表<el-tooltip placement="top" effect="light">
                         <template #content> 这里是可用的运算符列表，包含算法、逻辑运算符，以及导入的运算和诊断函数运算符。点击运算符到公式区域来构建分析表达式。<br />通过算法导入按钮可以导入运算函数和诊断函数</template>
-                        <el-icon>
+                        <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>
                       </el-tooltip></span>
@@ -236,7 +236,7 @@
                     <span style="display: flex; justify-content: space-between;">
                       <span class="title">待选择通道<el-tooltip placement="right" effect="light">
                           <template #content>列出所有可用的数据通道。选择您需要分析的通道，可以单击添加到当前公式</template>
-                          <el-icon>
+                          <el-icon style="color: #409EFF">
                             <InfoFilled />
                           </el-icon>
                         </el-tooltip></span>
@@ -250,7 +250,7 @@
                   <el-card class="two_right" shadow="never">
                     <span class="title">通道分析公式<el-tooltip placement="right" effect="light">
                         <template #content>在此构建您的分析公式。可以通过点击运算符和通道，或直接输入来创建表达式</template>
-                        <el-icon>
+                        <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>
                       </el-tooltip></span>
@@ -261,7 +261,7 @@
                   <span style="display: flex; justify-content: space-between;">
                     <span class="title">通道分析结果<el-tooltip placement="right" effect="light">
                         <template #content> 显示公式分析的结果<br />结果以图表展示。可以通过导出按钮导出数据或者png格式的图表</template>
-                        <el-icon>
+                        <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>
                       </el-tooltip></span>
