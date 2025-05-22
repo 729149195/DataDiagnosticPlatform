@@ -2,7 +2,14 @@
   <div class="container" :class="{ 'panel-open': resultsDrawerVisible }">
     <!-- 顶部操作栏，保留并恢复为中文 -->
     <div class="header">
-      <span class="title">手绘查询<el-icon><InfoFilled /></el-icon></span>
+      <span class="title">手绘查询
+        <el-tooltip placement="right" effect="light">
+          <template #content> 手绘查询<br />支持在画布上手绘查询范围，并根据查询范围进行匹配。</template>
+          <el-icon>
+            <InfoFilled />
+          </el-icon>
+        </el-tooltip>
+      </span>
       <span class="channel-and-results-select">
         <span class="operate">
           <el-select v-model="selectedGunNumbers" placeholder="请选择需要匹配的通道" multiple collapse-tags clearable collapse-tags-tooltip class="select-gun-numbers">
@@ -50,7 +57,7 @@
             <!-- 查找范围 -->
             <el-tab-pane name="range">
               <template #label>
-                <span style=" text-align: center;">查找<br/>范围</span>
+                <span style=" text-align: center;">查找<br />范围</span>
               </template>
               <el-form label-width="80px" label-position="left">
                 <el-form-item label="时间区间（单位s）" label-position="top">
@@ -72,7 +79,7 @@
             <!-- 匹配方法 -->
             <el-tab-pane name="method">
               <template #label>
-                <span style=" text-align: center;">匹配<br/>方法</span>
+                <span style=" text-align: center;">匹配<br />方法</span>
               </template>
               <el-form label-width="80px" label-position="left">
                 <el-form-item label-position="top">
@@ -92,7 +99,7 @@
             <!-- 目标模式 -->
             <el-tab-pane name="target">
               <template #label>
-                <span style=" text-align: center;">目标<br/>模式</span>
+                <span style=" text-align: center;">目标<br />模式</span>
               </template>
               <el-form label-width="80px" label-position="left">
                 <el-form-item label="模式重复数">
@@ -1512,7 +1519,7 @@ const isGroupStart = (index) => {
   border-bottom: 1px solid #eee;
 }
 
-.custom-dialog-header{
+.custom-dialog-header {
   color: #333;
   font-weight: bold;
   font-size: 12pt;

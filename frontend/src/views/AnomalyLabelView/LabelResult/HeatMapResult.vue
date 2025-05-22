@@ -1,6 +1,11 @@
 <template>
   <span style="display: flex; align-items: center; justify-content: space-between;">
-    <span class="title">自动识别和人工标注结果<el-icon><InfoFilled /></el-icon></span>
+    <span class="title">自动识别和人工标注结果<el-tooltip placement="right" effect="light">
+        <template #content> 自动识别和人工标注结果<br /></template>
+        <el-icon>
+          <InfoFilled />
+        </el-icon>
+      </el-tooltip></span>
     <!-- <img src="/image2.png" style="height: 20px;" alt="图例" id="heatmapLegend"> -->
     <div>
       <el-dropdown trigger="click" @command="handleHeatmapExport">
@@ -257,7 +262,7 @@
 
 <script setup>
 import * as d3 from 'd3';
-import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive} from 'vue';
+import { onMounted, watch, computed, ref, nextTick, onUnmounted, reactive } from 'vue';
 import { useStore } from 'vuex';
 import { ElDialog, ElMessage, ElMessageBox, ElLoading } from 'element-plus';
 import pLimit from 'p-limit';
@@ -501,7 +506,7 @@ const exportHeatMapSvg = async () => {
   try {
     // 获取热力图容器和实际内容尺寸
     const heatmapContainer = document.querySelector('.heatmap-container');
-    
+
     // 获取完整热力图的尺寸，包括可能被滚动隐藏的部分
     // SVG的宽度可能小于实际需要显示的内容宽度
     const cells = HeatMap.querySelectorAll('rect.heatmap-cell');
@@ -528,20 +533,20 @@ const exportHeatMapSvg = async () => {
 
     // 使用getBoundingClientRect获取基础尺寸
     const bbox = HeatMap.getBoundingClientRect();
-    
+
     // 确保我们使用最大的尺寸
     const svgWidth = Math.max(Math.ceil(bbox.width), maxX + 50); // 添加一些边距
     const svgHeight = Math.max(Math.ceil(bbox.height), maxY + 50);
 
     // 克隆 SVG 元素
     const clonedSvgElement = HeatMap.cloneNode(true);
-    
+
     // 设置明确的宽高和viewBox，确保包含所有内容
     clonedSvgElement.setAttribute('width', svgWidth);
     clonedSvgElement.setAttribute('height', svgHeight);
     clonedSvgElement.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
     clonedSvgElement.style.overflow = 'visible'; // 确保所有内容可见
-    
+
     // 修复SVG中的字体样式，确保文本不变形
     const clonedTextElements = clonedSvgElement.querySelectorAll('text');
     clonedTextElements.forEach(text => {
@@ -557,7 +562,7 @@ const exportHeatMapSvg = async () => {
         }
       }
     });
-    
+
     // 确保所有热力图单元格都可见
     const clonedCells = clonedSvgElement.querySelectorAll('rect.heatmap-cell');
     clonedCells.forEach(cell => {
@@ -566,7 +571,7 @@ const exportHeatMapSvg = async () => {
       cell.setAttribute('stroke', '#ddd');
       cell.setAttribute('stroke-width', '1');
     });
-    
+
     const svgData = new XMLSerializer().serializeToString(clonedSvgElement);
 
     // 创建完整的SVG文档，包含所需的命名空间
@@ -577,7 +582,7 @@ const exportHeatMapSvg = async () => {
            style="overflow:visible">
         ${svgData.replace(/<svg[^>]*>|<\/svg>/g, '')}
       </svg>`;
-    
+
     // 创建一个新的 Image 对象用于 SVG
     const svgImg = new Image();
     const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
@@ -585,32 +590,32 @@ const exportHeatMapSvg = async () => {
 
     // 获取图例图片 - 检查是否存在
     const legendImg = document.getElementById('heatmapLegend');
-    
+
     // 创建一个 canvas 元素 - 根据SVG的尺寸
     const canvas = document.createElement('canvas');
-    
+
     // 设置画布尺寸，添加额外空间以确保完整捕获
     const canvasWidth = svgWidth + 100; // 添加额外的边距
     let canvasHeight = svgHeight + 100;
     let legendHeight = 0;
     let padding = 30;
-    
+
     // 如果有图例，计算额外需要的空间
     if (legendImg && legendImg.complete && legendImg.width > 0) {
       legendHeight = legendImg.height || 50;
       canvasHeight += (legendHeight + padding);
     }
-    
+
     // 设置画布大小
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
-    
+
     const ctx = canvas.getContext('2d');
 
     // 设置背景色为白色
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    
+
     // 画布上下文设置，改善文本渲染
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
@@ -634,7 +639,7 @@ const exportHeatMapSvg = async () => {
 
     // 绘制SVG到canvas上 - 保持原始比例
     ctx.drawImage(svgImg, svgDrawX, svgDrawY, svgDrawWidth, svgDrawHeight);
-    
+
     // 如果有图例，在底部绘制图例
     if (legendImg && legendImg.complete && legendImg.width > 0) {
       const legendX = (canvasWidth - legendImg.width) / 2; // 水平居中
@@ -644,20 +649,20 @@ const exportHeatMapSvg = async () => {
 
     // 转换为blob并保存
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png', 1.0)); // 1.0表示最高质量
-    
+
     if (!blob) {
       throw new Error('转换为PNG失败');
     }
-    
+
     // 生成当前时间戳
     const now = new Date();
     const timestamp = `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
-    
+
     await downloadFile(blob, `heatmap_${timestamp}.png`, 'png');
 
     // 释放 URL 对象
     URL.revokeObjectURL(svgUrl);
-    
+
     ElMessage.success('热力图导出成功');
   } catch (error) {
     console.error('导出热力图时出错:', error);
@@ -942,7 +947,7 @@ const debouncedRenderHeatmap = debounce(async (channels) => {
     const heatmap = d3.select('#heatmap');
     heatmap.style('opacity', 0.3)
       .style('transition', 'opacity 0.2s ease-out');
-    
+
     // 使用requestAnimationFrame代替setTimeout处理渲染
     setTimeout(async () => {
       try {
@@ -2989,7 +2994,7 @@ const batchDeleteUploaded = async () => {
         if (row.uploadedCount > 0) {
           const channelKey = row.channelKey;
           const errorCachePrefix = `error-${channelKey}`;
-          
+
           // 清除内存缓存中的错误数据
           store.state.channelDataCache.getCacheInfo().keys.forEach(key => {
             if (key.startsWith(errorCachePrefix)) {
@@ -3349,7 +3354,7 @@ const deleteBatchUploaded = async (channelKey) => {
       errorResults = errorResults.filter(
         result => !(result.channelKey === channelKey && !result.isAnomaly)
       );
-      
+
       // 清除掉相关的错误数据缓存
       const errorCachePrefix = `error-${channelKey}`;
       store.state.channelDataCache.getCacheInfo().keys.forEach(key => {
