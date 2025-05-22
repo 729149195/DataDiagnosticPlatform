@@ -3,8 +3,22 @@
     <!-- 顶部操作栏，保留并恢复为中文 -->
     <div class="header">
       <span class="title">手绘查询
-        <el-tooltip placement="right" effect="light">
-          <template #content> 手绘查询<br />支持在画布上手绘查询范围，并根据查询范围进行匹配。</template>
+        <el-tooltip placement="top" effect="light">
+          <template #content> 
+            <div style="max-width: 300px">
+              <h4 style="margin: 0 0 8px 0">手绘查询功能说明</h4>
+              <p style="margin: 0 0 8px 0">在画布上手绘一个模式，系统会在选中的通道数据中查找匹配的模式。</p>
+              <ul style="margin: 0; padding-left: 16px">
+                <li><b>绘制操作</b>：直接在画布上拖动鼠标绘制曲线，点击空白即可清除</li>
+                <li><b>通道选择</b>：在顶部下拉框选择需要匹配的通道</li>
+                <li><b>查找范围</b>：可设置整体查询的时间区间和数值区间</li>
+                <li><b>匹配方法</b>：调整低通滤波幅度和最后获得的匹配数量上限</li>
+                <li><b>目标模式</b>：设置手绘模式重复数、单个匹配结果的指标幅度和时间跨度</li>
+                <li><b>全屏绘图</b>：点击右上角全屏按钮可放大绘图区域</li>
+                <li><b>匹配结果</b>：右侧按钮可展开/收起匹配结果列表</li>
+              </ul>
+            </div>
+          </template>
           <el-icon>
             <InfoFilled />
           </el-icon>
