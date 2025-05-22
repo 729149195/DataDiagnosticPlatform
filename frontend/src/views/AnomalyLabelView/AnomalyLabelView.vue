@@ -10,7 +10,7 @@
                 <span class="title">过滤器<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                         <div style="margin-bottom:8px;">用于筛选和加载实验数据，支持多条件组合查询。</div>
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
@@ -40,20 +40,17 @@
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                         <div style="margin-bottom:8px;">管理和配置通道数据的显示。</div>
                         <hr style="margin:8px 0;">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                         <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                          <li>通道类别：按类别组织通道，可全选/单选/取消选中，选中的通道会被渲染</li>
-                          <li>通道名&炮号：多选显示通道和对应的炮号</li>
-                          <li>异常类别：展示异常标记</li>
-                          <li>颜色配置：点击色块自定义颜色</li>
-                        </ul>
-                        <hr style="margin:8px 0;">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
-                        <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                          <li>配置仅影响当前可视化</li>
+                          <li>通道类别：按类别组织通道，可一键全选/取消选择</li>
+                          <li>通道名：选择要显示的具体通道</li>
+                          <li>炮号：在矩形框中显示的数值为各个通道的炮号信息</li>
+                          <li>异常类别：展示通道中的异常标记</li>
+                          <li>颜色配置：点击圆形色块可自定义通道颜色</li>
+                          <li>展开全部异常类别：默认只显示第一个异常类别，点击后可以展开全部异常类别</li>
                         </ul>
                       </div>
                     </template>
@@ -80,18 +77,19 @@
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
                         <div style="margin-bottom:8px;">管理和配置通道数据的显示。</div>
                         <hr style="margin:8px 0;">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                         <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                          <li>通道类别：按类别组织通道，可全选/取消</li>
-                          <li>通道名：多选显示通道</li>
-                          <li>炮号：显示通道对应炮号</li>
-                          <li>异常类别：展示异常标记</li>
-                          <li>颜色配置：本模块不支持修改颜色</li>
+                          <li>通道类别：按类别组织通道，可一键全选/取消选择</li>
+                          <li>通道名：选择要显示的具体通道</li>
+                          <li>炮号：在矩形框中显示的数值为各个通道的炮号信息</li>
+                          <li>异常类别：展示通道中的异常标记</li>
+                          <li>颜色配置：点击圆形色块可自定义通道颜色</li>
+                          <li>展开全部异常类别：默认只显示第一个异常类别，点击后可以展开全部异常类别</li>
                         </ul>
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
                         <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                          <li>配置仅影响当前可视化</li>
+                          <li>该模块下不支持改变通道颜色</li>
                         </ul>
                       </div>
                     </template>
@@ -122,7 +120,7 @@
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
                             <div style="margin-bottom:8px;">用于交互式查看、分析、标注以及导出实验数据曲线图。</div>
                             <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>显示/隐藏异常：控制异常区域的可见性</li>
                               <li>采样频率：调整数据采样频率，影响显示精度</li>
@@ -245,7 +243,7 @@
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
                             <div style="margin-bottom:8px;">可用的运算符列表，包括算法、逻辑运算符、导入函数等。</div>
                             <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>点击运算符添加到公式区域</li>
                               <li>通过算法导入按钮导入运算/诊断函数</li>
@@ -271,7 +269,7 @@
                               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
                               <div style="margin-bottom:8px;">列出所有可用的数据通道。</div>
                               <hr style="margin:8px 0;">
-                              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                               <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                                 <li>选择通道，单击添加到公式</li>
                                 <li>可统一设置采样频率</li>
@@ -299,7 +297,7 @@
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
                             <div style="margin-bottom:8px;">在此构建分析公式。</div>
                             <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>点击运算符和通道，或直接输入表达式</li>
                             </ul>
@@ -323,7 +321,7 @@
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
                             <div style="margin-bottom:8px;">显示公式分析的结果。</div>
                             <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>结果以图表展示</li>
                               <li>可通过导出按钮导出数据或图片</li>
