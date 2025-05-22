@@ -10,18 +10,21 @@
                 <span class="title">过滤器<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 300px">
-                        <h4 style="margin: 0 0 8px 0">过滤器功能说明</h4>
-                        <p style="margin: 0 0 8px 0">用于筛选和加载实验数据，支持多条件组合查询。</p>
-                        <ul style="margin: 0; padding-left: 16px">
-                          <li><b>数据库</b>：先选择要查询的数据库，确定查询炮号的范围</li>
-                          <li><b>炮号</b>：输入要查询的具体炮号，支持打印机输入格式如1-5,7,9-12，输入完成后直接回车或点击确认炮号按钮即可自动返回通道名和异常名</li>
-                          <li><b>通道名</b>：选择要显示的通道，可多选</li>
-                          <li><b>异常名</b>：根据异常类型筛选数据，可多选</li>
-                          <el-divider />
-                          <li>各个条件之间也会互相影响，比如选择了通道名，异常名会根据通道名进行自动筛选</li>
-                          <li>如果想要取消选择，可以点击条件旁边的叉号</li>
-                          <li>通道名和异常名选项可以为空</li>
-                          <li>最后点击过滤，可以在下方的可视化配置中显示过滤结果</li>
+                        <h4>控件说明</h4>
+                        <ul><li>用于筛选和加载实验数据，支持多条件组合查询。</li></ul>
+                        <h4>视图交互</h4>
+                        <ul>
+                          <li><b>数据库</b>：选择数据库，确定查询范围</li>
+                          <li><b>炮号</b>：输入炮号，支持区间与逗号分隔</li>
+                          <li><b>通道名</b>：多选显示通道</li>
+                          <li><b>异常名</b>：多选异常类型</li>
+                          <li>条件联动，点击叉号可取消选择</li>
+                          <li>点击过滤按钮显示结果</li>
+                        </ul>
+                        <h4>注意事项</h4>
+                        <ul>
+                          <li>通道名和异常名可为空</li>
+                          <li>条件间会互相影响</li>
                         </ul>
                       </div>
                     </template>
@@ -37,14 +40,19 @@
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 300px">
-                        <h4 style="margin: 0 0 8px 0">可视化配置功能说明</h4>
-                        <p style="margin: 0 0 8px 0">管理和配置通道数据的显示。</p>
-                        <ul style="margin: 0; padding-left: 16px">
-                          <li><b>通道类别</b>：按类别组织通道，可一键全选/取消选择</li>
-                          <li><b>通道名</b>：选择要显示的具体通道</li>
-                          <li><b>炮号</b>：在矩形框中显示的数值为各个通道的炮号信息</li>
-                          <li><b>异常类别</b>：展示通道中的异常标记</li>
-                          <li><b>颜色配置</b>：点击圆形色块可自定义通道颜色</li>
+                        <h4>控件说明</h4>
+                        <ul><li>管理和配置通道数据的显示。</li></ul>
+                        <h4>视图交互</h4>
+                        <ul>
+                          <li><b>通道类别</b>：按类别组织通道，可全选/取消</li>
+                          <li><b>通道名</b>：多选显示通道</li>
+                          <li><b>炮号</b>：显示通道对应炮号</li>
+                          <li><b>异常类别</b>：展示异常标记</li>
+                          <li><b>颜色配置</b>：点击色块自定义颜色</li>
+                        </ul>
+                        <h4>注意事项</h4>
+                        <ul>
+                          <li>配置仅影响当前可视化</li>
                         </ul>
                       </div>
                     </template>
@@ -70,14 +78,19 @@
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 300px">
-                        <h4 style="margin: 0 0 8px 0">可视化配置功能说明</h4>
-                        <p style="margin: 0 0 8px 0">管理和配置通道数据的显示。</p>
-                        <ul style="margin: 0; padding-left: 16px">
-                          <li><b>通道类别</b>：按类别组织通道，可一键全选/取消选择</li>
-                          <li><b>通道名</b>：选择要显示的具体通道</li>
-                          <li><b>炮号</b>：在矩形框中显示的数值为各个通道的炮号信息</li>
-                          <li><b>异常类别</b>：展示通道中的异常标记</li>
-                          <li><b>颜色配置</b>：通道分析模块下不支持修改通道颜色</li>
+                        <h4>控件说明</h4>
+                        <ul><li>管理和配置通道数据的显示。</li></ul>
+                        <h4>视图交互</h4>
+                        <ul>
+                          <li><b>通道类别</b>：按类别组织通道，可全选/取消</li>
+                          <li><b>通道名</b>：多选显示通道</li>
+                          <li><b>炮号</b>：显示通道对应炮号</li>
+                          <li><b>异常类别</b>：展示异常标记</li>
+                          <li><b>颜色配置</b>：本模块不支持修改颜色</li>
+                        </ul>
+                        <h4>注意事项</h4>
+                        <ul>
+                          <li>配置仅影响当前可视化</li>
                         </ul>
                       </div>
                     </template>
@@ -107,18 +120,23 @@
                     <span class="title">实验数据探索<el-tooltip placement="right" effect="light">
                         <template #content>
                           <div style="max-width: 300px">
-                            <h4 style="margin: 0 0 8px 0">实验数据探索功能说明</h4>
-                            <p style="margin: 0 0 8px 0">交互式查看、分析、标注以及导出实验数据曲线图。</p>
-                            <ul style="margin: 0; padding-left: 16px">
+                            <h4>控件说明</h4>
+                            <ul><li>用于交互式查看、分析、标注以及导出实验数据曲线图。</li></ul>
+                            <h4>视图交互</h4>
+                            <ul>
                               <li><b>显示/隐藏异常</b>：控制异常区域的可见性</li>
-                              <li><b>采样频率</b>：调整数据采样频率，影响显示精度，建议同时显示多条通道时不要调得太高，影响性能</li>
+                              <li><b>采样频率</b>：调整数据采样频率，影响显示精度</li>
                               <li><b>框选标注/编辑</b>：在图表上框选区域进行标注异常</li>
-                              <li><b>局部缩放</b>：对单个通道可以框选区域进行矩形区域放大查看，双击空白处复原</li>
+                              <li><b>局部缩放</b>：对单个通道可以框选区域放大查看，双击空白处复原</li>
                               <li><b>单通道多行/多通道单行</b>：切换数据显示模式</li>
                               <li><b>总览条</b>：选框所有曲线显示的时间范围，双击复原</li>
                               <li><b>修改颜色</b>：点击圆形色块可自定义通道颜色</li>
-                              <li><b>导出</b>：支持通过自定义选项灵活导出数据为图片或原始数据文件</li>
-                              <li><b>报错提示</b>：加载通道 XXXX 数据失败，一般是数据库中没有该通道数据</li>
+                              <li><b>导出</b>：支持通过自定义选项导出数据为图片或原始数据文件</li>
+                            </ul>
+                            <h4>注意事项</h4>
+                            <ul>
+                              <li>建议多通道时采样频率不要过高，避免性能问题</li>
+                              <li>加载通道数据失败时，通常为数据库无该通道数据</li>
                             </ul>
                           </div>
                         </template>
@@ -223,7 +241,21 @@
                 <el-card class="operator">
                   <span style="display: flex;">
                     <span class="title">运算符列表<el-tooltip placement="top" effect="light">
-                        <template #content> 这里是可用的运算符列表，包含算法、逻辑运算符，以及导入的运算和诊断函数运算符。点击运算符到公式区域来构建分析表达式。<br />通过算法导入按钮可以导入运算函数和诊断函数</template>
+                        <template #content>
+                          <div style="max-width: 300px">
+                            <h4>控件说明</h4>
+                            <ul><li>可用的运算符列表，包括算法、逻辑运算符、导入函数等。</li></ul>
+                            <h4>视图交互</h4>
+                            <ul>
+                              <li>点击运算符添加到公式区域</li>
+                              <li>通过算法导入按钮导入运算/诊断函数</li>
+                            </ul>
+                            <h4>注意事项</h4>
+                            <ul>
+                              <li>部分运算符仅适用于特定数据类型</li>
+                            </ul>
+                          </div>
+                        </template>
                         <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>
@@ -235,7 +267,21 @@
                   <el-card class="two_left" shadow="never">
                     <span style="display: flex; justify-content: space-between;">
                       <span class="title">待选择通道<el-tooltip placement="right" effect="light">
-                          <template #content>列出所有可用的数据通道。选择您需要分析的通道，可以单击添加到当前公式</template>
+                          <template #content>
+                            <div style="max-width: 300px">
+                              <h4>控件说明</h4>
+                              <ul><li>列出所有可用的数据通道。</li></ul>
+                              <h4>视图交互</h4>
+                              <ul>
+                                <li>选择通道，单击添加到公式</li>
+                                <li>可统一设置采样频率</li>
+                              </ul>
+                              <h4>注意事项</h4>
+                              <ul>
+                                <li>通道数量较多时可搜索筛选</li>
+                              </ul>
+                            </div>
+                          </template>
                           <el-icon style="color: #409EFF">
                             <InfoFilled />
                           </el-icon>
@@ -249,7 +295,20 @@
                   </el-card>
                   <el-card class="two_right" shadow="never">
                     <span class="title">通道分析公式<el-tooltip placement="right" effect="light">
-                        <template #content>在此构建您的分析公式。可以通过点击运算符和通道，或直接输入来创建表达式</template>
+                        <template #content>
+                          <div style="max-width: 300px">
+                            <h4>控件说明</h4>
+                            <ul><li>在此构建分析公式。</li></ul>
+                            <h4>视图交互</h4>
+                            <ul>
+                              <li>点击运算符和通道，或直接输入表达式</li>
+                            </ul>
+                            <h4>注意事项</h4>
+                            <ul>
+                              <li>表达式需符合语法规则</li>
+                            </ul>
+                          </div>
+                        </template>
                         <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>
@@ -260,7 +319,21 @@
                 <el-card class="data_exploration" shadow="never">
                   <span style="display: flex; justify-content: space-between;">
                     <span class="title">通道分析结果<el-tooltip placement="right" effect="light">
-                        <template #content> 显示公式分析的结果<br />结果以图表展示。可以通过导出按钮导出数据或者png格式的图表</template>
+                        <template #content>
+                          <div style="max-width: 300px">
+                            <h4>控件说明</h4>
+                            <ul><li>显示公式分析的结果。</li></ul>
+                            <h4>视图交互</h4>
+                            <ul>
+                              <li>结果以图表展示</li>
+                              <li>可通过导出按钮导出数据或图片</li>
+                            </ul>
+                            <h4>注意事项</h4>
+                            <ul>
+                              <li>结果仅供参考，需结合实际分析</li>
+                            </ul>
+                          </div>
+                        </template>
                         <el-icon style="color: #409EFF">
                           <InfoFilled />
                         </el-icon>

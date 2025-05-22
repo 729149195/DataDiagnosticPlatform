@@ -4,24 +4,23 @@
     <div class="header">
       <span class="title">手绘查询
         <el-tooltip placement="top" effect="light">
-          <template #content> 
+          <template #content>
             <div style="max-width: 300px">
-              <h4 style="margin: 0 0 8px 0">手绘查询功能说明</h4>
-              <p style="margin: 0 0 8px 0">在画布上手绘一个模式，系统会在选中的通道数据中查找匹配的模式。</p>
-              <ul style="margin: 0; padding-left: 16px">
-                <li><b>绘制操作</b>：直接在画布上拖动鼠标绘制曲线，点击清除按钮即可清除</li>
-                <li><b>通道选择</b>：在顶部下拉框选择需要匹配的通道</li>
-                <li><b>查找范围</b>：可设置整体查询的时间区间和数值区间</li>
-                <li><b>匹配方法</b>：调整低通滤波幅度和最后获得的匹配数量上限</li>
-                <li><b>目标模式</b>：设置手绘模式重复数、单个匹配结果的指标幅度和时间跨度</li>
-                <li><b>全屏绘图</b>：点击画板区域的右上角圆形全屏按钮可放大绘图区域</li>
-                <li><b>匹配结果</b>：通过右上角的展开/收起匹配结果按钮显示</li>
+              <h4>控件说明</h4>
+              <ul><li>在画布上手绘一个模式，系统会查找匹配的通道数据。</li></ul>
+              <h4>视图交互</h4>
+              <ul>
+                <li>拖动鼠标绘制曲线，点击清除按钮清除</li>
+                <li>选择通道、设置查找范围和匹配方法</li>
+                <li>可全屏绘图、展开/收起匹配结果</li>
+              </ul>
+              <h4>注意事项</h4>
+              <ul>
+                <li>匹配结果仅供参考，建议人工复核</li>
               </ul>
             </div>
           </template>
-          <el-icon style="color: #409EFF">
-            <InfoFilled />
-          </el-icon>
+          <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
         </el-tooltip>
       </span>
       <span class="channel-and-results-select">
