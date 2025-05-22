@@ -4,10 +4,10 @@
         <span style="position: absolute; bottom: 8px; right: 8px;">
             <!--            <span style="margin-right: 30px">{{output}}</span>-->
 
-            <el-button type="primary">
+            <!-- <el-button type="primary">
                 <FolderChecked />
                 记录公式
-            </el-button>
+            </el-button> -->
             <el-button type="primary" @click="sendClickedChannelNames" :loading="isCalculating">
                 <Cpu />
                 计算

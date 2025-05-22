@@ -10,7 +10,7 @@
                 <span class="title">过滤器<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
                         <div style="margin-bottom:8px;">用于筛选和加载实验数据，支持多条件组合查询。</div>
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
@@ -40,7 +40,7 @@
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
                         <div style="margin-bottom:8px;">管理和配置通道数据的显示。</div>
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
@@ -74,7 +74,7 @@
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
                         <div style="margin-bottom:8px;">管理和配置通道数据的显示。</div>
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
@@ -117,7 +117,7 @@
                     <span class="title">实验数据探索<el-tooltip placement="right" effect="light">
                         <template #content>
                           <div style="max-width: 320px">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
                             <div style="margin-bottom:8px;">用于交互式查看、分析、标注以及导出实验数据曲线图。</div>
                             <hr style="margin:8px 0;">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
@@ -240,18 +240,13 @@
                     <span class="title">运算符列表<el-tooltip placement="top" effect="light">
                         <template #content>
                           <div style="max-width: 320px">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
-                            <div style="margin-bottom:8px;">可用的运算符列表，包括算法、逻辑运算符、导入函数等。</div>
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
+                            <div style="margin-bottom:8px;">可用的运算符列表，包括算法、逻辑运算符、导入函数等</div>
                             <hr style="margin:8px 0;">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                              <li>点击运算符添加到公式区域</li>
-                              <li>通过算法导入按钮导入运算/诊断函数</li>
-                            </ul>
-                            <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
-                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                              <li>部分运算符仅适用于特定数据类型</li>
+                              <li>点击运算符添加到通道分析公式区域中的鼠标位置</li>
+                              <li>算法导入按钮可以通过导入运算函数和诊断函数的 python 或 matlab 文件将算法加入可用列表</li>
                             </ul>
                           </div>
                         </template>
@@ -267,17 +262,12 @@
                           <template #content>
                             <div style="max-width: 320px">
                               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
-                              <div style="margin-bottom:8px;">列出所有可用的数据通道。</div>
+                              <div style="margin-bottom:8px;">此处列出所有可用的数据通道。单击选择需要分析的通道可以将其添加到通道分析公式区域中的鼠标位置</div>
                               <hr style="margin:8px 0;">
                               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                               <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                                 <li>选择通道，单击添加到公式</li>
                                 <li>可统一设置采样频率</li>
-                              </ul>
-                              <hr style="margin:8px 0;">
-                              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
-                              <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                                <li>通道数量较多时可搜索筛选</li>
                               </ul>
                             </div>
                           </template>
@@ -295,16 +285,12 @@
                         <template #content>
                           <div style="max-width: 320px">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
-                            <div style="margin-bottom:8px;">在此构建分析公式。</div>
+                            <div style="margin-bottom:8px;">在此构建您的分析表达式</div>
                             <hr style="margin:8px 0;">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                              <li>点击运算符和通道，或直接输入表达式</li>
-                            </ul>
-                            <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
-                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                              <li>表达式需符合语法规则</li>
+                              <li>可以通过点击运算符和待选择通道，或直接输入来创建通道分析公式</li>
+                              <li>点击计算按钮即可对公式进行计算</li>
                             </ul>
                           </div>
                         </template>
@@ -324,12 +310,7 @@
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>结果以图表展示</li>
-                              <li>可通过导出按钮导出数据或图片</li>
-                            </ul>
-                            <hr style="margin:8px 0;">
-                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
-                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                              <li>结果仅供参考，需结合实际分析</li>
+                              <li>可以通过导出按钮导出结果数据或者svg、jpg、png格式的图表</li>
                             </ul>
                           </div>
                         </template>

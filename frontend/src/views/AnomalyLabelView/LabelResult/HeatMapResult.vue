@@ -3,10 +3,10 @@
     <span class="title">自动识别和人工标注结果<el-tooltip placement="top" effect="light">
         <template #content>
           <div style="max-width: 320px">
-            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
             <div style="margin-bottom:8px;">以热力图形式展示通道数据中的自动识别和人工标注异常结果。</div>
             <hr style="margin:8px 0;">
-            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
               <li>查看异常：点击热力图中的彩色区块可查看详细异常信息</li>
               <li>导出功能：支持导出热力图为图片或导出异常数据为JSON格式</li>
