@@ -6,14 +6,18 @@
         <el-tooltip placement="top" effect="light">
           <template #content>
             <div style="max-width: 320px">
-              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
-              <div style="margin-bottom:8px;">在画布上手绘一个模式，系统会查找匹配的通道数据。</div>
+              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
+              <div style="margin-bottom:8px;">在画布上手绘一个模式，系统会在选中的通道数据中查找匹配的模式。</div>
               <hr style="margin:8px 0;">
-              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
               <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                <li>拖动鼠标绘制曲线，点击清除按钮清除</li>
-                <li>选择通道、设置查找范围和匹配方法</li>
-                <li>可全屏绘图、展开/收起匹配结果</li>
+                <li>绘制操作：直接在画布上拖动鼠标绘制曲线，点击清除即可清除</li>
+                <li>通道选择：在顶部下拉框选择需要匹配的通道</li>
+                <li>查找范围：可设置整体查询的时间区间和数值区间</li>
+                <li>匹配方法：调整低通滤波幅度和最后获得的匹配数量上限</li>
+                <li>目标模式：设置手绘模式重复数、单个匹配结果的指标幅度和时间跨度</li>
+                <li>全屏绘图：点击画板区域的右上角圆形全屏按钮可放大绘图区域</li>
+                <li>匹配结果：通过右上角的展开/收起匹配结果按钮显示</li>
               </ul>
               <hr style="margin:8px 0;">
               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>

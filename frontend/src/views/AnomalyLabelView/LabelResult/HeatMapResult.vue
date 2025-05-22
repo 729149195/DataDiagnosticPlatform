@@ -8,15 +8,18 @@
             <hr style="margin:8px 0;">
             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-              <li>点击彩色区块查看异常详情</li>
-              <li>支持导出热力图为图片或异常数据为JSON</li>
-              <li>可搜索、编辑、删除异常</li>
-              <li>支持批量操作</li>
+              <li>查看异常：点击热力图中的彩色区块可查看详细异常信息</li>
+              <li>导出功能：支持导出热力图为图片或导出异常数据为JSON格式</li>
+              <li>异常搜索：在异常详情中可通过关键词搜索特定异常</li>
+              <li>编辑异常：点击异常详情中的编辑图标可修改人工标注</li>
+              <li>删除异常：可单独删除异常或使用批量删除功能</li>
+              <li>批量操作：支持批量删除和上传多个通道的异常标注</li>
+              <li>颜色标识：橙色边框表示当前未上传标注，红色边框表示当前用户上传标注，红色填充表示其它用户上传标注，灰色填充表示该区域有多种异常</li>
             </ul>
             <hr style="margin:8px 0;">
             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
             <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-              <li>橙色边框：未上传标注，红色边框：当前用户上传，红色填充：他人上传，灰色填充：多种异常</li>
+              <li>热力图显示范围会随上方总览条的框选范围变化</li>
             </ul>
           </div>
         </template>
