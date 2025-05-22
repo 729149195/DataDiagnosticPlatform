@@ -5,17 +5,19 @@
       <span class="title">手绘查询
         <el-tooltip placement="top" effect="light">
           <template #content>
-            <div style="max-width: 300px">
-              <h4>控件说明</h4>
-              <ul><li>在画布上手绘一个模式，系统会查找匹配的通道数据。</li></ul>
-              <h4>视图交互</h4>
-              <ul>
+            <div style="max-width: 320px">
+              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+              <div style="margin-bottom:8px;">在画布上手绘一个模式，系统会查找匹配的通道数据。</div>
+              <hr style="margin:8px 0;">
+              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+              <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                 <li>拖动鼠标绘制曲线，点击清除按钮清除</li>
                 <li>选择通道、设置查找范围和匹配方法</li>
                 <li>可全屏绘图、展开/收起匹配结果</li>
               </ul>
-              <h4>注意事项</h4>
-              <ul>
+              <hr style="margin:8px 0;">
+              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+              <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                 <li>匹配结果仅供参考，建议人工复核</li>
               </ul>
             </div>

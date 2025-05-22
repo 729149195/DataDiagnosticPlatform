@@ -2,18 +2,20 @@
   <span style="display: flex; align-items: center; justify-content: space-between;">
     <span class="title">自动识别和人工标注结果<el-tooltip placement="top" effect="light">
         <template #content>
-          <div style="max-width: 300px">
-            <h4>控件说明</h4>
-            <ul><li>以热力图形式展示通道数据中的自动识别和人工标注异常结果。</li></ul>
-            <h4>视图交互</h4>
-            <ul>
+          <div style="max-width: 320px">
+            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+            <div style="margin-bottom:8px;">以热力图形式展示通道数据中的自动识别和人工标注异常结果。</div>
+            <hr style="margin:8px 0;">
+            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+            <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
               <li>点击彩色区块查看异常详情</li>
               <li>支持导出热力图为图片或异常数据为JSON</li>
               <li>可搜索、编辑、删除异常</li>
               <li>支持批量操作</li>
             </ul>
-            <h4>注意事项</h4>
-            <ul>
+            <hr style="margin:8px 0;">
+            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
               <li>橙色边框：未上传标注，红色边框：当前用户上传，红色填充：他人上传，灰色填充：多种异常</li>
             </ul>
           </div>

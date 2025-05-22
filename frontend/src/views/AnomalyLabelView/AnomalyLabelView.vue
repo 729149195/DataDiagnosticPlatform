@@ -9,28 +9,28 @@
               <span style="display: flex; margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">过滤器<el-tooltip placement="right" effect="light">
                     <template #content>
-                      <div style="max-width: 300px">
-                        <h4>控件说明</h4>
-                        <ul><li>用于筛选和加载实验数据，支持多条件组合查询。</li></ul>
-                        <h4>视图交互</h4>
-                        <ul>
-                          <li><b>数据库</b>：选择数据库，确定查询范围</li>
-                          <li><b>炮号</b>：输入炮号，支持区间与逗号分隔</li>
-                          <li><b>通道名</b>：多选显示通道</li>
-                          <li><b>异常名</b>：多选异常类型</li>
+                      <div style="max-width: 320px">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                        <div style="margin-bottom:8px;">用于筛选和加载实验数据，支持多条件组合查询。</div>
+                        <hr style="margin:8px 0;">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                        <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
+                          <li>数据库：选择数据库，确定查询范围</li>
+                          <li>炮号：输入炮号，支持区间与逗号分隔</li>
+                          <li>通道名：多选显示通道</li>
+                          <li>异常名：多选异常类型</li>
                           <li>条件联动，点击叉号可取消选择</li>
                           <li>点击过滤按钮显示结果</li>
                         </ul>
-                        <h4>注意事项</h4>
-                        <ul>
+                        <hr style="margin:8px 0;">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                        <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                           <li>通道名和异常名可为空</li>
                           <li>条件间会互相影响</li>
                         </ul>
                       </div>
                     </template>
-                    <el-icon style="color: #409EFF">
-                      <InfoFilled />
-                    </el-icon>
+                    <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                   </el-tooltip></span>
               </span>
               <Filter />
@@ -39,26 +39,26 @@
               <span style="display: flex; align-items: center; margin-bottom: 5px;">
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
-                      <div style="max-width: 300px">
-                        <h4>控件说明</h4>
-                        <ul><li>管理和配置通道数据的显示。</li></ul>
-                        <h4>视图交互</h4>
-                        <ul>
-                          <li><b>通道类别</b>：按类别组织通道，可全选/取消</li>
-                          <li><b>通道名</b>：多选显示通道</li>
-                          <li><b>炮号</b>：显示通道对应炮号</li>
-                          <li><b>异常类别</b>：展示异常标记</li>
-                          <li><b>颜色配置</b>：点击色块自定义颜色</li>
+                      <div style="max-width: 320px">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                        <div style="margin-bottom:8px;">管理和配置通道数据的显示。</div>
+                        <hr style="margin:8px 0;">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                        <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
+                          <li>通道类别：按类别组织通道，可全选/取消</li>
+                          <li>通道名：多选显示通道</li>
+                          <li>炮号：显示通道对应炮号</li>
+                          <li>异常类别：展示异常标记</li>
+                          <li>颜色配置：点击色块自定义颜色</li>
                         </ul>
-                        <h4>注意事项</h4>
-                        <ul>
+                        <hr style="margin:8px 0;">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                        <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                           <li>配置仅影响当前可视化</li>
                         </ul>
                       </div>
                     </template>
-                    <el-icon style="color: #409EFF">
-                      <InfoFilled />
-                    </el-icon>
+                    <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                   </el-tooltip></span>
                 <!-- <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" /> -->
               </span>
@@ -77,26 +77,26 @@
               <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
-                      <div style="max-width: 300px">
-                        <h4>控件说明</h4>
-                        <ul><li>管理和配置通道数据的显示。</li></ul>
-                        <h4>视图交互</h4>
-                        <ul>
-                          <li><b>通道类别</b>：按类别组织通道，可全选/取消</li>
-                          <li><b>通道名</b>：多选显示通道</li>
-                          <li><b>炮号</b>：显示通道对应炮号</li>
-                          <li><b>异常类别</b>：展示异常标记</li>
-                          <li><b>颜色配置</b>：本模块不支持修改颜色</li>
+                      <div style="max-width: 320px">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                        <div style="margin-bottom:8px;">管理和配置通道数据的显示。</div>
+                        <hr style="margin:8px 0;">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                        <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
+                          <li>通道类别：按类别组织通道，可全选/取消</li>
+                          <li>通道名：多选显示通道</li>
+                          <li>炮号：显示通道对应炮号</li>
+                          <li>异常类别：展示异常标记</li>
+                          <li>颜色配置：本模块不支持修改颜色</li>
                         </ul>
-                        <h4>注意事项</h4>
-                        <ul>
+                        <hr style="margin:8px 0;">
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                        <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                           <li>配置仅影响当前可视化</li>
                         </ul>
                       </div>
                     </template>
-                    <el-icon style="color: #409EFF">
-                      <InfoFilled />
-                    </el-icon>
+                    <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                   </el-tooltip></span>
               </span>
               <div class="scrollbar-container">
@@ -119,30 +119,30 @@
                   <span style="display: flex; align-items: center; justify-content: space-between; ">
                     <span class="title">实验数据探索<el-tooltip placement="right" effect="light">
                         <template #content>
-                          <div style="max-width: 300px">
-                            <h4>控件说明</h4>
-                            <ul><li>用于交互式查看、分析、标注以及导出实验数据曲线图。</li></ul>
-                            <h4>视图交互</h4>
-                            <ul>
-                              <li><b>显示/隐藏异常</b>：控制异常区域的可见性</li>
-                              <li><b>采样频率</b>：调整数据采样频率，影响显示精度</li>
-                              <li><b>框选标注/编辑</b>：在图表上框选区域进行标注异常</li>
-                              <li><b>局部缩放</b>：对单个通道可以框选区域放大查看，双击空白处复原</li>
-                              <li><b>单通道多行/多通道单行</b>：切换数据显示模式</li>
-                              <li><b>总览条</b>：选框所有曲线显示的时间范围，双击复原</li>
-                              <li><b>修改颜色</b>：点击圆形色块可自定义通道颜色</li>
-                              <li><b>导出</b>：支持通过自定义选项导出数据为图片或原始数据文件</li>
+                          <div style="max-width: 320px">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                            <div style="margin-bottom:8px;">用于交互式查看、分析、标注以及导出实验数据曲线图。</div>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
+                              <li>显示/隐藏异常：控制异常区域的可见性</li>
+                              <li>采样频率：调整数据采样频率，影响显示精度</li>
+                              <li>框选标注/编辑：在图表上框选区域进行标注异常</li>
+                              <li>局部缩放：对单个通道可以框选区域放大查看，双击空白处复原</li>
+                              <li>单通道多行/多通道单行：切换数据显示模式</li>
+                              <li>总览条：选框所有曲线显示的时间范围，双击复原</li>
+                              <li>修改颜色：点击圆形色块可自定义通道颜色</li>
+                              <li>导出：支持通过自定义选项导出数据为图片或原始数据文件</li>
                             </ul>
-                            <h4>注意事项</h4>
-                            <ul>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                               <li>建议多通道时采样频率不要过高，避免性能问题</li>
                               <li>加载通道数据失败时，通常为数据库无该通道数据</li>
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF">
-                          <InfoFilled />
-                        </el-icon>
+                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                       </el-tooltip></span>
                     <div class="control-panel">
 
@@ -242,23 +242,23 @@
                   <span style="display: flex;">
                     <span class="title">运算符列表<el-tooltip placement="top" effect="light">
                         <template #content>
-                          <div style="max-width: 300px">
-                            <h4>控件说明</h4>
-                            <ul><li>可用的运算符列表，包括算法、逻辑运算符、导入函数等。</li></ul>
-                            <h4>视图交互</h4>
-                            <ul>
+                          <div style="max-width: 320px">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                            <div style="margin-bottom:8px;">可用的运算符列表，包括算法、逻辑运算符、导入函数等。</div>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>点击运算符添加到公式区域</li>
                               <li>通过算法导入按钮导入运算/诊断函数</li>
                             </ul>
-                            <h4>注意事项</h4>
-                            <ul>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                               <li>部分运算符仅适用于特定数据类型</li>
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF">
-                          <InfoFilled />
-                        </el-icon>
+                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                       </el-tooltip></span>
                     <ChannelOperator />
                   </span>
@@ -268,23 +268,23 @@
                     <span style="display: flex; justify-content: space-between;">
                       <span class="title">待选择通道<el-tooltip placement="right" effect="light">
                           <template #content>
-                            <div style="max-width: 300px">
-                              <h4>控件说明</h4>
-                              <ul><li>列出所有可用的数据通道。</li></ul>
-                              <h4>视图交互</h4>
-                              <ul>
+                            <div style="max-width: 320px">
+                              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                              <div style="margin-bottom:8px;">列出所有可用的数据通道。</div>
+                              <hr style="margin:8px 0;">
+                              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                              <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                                 <li>选择通道，单击添加到公式</li>
                                 <li>可统一设置采样频率</li>
                               </ul>
-                              <h4>注意事项</h4>
-                              <ul>
+                              <hr style="margin:8px 0;">
+                              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                              <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                                 <li>通道数量较多时可搜索筛选</li>
                               </ul>
                             </div>
                           </template>
-                          <el-icon style="color: #409EFF">
-                            <InfoFilled />
-                          </el-icon>
+                          <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                         </el-tooltip></span>
                       <span>统一频率 <el-input-number v-model="unit_sampling" :precision="1" :step="10" :max="200" />
                         KHz</span>
@@ -296,22 +296,22 @@
                   <el-card class="two_right" shadow="never">
                     <span class="title">通道分析公式<el-tooltip placement="right" effect="light">
                         <template #content>
-                          <div style="max-width: 300px">
-                            <h4>控件说明</h4>
-                            <ul><li>在此构建分析公式。</li></ul>
-                            <h4>视图交互</h4>
-                            <ul>
+                          <div style="max-width: 320px">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                            <div style="margin-bottom:8px;">在此构建分析公式。</div>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>点击运算符和通道，或直接输入表达式</li>
                             </ul>
-                            <h4>注意事项</h4>
-                            <ul>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                               <li>表达式需符合语法规则</li>
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF">
-                          <InfoFilled />
-                        </el-icon>
+                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                       </el-tooltip></span>
                     <ChannelStr />
                   </el-card>
@@ -320,23 +320,23 @@
                   <span style="display: flex; justify-content: space-between;">
                     <span class="title">通道分析结果<el-tooltip placement="right" effect="light">
                         <template #content>
-                          <div style="max-width: 300px">
-                            <h4>控件说明</h4>
-                            <ul><li>显示公式分析的结果。</li></ul>
-                            <h4>视图交互</h4>
-                            <ul>
+                          <div style="max-width: 320px">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                            <div style="margin-bottom:8px;">显示公式分析的结果。</div>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                            <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
                               <li>结果以图表展示</li>
                               <li>可通过导出按钮导出数据或图片</li>
                             </ul>
-                            <h4>注意事项</h4>
-                            <ul>
+                            <hr style="margin:8px 0;">
+                            <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
+                            <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
                               <li>结果仅供参考，需结合实际分析</li>
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF">
-                          <InfoFilled />
-                        </el-icon>
+                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
                       </el-tooltip></span>
                     <span>
                       <el-dropdown trigger="click" @command="handleResultExportCommand">
