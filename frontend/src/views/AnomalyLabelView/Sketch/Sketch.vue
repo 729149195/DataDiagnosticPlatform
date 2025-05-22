@@ -58,6 +58,9 @@
             <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
               查询
             </el-button>
+            <el-button type="danger" @click="clearCanvas" class="clear-button" style="margin-left: 8px;">
+              清除
+            </el-button>
           </div>
           <div class="zoom-button">
             <el-button type="primary" :icon="FullScreen" circle @click="openFullscreenCanvas"></el-button>
@@ -450,25 +453,16 @@ const initPaperJs = () => {
     if (isClearing.value) return;
     selectedSegment = null;
     selectedHandle = null;
-    if (path) {
-      path.remove();
-      path = null;
-      segmentInfo.value = '';
-      store.dispatch('updateMatchedResults', []);
-      // 清除高亮
-      if (highlightGroup) {
-        highlightGroup.remove();
-        highlightGroup = null;
-      }
+    if (!path) {
+      path = new paperScope.Path({
+        segments: [event.point],
+        strokeColor: 'black',
+        strokeWidth: 2,
+        strokeCap: 'round',
+        strokeJoin: 'round'
+      });
+      updateHighlightBackground();
     }
-    path = new paperScope.Path({
-      segments: [event.point],
-      strokeColor: 'black',
-      strokeWidth: 2,
-      strokeCap: 'round',
-      strokeJoin: 'round'
-    });
-    updateHighlightBackground();
   };
 
   // 鼠标拖动事件
