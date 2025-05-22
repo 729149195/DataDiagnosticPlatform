@@ -53,7 +53,7 @@
       <div class="sketch-area">
         <div class="canvas-container">
           <canvas ref="paperCanvas" id="paperCanvas" class="whiteboard-canvas" resize></canvas>
-          <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
+          <!-- <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div> -->
           <div class="buttons">
             <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
               查询
@@ -1845,8 +1845,7 @@ const isGroupStart = (index) => {
   text-align: center;
   font-size: 15px;
   line-height: 18px;
-  padding: 8px 0 !important;
-  height: auto !important;
+  padding: 4px 0 !important;
   word-break: keep-all;
   letter-spacing: 2px;
 }
