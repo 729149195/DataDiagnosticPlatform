@@ -8,7 +8,23 @@
             <el-card class="filtandsearch" shadow="never">
               <span style="display: flex; margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">过滤器<el-tooltip placement="right" effect="light">
-                    <template #content> 过滤器<br /></template>
+                    <template #content>
+                      <div style="max-width: 300px">
+                        <h4 style="margin: 0 0 8px 0">过滤器功能说明</h4>
+                        <p style="margin: 0 0 8px 0">用于筛选和加载实验数据，支持多条件组合查询。</p>
+                        <ul style="margin: 0; padding-left: 16px">
+                          <li><b>数据库</b>：先选择要查询的数据库，确定查询炮号的范围</li>
+                          <li><b>炮号</b>：输入要查询的具体炮号，支持打印机输入格式如1-5,7,9-12</li>
+                          <li><b>通道名</b>：选择要显示的通道，可多选</li>
+                          <li><b>异常名</b>：根据异常类型筛选数据，可多选</li>
+                          <li>--------------------------------</li>
+                          <li>各个条件之间也会互相影响，比如选择了通道名，异常名会根据通道名进行自动筛选</li>
+                          <li>如果想要取消选择，可以点击条件旁边的叉号</li>
+                          <li>通道名和异常名选项可以为空</li>
+                          <li>最后点击过滤，可以在下方的可视化配置中显示过滤结果</li>
+                        </ul>
+                      </div>
+                    </template>
                     <el-icon>
                       <InfoFilled />
                     </el-icon>
@@ -19,7 +35,19 @@
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
               <span style="display: flex; align-items: center; margin-bottom: 5px;">
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
-                    <template #content> 可视化配置<br /></template>
+                    <template #content>
+                      <div style="max-width: 300px">
+                        <h4 style="margin: 0 0 8px 0">可视化配置功能说明</h4>
+                        <p style="margin: 0 0 8px 0">管理和配置通道数据的显示。</p>
+                        <ul style="margin: 0; padding-left: 16px">
+                          <li><b>通道类别</b>：按类别组织通道，可一键全选/取消选择</li>
+                          <li><b>通道名</b>：选择要显示的具体通道</li>
+                          <li><b>炮号</b>：在矩形框中显示的数值为各个通道的炮号信息</li>
+                          <li><b>异常类别</b>：展示通道中的异常标记</li>
+                          <li><b>颜色配置</b>：点击圆形色块可自定义通道颜色</li>
+                        </ul>
+                      </div>
+                    </template>
                     <el-icon>
                       <InfoFilled />
                     </el-icon>
@@ -40,7 +68,19 @@
             <el-card class="table" shadow="never" v-if="selectedButton === 'channel'">
               <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
-                    <template #content> 可视化配置<br /></template>
+                    <template #content>
+                      <div style="max-width: 300px">
+                        <h4 style="margin: 0 0 8px 0">可视化配置功能说明</h4>
+                        <p style="margin: 0 0 8px 0">管理和配置通道数据的显示。</p>
+                        <ul style="margin: 0; padding-left: 16px">
+                          <li><b>通道类别</b>：按类别组织通道，可一键全选/取消选择</li>
+                          <li><b>通道名</b>：选择要显示的具体通道</li>
+                          <li><b>炮号</b>：在矩形框中显示的数值为各个通道的炮号信息</li>
+                          <li><b>异常类别</b>：展示通道中的异常标记</li>
+                          <li><b>颜色配置</b>：通道分析模块下不支持修改通道颜色</li>
+                        </ul>
+                      </div>
+                    </template>
                     <el-icon>
                       <InfoFilled />
                     </el-icon>
@@ -65,7 +105,23 @@
                 <el-card class="data_exploration" shadow="never">
                   <span style="display: flex; align-items: center; justify-content: space-between; ">
                     <span class="title">实验数据探索<el-tooltip placement="right" effect="light">
-                        <template #content> 实验数据探索<br /></template>
+                        <template #content>
+                          <div style="max-width: 300px">
+                            <h4 style="margin: 0 0 8px 0">实验数据探索功能说明</h4>
+                            <p style="margin: 0 0 8px 0">交互式查看、分析、标注以及导出实验数据曲线图。</p>
+                            <ul style="margin: 0; padding-left: 16px">
+                              <li><b>显示/隐藏异常</b>：控制异常区域的可见性</li>
+                              <li><b>采样频率</b>：调整数据采样频率，影响显示精度，建议同时显示多条通道时不要调得太高，影响性能</li>
+                              <li><b>框选标注/编辑</b>：在图表上框选区域进行标注异常</li>
+                              <li><b>局部缩放</b>：对单个通道可以框选区域进行矩形区域放大查看，双击空白处复原</li>
+                              <li><b>单通道多行/多通道单行</b>：切换数据显示模式</li>
+                              <li><b>总览条</b>：选框所有曲线显示的时间范围，双击复原</li>
+                              <li><b>修改颜色</b>：点击圆形色块可自定义通道颜色</li>
+                              <li><b>导出</b>：支持通过自定义选项灵活导出数据为图片或原始数据文件</li>
+                              <li><b>报错提示</b>：加载通道 XXXX 数据失败，一般是数据库中没有该通道数据</li>
+                            </ul>
+                          </div>
+                        </template>
                         <el-icon>
                           <InfoFilled />
                         </el-icon>
@@ -166,8 +222,8 @@
               <template v-else-if="selectedButton === 'channel'">
                 <el-card class="operator">
                   <span style="display: flex;">
-                    <span class="title">运算符列表<el-tooltip placement="right" effect="light">
-                        <template #content> 运算符列表<br /></template>
+                    <span class="title">运算符列表<el-tooltip placement="top" effect="light">
+                        <template #content> 这里是可用的运算符列表，包含算法、逻辑运算符，以及导入的运算和诊断函数运算符。点击运算符到公式区域来构建分析表达式。<br />通过算法导入按钮可以导入运算函数和诊断函数</template>
                         <el-icon>
                           <InfoFilled />
                         </el-icon>
@@ -179,7 +235,7 @@
                   <el-card class="two_left" shadow="never">
                     <span style="display: flex; justify-content: space-between;">
                       <span class="title">待选择通道<el-tooltip placement="right" effect="light">
-                          <template #content> 待选择通道<br /></template>
+                          <template #content>列出所有可用的数据通道。选择您需要分析的通道，可以单击添加到当前公式</template>
                           <el-icon>
                             <InfoFilled />
                           </el-icon>
@@ -193,7 +249,7 @@
                   </el-card>
                   <el-card class="two_right" shadow="never">
                     <span class="title">通道分析公式<el-tooltip placement="right" effect="light">
-                        <template #content> 通道分析公式<br /></template>
+                        <template #content>在此构建您的分析公式。可以通过点击运算符和通道，或直接输入来创建表达式</template>
                         <el-icon>
                           <InfoFilled />
                         </el-icon>
@@ -204,7 +260,7 @@
                 <el-card class="data_exploration" shadow="never">
                   <span style="display: flex; justify-content: space-between;">
                     <span class="title">通道分析结果<el-tooltip placement="right" effect="light">
-                        <template #content> 通道分析结果<br /></template>
+                        <template #content> 显示公式分析的结果<br />结果以图表展示。可以通过导出按钮导出数据或者png格式的图表</template>
                         <el-icon>
                           <InfoFilled />
                         </el-icon>

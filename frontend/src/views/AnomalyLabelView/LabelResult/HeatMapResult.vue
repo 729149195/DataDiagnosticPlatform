@@ -1,7 +1,21 @@
 <template>
   <span style="display: flex; align-items: center; justify-content: space-between;">
-    <span class="title">自动识别和人工标注结果<el-tooltip placement="right" effect="light">
-        <template #content> 自动识别和人工标注结果<br /></template>
+    <span class="title">自动识别和人工标注结果<el-tooltip placement="top" effect="light">
+        <template #content>
+          <div style="max-width: 300px">
+            <h4 style="margin: 0 0 8px 0">热力图结果功能说明</h4>
+            <p style="margin: 0 0 8px 0">以热力图形式展示通道数据中的自动识别和人工标注异常结果。</p>
+            <ul style="margin: 0; padding-left: 16px">
+              <li><b>查看异常</b>：点击热力图中的彩色区块可查看详细异常信息</li>
+              <li><b>导出功能</b>：支持导出热力图为图片或导出异常数据为JSON格式</li>
+              <li><b>异常搜索</b>：在异常详情中可通过关键词搜索特定异常</li>
+              <li><b>编辑异常</b>：点击异常详情中的编辑图标可修改人工标注</li>
+              <li><b>删除异常</b>：可单独删除异常或使用批量删除功能</li>
+              <li><b>批量操作</b>：支持批量删除和上传多个通道的异常标注</li>
+              <li><b>颜色标识</b>：橙色边框表示当前未上传标注，红色边框表示当前用户上传标注，红色填充表示其它用户上传标注，灰色填充表示该区域有多种异常</li>
+            </ul>
+          </div>
+        </template>
         <el-icon>
           <InfoFilled />
         </el-icon>
