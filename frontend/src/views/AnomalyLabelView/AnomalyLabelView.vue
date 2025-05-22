@@ -10,23 +10,23 @@
                 <span class="title">过滤器<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">控件说明</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
                         <div style="margin-bottom:8px;">用于筛选和加载实验数据，支持多条件组合查询。</div>
                         <hr style="margin:8px 0;">
-                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
+                        <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                         <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                          <li>数据库：选择数据库，确定查询范围</li>
-                          <li>炮号：输入炮号，支持区间与逗号分隔</li>
-                          <li>通道名：多选显示通道</li>
-                          <li>异常名：多选异常类型</li>
-                          <li>条件联动，点击叉号可取消选择</li>
-                          <li>点击过滤按钮显示结果</li>
+                          <li>数据库：制定要查询的数据库，确定待查炮号范围</li>
+                          <li>炮号：输入要查询的具体炮号，支持打印机输入格式如1-5,7,9-12，输入完成后直接回车或点击确认炮号按钮即可自动返回通道名和异常名</li>
+                          <li>通道名：选择要显示的通道，可多选</li>
+                          <li>异常名：根据异常类型筛选数据，可多选</li>
+                          点击过滤，可以在下方的可视化配置中显示过滤结果
                         </ul>
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
                         <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                          <li>通道名和异常名可为空</li>
-                          <li>条件间会互相影响</li>
+                          <li>各个条件之间存在相关影响，比如选择了通道名，异常名会根据通道名进行自动筛选</li>
+                          <li>如果想要取消选择，可以点击条件旁边的叉号</li>
+                          <li>通道名和异常名选项可以为空</li>
                         </ul>
                       </div>
                     </template>
@@ -45,9 +45,8 @@
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图交互</div>
                         <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                          <li>通道类别：按类别组织通道，可全选/取消</li>
-                          <li>通道名：多选显示通道</li>
-                          <li>炮号：显示通道对应炮号</li>
+                          <li>通道类别：按类别组织通道，可全选/单选/取消选中，选中的通道会被渲染</li>
+                          <li>通道名&炮号：多选显示通道和对应的炮号</li>
                           <li>异常类别：展示异常标记</li>
                           <li>颜色配置：点击色块自定义颜色</li>
                         </ul>
