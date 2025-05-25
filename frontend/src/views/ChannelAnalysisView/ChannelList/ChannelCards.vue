@@ -1,6 +1,11 @@
 <template>
     <div class="cards">
-        <el-card v-for="(channel, index) in selectedChannels" :key="channel.channel_name + '_' + channel.shot_number"
+        <!-- 空状态显示 -->
+        <div v-if="selectedChannels.length === 0" class="empty-state">
+            <el-empty description="请选择通道" />
+        </div>
+        <!-- 通道卡片列表 -->
+        <el-card v-else v-for="(channel, index) in selectedChannels" :key="channel.channel_name + '_' + channel.shot_number"
             class="channel-card" style="width: 19%" shadow="hover">
             <div class="channel-content">
                 <div style="display: flex; align-items: center;">
@@ -352,6 +357,20 @@ onBeforeUnmount(() => {
         cursor: pointer;
     }
 }
+
+/* 空状态样式 */
+.empty-state {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.el-empty {
+    --el-empty-padding: 20px 0;
+}
+
 
 :deep(.is-icon-arrow-down) {
     display: none !important;

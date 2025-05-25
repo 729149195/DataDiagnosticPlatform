@@ -23,7 +23,12 @@
         </transition>
         
         <div class="chart-wrapper">
-            <div id="calculation-result-container" ref="chartContainerRef"></div>
+            <!-- 空状态显示 -->
+            <div v-if="!hasCalculationResult && !isCalculating" class="empty-state">
+                <el-empty description="请输入公式并点击计算" />
+            </div>
+            <!-- 图表容器 -->
+            <div v-else id="calculation-result-container" ref="chartContainerRef"></div>
         </div>
     </div>
 </template>
@@ -57,6 +62,13 @@ const chartInstance = ref(null);
 // 计算状态和进度 
 const isCalculating = computed(() => store.state.isCalculating);
 const calculatingProgress = computed(() => store.state.calculatingProgress);
+
+// 判断是否有计算结果
+const hasCalculationResult = computed(() => {
+    return CalculateResult.value && 
+           (CalculateResult.value.X_value || CalculateResult.value.X_range) &&
+           curChannel.value.channel_name;
+});
 
 // 用于标识当前组件的图表实例
 const CHART_INSTANCE_ID = 'calculation-result-chart';
@@ -1015,5 +1027,15 @@ const handleResize = throttle(() => {
 
 :deep(.highcharts-xaxis-labels) {
     visibility: visible !important;
+}
+
+/* 空状态样式 */
+.empty-state {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
 }
 </style>
