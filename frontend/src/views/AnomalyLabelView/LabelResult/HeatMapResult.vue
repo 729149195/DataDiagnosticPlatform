@@ -4,22 +4,32 @@
         <template #content>
           <div style="max-width: 320px">
             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
-            <div style="margin-bottom:8px;">以热力图形式展示通道数据中的自动识别和人工标注异常结果。</div>
+            <div style="margin-bottom:8px;">展示各个区间通道数据中的自动识别和人工标注异常结果</div>
             <hr style="margin:8px 0;">
             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-              <li>查看异常：点击热力图中的彩色区块可查看详细异常信息</li>
-              <li>导出功能：支持导出热力图为图片或导出异常数据为JSON格式</li>
-              <li>异常搜索：在异常详情中可通过关键词搜索特定异常</li>
-              <li>编辑异常：点击异常详情中的编辑图标可修改人工标注</li>
-              <li>删除异常：可单独删除异常或使用批量删除功能</li>
-              <li>批量操作：支持批量删除和上传多个通道的异常标注</li>
-              <li>颜色标识：橙色边框表示当前未上传标注，红色边框表示当前用户上传标注，红色填充表示其它用户上传标注，灰色填充表示该区域有多种异常</li>
+              <li>矩形热力图区域：点击矩形热力图区域可查看详细异常信息
+                <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
+                  <li>点击矩形热力图区域可查看详细异常信息</li>
+                  <li>异常搜索：在异常详情中可通过关键词搜索特定异常</li>
+                  <li>编辑异常：点击异常详情中的编辑图标可修改标注</li>
+                  <li>删除异常：可单独删除异常或使用批量删除功能</li>
+                </ul>
+              </li>
+              <li>导出功能：导出热力图为图片或异常数据的JSON格式</li>
+              <li>批量删除/上传：批量删除或上传多个通道的异常标注
+                <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
+                  <li>批量删除未上传：批量删除未上传的异常标注</li>
+                  <li>批量删除已上传：批量删除已上传的异常标注</li>
+                  <li>批量上传异常：批量上传异常标注</li>
+                </ul>
+              </li>
             </ul>
             <hr style="margin:8px 0;">
             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
             <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
               <li>热力图显示范围会随上方总览条的框选范围变化</li>
+              <li>颜色标识：橙色边框表示当前未上传标注，红色边框表示当前用户上传标注，红色填充表示其它用户上传标注，灰色填充表示该区域有多种异常</li>
             </ul>
           </div>
         </template>
