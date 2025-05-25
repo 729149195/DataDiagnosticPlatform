@@ -410,6 +410,11 @@ const processObject = (obj) => {
       newObj['通道名称'] = obj.channelName;
     }
 
+    // 处理 channel_number 字段，映射为通道名称
+    if (obj.channel_number) {
+      newObj['通道名称'] = obj.channel_number;
+    }
+
     if (obj.diagnostic_name) {
       newObj['诊断名称'] = obj.diagnostic_name;
     }
@@ -831,7 +836,7 @@ function formatKey(key) {
   const keyMapping = {
     person: '责任人',
     diagnostic_name: '诊断名称',
-    channel_number: '通道编号',
+    channel_number: '通道名称',
     error_type: '错误类型',
     x_unit: 'X 单位',
     y_unit: 'Y 单位',
