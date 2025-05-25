@@ -3,21 +3,48 @@
     <!-- 顶部操作栏，保留并恢复为中文 -->
     <div class="header">
       <span class="title">手绘查询
-        <el-tooltip placement="top" effect="light">
+        <el-tooltip placement="right" effect="light">
           <template #content>
             <div style="max-width: 320px">
               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
               <div style="margin-bottom:8px;">在画布上手绘一个模式，系统会在选中的通道数据中查找匹配的模式。</div>
               <hr style="margin:8px 0;">
               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
+              <!-- 一级分点：绘制面板交互、参数面板交互 -->
               <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                <li>绘制操作：直接在画布上拖动鼠标绘制曲线，点击清除即可清除</li>
-                <li>通道选择：在顶部下拉框选择需要匹配的通道</li>
-                <li>查找范围：可设置整体查询的时间区间和数值区间</li>
-                <li>匹配方法：调整低通滤波幅度和最后获得的匹配数量上限</li>
-                <li>目标模式：设置手绘模式重复数、单个匹配结果的指标幅度和时间跨度</li>
-                <li>全屏绘图：点击画板区域的右上角圆形全屏按钮可放大绘图区域</li>
+                <li>通道选择：开始匹配前需要先在顶部下拉框选择需要匹配的通道</li>
                 <li>匹配结果：通过右上角的展开/收起匹配结果按钮显示</li>
+                <li>绘制面板交互（面板左部2/3部分）
+                  <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
+                    <li>绘制操作：直接在画布上拖动鼠标绘制曲线，点击清除即可清除</li>
+                    <li>全屏绘图：点击画板区域的右上角圆形全屏按钮可放大绘图区域，绘制后点击应用即可</li>
+                    <li>查询操作：点击查询按钮，系统会在选中的通道数据中查找匹配的模式</li>
+                    <li>清除操作：点击清除按钮，可清除画布上的绘制</li>
+                    <li>修改操作：点击画布上曲线的锚点，可修改该点的位置，从而修改曲线的形状</li>
+                  </ul>
+                </li>
+                <li>参数面板交互（面板右部1/3部分）
+                  <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
+                    <li>查找范围</li>
+                    <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
+                      <li>时间区间：设置整体查询的时间区间，系统会在设置的区间内进行匹配</li>
+                      <li>数值区间：设置整体查询的数值区间，系统会在设置的区间内进行匹配</li>
+                    </ul>
+                    <li>匹配方法
+                      <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
+                        <li>低通滤波幅度：调整低通滤波幅度，低通滤波幅度越小，系统匹配的精度越高，但匹配数量上限越小</li>
+                        <li>匹配数量上限：设置最后获得的匹配数量上限，匹配数量上限越小，系统匹配的精度越高，但匹配数量上限越小</li>
+                      </ul>
+                    </li>
+                    <li>目标模式
+                      <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
+                        <li>模式重复数：设置手绘模式重复数，系统会在选中的通道数据中查找匹配的模式</li>
+                        <li>指标幅度：设置单个匹配结果的指标幅度，系统会在选中的通道数据中查找匹配的模式</li>
+                        <li>时间跨度：设置单个匹配结果的时间跨度，系统会在选中的通道数据中查找匹配的模式</li>
+                      </ul>
+                    </li>
+                  </ul>
+                </li>
               </ul>
               <hr style="margin:8px 0;">
               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
