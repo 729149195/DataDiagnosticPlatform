@@ -127,59 +127,115 @@ const pollCalculationProgress = async (taskId) => {
     try {
         // 增加防抖处理，避免频繁请求
         let isRequestPending = false;
+        let consecutiveErrors = 0; // 连续错误计数
+        const maxConsecutiveErrors = 5; // 增加最大连续错误次数
+        
+        console.log('启动进度轮询，任务ID:', taskId);
+        
         const progressCheckInterval = setInterval(async () => {
             // 如果计算已停止或正在等待请求响应，则跳过本次轮询
             if (!store.state.isCalculating || isRequestPending) {
                 if (!store.state.isCalculating) {
                     clearInterval(progressCheckInterval);
+                    console.log('计算状态已停止，停止轮询');
                 }
                 return;
             }
             
             try {
                 isRequestPending = true;
-                const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}`);
+                const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}`, {
+                    timeout: 8000 // 增加到8秒超时
+                });
                 isRequestPending = false;
+                consecutiveErrors = 0; // 重置错误计数
                 
                 const { step, progress, status } = response.data;
+                console.log(`进度更新: ${step} - ${progress}% - ${status}`);
                 
-                // 更新进度和步骤
+                // 更新后端计算进度
                 store.commit('setCalculatingProgress', {
                     step: step,
                     progress: progress
                 });
                 
-                // 如果计算完成或失败，停止轮询
-                if (status === 'completed' || status === 'failed') {
+                // 如果计算完成，开始处理渲染阶段
+                if (status === 'completed') {
                     clearInterval(progressCheckInterval);
+                    console.log('后端计算完成，进入渲染阶段');
                     
-                    if (status === 'failed') {
+                    // 开始渲染进度跟踪
+                    store.commit('setCalculatingProgress', {
+                        step: '开始渲染图表',
+                        progress: 100
+                    });
+                    
+                    // 短暂延迟让用户看到100%的状态
+                    setTimeout(() => {
                         store.commit('setCalculatingProgress', {
-                            step: `计算失败: ${response.data.error || '未知错误'}`,
-                            progress: 0
+                            step: '渲染图表中',
+                            progress: 100
                         });
-                        
-                        // 3秒后清除错误状态
-                        setTimeout(() => {
-                            store.commit('setCalculatingStatus', false);
-                        }, 3000);
-                    } else {
-                        // 短暂延迟后清除计算状态
-                        setTimeout(() => {
-                            store.commit('setCalculatingStatus', false);
-                        }, 500);
-                    }
+                    }, 200);
+                    
+                } else if (status === 'failed') {
+                    clearInterval(progressCheckInterval);
+                    console.log('后端计算失败');
+                    
+                    store.commit('setCalculatingProgress', {
+                        step: `计算失败: ${response.data.error || step || '未知错误'}`,
+                        progress: 0
+                    });
+                    
+                    // 3秒后清除错误状态
+                    setTimeout(() => {
+                        store.commit('setCalculatingStatus', false);
+                    }, 3000);
                 }
             } catch (error) {
                 isRequestPending = false;
-                console.error('Error polling calculation progress:', error);
-                // 如果连续多次轮询失败，停止轮询
+                consecutiveErrors++;
+                
+                console.warn(`进度轮询错误 (${consecutiveErrors}/${maxConsecutiveErrors}):`, error.message);
+                
+                // 如果是404错误且错误次数不多，可能是任务还在初始化
                 if (error.response && error.response.status === 404) {
+                    if (consecutiveErrors < 3) { // 对404错误更宽容
+                        console.log('任务可能还在初始化，继续轮询...');
+                        return; // 继续轮询，不停止
+                    } else {
+                        console.log('任务可能已完成或不存在，停止轮询');
+                        clearInterval(progressCheckInterval);
+                        // 不显示错误，因为计算可能已经完成
+                        return;
+                    }
+                }
+                
+                // 如果连续多次轮询失败，停止轮询
+                if (consecutiveErrors >= maxConsecutiveErrors) {
                     clearInterval(progressCheckInterval);
-                    store.commit('setCalculatingStatus', false);
+                    console.error('轮询失败次数过多，停止轮询');
+                    
+                    store.commit('setCalculatingProgress', {
+                        step: '网络连接异常，但计算可能仍在进行',
+                        progress: 50
+                    });
+                    
+                    // 不立即清除计算状态，给计算一些时间完成
+                    setTimeout(() => {
+                        if (store.state.isCalculating) {
+                            store.commit('setCalculatingProgress', {
+                                step: '网络异常，请检查计算结果',
+                                progress: 0
+                            });
+                            setTimeout(() => {
+                                store.commit('setCalculatingStatus', false);
+                            }, 3000);
+                        }
+                    }, 10000); // 10秒后再清除状态
                 }
             }
-        }, 1000); // 将轮询间隔从300ms增加到1000ms
+        }, 800); // 将轮询间隔增加到800ms，减少服务器压力
     } catch (error) {
         console.error('Error setting up progress polling:', error);
     }
@@ -190,7 +246,7 @@ const sendClickedChannelNames = async () => {
         // 设置计算开始状态
         store.commit('setCalculatingStatus', true);
         store.commit('setCalculatingProgress', {
-            step: '准备计算',
+            step: '初始化计算任务',
             progress: 0
         });
         
@@ -198,34 +254,104 @@ const sendClickedChannelNames = async () => {
         const source = axios.CancelToken.source();
         const timeoutId = setTimeout(() => {
             source.cancel('操作超时');
-            store.commit('setCalculatingStatus', false);
-        }, 60000); // 60秒超时
+            store.commit('setCalculatingProgress', {
+                step: '计算超时，请重试',
+                progress: 0
+            });
+            setTimeout(() => {
+                store.commit('setCalculatingStatus', false);
+            }, 3000);
+        }, 120000); // 增加到120秒超时
         
         try {
-            // 发送计算请求，并获取后端返回的任务ID
+            // 发送计算初始化请求
+            store.commit('setCalculatingProgress', {
+                step: '连接服务器',
+                progress: 5
+            });
+            
+            console.log('发送初始化请求...');
             const initResponse = await axios.post('https://10.1.108.231:5000/api/operator-strs/init', {
-                expression: formulasarea.value
+                expression: formulasarea.value,
+                db_suffix: store.state.selectedDbSuffix
+            }, {
+                cancelToken: source.token,
+                timeout: 15000 // 初始化请求15秒超时
             });
             
             const taskId = initResponse.data.task_id;
+            console.log('任务初始化成功, 任务ID:', taskId);
             
-            // 启动进度轮询
-            pollCalculationProgress(taskId);
+            // 更新进度显示
+            store.commit('setCalculatingProgress', {
+                step: '任务创建成功，开始计算',
+                progress: 10
+            });
             
             // 发送实际计算请求
+            console.log('发送计算请求...');
             const response = await axios.post('https://10.1.108.231:5000/api/operator-strs', {
                 clickedChannelNames: formulasarea.value,
                 anomaly_func_str: formulasarea.value,
                 channel_mess: selectedChannels.value,
                 task_id: taskId,
-                sample_freq: store.state.unit_sampling
+                sample_freq: store.state.unit_sampling,
+                db_suffix: store.state.selectedDbSuffix
             }, {
-                cancelToken: source.token
+                cancelToken: source.token,
+                timeout: 100000 // 计算请求100秒超时
             });
+            
+            console.log('计算请求已发送，启动进度轮询...');
+            
+            // 在计算请求发送后启动进度轮询
+            pollCalculationProgress(taskId);
+            
+            console.log('计算请求完成，处理结果...');
             
             // 处理计算结果
             store.state.ErrorLineXScopes = response.data.data;
-            store.commit('updateCalculateResult', response.data.data.result);
+            
+            // 更新渲染进度
+            store.commit('setCalculatingProgress', {
+                step: '准备渲染数据',
+                progress: 100
+            });
+            
+            // 开始渲染阶段的进度跟踪
+            const renderingSteps = [
+                { step: '解析计算结果', progress: 100, delay: 200 },
+                { step: '准备图表数据', progress: 100, delay: 300 },
+                { step: '渲染图表', progress: 100, delay: 500 },
+                { step: '完成', progress: 100, delay: 300 }
+            ];
+            
+            let stepIndex = 0;
+            const executeRenderingStep = () => {
+                if (stepIndex < renderingSteps.length) {
+                    const currentStep = renderingSteps[stepIndex];
+                    store.commit('setCalculatingProgress', {
+                        step: currentStep.step,
+                        progress: currentStep.progress
+                    });
+                    stepIndex++;
+                    
+                    setTimeout(executeRenderingStep, currentStep.delay);
+                } else {
+                    // 提交计算结果，这会触发图表组件的渲染
+                    console.log('开始提交计算结果...');
+                    store.commit('updateCalculateResult', response.data.data.result);
+                    
+                    // 延迟清除计算状态，确保用户能看到完成状态
+                    setTimeout(() => {
+                        console.log('计算和渲染完成，清除状态');
+                        store.commit('setCalculatingStatus', false);
+                    }, 1000); // 增加到1秒延迟
+                }
+            };
+            
+            // 开始执行渲染步骤
+            executeRenderingStep();
             
         } catch (error) {
             // 处理错误
@@ -233,8 +359,19 @@ const sendClickedChannelNames = async () => {
             
             if (!axios.isCancel(error)) {
                 // 非取消错误才更新进度
+                let errorMessage = '未知错误';
+                if (error.code === 'ECONNABORTED') {
+                    errorMessage = '请求超时，请重试';
+                } else if (error.response) {
+                    errorMessage = error.response.data?.error || error.message || '服务器错误';
+                } else if (error.request) {
+                    errorMessage = '网络连接失败';
+                } else {
+                    errorMessage = error.message || '计算出错';
+                }
+                
                 store.commit('setCalculatingProgress', {
-                    step: `计算出错: ${error.message || '未知错误'}`,
+                    step: `计算出错: ${errorMessage}`,
                     progress: 0
                 });
                 
@@ -242,13 +379,23 @@ const sendClickedChannelNames = async () => {
                 setTimeout(() => {
                     store.commit('setCalculatingStatus', false);
                 }, 3000);
+            } else {
+                // 用户取消操作
+                console.log('用户取消计算操作');
+                store.commit('setCalculatingStatus', false);
             }
         } finally {
             clearTimeout(timeoutId); // 清除超时计时器
         }
     } catch (error) {
         console.error('Error in calculation process:', error);
-        store.commit('setCalculatingStatus', false);
+        store.commit('setCalculatingProgress', {
+            step: '初始化失败，请重试',
+            progress: 0
+        });
+        setTimeout(() => {
+            store.commit('setCalculatingStatus', false);
+        }, 3000);
     }
 };
 

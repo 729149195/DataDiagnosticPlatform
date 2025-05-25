@@ -177,6 +177,14 @@ const optimizeDataPoints = (xValues, yValues, maxPoints = 100000) => {
 
 const drawChart = (xValues, yValues, channel, channelKey) => {
     try {
+        // 更新渲染进度 - 开始绘制图表
+        if (store.state.isCalculating) {
+            store.commit('setCalculatingProgress', {
+                step: '绘制图表数据',
+                progress: 100
+            });
+        }
+        
         // console.log('初始化图表，通道:', channel?.channel_name);
         
         if (!xValues || xValues.length === 0 || !yValues || yValues.length === 0) {
@@ -193,6 +201,14 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
         // 如果已经存在图表实例，则销毁它
         if (chartInstance.value) {
             chartInstance.value.destroy();
+        }
+
+        // 更新渲染进度 - 创建图表配置
+        if (store.state.isCalculating) {
+            store.commit('setCalculatingProgress', {
+                step: '创建图表配置',
+                progress: 100
+            });
         }
 
         // 创建Highcharts配置 - 不使用全局配置，而是在每个实例中设置
@@ -223,6 +239,19 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                 marginRight: 20, // 右侧留出一些空间
                 events: {
                     load: function () {
+                        // 图表加载完成事件
+                        if (store.state.isCalculating) {
+                            store.commit('setCalculatingProgress', {
+                                step: '图表渲染完成',
+                                progress: 100
+                            });
+                            
+                            // 延迟清除计算状态
+                            setTimeout(() => {
+                                store.commit('setCalculatingStatus', false);
+                            }, 500);
+                        }
+                        
                         const container = this.container;
                         const chart = this;
 
@@ -362,6 +391,14 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
             }]
         };
 
+        // 更新渲染进度 - 即将创建图表实例
+        if (store.state.isCalculating) {
+            store.commit('setCalculatingProgress', {
+                step: '渲染图表实例',
+                progress: 100
+            });
+        }
+
         // 创建图表 - 使用try/catch捕获可能的错误
         try {
             chartInstance.value = new Highcharts.Chart(options);
@@ -392,9 +429,31 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
             }, 200);
         } catch (error) {
             console.error("创建图表实例时出错:", error);
+            
+            // 如果图表创建失败，清除计算状态
+            if (store.state.isCalculating) {
+                store.commit('setCalculatingProgress', {
+                    step: '图表渲染出错',
+                    progress: 0
+                });
+                setTimeout(() => {
+                    store.commit('setCalculatingStatus', false);
+                }, 2000);
+            }
         }
     } catch (error) {
         console.error("DrawChart全局错误:", error);
+        
+        // 如果绘制图表出错，清除计算状态
+        if (store.state.isCalculating) {
+            store.commit('setCalculatingProgress', {
+                step: '绘制图表出错',
+                progress: 0
+            });
+            setTimeout(() => {
+                store.commit('setCalculatingStatus', false);
+            }, 2000);
+        }
     }
 };
 
@@ -425,10 +484,26 @@ const drawResult = async (CalculateResult) => {
         console.error('Invalid calculation result');
         return;
     }
+    
+    // 更新渲染进度 - 开始处理计算结果
+    if (store.state.isCalculating) {
+        store.commit('setCalculatingProgress', {
+            step: '开始渲染计算结果',
+            progress: 100
+        });
+    }
 
     // 绘制新通道数据
     if ('X_value' in CalculateResult) {
         try {
+            // 更新渲染进度 - 处理图表数据
+            if (store.state.isCalculating) {
+                store.commit('setCalculatingProgress', {
+                    step: '处理图表数据',
+                    progress: 100
+                });
+            }
+            
             // console.log("开始绘制计算结果:", CalculateResult.channel_name);
             
             // 优化数据点数量
@@ -448,6 +523,14 @@ const drawResult = async (CalculateResult) => {
             }
 
             if (chartInstance.value) {
+                // 更新渲染进度 - 更新现有图表
+                if (store.state.isCalculating) {
+                    store.commit('setCalculatingProgress', {
+                        step: '更新图表数据',
+                        progress: 100
+                    });
+                }
+                
                 // console.log("更新现有图表...");
                 // 如果图表已存在，更新数据
                 try {
@@ -460,6 +543,19 @@ const drawResult = async (CalculateResult) => {
                         // 直接使用setData替代update
                         chartInstance.value.series[0].setData(seriesData, false); // 禁用动画
                         chartInstance.value.redraw(false); // 禁用动画加速重绘
+                        
+                        // 更新渲染进度 - 图表更新完成
+                        if (store.state.isCalculating) {
+                            store.commit('setCalculatingProgress', {
+                                step: '图表更新完成',
+                                progress: 100
+                            });
+                            
+                            // 延迟清除计算状态
+                            setTimeout(() => {
+                                store.commit('setCalculatingStatus', false);
+                            }, 500);
+                        }
                     } else {
                         // 如果没有系列，添加一个新的
                         chartInstance.value.addSeries({
@@ -489,6 +585,14 @@ const drawResult = async (CalculateResult) => {
                     );
                 }
             } else {
+                // 更新渲染进度 - 创建新图表
+                if (store.state.isCalculating) {
+                    store.commit('setCalculatingProgress', {
+                        step: '创建新图表',
+                        progress: 100
+                    });
+                }
+                
                 // console.log("创建新图表...");
                 // 如果图表不存在，创建新图表
                 drawChart(

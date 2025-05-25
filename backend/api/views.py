@@ -1010,41 +1010,68 @@ def init_calculation(request):
     try:
         data = json.loads(request.body)
         expression = data.get('expression', '')
+        db_suffix = data.get('db_suffix', '')
         
         # 生成唯一任务ID
         task_id = str(uuid.uuid4())
         
         # 初始化任务状态
         calculation_tasks[task_id] = {
-            'status': 'pending',
-            'step': '准备计算',
+            'status': 'initialized',
+            'step': '任务已创建',
             'progress': 0,
             'expression': expression,
+            'db_suffix': db_suffix,
             'start_time': timezone.now().isoformat(),
             'last_update': timezone.now().isoformat(),
         }
         
+        print(f"任务创建成功 - 任务ID: {task_id}, 表达式: {expression}, 数据库: {db_suffix}")
+        print(f"当前活跃任务数: {len(calculation_tasks)}")
+        
         return OrJsonResponse({'task_id': task_id, 'status': 'initialized'})
     except Exception as e:
+        print(f"任务创建失败: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return OrJsonResponse({'error': str(e)}, status=500)
 
 def get_calculation_progress(request, task_id):
     """获取计算任务的进度"""
     try:
+        print(f"查询任务进度 - 任务ID: {task_id}")
+        print(f"当前活跃任务: {list(calculation_tasks.keys())}")
+        
         if task_id not in calculation_tasks:
-            return OrJsonResponse({'error': '找不到指定的任务'}, status=404)
+            print(f"任务未找到 - 任务ID: {task_id}")
+            return OrJsonResponse({'error': '找不到指定的任务', 'task_id': task_id}, status=404)
         
         task_info = calculation_tasks[task_id]
+        print(f"任务状态 - ID: {task_id}, 步骤: {task_info['step']}, 进度: {task_info['progress']}%, 状态: {task_info['status']}")
         
-        # 清理过期任务（超过30分钟的任务）
+        # 清理过期任务（超过30分钟的任务），但不包括当前查询的任务
         current_time = timezone.now()
+        expired_tasks = []
         for t_id in list(calculation_tasks.keys()):
-            last_update = datetime.fromisoformat(calculation_tasks[t_id]['last_update'])
-            if (current_time - last_update).total_seconds() > 1800:  # 30分钟
-                calculation_tasks.pop(t_id, None)
+            if t_id != task_id:  # 不清理当前查询的任务
+                try:
+                    last_update = datetime.fromisoformat(calculation_tasks[t_id]['last_update'])
+                    if (current_time - last_update).total_seconds() > 1800:  # 30分钟
+                        expired_tasks.append(t_id)
+                except Exception as e:
+                    print(f"解析任务更新时间出错: {str(e)}")
+                    expired_tasks.append(t_id)
+        
+        # 清理过期任务
+        for expired_id in expired_tasks:
+            calculation_tasks.pop(expired_id, None)
+            print(f"清理过期任务: {expired_id}")
         
         return OrJsonResponse(task_info)
     except Exception as e:
+        print(f"获取任务进度出错: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return OrJsonResponse({'error': str(e)}, status=500)
 
 def update_calculation_progress(task_id, step, progress, status='processing'):
@@ -1053,9 +1080,12 @@ def update_calculation_progress(task_id, step, progress, status='processing'):
         calculation_tasks[task_id].update({
             'status': status,
             'step': step,
-            'progress': progress,
+            'progress': max(0, min(100, progress)),  # 确保进度在0-100范围内
             'last_update': timezone.now().isoformat()
         })
+        
+        # 添加详细日志以便调试
+        print(f"进度更新 - 任务ID: {task_id}, 步骤: {step}, 进度: {progress}%, 状态: {status}")
 
 def operator_strs(request):
     """
@@ -1069,9 +1099,31 @@ def operator_strs(request):
         # 获取采样率参数，如果未提供则默认为1.0 KHz
         sample_freq = data.get('sample_freq', 1.0)
         
-        # 如果提供了任务ID，进行进度更新
-        if task_id and task_id in calculation_tasks:
-            update_calculation_progress(task_id, '解析表达式', 10)
+        # 立即打印调试信息
+        print(f"=== operator_strs 开始执行 ===")
+        print(f"接收到任务ID: {task_id}")
+        print(f"当前活跃任务: {list(calculation_tasks.keys())}")
+        print(f"任务ID是否存在: {task_id in calculation_tasks if task_id else False}")
+        
+        # 如果提供了任务ID，检查并更新进度
+        if task_id:
+            if task_id in calculation_tasks:
+                print(f"任务存在，开始更新进度...")
+                update_calculation_progress(task_id, '开始解析表达式', 5)
+            else:
+                print(f"警告：任务ID {task_id} 不存在于 calculation_tasks 中！")
+                # 重新创建任务（作为备用方案）
+                calculation_tasks[task_id] = {
+                    'status': 'processing',
+                    'step': '开始解析表达式',
+                    'progress': 5,
+                    'expression': anomaly_func_str,
+                    'start_time': timezone.now().isoformat(),
+                    'last_update': timezone.now().isoformat(),
+                }
+                print(f"重新创建任务: {task_id}")
+        else:
+            print("警告：没有提供任务ID")
         
         print(f"收到计算请求: {anomaly_func_str}")
         print(f"采样率设置: {sample_freq} KHz")
@@ -1093,9 +1145,9 @@ def operator_strs(request):
             channel_key = f"{channel_mess['channel_name']}_{channel_mess['shot_number']}"
             channel_map[channel_key] = channel_mess
             
-        # 更新进度：准备数据完成
+        # 更新进度：数据准备完成
         if task_id and task_id in calculation_tasks:
-            update_calculation_progress(task_id, '准备数据完成', 20)
+            update_calculation_progress(task_id, '数据准备完成', 15)
 
         # 检查是否是函数调用
         if is_function_call:
@@ -1117,12 +1169,12 @@ def operator_strs(request):
                     
             # 更新进度：函数识别完成
             if task_id and task_id in calculation_tasks:
-                update_calculation_progress(task_id, '函数识别完成', 30)
+                update_calculation_progress(task_id, '函数识别完成', 25)
 
             if is_import_func:
-                # 更新进度：开始执行函数
+                # 更新进度：开始执行导入函数
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, f'执行函数 {func_name}', 40)
+                    update_calculation_progress(task_id, f'开始执行函数 {func_name}', 35)
                     
                 data = {}
                 data['function_name'] = func_name
@@ -1138,15 +1190,23 @@ def operator_strs(request):
                     
                 # 更新进度：函数参数解析完成
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, '函数参数解析完成', 50)
+                    update_calculation_progress(task_id, '函数参数解析完成', 45)
+                    
+                # 更新进度：执行函数中
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, f'执行函数 {func_name} 中', 60)
                     
                 ret = execute_function(data)
                 
                 # 更新进度：函数执行完成
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, '函数执行完成', 90)
+                    update_calculation_progress(task_id, '函数执行完成', 85)
                     
-                # 标记计算完成
+                # 标记计算完成，准备返回结果
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '计算完成，准备返回结果', 95)
+                    
+                # 最终完成状态会在前端处理结果后设置
                 if task_id and task_id in calculation_tasks:
                     update_calculation_progress(task_id, '计算完成', 100, 'completed')
                     
@@ -1157,14 +1217,14 @@ def operator_strs(request):
                 
                 # 更新进度：开始特殊函数处理
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, '开始特殊函数处理', 40)
+                    update_calculation_progress(task_id, '开始特殊函数处理', 35)
                     
                 if anomaly_func_str[:3] == 'Pca':
                     print('xxxx')
                     
                     # 更新进度：开始PCA分析
                     if task_id and task_id in calculation_tasks:
-                        update_calculation_progress(task_id, '开始PCA分析', 50)
+                        update_calculation_progress(task_id, '开始PCA分析', 45)
                         
                     anomaly_func_str = anomaly_func_str[3:]
                     params_list = anomaly_func_str.replace(" ", "")[1:-1].split(',')
@@ -1177,7 +1237,7 @@ def operator_strs(request):
                     
                     # 更新进度：PCA分析中
                     if task_id and task_id in calculation_tasks:
-                        update_calculation_progress(task_id, 'PCA分析中', 70)
+                        update_calculation_progress(task_id, 'PCA分析计算中', 70)
                         
                     ret = period_condition_anomaly(channel_name, period, condition_str, mode, channel_to_use)
                     
@@ -1201,7 +1261,7 @@ def operator_strs(request):
         else:
             # 更新进度：开始表达式解析
             if task_id and task_id in calculation_tasks:
-                update_calculation_progress(task_id, '开始表达式解析', 40)
+                update_calculation_progress(task_id, '开始表达式解析', 30)
                 
             # 检查表达式是否包含括号或运算符
             if '(' in anomaly_func_str or ')' in anomaly_func_str or any(op in anomaly_func_str for op in ['+', '-', '*', '/']):
@@ -1210,23 +1270,28 @@ def operator_strs(request):
                 
                 # 更新进度：解析复杂表达式
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, '解析复杂表达式', 50)
+                    update_calculation_progress(task_id, '解析复杂表达式', 40)
                     
-                # 修改表达式解析器初始化，传入采样率
-                parser = ExpressionParser(lambda req, key: get_channel_data(create_mock_request(key, sample_freq), key))
+                # 修改表达式解析器初始化，传入采样率和数据库参数
+                db_suffix = data.get('db_suffix')
+                parser = ExpressionParser(lambda req, key: get_channel_data(create_mock_request(key, sample_freq, db_suffix), key))
                 
                 # 更新进度：获取通道数据
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, '获取通道数据', 60)
+                    update_calculation_progress(task_id, '获取通道数据', 55)
                     
                 result = parser.parse(anomaly_func_str)
                 
                 # 更新进度：计算表达式结果
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, '计算表达式结果', 80)
+                    update_calculation_progress(task_id, '计算表达式结果', 75)
                 
                 # 设置结果通道名
                 result['channel_name'] = anomaly_func_str
+                
+                # 更新进度：表达式计算完成
+                if task_id and task_id in calculation_tasks:
+                    update_calculation_progress(task_id, '表达式计算完成', 90)
                 
                 # 标记计算完成
                 if task_id and task_id in calculation_tasks:
@@ -1239,16 +1304,18 @@ def operator_strs(request):
                 
                 # 更新进度：查找通道数据
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, f'查找通道: {channel_key}', 50)
+                    update_calculation_progress(task_id, f'查找通道: {channel_key}', 40)
                     
                 if channel_key in channel_map:
                     try:
                         # 更新进度：获取通道数据
                         if task_id and task_id in calculation_tasks:
-                            update_calculation_progress(task_id, f'获取通道数据: {channel_key}', 70)
+                            update_calculation_progress(task_id, f'获取通道数据: {channel_key}', 60)
                             
-                        # 创建包含采样率的请求对象
-                        mock_request = create_mock_request(channel_key, sample_freq)
+                        # 创建包含采样率和数据库参数的请求对象
+                        # 从原始请求中获取数据库后缀
+                        db_suffix = data.get('db_suffix')
+                        mock_request = create_mock_request(channel_key, sample_freq, db_suffix)
                         response = get_channel_data(mock_request, channel_key)
                         channel_data = json.loads(response.content.decode('utf-8'))
                         
@@ -1273,7 +1340,7 @@ def operator_strs(request):
                         
                         # 更新进度：处理通道数据
                         if task_id and task_id in calculation_tasks:
-                            update_calculation_progress(task_id, '处理通道数据', 90)
+                            update_calculation_progress(task_id, '处理通道数据完成', 85)
                             
                         # 标记计算完成
                         if task_id and task_id in calculation_tasks:
@@ -1294,8 +1361,8 @@ def operator_strs(request):
                     raise ValueError(f"未找到通道: {channel_key}")
     except Exception as e:
         # 如果提供了任务ID，标记任务失败
-        if 'task_id' in data and data['task_id'] in calculation_tasks:
-            update_calculation_progress(data['task_id'], f'计算出错: {str(e)}', 0, 'failed')
+        if 'task_id' in locals() and locals().get('task_id') and locals().get('task_id') in calculation_tasks:
+            update_calculation_progress(locals().get('task_id'), f'计算出错: {str(e)}', 0, 'failed')
             
         # 打印详细错误信息以便调试
         import traceback
@@ -1303,17 +1370,18 @@ def operator_strs(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 # 添加一个创建模拟请求对象的辅助函数
-def create_mock_request(channel_key, sample_freq):
+def create_mock_request(channel_key, sample_freq, db_suffix=None):
     """创建一个包含采样率的模拟请求对象"""
     class MockRequest:
-        def __init__(self, channel_key, sample_freq):
+        def __init__(self, channel_key, sample_freq, db_suffix):
             self.GET = {
                 'channel_key': channel_key,
                 'sample_mode': 'downsample',
-                'sample_freq': sample_freq
+                'sample_freq': sample_freq,
+                'db_suffix': db_suffix
             }
     
-    return MockRequest(channel_key, sample_freq)
+    return MockRequest(channel_key, sample_freq, db_suffix)
 
 import importlib.util
 import inspect
