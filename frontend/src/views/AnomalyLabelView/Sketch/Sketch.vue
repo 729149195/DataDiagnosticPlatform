@@ -198,19 +198,28 @@
         </span>
       </div>
       <div class="panel-content">
-        <el-table ref="resultsTable" :data="groupedMatchedResults" v-model:selection="selectedMatchedResults" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border :span-method="objectSpanMethod">
+        <el-table ref="resultsTable" :data="sortedGroupedMatchedResults" v-model:selection="selectedMatchedResults" @selection-change="handleTableSelectionChange" height="calc(100vh - 83px)" size="default" border :span-method="objectSpanMethod" @sort-change="handleSortChange">
           <el-table-column type="selection" width="40" align="center" />
-          <el-table-column label="区间幅度s" min-width="110" align="center">
+          <el-table-column label="区间幅度s" min-width="110" align="center" sortable="custom" prop="groupAmplitude">
             <template #default="scope">
-              <div class="amplitude-cell">
+              <div class="amplitude-cell" @click="handleAmplitudeCellClick(scope.row)" :class="{ 'clickable': true }" :title="getAmplitudeCellTooltip(scope.row.groupIndex)">
                 <span class="group-value">≈{{ scope.row.groupAmplitude?.toFixed(6) }}</span>
+                <div class="click-hint">点击批量选择</div>
+                <div class="group-selection-indicator" v-if="getGroupSelectionStatus(scope.row.groupIndex).hasSelection">
+                  <el-icon v-if="getGroupSelectionStatus(scope.row.groupIndex).isFullySelected" class="selection-icon fully-selected">
+                    <Check />
+                  </el-icon>
+                  <el-icon v-else class="selection-icon partially-selected">
+                    <Minus />
+                  </el-icon>
+                </div>
               </div>
             </template>
           </el-table-column>
           <el-table-column label="通道名" min-width="90" align="center" show-overflow-tooltip prop="channelName" />
           <el-table-column label="炮号" min-width="60" align="center" prop="shotNumber" />
           <!-- <el-table-column label="平滑" min-width="60" align="center" prop="smoothLevel" /> -->
-          <el-table-column label="匹配度" min-width="70" align="center">
+          <el-table-column label="匹配度" min-width="70" align="center" sortable="custom" prop="confidence">
             <template #default="scope">
               <span class="cell-number">{{ scope.row.confidence?.toFixed(3) }}</span>
             </template>
@@ -229,7 +238,7 @@ import {
   onUnmounted,
   watch,
 } from 'vue';
-import { Search, FullScreen, List, ArrowLeft } from '@element-plus/icons-vue';
+import { Search, FullScreen, List, ArrowLeft, Check, Minus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
@@ -1233,6 +1242,13 @@ const resultsDrawerVisible = ref(false);
 const selectedMatchedResults = ref([]);
 // 全选状态
 const allMatchedSelected = ref(false);
+// 表格引用
+const resultsTable = ref(null);
+// 排序状态
+const sortConfig = ref({
+  prop: 'confidence',
+  order: 'descending'
+});
 // 排序后的匹配结果
 const sortedMatchedResults = computed(() => {
   // 按confidence降序排列
@@ -1297,8 +1313,74 @@ const groupedMatchedResults = computed(() => {
   }).flat();
 });
 
+// 排序后的分组结果
+const sortedGroupedMatchedResults = computed(() => {
+  if (groupedMatchedResults.value.length === 0) return [];
+  
+  // 如果没有排序配置，直接返回分组结果
+  if (!sortConfig.value.prop || !sortConfig.value.order) {
+    return groupedMatchedResults.value;
+  }
+  
+  // 按组分类
+  const groupMap = new Map();
+  groupedMatchedResults.value.forEach(item => {
+    if (!groupMap.has(item.groupIndex)) {
+      groupMap.set(item.groupIndex, []);
+    }
+    groupMap.get(item.groupIndex).push(item);
+  });
+  
+  // 对每个组内的数据进行排序
+  const sortedGroups = [];
+  for (const [groupIndex, groupItems] of groupMap) {
+    const sortedGroupItems = [...groupItems].sort((a, b) => {
+      let aValue = a[sortConfig.value.prop];
+      let bValue = b[sortConfig.value.prop];
+      
+      // 处理数值类型
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        if (sortConfig.value.order === 'ascending') {
+          return aValue - bValue;
+        } else {
+          return bValue - aValue;
+        }
+      }
+      
+      // 处理字符串类型
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        if (sortConfig.value.order === 'ascending') {
+          return aValue.localeCompare(bValue);
+        } else {
+          return bValue.localeCompare(aValue);
+        }
+      }
+      
+      return 0;
+    });
+    
+    sortedGroups.push({ groupIndex, items: sortedGroupItems });
+  }
+  
+  // 根据排序字段对组进行排序（使用组内第一个元素的值）
+  if (sortConfig.value.prop === 'groupAmplitude') {
+    sortedGroups.sort((a, b) => {
+      const aValue = a.items[0].groupAmplitude;
+      const bValue = b.items[0].groupAmplitude;
+      if (sortConfig.value.order === 'ascending') {
+        return aValue - bValue;
+      } else {
+        return bValue - aValue;
+      }
+    });
+  }
+  
+  // 展平结果
+  return sortedGroups.flatMap(group => group.items);
+});
+
 // 获取所有匹配结果id，使用原始索引
-const allMatchedIds = computed(() => groupedMatchedResults.value.map(item =>
+const allMatchedIds = computed(() => sortedGroupedMatchedResults.value.map(item =>
   `${item.channelName}_${item.shotNumber}_${item.originalIndex}`
 ));
 
@@ -1314,7 +1396,7 @@ const toggleResultsDrawer = () => {
   // 当打开面板时，确保所有结果都被选中
   if (resultsDrawerVisible.value && sortedMatchedResults.value.length > 0) {
     // 关键：直接赋值为所有行对象，实现el-table自动全选
-    selectedMatchedResults.value = [...groupedMatchedResults.value];
+    selectedMatchedResults.value = [...sortedGroupedMatchedResults.value];
     // 同步id到store
     store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
@@ -1329,12 +1411,12 @@ const handleTableSelectionChange = (selection) => {
     `${row.channelName}_${row.shotNumber}_${row.originalIndex}`
   );
   store.commit('setVisibleMatchedResultIds', ids);
-  allMatchedSelected.value = selection.length === groupedMatchedResults.value.length && selection.length > 0;
+  allMatchedSelected.value = selection.length === sortedGroupedMatchedResults.value.length && selection.length > 0;
 };
 
 // 监听selectedMatchedResults变化，更新全选状态
 watch(selectedMatchedResults, (newVal) => {
-  allMatchedSelected.value = newVal.length === groupedMatchedResults.value.length && newVal.length > 0;
+  allMatchedSelected.value = newVal.length === sortedGroupedMatchedResults.value.length && newVal.length > 0;
 });
 
 // 监听匹配结果，有新结果时自动展开抽屉
@@ -1342,7 +1424,7 @@ watch(sortedMatchedResults, (newVal) => {
   if (newVal.length > 0) {
     resultsDrawerVisible.value = true;
     // 关键：直接赋值为所有行对象，实现el-table自动全选
-    selectedMatchedResults.value = [...groupedMatchedResults.value];
+    selectedMatchedResults.value = [...sortedGroupedMatchedResults.value];
     // 同步id到store
     store.commit('setVisibleMatchedResultIds', allMatchedIds.value);
   }
@@ -1363,8 +1445,8 @@ const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
     if (isGroupStart(rowIndex)) {
       // 计算当前组有多少行
       let rowCount = 1;
-      for (let i = rowIndex + 1; i < groupedMatchedResults.value.length; i++) {
-        if (groupedMatchedResults.value[i].groupIndex === row.groupIndex) {
+      for (let i = rowIndex + 1; i < sortedGroupedMatchedResults.value.length; i++) {
+        if (sortedGroupedMatchedResults.value[i].groupIndex === row.groupIndex) {
           rowCount++;
         } else {
           break;
@@ -1393,9 +1475,71 @@ const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
 // 判断是否是组的第一个元素（用于显示组标签）
 const isGroupStart = (index) => {
   if (index === 0) return true;
-  const currentRow = groupedMatchedResults.value[index];
-  const prevRow = groupedMatchedResults.value[index - 1];
+  const currentRow = sortedGroupedMatchedResults.value[index];
+  const prevRow = sortedGroupedMatchedResults.value[index - 1];
   return currentRow.groupIndex !== prevRow.groupIndex;
+};
+
+// 处理表格排序变化
+const handleSortChange = ({ prop, order }) => {
+  sortConfig.value = {
+    prop: prop,
+    order: order
+  };
+};
+
+// 获取组的选择状态
+const getGroupSelectionStatus = (groupIndex) => {
+  const groupItems = sortedGroupedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
+  const selectedItems = selectedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
+  
+  return {
+    hasSelection: selectedItems.length > 0,
+    isFullySelected: selectedItems.length === groupItems.length && groupItems.length > 0,
+    isPartiallySelected: selectedItems.length > 0 && selectedItems.length < groupItems.length
+  };
+};
+
+// 获取区间幅度单元格的提示文本
+const getAmplitudeCellTooltip = (groupIndex) => {
+  const groupItems = sortedGroupedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
+  const groupSelectionStatus = getGroupSelectionStatus(groupIndex);
+  
+  if (groupSelectionStatus.isFullySelected) {
+    return `点击取消选择该区间幅度组的所有 ${groupItems.length} 项`;
+  } else if (groupSelectionStatus.isPartiallySelected) {
+    const selectedCount = selectedMatchedResults.value.filter(item => item.groupIndex === groupIndex).length;
+    return `点击选择该区间幅度组的所有 ${groupItems.length} 项（当前已选 ${selectedCount} 项）`;
+  } else {
+    return `点击选择该区间幅度组的所有 ${groupItems.length} 项`;
+  }
+};
+
+// 处理区间幅度单元格点击
+const handleAmplitudeCellClick = (clickedRow) => {
+  const groupIndex = clickedRow.groupIndex;
+  const groupItems = sortedGroupedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
+  const groupSelectionStatus = getGroupSelectionStatus(groupIndex);
+  
+  // 获取表格引用
+  const tableRef = resultsTable.value;
+  
+  // 如果组内全部选中，则取消全部选择；否则选中全部
+  if (groupSelectionStatus.isFullySelected) {
+    // 取消选中该组的所有项
+    groupItems.forEach(item => {
+      if (tableRef) {
+        tableRef.toggleRowSelection(item, false);
+      }
+    });
+  } else {
+    // 选中该组的所有项
+    groupItems.forEach(item => {
+      if (tableRef) {
+        tableRef.toggleRowSelection(item, true);
+      }
+    });
+  }
 };
 </script>
 
@@ -1746,6 +1890,20 @@ const isGroupStart = (index) => {
   text-align: right;
 }
 
+/* 确保区间幅度列的单元格完全可点击 */
+:deep(.el-table td:nth-child(2)) {
+  padding: 0 !important;
+  vertical-align: middle;
+}
+
+:deep(.el-table td:nth-child(2) .cell) {
+  padding: 0 !important;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .collapse-button {
   display: flex;
   flex-direction: row;
@@ -1811,12 +1969,82 @@ const isGroupStart = (index) => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 8px 0;
+  padding: 8px;
+  position: relative;
+  transition: all 0.2s ease;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  min-height: 50px;
+  justify-content: center;
+}
+
+.amplitude-cell.clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+  border: 1px solid transparent;
+  margin: -1px; /* 补偿边框占用的空间 */
+}
+
+.amplitude-cell.clickable:hover {
+  background-color: rgba(64, 158, 255, 0.15);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.25);
+  border: 1px solid rgba(64, 158, 255, 0.3);
+}
+
+.amplitude-cell.clickable:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 4px rgba(64, 158, 255, 0.4);
+  background-color: rgba(64, 158, 255, 0.2);
 }
 
 .group-value {
   font-weight: bold;
   font-size: 16px;
+  pointer-events: none; /* 确保点击事件传递到父元素 */
+}
+
+.click-hint {
+  font-size: 10px;
+  color: #999;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none; /* 确保点击事件传递到父元素 */
+}
+
+.amplitude-cell.clickable:hover .click-hint {
+  opacity: 1;
+}
+
+.group-selection-indicator {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: none; /* 确保点击事件传递到父元素 */
+}
+
+.selection-icon {
+  font-size: 12px;
+  pointer-events: none; /* 确保点击事件传递到父元素 */
+}
+
+.selection-icon.fully-selected {
+  color: #67c23a;
+}
+
+.selection-icon.partially-selected {
+  color: #e6a23c;
 }
 
 .group-label {
