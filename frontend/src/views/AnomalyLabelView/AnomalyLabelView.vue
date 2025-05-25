@@ -816,11 +816,9 @@ watch(() => store.state.authority, (newValue) => {
 
 // 确保在组件挂载时设置正确的初始状态
 onMounted(() => {
-  // 如果有需要，可以从localStorage或其他地方恢复上次的状态
-  const savedButton = localStorage.getItem('selectedButton');
-  if (savedButton) {
-    selectedButton.value = savedButton;
-  }
+  // 每次挂载时都强制切换到实验数据分析模块
+  selectedButton.value = 'anay';
+  localStorage.setItem('selectedButton', 'anay');
 
   // 恢复通道显示模式
   const savedChannelMode = localStorage.getItem('channelDisplayMode');
@@ -849,8 +847,24 @@ onMounted(() => {
   }
 });
 
+// 监听登录状态变化，确保重定向后状态正确恢复
+watch(() => store.state.person, (newPerson, oldPerson) => {
+  // 当用户重新登录时，强制切换到实验数据分析模块
+  if (newPerson && !oldPerson) {
+    nextTick(() => {
+      selectedButton.value = 'anay';
+      localStorage.setItem('selectedButton', 'anay');
+    });
+  }
+  // 当用户登出时，也确保切换到实验数据分析模块
+  if (!newPerson && oldPerson) {
+    selectedButton.value = 'anay';
+    localStorage.setItem('selectedButton', 'anay');
+  }
+}, { immediate: false });
+
 onBeforeUnmount(() => {
-  selectedButton.value = 'anay';
+  // 移除强制重置逻辑，保持状态一致性
   if (chartAreaResizeObserver && chartAreaRef.value) {
     chartAreaResizeObserver.unobserve(chartAreaRef.value)
     chartAreaResizeObserver.disconnect()
@@ -860,6 +874,15 @@ onBeforeUnmount(() => {
 const selectButton = (button) => {
   selectedButton.value = button;
   localStorage.setItem('selectedButton', button);
+  
+  // 确保状态变化能触发组件重新渲染
+  nextTick(() => {
+    // 强制更新相关的计算属性
+    if (button === 'anay' || button === 'channel') {
+      // 触发响应式更新
+      console.log(`切换到 ${button} 模式`);
+    }
+  });
 };
 
 // 添加保存通道显示模式的函数

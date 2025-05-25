@@ -182,7 +182,7 @@ const router = useRouter()
 const selectedButton = ref('anay');
 
 onBeforeUnmount(() => {
-  selectedButton.value = 'anay';
+  // 移除强制重置逻辑，让父组件控制状态
 })
 
 // 添加缓存服务性能优化
@@ -239,15 +239,26 @@ const checkLoginStatus = () => {
 // 在组件挂载时设置初始按钮状态
 onMounted(() => {
   checkLoginStatus();
-  selectedButton.value = props.initialButton;
+  // 每次挂载时都强制切换到实验数据分析模块
+  selectedButton.value = 'anay';
+  localStorage.setItem('selectedButton', 'anay');
+  // 发出事件通知父组件按钮已更改
+  emit('button-change', 'anay');
 
   // 预加载缓存索引
   preloadCacheData();
 });
 
+// 移除 initialButton prop 监听，因为现在总是强制设置为 'anay'
+
 // 监听 person 的变化
 watch(person, (newValue) => {
   if (!newValue) {
+    // 用户登出时，重置按钮状态为实验数据分析模块
+    selectedButton.value = 'anay';
+    localStorage.setItem('selectedButton', 'anay');
+    // 发出事件通知父组件按钮已更改
+    emit('button-change', 'anay');
     router.push('/');
   }
 });
