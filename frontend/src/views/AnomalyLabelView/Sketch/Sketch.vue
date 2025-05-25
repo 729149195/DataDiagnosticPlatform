@@ -84,16 +84,16 @@
               <el-form label-width="80px" label-position="left">
                 <el-form-item label="时间区间（单位s）" label-position="top">
                   <div style="display: flex; align-items: center; width: 100%;">
-                    <el-input v-model="xFilterStart" placeholder="起点" style="width: 48%;" />
+                    <el-input v-model="xFilterStart" placeholder="起点" size="small" style="width: 48%;" />
                     <span style="margin: 0 4px;">~</span>
-                    <el-input v-model="xFilterEnd" placeholder="终点" style="width: 48%;" />
+                    <el-input v-model="xFilterEnd" placeholder="终点" size="small" style="width: 48%;" />
                   </div>
                 </el-form-item>
                 <el-form-item label="数值区间" label-position="top">
                   <div style="display: flex; align-items: center; width: 100%;">
-                    <el-input v-model="yFilterStart" placeholder="起点" style="width: 48%;" />
+                    <el-input v-model="yFilterStart" placeholder="起点" size="small" style="width: 48%;" />
                     <span style="margin: 0 4px;">~</span>
-                    <el-input v-model="yFilterEnd" placeholder="终点" style="width: 48%;" />
+                    <el-input v-model="yFilterEnd" placeholder="终点" size="small" style="width: 48%;" />
                   </div>
                 </el-form-item>
               </el-form>
@@ -111,10 +111,10 @@
                       <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动(0.0001~0.1)</span>
                     </div>
                   </template>
-                  <el-input v-model="lowpassAmplitude" style="width: 100%;" />
+                  <el-input v-model="lowpassAmplitude" size="small" style="width: 100%;" />
                 </el-form-item>
-                <el-form-item label="匹配上限">
-                  <el-input v-model="maxMatchPerChannel" style="width: 100%;" />
+                <el-form-item label="匹配数量上限">
+                  <el-input v-model="maxMatchPerChannel" size="small" style="width: 100%;" />
                 </el-form-item>
               </el-form>
             </el-tab-pane>
@@ -125,13 +125,13 @@
               </template>
               <el-form label-width="80px" label-position="left">
                 <el-form-item label="模式重复数">
-                  <el-input v-model="patternRepeatCount" style="width: 100%;" />
+                  <el-input v-model="patternRepeatCount" size="small" style="width: 100%;" />
                 </el-form-item>
-                <el-form-item label="指标幅度">
-                  <el-input v-model="amplitudeLimit" placeholder="留空为不限制" style="width: 100%;" />
+                <el-form-item label="指标幅度" label-position="top">
+                  <el-input v-model="amplitudeLimit" placeholder="留空为不限制" size="small" style="width: 100%;" />
                 </el-form-item>
-                <el-form-item label="时间跨度">
-                  <el-input v-model="timeSpanLimit" placeholder="留空为不限制" style="width: 100%;" />
+                <el-form-item label="时间跨度" label-position="top">
+                  <el-input v-model="timeSpanLimit" placeholder="留空为不限制" size="small" style="width: 100%;" />
                 </el-form-item>
               </el-form>
             </el-tab-pane>
@@ -1410,17 +1410,34 @@ const isGroupStart = (index) => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border: 1px solid #eee;
-  border-radius: 4px;
+  border: 1px solid #e1e8ed;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-right: 8px;
 }
 
 .operation-panel {
   flex: 1;
-  padding: 3px;
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  border: 1px solid #eee;
-  border-radius: 4px;
+  background: transparent;
+  border: 1px solid #d9ecff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.operation-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #409eff 0%, #337ecc 50%, #409eff 100%);
+  opacity: 0.9;
 }
 
 .params-area {
@@ -1430,6 +1447,7 @@ const isGroupStart = (index) => {
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
+  padding-top: 4px;
 }
 
 .canvas-container {
@@ -1809,23 +1827,55 @@ const isGroupStart = (index) => {
   display: none;
 }
 
-:deep(.el-input__wrapper) {
-  padding: 2px 4px;
-  margin-bottom: 0px !important;
+/* 表单样式优化 */
+:deep(.el-form) {
+  padding: 0 4px;
 }
 
 :deep(.el-form-item__label) {
-  padding: 0px 0px 0px 0px !important;
+  padding: 0px 0px 4px 0px !important;
   margin-bottom: 0px !important;
+  font-weight: 600;
+  color: #303133;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 :deep(.el-form-item) {
-  margin-bottom: 4px !important;
+  margin-bottom: 8px !important;
+}
+
+:deep(.el-input__wrapper) {
+  padding: 4px 6px;
+  margin-bottom: 0px !important;
+  border-radius: 4px;
+  border: 1px solid #d9ecff;
+  background: transparent;
+  transition: all 0.3s ease;
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper:hover) {
+  border-color: #b3d8ff;
+  box-shadow: none;
+}
+
+:deep(.el-input__wrapper.is-focus) {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
 }
 
 :deep(.el-input__inner) {
-  padding: 2px 4px;
+  padding: 0;
   font-size: 13px;
+  color: #303133;
+  background: transparent;
+  border: none;
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: #a8abb2;
+  font-size: 12px;
 }
 
 :deep(.el-input-number) {
@@ -1833,19 +1883,137 @@ const isGroupStart = (index) => {
   margin-bottom: 4px !important;
 }
 
-:deep(.el-input-number .el-input__inner) {
-  padding: 2px 4px;
-  font-size: 13px;
+:deep(.el-input-number .el-input__wrapper) {
+  padding: 6px 8px;
+}
+
+/* 标签页样式优化 */
+:deep(.el-tabs__header) {
+  margin: 0 0 8px 0;
+  background: transparent;
+  border-radius: 6px;
+  padding: 1px;
+  box-shadow: none;
+}
+
+:deep(.el-tabs__nav-wrap) {
+  padding: 0;
+  overflow: visible !important;
+}
+
+:deep(.el-tabs__nav-scroll) {
+  overflow: visible !important;
+}
+
+:deep(.el-tabs__nav) {
+  border: none;
+  background: transparent;
+  display: flex !important;
+  width: 100% !important;
+  justify-content: space-between;
 }
 
 :deep(.el-tabs__item) {
-  min-width: 56px;
-  width: 64px;
+  min-width: 45px;
+  max-width: calc(33.333% - 1px);
+  flex: 1 1 calc(33.333% - 1px);
   text-align: center;
-  font-size: 15px;
-  line-height: 18px;
-  padding: 4px 0 !important;
+  font-size: 13px;
+  line-height: 15px;
+  padding: 6px 2px !important;
   word-break: keep-all;
-  letter-spacing: 2px;
+  letter-spacing: 0;
+  border: none;
+  border-radius: 3px;
+  margin: 0 0.5px;
+  transition: all 0.3s ease;
+  color: #606266;
+  font-weight: 500;
+  background: transparent;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+:deep(.el-tabs__item:hover) {
+  background: rgba(64, 158, 255, 0.1);
+  color: #409eff;
+  transform: translateY(-1px);
+}
+
+:deep(.el-tabs__item.is-active) {
+  background: linear-gradient(135deg, #409eff 0%, #337ecc 100%);
+  color: white;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(64, 158, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+:deep(.el-tabs__active-bar) {
+  display: none;
+}
+
+/* 标签页内容区域样式 */
+:deep(.el-tab-pane) {
+  padding: 6px 3px;
+  background: transparent;
+  border-radius: 6px;
+  margin-top: -2px;
+  min-height: 180px;
+  backdrop-filter: none;
+  border: none;
+}
+
+/* 特殊标签样式 */
+:deep(.el-form-item__label) {
+  position: relative;
+}
+
+:deep(.el-form-item__label::before) {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 12px;
+  background: linear-gradient(135deg, #409eff, #337ecc);
+  border-radius: 2px;
+  opacity: 0.7;
+  transition: all 0.3s ease;
+}
+
+:deep(.el-form-item:hover .el-form-item__label::before) {
+  opacity: 1;
+  width: 4px;
+  height: 14px;
+}
+
+/* 整体动画效果 */
+.operation-panel {
+  transition: all 0.3s ease;
+}
+
+.operation-panel:hover {
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+  transform: none;
+}
+
+/* 响应式优化 */
+@media (max-width: 1200px) {
+  :deep(.el-form-item) {
+    margin-bottom: 6px !important;
+  }
+  
+  :deep(.el-tab-pane) {
+    min-height: 160px;
+    padding: 4px 2px;
+  }
+
+  :deep(.el-tabs__item) {
+    font-size: 12px !important;
+    line-height: 14px !important;
+    padding: 5px 1px !important;
+    min-width: 42px;
+  }
 }
 </style>
