@@ -245,6 +245,7 @@
                             <hr style="margin:8px 0;">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
+                              <li>点击对应的运算类别，会展开对应的运算符，双击空白处收起</li>
                               <li>点击运算符添加到通道分析公式区域中的鼠标位置</li>
                               <li>算法导入按钮可以通过导入运算函数和诊断函数的 python 或 matlab 文件将算法加入可用列表</li>
                             </ul>
@@ -309,7 +310,7 @@
                             <hr style="margin:8px 0;">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                              <li>结果以图表展示</li>
+                              <li>结果以图表展示，可用鼠标框选局部放大，双击复原</li>
                               <li>可以通过导出按钮导出结果数据或者svg、jpg、png格式的图表</li>
                             </ul>
                           </div>
