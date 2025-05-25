@@ -123,24 +123,32 @@ const restoreCursorPosition = (element, cursorPosition) => {
 };
 
 // 轮询后端进度的函数
-const pollCalculationProgress = async (taskId) => {
+const pollCalculationProgress = (taskId) => {
     try {
         // 增加防抖处理，避免频繁请求
         let isRequestPending = false;
         let consecutiveErrors = 0; // 连续错误计数
         const maxConsecutiveErrors = 5; // 增加最大连续错误次数
+        let progressCheckInterval = null; // 将interval变量提升到外层作用域
         
-        console.log('启动进度轮询，任务ID:', taskId);
+        // console.log('启动进度轮询，任务ID:', taskId);
         
-        const progressCheckInterval = setInterval(async () => {
-            // 如果计算已停止或正在等待请求响应，则跳过本次轮询
-            if (!store.state.isCalculating || isRequestPending) {
-                if (!store.state.isCalculating) {
-                    clearInterval(progressCheckInterval);
-                    console.log('计算状态已停止，停止轮询');
-                }
+        // 延迟启动轮询，给后端处理时间
+        setTimeout(() => {
+            if (!store.state.isCalculating) {
+                // console.log('计算已停止，取消轮询启动');
                 return;
             }
+            
+            progressCheckInterval = setInterval(async () => {
+                // 如果计算已停止或正在等待请求响应，则跳过本次轮询
+                if (!store.state.isCalculating || isRequestPending) {
+                    if (!store.state.isCalculating) {
+                        clearInterval(progressCheckInterval);
+                        // console.log('计算状态已停止，停止轮询');
+                    }
+                    return;
+                }
             
             try {
                 isRequestPending = true;
@@ -151,7 +159,7 @@ const pollCalculationProgress = async (taskId) => {
                 consecutiveErrors = 0; // 重置错误计数
                 
                 const { step, progress, status } = response.data;
-                console.log(`进度更新: ${step} - ${progress}% - ${status}`);
+                // console.log(`进度更新: ${step} - ${progress}% - ${status}`);
                 
                 // 更新后端计算进度
                 store.commit('setCalculatingProgress', {
@@ -162,7 +170,7 @@ const pollCalculationProgress = async (taskId) => {
                 // 如果计算完成，开始处理渲染阶段
                 if (status === 'completed') {
                     clearInterval(progressCheckInterval);
-                    console.log('后端计算完成，进入渲染阶段');
+                    // console.log('后端计算完成，进入渲染阶段');
                     
                     // 开始渲染进度跟踪
                     store.commit('setCalculatingProgress', {
@@ -180,7 +188,7 @@ const pollCalculationProgress = async (taskId) => {
                     
                 } else if (status === 'failed') {
                     clearInterval(progressCheckInterval);
-                    console.log('后端计算失败');
+                    // console.log('后端计算失败');
                     
                     store.commit('setCalculatingProgress', {
                         step: `计算失败: ${response.data.error || step || '未知错误'}`,
@@ -200,11 +208,11 @@ const pollCalculationProgress = async (taskId) => {
                 
                 // 如果是404错误且错误次数不多，可能是任务还在初始化
                 if (error.response && error.response.status === 404) {
-                    if (consecutiveErrors < 3) { // 对404错误更宽容
-                        console.log('任务可能还在初始化，继续轮询...');
+                    if (consecutiveErrors <= 3) { // 对404错误更宽容，允许最多3次404错误
+                        // console.log('任务可能还在初始化，继续轮询...');
                         return; // 继续轮询，不停止
                     } else {
-                        console.log('任务可能已完成或不存在，停止轮询');
+                        // console.log('任务可能已完成或不存在，停止轮询');
                         clearInterval(progressCheckInterval);
                         // 不显示错误，因为计算可能已经完成
                         return;
@@ -236,6 +244,7 @@ const pollCalculationProgress = async (taskId) => {
                 }
             }
         }, 800); // 将轮询间隔增加到800ms，减少服务器压力
+        }, 1000); // 延迟1秒启动轮询
     } catch (error) {
         console.error('Error setting up progress polling:', error);
     }
@@ -270,7 +279,7 @@ const sendClickedChannelNames = async () => {
                 progress: 5
             });
             
-            console.log('发送初始化请求...');
+            // console.log('发送初始化请求...');
             const initResponse = await axios.post('https://10.1.108.231:5000/api/operator-strs/init', {
                 expression: formulasarea.value,
                 db_suffix: store.state.selectedDbSuffix
@@ -280,7 +289,7 @@ const sendClickedChannelNames = async () => {
             });
             
             const taskId = initResponse.data.task_id;
-            console.log('任务初始化成功, 任务ID:', taskId);
+            // console.log('任务初始化成功, 任务ID:', taskId);
             
             // 更新进度显示
             store.commit('setCalculatingProgress', {
@@ -288,8 +297,12 @@ const sendClickedChannelNames = async () => {
                 progress: 10
             });
             
+            // 在发送计算请求前启动轮询
+            // console.log('启动进度轮询...');
+            pollCalculationProgress(taskId);
+            
             // 发送实际计算请求
-            console.log('发送计算请求...');
+            // console.log('发送计算请求...');
             const response = await axios.post('https://10.1.108.231:5000/api/operator-strs', {
                 clickedChannelNames: formulasarea.value,
                 anomaly_func_str: formulasarea.value,
@@ -302,56 +315,27 @@ const sendClickedChannelNames = async () => {
                 timeout: 100000 // 计算请求100秒超时
             });
             
-            console.log('计算请求已发送，启动进度轮询...');
-            
-            // 在计算请求发送后启动进度轮询
-            pollCalculationProgress(taskId);
-            
-            console.log('计算请求完成，处理结果...');
+            // console.log('计算请求完成，处理结果...');
             
             // 处理计算结果
             store.state.ErrorLineXScopes = response.data.data;
             
-            // 更新渲染进度
+            // 更新进度：后端计算完成
             store.commit('setCalculatingProgress', {
-                step: '准备渲染数据',
-                progress: 100
+                step: '后端计算完成，开始渲染',
+                progress: 95
             });
             
-            // 开始渲染阶段的进度跟踪
-            const renderingSteps = [
-                { step: '解析计算结果', progress: 100, delay: 200 },
-                { step: '准备图表数据', progress: 100, delay: 300 },
-                { step: '渲染图表', progress: 100, delay: 500 },
-                { step: '完成', progress: 100, delay: 300 }
-            ];
-            
-            let stepIndex = 0;
-            const executeRenderingStep = () => {
-                if (stepIndex < renderingSteps.length) {
-                    const currentStep = renderingSteps[stepIndex];
-                    store.commit('setCalculatingProgress', {
-                        step: currentStep.step,
-                        progress: currentStep.progress
-                    });
-                    stepIndex++;
-                    
-                    setTimeout(executeRenderingStep, currentStep.delay);
-                } else {
-                    // 提交计算结果，这会触发图表组件的渲染
-                    console.log('开始提交计算结果...');
-                    store.commit('updateCalculateResult', response.data.data.result);
-                    
-                    // 延迟清除计算状态，确保用户能看到完成状态
-                    setTimeout(() => {
-                        console.log('计算和渲染完成，清除状态');
-                        store.commit('setCalculatingStatus', false);
-                    }, 1000); // 增加到1秒延迟
-                }
-            };
-            
-            // 开始执行渲染步骤
-            executeRenderingStep();
+            // 短暂延迟后提交结果并清除状态
+            setTimeout(() => {
+                // 提交计算结果，这会触发图表组件的渲染
+                store.commit('updateCalculateResult', response.data.data.result);
+                
+                // 延迟清除计算状态，让用户看到完成状态
+                setTimeout(() => {
+                    store.commit('setCalculatingStatus', false);
+                }, 500);
+            }, 200);
             
         } catch (error) {
             // 处理错误
@@ -381,7 +365,7 @@ const sendClickedChannelNames = async () => {
                 }, 3000);
             } else {
                 // 用户取消操作
-                console.log('用户取消计算操作');
+                // console.log('用户取消计算操作');
                 store.commit('setCalculatingStatus', false);
             }
         } finally {
