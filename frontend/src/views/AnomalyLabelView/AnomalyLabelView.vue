@@ -225,11 +225,13 @@
                 </el-card>
 
                 <div class="arc-toggle-container">
-                  <div class="arc-toggle" @click="toggleCollapse">
-                    <el-icon class="arc-toggle-icon">
-                      <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
-                    </el-icon>
-                  </div>
+                  <el-tooltip :content="isSecondSectionCollapsed ? '点击展开手绘查询、自动识别和人工标注结果' : '点击折叠手绘查询、自动识别和人工标注结果'" placement="right" effect="light">
+                    <div class="arc-toggle" @click="toggleCollapse">
+                      <el-icon class="arc-toggle-icon">
+                        <component :is="isSecondSectionCollapsed ? 'ArrowUp' : 'ArrowDown'" />
+                      </el-icon>
+                    </div>
+                  </el-tooltip>
                 </div>
                 <div class="two" v-show="!isSecondSectionCollapsed" v-if="selectedButton === 'anay'">
                   <el-card class="two_left" shadow="never">
@@ -2827,7 +2829,8 @@ const chartAreaHeight = computed(() => {
   background-color: #f2f6fc;
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
-  border-top: none;
+  border: 1px solid #409EFF;
+  border-bottom: none;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   display: flex;
@@ -2838,6 +2841,7 @@ const chartAreaHeight = computed(() => {
   &:hover {
     box-shadow: 0 3px 6px rgba(0, 0, 0, 0.15);
     transform: translateY(1px);
+    border-color: #337ecc;
   }
 
   .arc-toggle-icon {
