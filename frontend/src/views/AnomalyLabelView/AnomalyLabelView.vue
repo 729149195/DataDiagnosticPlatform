@@ -30,7 +30,9 @@
                         </ul>
                       </div>
                     </template>
-                    <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                    <el-icon style="color: #409EFF">
+                      <InfoFilled />
+                    </el-icon>
                   </el-tooltip></span>
               </span>
               <Filter />
@@ -54,7 +56,9 @@
                         </ul>
                       </div>
                     </template>
-                    <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                    <el-icon style="color: #409EFF">
+                      <InfoFilled />
+                    </el-icon>
                   </el-tooltip></span>
                 <!-- <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" /> -->
               </span>
@@ -93,7 +97,9 @@
                         </ul>
                       </div>
                     </template>
-                    <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                    <el-icon style="color: #409EFF">
+                      <InfoFilled />
+                    </el-icon>
                   </el-tooltip></span>
               </span>
               <div class="scrollbar-container">
@@ -139,7 +145,9 @@
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                        <el-icon style="color: #409EFF">
+                          <InfoFilled />
+                        </el-icon>
                       </el-tooltip></span>
                     <div class="control-panel">
 
@@ -251,7 +259,9 @@
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                        <el-icon style="color: #409EFF">
+                          <InfoFilled />
+                        </el-icon>
                       </el-tooltip></span>
                     <ChannelOperator />
                   </span>
@@ -272,7 +282,9 @@
                               </ul>
                             </div>
                           </template>
-                          <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                          <el-icon style="color: #409EFF">
+                            <InfoFilled />
+                          </el-icon>
                         </el-tooltip></span>
                       <span>统一频率 <el-input-number v-model="unit_sampling" :precision="1" :step="10" :max="200" />
                         KHz</span>
@@ -295,7 +307,9 @@
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                        <el-icon style="color: #409EFF">
+                          <InfoFilled />
+                        </el-icon>
                       </el-tooltip></span>
                     <ChannelStr />
                   </el-card>
@@ -315,7 +329,9 @@
                             </ul>
                           </div>
                         </template>
-                        <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+                        <el-icon style="color: #409EFF">
+                          <InfoFilled />
+                        </el-icon>
                       </el-tooltip></span>
                     <span>
                       <el-dropdown trigger="click" @command="handleResultExportCommand">
@@ -874,7 +890,7 @@ onBeforeUnmount(() => {
 const selectButton = (button) => {
   selectedButton.value = button;
   localStorage.setItem('selectedButton', button);
-  
+
   // 确保状态变化能触发组件重新渲染
   nextTick(() => {
     // 强制更新相关的计算属性
