@@ -492,6 +492,12 @@ const initPaperJs = () => {
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
     if (isClearing.value) return;
+    
+    // 确保画布获得焦点，使键盘事件能够正常工作
+    if (paperCanvas.value) {
+      paperCanvas.value.focus();
+    }
+    
     selectedSegment = null;
     selectedHandle = null;
     if (!path) {
@@ -553,8 +559,20 @@ const initPaperJs = () => {
 };
 
 // 键盘事件处理函数
+// 修复：防止在操作区参数输入框中删除内容时意外清空绘制曲线
 const handleKeyDown = (e) => {
-  if (e.key === 'Delete' || e.key === 'Backspace') {
+  // 检查事件目标是否为输入框或可编辑元素
+  const target = e.target;
+  const isInputElement = target.tagName === 'INPUT' || 
+                        target.tagName === 'TEXTAREA' || 
+                        target.contentEditable === 'true' ||
+                        target.closest('.el-input') ||
+                        target.closest('.el-form-item');
+  
+  // 只有在非输入元素上且按下Delete或Backspace键时才清除画布
+  // 这样可以避免用户在参数输入框中删除文字时意外清空画布内容
+  if (!isInputElement && (e.key === 'Delete' || e.key === 'Backspace')) {
+    e.preventDefault(); // 防止默认行为
     clearCanvas();
   }
 };
@@ -847,8 +865,12 @@ onMounted(() => {
     window.addEventListener('resize', handleResize);
   }
 
-  // 监听键盘事件
-  window.addEventListener('keydown', handleKeyDown);
+  // 监听键盘事件 - 绑定到画布容器而非全局
+  if (paperCanvas.value) {
+    paperCanvas.value.addEventListener('keydown', handleKeyDown);
+    // 确保画布容器可以获得焦点
+    paperCanvas.value.tabIndex = 0;
+  }
 
   // 初始化分组全选状态
   selectV2Options.value.forEach(group => {
@@ -889,8 +911,10 @@ onUnmounted(() => {
     handleResize = null;
   }
 
-  // 移除全局键盘事件监听器
-  window.removeEventListener('keydown', handleKeyDown);
+  // 移除画布键盘事件监听器
+  if (paperCanvas.value) {
+    paperCanvas.value.removeEventListener('keydown', handleKeyDown);
+  }
 });
 
 // 弹窗相关变量
@@ -1652,6 +1676,12 @@ const handleAmplitudeCellClick = (clickedRow) => {
   overscroll-behavior: contain;
   pointer-events: auto;
   isolation: isolate;
+  outline: none; /* 移除默认的焦点轮廓 */
+}
+
+.whiteboard-canvas:focus {
+  /* 添加一个微妙的焦点指示，但不影响用户体验 */
+  box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.3);
 }
 
 .segment-info {
