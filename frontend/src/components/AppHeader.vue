@@ -270,14 +270,27 @@ const authorityLabel = computed(() => {
 });
 
 const avatarStyle = computed(() => {
-  const colors = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399'];
-  const color = colors[authority.value % colors.length];
+  // 使用Element Plus主题蓝色系的渐变色
+  const blueColors = [
+    '#409EFF', // 主题蓝色
+    '#337ECC', // 深蓝色
+    '#66B1FF', // 浅蓝色
+    '#79BBFF', // 更浅蓝色
+    '#8CC5FF'  // 最浅蓝色
+  ];
+  const color = blueColors[authority.value % blueColors.length];
   return {
     backgroundColor: color,
     color: '#fff',
     cursor: 'pointer',
     border: '2px solid #fff',
-    boxShadow: '0 2px 12px 0 rgba(0, 0, 0, 0.1)',
+    boxShadow: '0 2px 12px 0 rgba(64, 158, 255, 0.2)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontWeight: '600',
+    fontSize: '16px',
+    lineHeight: '1',
   };
 });
 
@@ -720,6 +733,11 @@ const isExpandable = (row) => {
     height: 60px;
     font-size: 24px;
     margin-bottom: 8px;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-weight: 600 !important;
+    line-height: 1 !important;
   }
 
   .user-name {
@@ -823,12 +841,33 @@ const isExpandable = (row) => {
 .el-avatar {
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 600 !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  text-align: center !important;
+  position: relative;
 }
 
 .el-avatar:hover {
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.25);
+}
+
+/* 确保头像内的文字完全居中 */
+.el-avatar span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .empty-cache {
