@@ -2,7 +2,7 @@
     <div class="result-chart-container">
         <div class="channel-info" v-if="curChannel.channel_name">
             <div class="color-block" :style="{ backgroundColor: curChannel.color || 'steelblue' }"></div>
-            <div class="channel-name">{{ curChannel.channel_name }}</div>
+            <div class="channel-name" v-html="highlightedChannelName"></div>
         </div>
         
         <!-- 美化后的进度条 -->
@@ -873,6 +873,88 @@ const handleResize = throttle(() => {
     }
 }, 100); // 100ms的节流延迟
 
+// 获取选中的通道列表，用于获取颜色信息
+const selectedChannels = computed(() => store.state.selectedChannels);
+
+// 通道名称解析和高亮功能
+const highlightedChannelName = computed(() => {
+    if (!curChannel.value.channel_name) return '';
+    
+    const channelName = curChannel.value.channel_name;
+    
+    // 获取通道标识符和颜色映射
+    const channelIdentifiers = selectedChannels.value.map((channel) =>
+        `${channel.channel_name}_${channel.shot_number}`
+    );
+    const colors = selectedChannels.value.reduce((acc, channel) => {
+        acc[`${channel.channel_name}_${channel.shot_number}`] = channel.color;
+        return acc;
+    }, {});
+    
+    // 解析通道名称中的标识符
+    const tokens = tokenizeChannelName(channelName, channelIdentifiers);
+    
+    // 生成高亮内容
+    const highlightedContent = tokens
+        .map((token) => {
+            if (channelIdentifiers.includes(token)) {
+                const color = colors[token] || '#409EFF';
+                return `<span class="tag" style="background-color: ${color};">${token}</span>`;
+            } else {
+                return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+        })
+        .join('');
+    
+    return highlightedContent;
+});
+
+// 解析通道名称中的通道标识符
+const tokenizeChannelName = (content, channelIdentifiers) => {
+    if (!content) return [];
+    
+    // 对channelIdentifiers按长度降序排序，确保先匹配较长的标识符
+    const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
+    
+    // 运算符列表
+    const operators = ['+', '-', '*', '/', '(', ')'];
+    
+    const tokens = [];
+    let i = 0;
+    
+    while (i < content.length) {
+        // 先检查是否是通道标识符
+        let matched = false;
+        
+        for (const identifier of sortedIdentifiers) {
+            if (content.substring(i, i + identifier.length) === identifier) {
+                tokens.push(identifier);
+                i += identifier.length;
+                matched = true;
+                break;
+            }
+        }
+        
+        // 如果不是通道标识符，再检查是否是运算符
+        if (!matched) {
+            const char = content[i];
+            if (operators.includes(char)) {
+                tokens.push(char);
+                i++;
+            } else if (char.trim() === '') {
+                // 跳过空白字符
+                i++;
+            } else {
+                // 处理其他字符（可能是部分通道名称或函数名）
+                tokens.push(char);
+                i++;
+            }
+        }
+    }
+    
+    return tokens;
+};
+
 </script>
 
 <style scoped>
@@ -1037,5 +1119,19 @@ const handleResize = throttle(() => {
     align-items: center;
     justify-content: center;
     min-height: 400px;
+}
+
+/* 通道名称中的 tag 样式 */
+:deep(.tag) {
+    display: inline-block;
+    padding: 0 8px;
+    font-size: 12px;
+    border-radius: 4px;
+    color: #fff;
+    background-color: #409EFF;
+    margin: 0 2px;
+    vertical-align: middle;
+    overflow: hidden;
+    white-space: nowrap;
 }
 </style>
