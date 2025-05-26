@@ -39,12 +39,12 @@
     </template>
     <!-- upload 算法导入按钮 -->
     <el-upload v-model:file-list="fileList" class="upload-demo" action="" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
-      <el-button type="primary" plain size="large">算法导入</el-button>
-      <!--      <template #tip>-->
-      <!--&lt;!&ndash;        <div class="el-upload__tip">&ndash;&gt;-->
-      <!--&lt;!&ndash;          jpg/png files with a size less than 500KB.&ndash;&gt;-->
-      <!--&lt;!&ndash;        </div>&ndash;&gt;-->
-      <!--      </template>-->
+      <el-button type="primary" size="large" class="import-button">
+        <el-icon style="margin-right: 5px;">
+          <Upload />
+        </el-icon>
+        算法导入
+      </el-button>
     </el-upload>
 
 
@@ -152,7 +152,7 @@ import { ref, onMounted } from "vue";
 import { useStore } from "vuex";
 import axios from "axios";
 import { ElMessage } from 'element-plus';
-import { ArrowDown } from '@element-plus/icons-vue';
+import { ArrowDown, Upload } from '@element-plus/icons-vue';
 
 const store = useStore();
 
@@ -430,5 +430,52 @@ onMounted(async () => {
 // 下拉按钮样式
 .el-dropdown {
   margin-right: 8px;
+  
+  .el-button {
+    border: 1px solid #dcdfe6;
+    background-color: #ffffff;
+    transition: all 0.3s ease;
+    
+    &:hover {
+      border-color: #409eff;
+      color: #409eff;
+      background-color: #ecf5ff;
+    }
+  }
+}
+
+// 算法导入按钮特殊样式
+.import-button {
+  background: linear-gradient(135deg, #409eff 0%, #66b3ff 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3) !important;
+  transition: all 0.3s ease !important;
+  
+  &:hover {
+    background: linear-gradient(135deg, #66b3ff 0%, #85c5ff 100%) !important;
+    box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4) !important;
+    transform: translateY(-1px) !important;
+  }
+  
+  &:active {
+    transform: translateY(0) !important;
+    box-shadow: 0 2px 6px rgba(64, 158, 255, 0.3) !important;
+  }
+}
+
+// 为算法导入按钮添加分隔线
+.upload-demo {
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    left: -52px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2px;
+    height: 24px;
+    background: linear-gradient(to bottom, transparent, #e4e7ed, transparent);
+  }
 }
 </style>
