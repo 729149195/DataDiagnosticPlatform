@@ -4,20 +4,38 @@
       justify-content: center;
       align-items: center;
       width: 85%;
-    " @click.stop="collapseAllCategories">
-    <!-- 动态渲染按钮 -->
+    ">
+    <!-- 动态渲染下拉菜单按钮 -->
     <template v-for="(button, index) in buttons" :key="index">
-      <!-- Non-separator buttons with tooltips -->
-      <el-tooltip v-if="!button.isSeparator && button.action !== 'import'" :content="button.explanation" effect="dark" placement="top">
-        <el-button :type="button.type" plain size="large" :class="{ 'importedFunc': importedFunc.includes(button.label) }" @click.stop="handleButtonClick(button, index)">
+      <!-- 分类按钮改为下拉菜单 -->
+      <el-dropdown v-if="button.category" trigger="click" @command="handleOperatorSelect">
+        <el-button :type="button.type" plain size="large">
+          {{ button.label }}
+          <el-icon class="el-icon--right">
+            <arrow-down />
+          </el-icon>
+        </el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item 
+              v-for="operator in operators[button.category]" 
+              :key="operator"
+              :command="operator"
+              :class="{ 'imported-func-item': importedFunc.includes(operator) }"
+            >
+              {{ operator }}
+              <span class="operator-explanation">{{ explanations[operator] || '' }}</span>
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+
+      <!-- 其他功能按钮保持不变 -->
+      <el-tooltip v-else :content="button.explanation" effect="dark" placement="top">
+        <el-button :type="button.type" plain size="large" @click="handleButtonClick(button, index)">
           {{ button.label }}
         </el-button>
       </el-tooltip>
-
-      <!-- Separator buttons -->
-      <el-button v-else link plain size="large" style="color: gray" disabled>
-        {{ button.label }}
-      </el-button>
     </template>
     <!-- upload 算法导入按钮 -->
     <el-upload v-model:file-list="fileList" class="upload-demo" action="" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
@@ -130,10 +148,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, onMounted } from "vue";
 import { useStore } from "vuex";
 import axios from "axios";
 import { ElMessage } from 'element-plus';
+import { ArrowDown } from '@element-plus/icons-vue';
 
 const store = useStore();
 
@@ -304,89 +323,44 @@ const buttons = ref([
     label: "算术运算符",
     type: "primary",
     category: "arithmetic",
-    explanation: "展开算术运算符",
+    explanation: "选择算术运算符",
   },
-  // {
-  //     label: "比较运算符",
-  //     type: "primary",
-  //     category: "comparison",
-  //     explanation: "展开比较运算符",
-  // },
   {
     label: "逻辑运算符",
     type: "primary",
     category: "logical",
-    explanation: "展开逻辑运算符",
+    explanation: "选择逻辑运算符",
   },
   {
     label: "运算函数",
     type: "primary",
     category: "functions",
-    explanation: "展开运算函数",
+    explanation: "选择运算函数",
   },
-  // {
-  //     label: "括号",
-  //     type: "primary",
-  //     category: "brackets",
-  //     explanation: "展开括号",
-  // },
   {
     label: "诊断函数",
     type: "primary",
     category: "da_functions",
-    explanation: "展开诊断函数",
+    explanation: "选择诊断函数",
   },
-  // {
-  //     label: "自定义算法",
-  //     type: "info",
-  //     action: "custom",
-  //     explanation: "自定义算法",
-  // },
-  // {
-  //   label: "算法导入",
-  //   type: "success",
-  //   action: "import",
-  //   explanation: "导入算法",
-  // },
 ]);
-
-// 记录哪些分类已经展开
-const expandedCategories = ref({});
 
 const appendToClickedChannelNames = (content) => {
   store.commit("updateChannelName", content);
 };
 
+// 处理下拉菜单中操作符的选择
+const handleOperatorSelect = (operator) => {
+  appendToClickedChannelNames(operator);
+};
+
 const handleButtonClick = async (button, index) => {
-  if (button.category) {
-    // 判断分类是否已展开
-    if (expandedCategories.value[button.category]) {
-      // 已展开，需收起
-      collapseCategory(button.category, index);
-    } else {
-      // 未展开，需展开
-      expandCategory(button.category, index);
-    }
-  } else if (button.content) {
-    // 操作符按钮，执行添加操作并收起分类
-    appendToClickedChannelNames(button.content);
-    collapseAllCategories();
-  } else if (button.action === "custom") {
+  if (button.action === "custom") {
     // 自定义算法的处理逻辑
     // ...
   } else if (button.action === "import") {
-    // const file = event.target.files[0];
-    // const formData = new FormData();
-    // formData.append("file", file);
-    // try {
-    //     const response = await axios.post("https://10.1.108.231:5000/api/upload/", formData, {
-    //         headers: { "Content-Type": "multipart/form-data" }
-    //     });
-    //     functions.value = response.data.functions;
-    //     console.log(functions.value);
-    // } catch (error) {
-    //     console.error("File upload error:", error);
-    // }
+    // 算法导入的处理逻辑
+    // ...
   }
 };
 
@@ -395,101 +369,8 @@ const handleUpload = (files, res) => {
   // console.log(functions.value);
 };
 
-const expandCategory = (category, index) => {
-  const operatorButtons = [
-    { label: "▶", disabled: true, isSeparator: true }, // 左侧分隔符
-    ...operators[category].map((op) => ({
-      label: op,
-      type: "primary",
-      content: op,
-      explanation: explanations[op] || "",
-    })),
-    { label: "◀", disabled: true, isSeparator: true }, // 右侧分隔符
-  ];
-
-  // 在按钮列表中替换分类按钮为其操作符按钮，并添加分隔符
-  buttons.value.splice(index, 1, ...operatorButtons);
-  expandedCategories.value[category] = true;
-};
-
-const collapseCategory = (category, index) => {
-  const categoryButton = {
-    label: getCategoryLabel(category),
-    type: "primary",
-    category: category,
-    explanation: getCategoryExplanation(category),
-  };
-  // 获取该分类下操作符和分隔符的数量
-  const operatorCount = operators[category].length + 2;
-  // 在按钮列表中替换操作符按钮为分类按钮
-  buttons.value.splice(index, operatorCount, categoryButton);
-  expandedCategories.value[category] = false;
-};
-
-const collapseAllCategories = () => {
-  // 重置按钮列表
-  buttons.value = [
-    {
-      label: "算术运算符",
-      type: "primary",
-      category: "arithmetic",
-      explanation: "展开算术运算符",
-    },
-    // {
-    //     label: "比较运算符",
-    //     type: "primary",
-    //     category: "comparison",
-    //     explanation: "展开比较运算符",
-    // },
-    {
-      label: "逻辑运算符",
-      type: "primary",
-      category: "logical",
-      explanation: "展开逻辑运算符",
-    },
-    {
-      label: "运算函数",
-      type: "primary",
-      category: "functions",
-      explanation: "展开运算函数",
-    },
-    // {
-    //     label: "括号",
-    //     type: "primary",
-    //     category: "brackets",
-    //     explanation: "展开括号",
-    // },
-    {
-      label: "诊断函数",
-      type: "primary",
-      category: "da_functions",
-      explanation: "展开诊断函数",
-    },
-    // {
-    //     label: "自定义算法",
-    //     type: "info",
-    //     action: "custom",
-    //     explanation: "自定义算法",
-    // },
-    // {
-    //   label: "算法导入",
-    //   type: "success",
-    //   action: "import",
-    //   explanation: "导入算法",
-    // },
-  ];
-  expandedCategories.value = {};
-};
-
-// 点击空白区域关闭所有展开
-const handleClickOutside = (event) => {
-  collapseAllCategories();
-};
-
-// 设置点击空白区域监听器
+// 初始化时加载已导入的函数
 onMounted(async () => {
-  document.addEventListener("click", handleClickOutside);
-
   // 更新 detect anomaly functions
   const response = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
   let ttda = ["Pca()"]
@@ -504,39 +385,10 @@ onMounted(async () => {
   }
   operators['da_functions'] = ttda;
   operators['functions'] = ttcp;
-  // console.log('xxx');
+  importedFunc.value = response.data.imported_functions.map(d => d['name'] + '()');
 });
 
-// 移除点击空白区域监听器
-onBeforeUnmount(() => {
-  document.removeEventListener("click", handleClickOutside);
-});
 
-// 根据分类获取对应的按钮标签
-const getCategoryLabel = (category) => {
-  const labels = {
-    arithmetic: "算术运算符",
-    // comparison: "比较运算符",
-    logical: "逻辑运算符",
-    functions: "运算函数",
-    // brackets: "括号",
-    da_functions: "诊断函数",
-  };
-  return labels[category];
-};
-
-// 根据分类获取解释
-const getCategoryExplanation = (category) => {
-  const explanations = {
-    arithmetic: "展开算术运算符",
-    // comparison: "展开比较运算符",
-    logical: "展开逻辑运算符",
-    functions: "展开运算函数",
-    // brackets: "展开括号",
-    da_functions: "展开诊断函数",
-  };
-  return explanations[category] || "";
-};
 </script>
 
 <style scoped lang="scss">
@@ -548,5 +400,35 @@ const getCategoryExplanation = (category) => {
 .importedFunc {
   background: lightpink;
   color: deeppink;
+}
+
+// 下拉菜单项样式
+:deep(.el-dropdown-menu__item) {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  
+  .operator-explanation {
+    font-size: 12px;
+    color: #909399;
+    margin-left: 10px;
+  }
+}
+
+// 导入函数的高亮样式（element主题蓝色色系）
+:deep(.imported-func-item) {
+  background-color: rgba(64, 158, 255, 0.15) !important; // element主题蓝色
+  color: #409EFF !important; // element主题主色
+  font-weight: 500;
+
+  &:hover {
+    background-color: rgba(64, 158, 255, 0.25) !important;
+  }
+}
+
+// 下拉按钮样式
+.el-dropdown {
+  margin-right: 8px;
 }
 </style>
