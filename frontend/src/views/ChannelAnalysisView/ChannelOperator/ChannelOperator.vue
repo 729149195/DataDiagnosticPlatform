@@ -56,14 +56,14 @@
 
 
     <el-dialog v-model="dialogVisible" title="文件信息">
-      <el-form :model="fileInfo">
-        <el-form-item label="文件名称" :label-width="formLabelWidth">
+      <el-form :model="fileInfo" label-position="left">
+        <el-form-item label="文件名称 *" >
           <el-input v-model="fileInfo.name" autocomplete="off"></el-input>
         </el-form-item>
-        <el-form-item label="文件描述" :label-width="formLabelWidth">
+        <el-form-item label="文件描述 *" >
           <el-input v-model="fileInfo.description" autocomplete="off"></el-input>
         </el-form-item>
-        <el-form-item label="算法类型" :label-width="formLabelWidth">
+        <el-form-item label="算法类型 *" >
           <el-select v-model="fileInfo.type" placeholder="请选择算法类型">
             <el-option label="诊断分析" value="诊断分析"></el-option>
             <el-option label="通道运算" value="通道运算"></el-option>
@@ -100,13 +100,15 @@
                 <el-input v-model="scope.row.default" placeholder="默认值"></el-input>
               </template>
             </el-table-column>
-            <el-table-column label="操作">
+            <el-table-column label="操作" align="right">
               <template #default="scope">
                 <el-button @click="removeInput(scope.$index)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
-          <el-button type="primary" @click="addInputRow" style="margin-top: 10px;">添加输入参数</el-button>
+          <div class="add-param-container">
+            <el-button type="primary" @click="addInputRow">添加输入参数</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="输出参数">
           <el-table :data="fileInfo.output" border>
@@ -136,20 +138,24 @@
                 </span>
               </template>
             </el-table-column>
-            <el-table-column label="操作">
+            <el-table-column label="操作" align="right">
               <template #default="scope">
                 <el-button @click="removeOutput(scope.$index)">删除</el-button>
               </template>
             </el-table-column>
 
           </el-table>
-          <el-button type="primary" @click="addOutputRow" style="margin-top: 10px;">添加输出参数</el-button>
+          <div class="add-param-container">
+            <el-button type="primary" @click="addOutputRow">添加输出参数</el-button>
+          </div>
         </el-form-item>
       </el-form>
-      <span slot="footer" class="dialog-footer">
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSubmit">确认</el-button>
-      </span>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="dialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="handleSubmit">确认</el-button>
+        </div>
+      </template>
     </el-dialog>
   </span>
 </template>
@@ -205,7 +211,7 @@ const fileInfo = ref({
 //         { outputName: 'X_range', type: '标注范围', definition: '异常数据的横轴标注范围' },
 //     ]
 // });
-const formLabelWidth = '120px';
+
 
 // 定义运算符分类
 const operators = {
@@ -539,8 +545,21 @@ const removeOutput = (index) => {
 };
 
 const handleSubmit = async () => {
-  if (!fileInfo.value.name || !fileInfo.value.description || !fileInfo.value.type || !fileInfo.value.file) {
-    ElMessage.error('请填写所有必填信息');
+  // 检查必填项
+  if (!fileInfo.value.name) {
+    ElMessage.error('请填写文件名称');
+    return;
+  }
+  if (!fileInfo.value.description) {
+    ElMessage.error('请填写文件描述');
+    return;
+  }
+  if (!fileInfo.value.type) {
+    ElMessage.error('请选择算法类型');
+    return;
+  }
+  if (!fileInfo.value.file) {
+    ElMessage.error('请选择要上传的文件');
     return;
   }
 
@@ -816,5 +835,22 @@ const confirmDeleteFunc = (operator) => {
     height: 24px;
     background: linear-gradient(to bottom, transparent, #e4e7ed, transparent);
   }
+}
+
+// 对话框底部按钮右对齐
+.dialog-footer {
+  text-align: right;
+}
+
+// 表单标签左对齐
+:deep(.el-form-item__label) {
+  text-align: left !important;
+}
+
+// 添加参数按钮右对齐
+.add-param-container {
+  text-align: right !important;
+  margin-top: 10px !important;
+  display: block !important;
 }
 </style>
