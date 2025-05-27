@@ -598,6 +598,9 @@ const handleSubmit = async () => {
 
     dialogVisible.value = false;
     importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
+    
+    // 发送函数上传事件，通知其他组件刷新函数列表
+    window.dispatchEvent(new CustomEvent('functionUploaded'));
   } catch (error) {
     ElMessage.error('文件上传失败');
   }
@@ -741,6 +744,9 @@ const confirmDeleteFunc = (operator) => {
       operators['da_functions'] = ttda;
       operators['functions'] = ttcp;
       importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
+      
+      // 发送函数删除事件，通知其他组件刷新函数列表
+      window.dispatchEvent(new CustomEvent('functionDeleted'));
     } catch (error) {
       ElMessage.error('删除失败');
     }
