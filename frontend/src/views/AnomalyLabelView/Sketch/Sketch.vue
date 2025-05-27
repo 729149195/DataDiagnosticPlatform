@@ -5,55 +5,52 @@
       <span class="title">手绘查询
         <el-tooltip placement="right" effect="light">
           <template #content>
-            <div style="max-width: 320px">
+            <div style="max-width: 430px">
               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">视图说明</div>
-              <div style="margin-bottom:8px;">在画布上手绘一个模式，系统会在选中的通道数据中查找匹配的模式。</div>
+              <div style="margin-bottom:8px;">在画布上绘制时序模式后，可在选中通道中查找相似模式。</div>
               <hr style="margin:8px 0;">
               <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
-              <!-- 一级分点：绘制面板交互、参数面板交互 -->
               <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                <li>通道选择：开始匹配前需要先在顶部下拉框选择需要匹配的通道</li>
-                <li>匹配结果：通过右上角的展开/收起匹配结果按钮显示</li>
-                <li>绘制面板交互（面板左部2/3部分）
+                <li>通道选择：匹配前需要在顶部下拉框选择待查询的通道</li>
+                <li>查询结果：通过右上角的展开/收起查询结果按钮显示</li>
+                <li>绘制曲线的背景颜色：标注曲线斜率的正负性，是模式匹配的依据</li>
+                <li>绘制面布（网格背景区域）
                   <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
-                    <li>绘制操作：直接在画布上拖动鼠标绘制曲线，点击清除即可清除</li>
-                    <li>全屏绘图：点击画板区域的右上角圆形全屏按钮可放大绘图区域，绘制后点击应用即可</li>
-                    <li>查询操作：点击查询按钮，系统会在选中的通道数据中查找匹配的模式</li>
+                    <li>绘制操作：在画布上拖动鼠标即可绘制曲线</li>
+                    <li>全屏绘图：点击画布右上角的圆形按钮可全屏绘制，绘制后需点击应用</li>
+                    <li>查询操作：点击查询按钮，系统会在选中的通道数据中查找所绘模式</li>
                     <li>清除操作：点击清除按钮，可清除画布上的绘制</li>
-                    <li>修改操作：点击画布上曲线的锚点，可修改该点的位置，从而修改曲线的形状</li>
+                    <li>修改操作：拖拽曲线的锚点，可移动该点位置，从而修改曲线形状</li>
                   </ul>
                 </li>
-                <li>参数面板交互（面板右部1/3部分）
+                <li>参数面板（右侧）
                   <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
                     <li>查找范围</li>
                     <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
-                      <li>时间区间：设置整体查询的时间区间，系统会在设置的区间内进行匹配</li>
-                      <li>数值区间：设置整体查询的数值区间，系统会在设置的区间内进行匹配</li>
+                      <li>时间区间：限制模式查询的时间（X轴）范围</li>
+                      <li>指标区间：限制模式查询的数值（Y轴）范围</li>
                     </ul>
                     <li>匹配方法
                       <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
-                        <li>低通滤波幅度：调整低通滤波幅度，低通滤波幅度越小，系统匹配的精度越高，但匹配数量上限越小</li>
-                        <li>匹配数量上限：设置最后获得的匹配数量上限，匹配数量上限越小，系统匹配的精度越高，但匹配数量上限越小</li>
+                        <li>低通滤波幅度：通过平滑去除模式无关的扰动，数值越大，平滑程度越高，将无法识别小幅度模式；推荐将该参数设为目标模式的时间跨度</li>
+                        <li>匹配数量上限：限制返回模式的数量，可缩短返回耗时</li>
                       </ul>
                     </li>
                     <li>目标模式
                       <ul style="margin:0 0 0 18px;padding:0;list-style:circle;">
-                        <li>模式重复数：设置手绘模式重复数，系统会在选中的通道数据中查找匹配的模式</li>
-                        <li>指标幅度：设置单个匹配结果的指标幅度，系统会在选中的通道数据中查找匹配的模式</li>
-                        <li>时间跨度：设置单个匹配结果的时间跨度，系统会在选中的通道数据中查找匹配的模式</li>
+                        <li>模式重复数：自动拼接多个绘制模式为查询目标</li>
+                        <li>指标幅度：设置单个匹配结果的数值（Y轴）幅度</li>
+                        <li>时间跨度：设置单个匹配结果的时间（X轴）跨度</li>
                       </ul>
                     </li>
                   </ul>
                 </li>
               </ul>
-              <hr style="margin:8px 0;">
-              <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">注意事项</div>
-              <ul style="margin:0 0 0 18px;padding:0;list-style:disc;">
-                <li>匹配结果仅供参考，建议人工复核</li>
-              </ul>
             </div>
           </template>
-          <el-icon style="color: #409EFF"><InfoFilled /></el-icon>
+          <el-icon style="color: #409EFF">
+            <InfoFilled />
+          </el-icon>
         </el-tooltip>
       </span>
       <span class="channel-and-results-select">
@@ -492,12 +489,12 @@ const initPaperJs = () => {
   // 鼠标按下事件
   tool.onMouseDown = (event) => {
     if (isClearing.value) return;
-    
+
     // 确保画布获得焦点，使键盘事件能够正常工作
     if (paperCanvas.value) {
       paperCanvas.value.focus();
     }
-    
+
     selectedSegment = null;
     selectedHandle = null;
     if (!path) {
@@ -563,12 +560,12 @@ const initPaperJs = () => {
 const handleKeyDown = (e) => {
   // 检查事件目标是否为输入框或可编辑元素
   const target = e.target;
-  const isInputElement = target.tagName === 'INPUT' || 
-                        target.tagName === 'TEXTAREA' || 
-                        target.contentEditable === 'true' ||
-                        target.closest('.el-input') ||
-                        target.closest('.el-form-item');
-  
+  const isInputElement = target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.contentEditable === 'true' ||
+    target.closest('.el-input') ||
+    target.closest('.el-form-item');
+
   // 只有在非输入元素上且按下Delete或Backspace键时才清除画布
   // 这样可以避免用户在参数输入框中删除文字时意外清空画布内容
   if (!isInputElement && (e.key === 'Delete' || e.key === 'Backspace')) {
@@ -1340,12 +1337,12 @@ const groupedMatchedResults = computed(() => {
 // 排序后的分组结果
 const sortedGroupedMatchedResults = computed(() => {
   if (groupedMatchedResults.value.length === 0) return [];
-  
+
   // 如果没有排序配置，直接返回分组结果
   if (!sortConfig.value.prop || !sortConfig.value.order) {
     return groupedMatchedResults.value;
   }
-  
+
   // 按组分类
   const groupMap = new Map();
   groupedMatchedResults.value.forEach(item => {
@@ -1354,14 +1351,14 @@ const sortedGroupedMatchedResults = computed(() => {
     }
     groupMap.get(item.groupIndex).push(item);
   });
-  
+
   // 对每个组内的数据进行排序
   const sortedGroups = [];
   for (const [groupIndex, groupItems] of groupMap) {
     const sortedGroupItems = [...groupItems].sort((a, b) => {
       let aValue = a[sortConfig.value.prop];
       let bValue = b[sortConfig.value.prop];
-      
+
       // 处理数值类型
       if (typeof aValue === 'number' && typeof bValue === 'number') {
         if (sortConfig.value.order === 'ascending') {
@@ -1370,7 +1367,7 @@ const sortedGroupedMatchedResults = computed(() => {
           return bValue - aValue;
         }
       }
-      
+
       // 处理字符串类型
       if (typeof aValue === 'string' && typeof bValue === 'string') {
         if (sortConfig.value.order === 'ascending') {
@@ -1379,13 +1376,13 @@ const sortedGroupedMatchedResults = computed(() => {
           return bValue.localeCompare(aValue);
         }
       }
-      
+
       return 0;
     });
-    
+
     sortedGroups.push({ groupIndex, items: sortedGroupItems });
   }
-  
+
   // 根据排序字段对组进行排序（使用组内第一个元素的值）
   if (sortConfig.value.prop === 'groupAmplitude') {
     sortedGroups.sort((a, b) => {
@@ -1398,7 +1395,7 @@ const sortedGroupedMatchedResults = computed(() => {
       }
     });
   }
-  
+
   // 展平结果
   return sortedGroups.flatMap(group => group.items);
 });
@@ -1516,7 +1513,7 @@ const handleSortChange = ({ prop, order }) => {
 const getGroupSelectionStatus = (groupIndex) => {
   const groupItems = sortedGroupedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
   const selectedItems = selectedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
-  
+
   return {
     hasSelection: selectedItems.length > 0,
     isFullySelected: selectedItems.length === groupItems.length && groupItems.length > 0,
@@ -1528,7 +1525,7 @@ const getGroupSelectionStatus = (groupIndex) => {
 const getAmplitudeCellTooltip = (groupIndex) => {
   const groupItems = sortedGroupedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
   const groupSelectionStatus = getGroupSelectionStatus(groupIndex);
-  
+
   if (groupSelectionStatus.isFullySelected) {
     return `点击取消选择该区间幅度组的所有 ${groupItems.length} 项`;
   } else if (groupSelectionStatus.isPartiallySelected) {
@@ -1544,10 +1541,10 @@ const handleAmplitudeCellClick = (clickedRow) => {
   const groupIndex = clickedRow.groupIndex;
   const groupItems = sortedGroupedMatchedResults.value.filter(item => item.groupIndex === groupIndex);
   const groupSelectionStatus = getGroupSelectionStatus(groupIndex);
-  
+
   // 获取表格引用
   const tableRef = resultsTable.value;
-  
+
   // 如果组内全部选中，则取消全部选择；否则选中全部
   if (groupSelectionStatus.isFullySelected) {
     // 取消选中该组的所有项
@@ -1676,7 +1673,8 @@ const handleAmplitudeCellClick = (clickedRow) => {
   overscroll-behavior: contain;
   pointer-events: auto;
   isolation: isolate;
-  outline: none; /* 移除默认的焦点轮廓 */
+  outline: none;
+  /* 移除默认的焦点轮廓 */
 }
 
 .whiteboard-canvas:focus {
@@ -2014,7 +2012,8 @@ const handleAmplitudeCellClick = (clickedRow) => {
   border-radius: 4px;
   user-select: none;
   border: 1px solid transparent;
-  margin: -1px; /* 补偿边框占用的空间 */
+  margin: -1px;
+  /* 补偿边框占用的空间 */
 }
 
 .amplitude-cell.clickable:hover {
@@ -2033,7 +2032,8 @@ const handleAmplitudeCellClick = (clickedRow) => {
 .group-value {
   font-weight: bold;
   font-size: 16px;
-  pointer-events: none; /* 确保点击事件传递到父元素 */
+  pointer-events: none;
+  /* 确保点击事件传递到父元素 */
 }
 
 .click-hint {
@@ -2042,7 +2042,8 @@ const handleAmplitudeCellClick = (clickedRow) => {
   margin-top: 2px;
   opacity: 0;
   transition: opacity 0.2s ease;
-  pointer-events: none; /* 确保点击事件传递到父元素 */
+  pointer-events: none;
+  /* 确保点击事件传递到父元素 */
 }
 
 .amplitude-cell.clickable:hover .click-hint {
@@ -2061,12 +2062,14 @@ const handleAmplitudeCellClick = (clickedRow) => {
   border-radius: 50%;
   background-color: rgba(255, 255, 255, 0.9);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  pointer-events: none; /* 确保点击事件传递到父元素 */
+  pointer-events: none;
+  /* 确保点击事件传递到父元素 */
 }
 
 .selection-icon {
   font-size: 12px;
-  pointer-events: none; /* 确保点击事件传递到父元素 */
+  pointer-events: none;
+  /* 确保点击事件传递到父元素 */
 }
 
 .selection-icon.fully-selected {
@@ -2288,7 +2291,7 @@ const handleAmplitudeCellClick = (clickedRow) => {
   :deep(.el-form-item) {
     margin-bottom: 6px !important;
   }
-  
+
   :deep(.el-tab-pane) {
     min-height: 160px;
     padding: 4px 2px;
