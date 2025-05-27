@@ -214,7 +214,7 @@
     </el-dialog>
 
     <!-- 模板列表对话框 -->
-    <el-dialog v-model="templateListDialogVisible" title="手绘曲线模板" width="60%" :close-on-click-modal="false">
+    <el-dialog v-model="templateListDialogVisible" title="手绘曲线模板" width="70%" :close-on-click-modal="false">
       <div class="template-dialog-content">
         <el-table :data="templates" v-loading="loadingTemplates" style="width: 100%" max-height="500px">
           <el-table-column label="曲线预览" width="150" align="center">
@@ -224,8 +224,8 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="模板名称" prop="template_name" min-width="120" show-overflow-tooltip />
-          <el-table-column label="模板描述" prop="description" min-width="150" show-overflow-tooltip />
+          <el-table-column label="模板名称" prop="template_name" min-width="120" show-overflow-tooltip  align="center"/>
+          <el-table-column label="模板描述" prop="description" min-width="150" show-overflow-tooltip  align="center"/>
           <el-table-column label="低通滤波" width="90" align="center">
             <template #default="scope">
               {{ scope.row.parameters?.lowpassAmplitude || 'N/A' }}
@@ -255,6 +255,22 @@
           <el-table-column label="匹配上限" width="90" align="center">
             <template #default="scope">
               {{ scope.row.parameters?.maxMatchPerChannel || 'N/A' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="指标幅度" width="100" align="center">
+            <template #default="scope">
+              <span v-if="scope.row.parameters?.amplitudeLimit !== null && scope.row.parameters?.amplitudeLimit !== undefined">
+                {{ scope.row.parameters.amplitudeLimit }}
+              </span>
+              <span v-else>不限制</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="时间跨度" width="100" align="center">
+            <template #default="scope">
+              <span v-if="scope.row.parameters?.timeSpanLimit !== null && scope.row.parameters?.timeSpanLimit !== undefined">
+                {{ scope.row.parameters.timeSpanLimit }}
+              </span>
+              <span v-else>不限制</span>
             </template>
           </el-table-column>
           <!-- <el-table-column label="创建时间" width="120" align="center">
