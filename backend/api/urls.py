@@ -31,4 +31,9 @@ urlpatterns = [
     path('initialize-db-indices', views.initialize_db_indices, name='initialize_db_indices'),
     path('get-function-params', views.get_function_params, name="get_function_params"),
     path('delete-function', views.delete_imported_function, name='delete_imported_function'),
+    
+    # 手绘查询模板相关路由
+    path('sketch-templates/save', views.save_sketch_template, name='save_sketch_template'),
+    path('sketch-templates/list', views.get_sketch_templates, name='get_sketch_templates'),
+    path('sketch-templates/delete', views.delete_sketch_template, name='delete_sketch_template'),
 ]

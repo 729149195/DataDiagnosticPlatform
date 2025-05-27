@@ -15,6 +15,7 @@ from datetime import datetime
 import unicodedata  # 添加这一行来导入unicodedata模块
 from django.views.decorators.csrf import csrf_exempt  # 添加CSRF豁免
 from django.views.decorators.http import require_GET
+from django.conf import settings
 
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
@@ -2247,3 +2248,164 @@ def delete_imported_function(request):
     except Exception as e:
         import traceback
         return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=500)
+
+@csrf_exempt
+def save_sketch_template(request):
+    """
+    保存手绘查询模板
+    POST请求，参数格式：
+    {
+        "template_name": "模板名称",
+        "raw_query_pattern": [曲线数据],
+        "parameters": {
+            "lowpassAmplitude": 0.03,
+            "xFilterRange": [start, end],
+            "yFilterRange": [start, end],
+            "patternRepeatCount": 0,
+            "maxMatchPerChannel": 100,
+            "amplitudeLimit": null,
+            "timeSpanLimit": null
+        },
+        "description": "模板描述"
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        template_name = data.get('template_name', '').strip()
+        raw_query_pattern = data.get('raw_query_pattern', [])
+        parameters = data.get('parameters', {})
+        description = data.get('description', '').strip()
+        
+        if not template_name:
+            return JsonResponse({'error': '模板名称不能为空'}, status=400)
+        
+        if not raw_query_pattern or len(raw_query_pattern) < 2:
+            return JsonResponse({'error': '手绘曲线数据无效'}, status=400)
+        
+        # 创建模板数据
+        template_data = {
+            'template_name': template_name,
+            'raw_query_pattern': raw_query_pattern,
+            'parameters': parameters,
+            'description': description,
+            'created_time': timezone.now().isoformat(),
+            'last_modified': timezone.now().isoformat()
+        }
+        
+        # 保存到文件
+        templates_file_path = os.path.join(settings.MEDIA_ROOT, "sketch_templates.json")
+        
+        # 读取现有模板
+        if os.path.exists(templates_file_path):
+            with open(templates_file_path, "r", encoding='utf-8') as f:
+                templates = json.load(f)
+        else:
+            templates = []
+        
+        # 检查是否已存在同名模板
+        existing_template_index = -1
+        for i, template in enumerate(templates):
+            if template.get('template_name') == template_name:
+                existing_template_index = i
+                break
+        
+        if existing_template_index >= 0:
+            # 更新现有模板
+            template_data['created_time'] = templates[existing_template_index].get('created_time', template_data['created_time'])
+            templates[existing_template_index] = template_data
+            message = '模板更新成功'
+        else:
+            # 添加新模板
+            templates.append(template_data)
+            message = '模板保存成功'
+        
+        # 保存到文件
+        with open(templates_file_path, "w", encoding='utf-8') as f:
+            json.dump(templates, f, ensure_ascii=False, indent=2)
+        
+        print(f"手绘查询模板保存成功: {template_name}")
+        return JsonResponse({'success': True, 'message': message})
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"保存手绘查询模板出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return JsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt 
+def get_sketch_templates(request):
+    """
+    获取所有手绘查询模板
+    GET请求
+    """
+    if request.method != 'GET':
+        return JsonResponse({'error': 'Only GET method is allowed'}, status=405)
+    
+    try:
+        templates_file_path = os.path.join(settings.MEDIA_ROOT, "sketch_templates.json")
+        
+        if not os.path.exists(templates_file_path):
+            return JsonResponse({'templates': []})
+        
+        with open(templates_file_path, "r", encoding='utf-8') as f:
+            templates = json.load(f)
+        
+        # 按创建时间倒序排列
+        templates.sort(key=lambda x: x.get('created_time', ''), reverse=True)
+        
+        return JsonResponse({'templates': templates})
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"获取手绘查询模板出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return JsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def delete_sketch_template(request):
+    """
+    删除手绘查询模板
+    POST请求，参数格式：
+    {
+        "template_name": "模板名称"
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST method is allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        template_name = data.get('template_name', '').strip()
+        
+        if not template_name:
+            return JsonResponse({'error': '模板名称不能为空'}, status=400)
+        
+        templates_file_path = os.path.join(settings.MEDIA_ROOT, "sketch_templates.json")
+        
+        if not os.path.exists(templates_file_path):
+            return JsonResponse({'error': '模板文件不存在'}, status=404)
+        
+        with open(templates_file_path, "r", encoding='utf-8') as f:
+            templates = json.load(f)
+        
+        # 查找并删除模板
+        templates = [t for t in templates if t.get('template_name') != template_name]
+        
+        # 保存更新后的模板列表
+        with open(templates_file_path, "w", encoding='utf-8') as f:
+            json.dump(templates, f, ensure_ascii=False, indent=2)
+        
+        print(f"手绘查询模板删除成功: {template_name}")
+        return JsonResponse({'success': True, 'message': '模板删除成功'})
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"删除手绘查询模板出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return JsonResponse({'error': error_msg}, status=500)

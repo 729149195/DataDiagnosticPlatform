@@ -74,6 +74,13 @@
         <el-button type="primary" @click="toggleResultsDrawer" :icon="List" style="width: 100%; bottom: 6px">
           {{ matchedResultsButtonText }}
         </el-button>
+        <el-tooltip content="模板" placement="top" effect="light">
+          <el-button type="primary" @click="openTemplateDialog" circle style="margin-left: 0px; border-radius: 10%;">
+            <el-icon>
+              <Collection />
+            </el-icon>
+          </el-button>
+        </el-tooltip>
       </span>
     </div>
     <!-- 主体区域，左右分栏 -->
@@ -89,6 +96,9 @@
             </el-button>
             <el-button type="danger" @click="clearCanvas" class="clear-button" style="margin-left: 8px;">
               清除
+            </el-button>
+            <el-button type="success" @click="saveTemplate" class="save-template-button" style="margin-left: 8px;">
+              保存模板
             </el-button>
           </div>
           <div class="zoom-button">
@@ -185,6 +195,93 @@
       </div>
     </el-dialog>
 
+    <!-- 保存模板对话框 -->
+    <el-dialog v-model="saveTemplateDialogVisible" title="保存手绘曲线模板" width="500px" :close-on-click-modal="false">
+      <el-form :model="templateForm" :rules="templateRules" ref="templateFormRef" label-width="80px">
+        <el-form-item label="模板名称" prop="templateName">
+          <el-input v-model="templateForm.templateName" placeholder="请输入模板名称" />
+        </el-form-item>
+        <el-form-item label="模板描述" prop="description">
+          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="请输入模板描述（可选）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="saveTemplateDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="confirmSaveTemplate" :loading="saving">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- 模板列表对话框 -->
+    <el-dialog v-model="templateListDialogVisible" title="手绘曲线模板" width="60%" :close-on-click-modal="false">
+      <div class="template-dialog-content">
+        <el-table :data="templates" v-loading="loadingTemplates" style="width: 100%" max-height="500px">
+          <el-table-column label="曲线预览" width="150" align="center">
+            <template #default="scope">
+              <div class="curve-preview">
+                <canvas :ref="el => setCurveCanvasRef(el, scope.$index)" class="preview-canvas" width="120" height="60" @mouseover="drawCurvePreview(scope.row.raw_query_pattern, scope.$index)"></canvas>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="模板名称" prop="template_name" min-width="120" show-overflow-tooltip />
+          <el-table-column label="模板描述" prop="description" min-width="150" show-overflow-tooltip />
+          <el-table-column label="低通滤波" width="90" align="center">
+            <template #default="scope">
+              {{ scope.row.parameters?.lowpassAmplitude || 'N/A' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="时间区间" width="120" align="center">
+            <template #default="scope">
+              <span v-if="scope.row.parameters?.xFilterRange && scope.row.parameters.xFilterRange[0] !== null">
+                {{ scope.row.parameters.xFilterRange[0] }}~{{ scope.row.parameters.xFilterRange[1] }}
+              </span>
+              <span v-else>不限制</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="数值区间" width="120" align="center">
+            <template #default="scope">
+              <span v-if="scope.row.parameters?.yFilterRange && scope.row.parameters.yFilterRange[0] !== null">
+                {{ scope.row.parameters.yFilterRange[0] }}~{{ scope.row.parameters.yFilterRange[1] }}
+              </span>
+              <span v-else>不限制</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="重复数" width="80" align="center">
+            <template #default="scope">
+              {{ scope.row.parameters?.patternRepeatCount || 0 }}
+            </template>
+          </el-table-column>
+          <el-table-column label="匹配上限" width="90" align="center">
+            <template #default="scope">
+              {{ scope.row.parameters?.maxMatchPerChannel || 'N/A' }}
+            </template>
+          </el-table-column>
+          <!-- <el-table-column label="创建时间" width="120" align="center">
+            <template #default="scope">
+              {{ formatDate(scope.row.created_time) }}
+            </template>
+          </el-table-column> -->
+          <el-table-column label="操作" width="150" align="center" fixed="right">
+            <template #default="scope">
+              <el-button type="primary" size="small" @click="applyTemplate(scope.row)">
+                应用
+              </el-button>
+              <el-button type="danger" size="small" @click="deleteTemplate(scope.row)">
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="templateListDialogVisible = false">关闭</el-button>
+          <el-button type="primary" @click="loadTemplates">刷新</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
     <!-- 匹配结果抽屉 -->
     <div class="results-panel" :class="{ 'panel-visible': resultsDrawerVisible }">
       <div class="panel-header">
@@ -236,9 +333,10 @@ import {
   watch,
 } from 'vue';
 import { Search, FullScreen, List, ArrowLeft, Check, Minus } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useStore } from 'vuex';
 import Paper from 'paper';
+import { Collection } from '@element-plus/icons-vue';
 
 // 在导入Paper.js后立即添加猴子补丁，修改原生addEventListener方法
 // 这个补丁会确保所有的touchstart事件都是passive的
@@ -641,6 +739,27 @@ const activeTab = ref('range');
 const amplitudeLimit = ref(''); // 新增：指标幅度限制
 const timeSpanLimit = ref(''); // 新增：时间跨度限制
 
+// 模板相关变量
+const saveTemplateDialogVisible = ref(false);
+const templateListDialogVisible = ref(false);
+const templates = ref([]);
+const loadingTemplates = ref(false);
+const saving = ref(false);
+const templateForm = ref({
+  templateName: '',
+  description: ''
+});
+const templateFormRef = ref(null);
+const curveCanvasRefs = ref({});
+
+// 模板表单验证规则
+const templateRules = {
+  templateName: [
+    { required: true, message: '请输入模板名称', trigger: 'blur' },
+    { min: 1, max: 50, message: '长度在 1 到 50 个字符', trigger: 'blur' }
+  ]
+};
+
 // 提交数据函数
 const submitData = async () => {
   // 获取绘制的路径数据（包括控制点信息以便重现曲线）
@@ -771,6 +890,335 @@ const clearCanvas = () => {
       isClearing.value = false;
     });
   });
+};
+
+// 模板相关方法
+// 保存模板
+const saveTemplate = () => {
+  // 检查是否有绘制的曲线
+  if (!path || !path.segments || path.segments.length < 2) {
+    ElMessage.warning('请先绘制曲线');
+    return;
+  }
+
+  // 重置表单
+  templateForm.value = {
+    templateName: '',
+    description: ''
+  };
+
+  saveTemplateDialogVisible.value = true;
+};
+
+// 确认保存模板
+const confirmSaveTemplate = async () => {
+  if (!templateFormRef.value) return;
+
+  // 验证表单
+  const valid = await templateFormRef.value.validate().catch(() => false);
+  if (!valid) return;
+
+  saving.value = true;
+
+  try {
+    // 获取当前的曲线数据
+    const rawQueryPattern = path ? path.segments.map(segment => ({
+      x: segment.point.x,
+      y: paperCanvas.value.offsetHeight - segment.point.y,  // 翻转Y轴
+      handleIn: segment.handleIn ? {
+        x: segment.handleIn.x,
+        y: -segment.handleIn.y  // 翻转控制点的Y坐标
+      } : null,
+      handleOut: segment.handleOut ? {
+        x: segment.handleOut.x,
+        y: -segment.handleOut.y  // 翻转控制点的Y坐标
+      } : null
+    })) : [];
+
+    // 获取当前的参数设置
+    const parameters = {
+      lowpassAmplitude: Number(lowpassAmplitude.value),
+      xFilterRange: [
+        xFilterStart.value === '' ? null : Number(xFilterStart.value),
+        xFilterEnd.value === '' ? null : Number(xFilterEnd.value)
+      ],
+      yFilterRange: [
+        yFilterStart.value === '' ? null : Number(yFilterStart.value),
+        yFilterEnd.value === '' ? null : Number(yFilterEnd.value)
+      ],
+      patternRepeatCount: Number(patternRepeatCount.value),
+      maxMatchPerChannel: Number(maxMatchPerChannel.value),
+      amplitudeLimit: amplitudeLimit.value === '' ? null : Number(amplitudeLimit.value),
+      timeSpanLimit: timeSpanLimit.value === '' ? null : Number(timeSpanLimit.value)
+    };
+
+    // 发送保存请求
+    const response = await fetch('https://10.1.108.231:5000/api/sketch-templates/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        template_name: templateForm.value.templateName,
+        raw_query_pattern: rawQueryPattern,
+        parameters: parameters,
+        description: templateForm.value.description
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      ElMessage.success(data.message || '模板保存成功');
+      saveTemplateDialogVisible.value = false;
+    } else {
+      throw new Error(data.error || '保存失败');
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '保存模板失败');
+    console.error('保存模板错误:', error);
+  } finally {
+    saving.value = false;
+  }
+};
+
+// 打开模板列表对话框
+const openTemplateDialog = () => {
+  templateListDialogVisible.value = true;
+  loadTemplates().then(() => {
+    setTimeout(() => {
+      drawAllCurvePreviews();
+    }, 100);
+  });
+};
+
+// 加载模板列表
+const loadTemplates = async () => {
+  loadingTemplates.value = true;
+  try {
+    const response = await fetch('https://10.1.108.231:5000/api/sketch-templates/list');
+    const data = await response.json();
+    if (response.ok) {
+      templates.value = data.templates || [];
+      setTimeout(() => {
+        drawAllCurvePreviews();
+      }, 100);
+    } else {
+      throw new Error(data.error || '获取模板列表失败');
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '获取模板列表失败');
+    console.error('获取模板列表错误:', error);
+  } finally {
+    loadingTemplates.value = false;
+  }
+};
+
+// 应用模板
+const applyTemplate = (template) => {
+  try {
+    // 清除当前画布
+    clearCanvas();
+
+    // 恢复参数设置
+    const params = template.parameters || {};
+    lowpassAmplitude.value = params.lowpassAmplitude || 0.03;
+    xFilterStart.value = params.xFilterRange && params.xFilterRange[0] !== null ? params.xFilterRange[0] : '';
+    xFilterEnd.value = params.xFilterRange && params.xFilterRange[1] !== null ? params.xFilterRange[1] : '';
+    yFilterStart.value = params.yFilterRange && params.yFilterRange[0] !== null ? params.yFilterRange[0] : '';
+    yFilterEnd.value = params.yFilterRange && params.yFilterRange[1] !== null ? params.yFilterRange[1] : '';
+    patternRepeatCount.value = params.patternRepeatCount || 0;
+    maxMatchPerChannel.value = params.maxMatchPerChannel || 100;
+    amplitudeLimit.value = params.amplitudeLimit !== null ? params.amplitudeLimit : '';
+    timeSpanLimit.value = params.timeSpanLimit !== null ? params.timeSpanLimit : '';
+
+    // 恢复手绘曲线
+    if (template.raw_query_pattern && template.raw_query_pattern.length > 0 && paperScope) {
+      const canvasHeight = paperCanvas.value.offsetHeight;
+
+      // 创建新路径
+      path = new Paper.Path();
+      path.strokeColor = 'black';
+      path.strokeWidth = 2;
+      path.strokeCap = 'round';
+      path.strokeJoin = 'round';
+
+      // 恢复路径点和控制点
+      template.raw_query_pattern.forEach((segmentData) => {
+        const point = new Paper.Point(segmentData.x, canvasHeight - segmentData.y); // 翻转Y轴
+        const handleIn = segmentData.handleIn
+          ? new Paper.Point(segmentData.handleIn.x, -segmentData.handleIn.y)
+          : null;
+        const handleOut = segmentData.handleOut
+          ? new Paper.Point(segmentData.handleOut.x, -segmentData.handleOut.y)
+          : null;
+        path.add(new Paper.Segment(point, handleIn, handleOut));
+      });
+
+      // 选中所有锚点
+      path.fullySelected = true;
+
+      // 更新段点信息显示
+      segmentInfo.value = `点数: ${path.segments.length}`;
+
+      // 恢复高亮区间
+      updateHighlightBackground();
+
+      // 重绘Paper.js视图
+      paperScope.view.draw();
+    }
+
+    templateListDialogVisible.value = false;
+    ElMessage.success(`模板 "${template.template_name}" 应用成功`);
+  } catch (error) {
+    ElMessage.error('应用模板失败');
+    console.error('应用模板错误:', error);
+  }
+};
+
+// 删除模板
+const deleteTemplate = async (template) => {
+  const confirmResult = await ElMessageBox.confirm(
+    `确定要删除模板 "${template.template_name}" 吗？`,
+    '确认删除',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).catch(() => false);
+
+  if (!confirmResult) return;
+
+  try {
+    const response = await fetch('https://10.1.108.231:5000/api/sketch-templates/delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        template_name: template.template_name
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      ElMessage.success(data.message || '模板删除成功');
+      // 重新加载模板列表
+      loadTemplates();
+    } else {
+      throw new Error(data.error || '删除失败');
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '删除模板失败');
+    console.error('删除模板错误:', error);
+  }
+};
+
+// 设置曲线画布引用
+const setCurveCanvasRef = (el, index) => {
+  if (el) {
+    curveCanvasRefs.value[index] = el;
+    // 立即绘制
+    if (templates.value[index]) {
+      drawCurvePreview(templates.value[index].raw_query_pattern, index);
+    }
+  }
+};
+
+// 批量绘制所有曲线预览
+const drawAllCurvePreviews = () => {
+  templates.value.forEach((tpl, idx) => {
+    drawCurvePreview(tpl.raw_query_pattern, idx);
+  });
+};
+
+// 绘制曲线预览
+const drawCurvePreview = (rawQueryPattern, index) => {
+  const canvas = curveCanvasRefs.value[index];
+  if (!canvas || !rawQueryPattern || rawQueryPattern.length === 0) return;
+
+  const ctx = canvas.getContext('2d');
+  const width = canvas.width;
+  const height = canvas.height;
+
+  // 清除画布
+  ctx.clearRect(0, 0, width, height);
+
+  // 绘制背景
+  ctx.fillStyle = '#f9f9f9';
+  ctx.fillRect(0, 0, width, height);
+
+  // 绘制边框
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, 0, width, height);
+
+  if (rawQueryPattern.length < 2) return;
+
+  // 找到数据的边界
+  const xs = rawQueryPattern.map(p => p.x);
+  const ys = rawQueryPattern.map(p => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  const xRange = maxX - minX || 1;
+  const yRange = maxY - minY || 1;
+
+  // 添加边距
+  const margin = 8;
+  const drawWidth = width - 2 * margin;
+  const drawHeight = height - 2 * margin;
+
+  // 绘制曲线
+  ctx.strokeStyle = '#007bff';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+
+  rawQueryPattern.forEach((point, index) => {
+    const x = margin + ((point.x - minX) / xRange) * drawWidth;
+    const y = margin + ((maxY - point.y) / yRange) * drawHeight; // 翻转Y轴
+
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+
+  ctx.stroke();
+
+  // 绘制端点
+  ctx.fillStyle = '#007bff';
+  rawQueryPattern.forEach((point, index) => {
+    if (index === 0 || index === rawQueryPattern.length - 1) {
+      const x = margin + ((point.x - minX) / xRange) * drawWidth;
+      const y = margin + ((maxY - point.y) / yRange) * drawHeight;
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+  });
+};
+
+// 格式化日期
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A';
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  } catch {
+    return 'N/A';
+  }
 };
 
 // 添加全选状态处理
@@ -1991,6 +2439,41 @@ const handleAmplitudeCellClick = (clickedRow) => {
 
 .group-tag {
   display: none;
+}
+
+/* 模板相关样式 */
+.template-dialog-content {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.curve-preview {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 5px;
+}
+
+.preview-canvas {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #fafafa;
+  cursor: pointer;
+}
+
+.preview-canvas:hover {
+  border-color: #409EFF;
+  box-shadow: 0 0 4px rgba(64, 158, 255, 0.3);
+}
+
+.save-template-button {
+  background-color: #67c23a;
+  border-color: #67c23a;
+}
+
+.save-template-button:hover {
+  background-color: #5daf34;
+  border-color: #5daf34;
 }
 
 .amplitude-cell {
