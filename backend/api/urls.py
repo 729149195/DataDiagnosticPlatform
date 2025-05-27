@@ -29,4 +29,6 @@ urlpatterns = [
     path('delete-error-data', views.delete_error_data, name='delete_error_data'),
     path('get-ddp-dbs', views.get_datadiagnosticplatform_dbs, name='get_ddp_dbs'),
     path('initialize-db-indices', views.initialize_db_indices, name='initialize_db_indices'),
+    path('get-function-params', views.get_function_params, name="get_function_params"),
+    path('delete-function', views.delete_imported_function, name='delete_imported_function'),
 ]

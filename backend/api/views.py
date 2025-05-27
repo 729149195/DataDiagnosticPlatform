@@ -2165,4 +2165,85 @@ def initialize_db_indices(request):
         traceback.print_exc()
         return JsonResponse({"error": error_msg}, status=500)
 
+def get_function_params(request):
+    if request.method == 'POST' and request.FILES.get('file'):
+        uploaded_file = request.FILES['file']  # 获取上传的文件
+        file_content = uploaded_file.read().decode('utf-8')  # 读取并解码文件内容
 
+        # 判断文件类型（Python 或 MATLAB）
+        if uploaded_file.name.endswith('.py'):
+            # 解析 Python 文件
+            function_params = extract_python_function_params(file_content)
+        elif uploaded_file.name.endswith('.m'):
+            # 解析 MATLAB 文件
+            function_params = extract_matlab_function_params(file_content)
+        else:
+            return JsonResponse({'status': 'error', 'message': '不支持的文件类型'}, status=400)
+
+        return JsonResponse({'status': 'success', 'functions': function_params})
+
+    return JsonResponse({'status': 'error', 'message': '没有文件上传'}, status=400)
+
+
+def extract_python_function_params(file_content):
+    tree = ast.parse(file_content)
+    function_params = []
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef):
+            params = [arg.arg for arg in node.args.args]
+            function_params.append({'function_name': node.name, 'params': params})
+
+    return function_params
+
+
+def extract_matlab_function_params(file_content):
+    function_pattern = r"function.*\((.*?)\)"
+    matches = re.findall(function_pattern, file_content)
+
+    function_params = []
+
+    for match in matches:
+        params = [param.strip() for param in match.split(',')]
+        function_params.append({'params': params})
+
+    return function_params
+
+@csrf_exempt
+def delete_imported_function(request):
+    """
+    删除已导入的算法（imported_functions.json 及上传的文件）
+    """
+    import os
+    import json
+    from django.conf import settings
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Only POST allowed'}, status=405)
+    try:
+        data = json.loads(request.body)
+        function_name = data.get('function_name')
+        if not function_name:
+            return JsonResponse({'error': 'function_name required'}, status=400)
+        # 1. 删除 imported_functions.json 里的对应项
+        file_path = os.path.join(settings.MEDIA_ROOT, "imported_functions.json")
+        if not os.path.exists(file_path):
+            return JsonResponse({'error': 'imported_functions.json not found'}, status=404)
+        with open(file_path, "r", encoding="utf-8") as f:
+            functions = json.load(f)
+        new_functions = [f for f in functions if f.get('name') != function_name]
+        # 2. 删除上传的文件（可选，需记录文件名）
+        file_to_delete = None
+        for f in functions:
+            if f.get('name') == function_name:
+                file_to_delete = f.get('file')  # 你需要确保 fileInfo 里有 file 字段
+        if file_to_delete:
+            file_abs = os.path.join(settings.MEDIA_ROOT, "uploads", file_to_delete)
+            if os.path.exists(file_abs):
+                os.remove(file_abs)
+        # 3. 保存新列表
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(new_functions, f, ensure_ascii=False, indent=4)
+        return JsonResponse({'success': True})
+    except Exception as e:
+        import traceback
+        return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=500)

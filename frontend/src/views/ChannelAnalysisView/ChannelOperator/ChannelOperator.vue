@@ -23,8 +23,15 @@
               :command="operator"
               :class="{ 'imported-func-item': importedFunc.includes(operator) }"
             >
-              {{ operator }}
-              <span class="operator-explanation">{{ explanations[operator] || '' }}</span>
+              <span style="display: flex; align-items: center; width: 100%; justify-content: space-between;">
+                <span>
+                  {{ operator }}
+                  <span class="operator-explanation">{{ explanations[operator] || '' }}</span>
+                </span>
+                <el-icon v-if="importedFunc.includes(operator)" style="margin-left: 10px; color: #f56c6c; cursor: pointer;" @click.stop="confirmDeleteFunc(operator)">
+                  <Delete />
+                </el-icon>
+              </span>
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -38,7 +45,7 @@
       </el-tooltip>
     </template>
     <!-- upload 算法导入按钮 -->
-    <el-upload v-model:file-list="fileList" class="upload-demo" action="" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
+    <el-upload v-model:file-list="fileList" class="upload-demo" action="https://10.1.108.231:5000/api/get-function-params" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
       <el-button type="primary" size="large" class="import-button">
         <el-icon style="margin-right: 5px;">
           <Upload />
@@ -151,8 +158,8 @@
 import { ref, onMounted } from "vue";
 import { useStore } from "vuex";
 import axios from "axios";
-import { ElMessage } from 'element-plus';
-import { ArrowDown, Upload } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { ArrowDown, Upload, Delete } from '@element-plus/icons-vue';
 
 const store = useStore();
 
@@ -215,7 +222,7 @@ let importedFunc = ref([]);
 const handleFileSelect = ({ file }) => {
   fileInfo.value.file = file;
   dialogVisible.value = true;
-  // console.log('xxxx')
+  console.log(fileInfo.value);
 };
 
 const addInputRow = () => {
@@ -366,7 +373,7 @@ const handleButtonClick = async (button, index) => {
 
 const handleUpload = (files, res) => {
   operators['da_functions'] = operators['da_functions'].concat(res.response.functions.map(d => d['name'] + "()"));
-  // console.log(functions.value);
+  console.log(res);
 };
 
 // 初始化时加载已导入的函数
@@ -388,6 +395,41 @@ onMounted(async () => {
   importedFunc.value = response.data.imported_functions.map(d => d['name'] + '()');
 });
 
+// 删除自定义算法
+const confirmDeleteFunc = (operator) => {
+  const funcName = operator.replace(/\(\)$/,'');
+  ElMessageBox.confirm(
+    `确定要删除算法 "${funcName}" 吗？`,
+    '删除确认',
+    {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(async () => {
+    try {
+      await axios.post('https://10.1.108.231:5000/api/delete-function', { function_name: funcName });
+      ElMessage.success('删除成功');
+      // 刷新导入函数列表
+      const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
+      let ttda = ["Pca()"]
+      let ttcp = ['FFT()']
+      for (let func of response2.data.imported_functions) {
+        if (func.type === '诊断分析') {
+          ttda.push(func['name'] + '()')
+        }
+        else {
+          ttcp.push(func['name'] + '()')
+        }
+      }
+      operators['da_functions'] = ttda;
+      operators['functions'] = ttcp;
+      importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
+    } catch (error) {
+      ElMessage.error('删除失败');
+    }
+  }).catch(() => {});
+};
 
 </script>
 
