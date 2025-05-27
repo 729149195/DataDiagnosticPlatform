@@ -45,7 +45,7 @@
       </el-tooltip>
     </template>
     <!-- upload 算法导入按钮 -->
-    <el-upload v-model:file-list="fileList" class="upload-demo" action="https://10.1.108.231:5000/api/get-function-params" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
+    <el-upload v-model:file-list="fileList" class="upload-demo" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
       <el-button type="primary" size="large" class="import-button">
         <el-icon style="margin-right: 5px;">
           <Upload />
@@ -219,8 +219,305 @@ const operators = {
 
 let importedFunc = ref([]);
 
+// 解析文件内容，提取函数参数和返回值信息
+const parseFileContent = (content, fileName) => {
+  const result = {
+    input: [],
+    output: []
+  };
+  
+  if (fileName.endsWith('.py')) {
+    // 解析Python文件
+    return parsePythonFile(content);
+  } else if (fileName.endsWith('.m')) {
+    // 解析MATLAB文件
+    return parseMatlabFile(content);
+  }
+  
+  return result;
+};
+
+// 解析Python文件
+const parsePythonFile = (content) => {
+  const result = {
+    input: [],
+    output: []
+  };
+  
+  try {
+    // 查找函数定义（支持多行和不同格式）
+    const lines = content.split('\n');
+    let functionFound = false;
+    let functionLine = '';
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('def ') && line.includes('(')) {
+        functionLine = line;
+        // 检查是否是多行函数定义
+        while (!functionLine.includes('):') && i < lines.length - 1) {
+          i++;
+          functionLine += ' ' + lines[i].trim();
+        }
+        functionFound = true;
+        break;
+      }
+    }
+    
+    if (functionFound) {
+      const functionRegex = /def\s+(\w+)\s*\(([^)]*)\):/;
+      const match = functionRegex.exec(functionLine);
+      
+      if (match) {
+        const params = match[2].trim();
+        if (params) {
+          // 解析参数列表
+          const paramList = params.split(',').map(p => p.trim()).filter(p => p && p !== 'self');
+          
+          paramList.forEach(param => {
+            // 移除默认值
+            let paramName = param.split('=')[0].trim();
+            // 移除类型注解
+            paramName = paramName.split(':')[0].trim();
+            // 移除星号（*args, **kwargs）
+            paramName = paramName.replace(/^\*+/, '');
+            
+            if (paramName && paramName !== 'args' && paramName !== 'kwargs') {
+              result.input.push({
+                paraName: paramName,
+                paraType: guessParameterType(paramName),
+                paraDefinition: '',
+                domain: '',
+                default: extractDefaultValue(param)
+              });
+            }
+          });
+        }
+      }
+    }
+    
+    // 查找return语句来推断输出
+    const returnRegex = /return\s+(.+)/g;
+    const returnMatches = [...content.matchAll(returnRegex)];
+    
+    if (returnMatches.length > 0) {
+      // 取最后一个return语句
+      const lastReturn = returnMatches[returnMatches.length - 1][1].trim();
+      
+      // 移除注释
+      const returnValue = lastReturn.split('#')[0].trim();
+      
+      // 简单解析return的内容
+      if (returnValue.includes(',') && !returnValue.includes('(')) {
+        // 多个返回值（排除元组情况）
+        const returnValues = returnValue.split(',').map(v => v.trim()).filter(v => v);
+        returnValues.forEach((value, index) => {
+          // 判断是否为简单变量名（只包含字母、数字、下划线）
+          const isSimpleVariable = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(value);
+          const outputName = isSimpleVariable ? value : `output_${index + 1}`;
+          
+          result.output.push({
+            outputName: outputName,
+            type: '通道数据',
+            definition: ''
+          });
+        });
+      } else {
+        // 单个返回值或元组
+        let outputName = 'result';
+        if (returnValue && returnValue !== 'None') {
+          // 判断是否为简单变量名
+          const isSimpleVariable = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(returnValue);
+          outputName = isSimpleVariable ? returnValue : 'result';
+        }
+        result.output.push({
+          outputName: outputName,
+          type: '通道数据',
+          definition: ''
+        });
+      }
+    }
+  } catch (error) {
+    console.error('解析Python文件时出错:', error);
+  }
+  
+  return result;
+};
+
+// 解析MATLAB文件
+const parseMatlabFile = (content) => {
+  const result = {
+    input: [],
+    output: []
+  };
+  
+  try {
+    // 查找function定义（支持多行）
+    const lines = content.split('\n');
+    let functionFound = false;
+    let functionLine = '';
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('function ') && line.includes('(')) {
+        functionLine = line;
+        // 检查是否是多行函数定义
+        while (!functionLine.includes(')') && i < lines.length - 1) {
+          i++;
+          functionLine += ' ' + lines[i].trim();
+        }
+        functionFound = true;
+        break;
+      }
+    }
+    
+    if (functionFound) {
+      // 更灵活的正则表达式来匹配不同的function格式
+      const functionRegex = /function\s*(?:\[([^\]]+)\]\s*=\s*|(\w+)\s*=\s*)?(\w+)\s*\(([^)]*)\)/;
+      const match = functionRegex.exec(functionLine);
+      
+      if (match) {
+        // 解析输入参数
+        const inputParams = match[4];
+        if (inputParams.trim()) {
+          const paramList = inputParams.split(',').map(p => p.trim()).filter(p => p);
+          
+          paramList.forEach(param => {
+            // 移除可能的默认值（虽然MATLAB函数定义通常不在参数列表中设置默认值）
+            const paramName = param.split('=')[0].trim();
+            if (paramName) {
+              result.input.push({
+                paraName: paramName,
+                paraType: guessParameterType(paramName),
+                paraDefinition: '',
+                domain: '',
+                default: extractDefaultValue(param)
+              });
+            }
+          });
+        }
+        
+        // 解析输出参数
+        const outputParams = match[1] || match[2];
+        if (outputParams) {
+          if (outputParams.includes(',')) {
+            // 多个输出
+            const outputList = outputParams.split(',').map(p => p.trim()).filter(p => p);
+            outputList.forEach(output => {
+              result.output.push({
+                outputName: output,
+                type: '通道数据',
+                definition: ''
+              });
+            });
+          } else {
+            // 单个输出
+            result.output.push({
+              outputName: outputParams.trim(),
+              type: '通道数据',
+              definition: ''
+            });
+          }
+        } else {
+          // 如果没有明确的输出参数，添加一个默认的
+          result.output.push({
+            outputName: 'result',
+            type: '通道数据',
+            definition: ''
+          });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('解析MATLAB文件时出错:', error);
+  }
+  
+  return result;
+};
+
+// 根据参数名猜测参数类型
+const guessParameterType = (paramName) => {
+  const name = paramName.toLowerCase();
+  
+  if (name.includes('channel') || name.includes('data')) {
+    return '通道对象';
+  } else if (name.includes('threshold') || name.includes('rate') || name.includes('freq')) {
+    return '浮点数';
+  } else if (name.includes('count') || name.includes('num') || name.includes('size') || name.includes('index')) {
+    return '整数';
+  } else if (name.includes('name') || name.includes('label') || name.includes('title')) {
+    return '字符串';
+  } else {
+    return '浮点数'; // 默认类型
+  }
+};
+
+// 提取参数默认值
+const extractDefaultValue = (param) => {
+  if (param.includes('=')) {
+    const defaultValue = param.split('=')[1].trim();
+    // 移除引号
+    return defaultValue.replace(/['"]/g, '');
+  }
+  return '';
+};
+
 const handleFileSelect = ({ file }) => {
+  // 重置文件信息
+  fileInfo.value = {
+    name: "",
+    description: "",
+    type: "",
+    file: null,
+    input: [],
+    output: []
+  };
+  
   fileInfo.value.file = file;
+  
+  // 自动填充文件名称（去掉扩展名）
+  const fileName = file.name.replace(/\.(py|m)$/, '');
+  fileInfo.value.name = fileName;
+  
+  // 读取文件内容并解析参数
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const content = e.target.result;
+      const parsedInfo = parseFileContent(content, file.name);
+      
+      // 预填充解析出的参数信息
+      if (parsedInfo.input.length > 0) {
+        fileInfo.value.input = parsedInfo.input;
+      }
+      if (parsedInfo.output.length > 0) {
+        fileInfo.value.output = parsedInfo.output;
+      }
+      
+      // 提供详细的解析结果反馈
+      const inputCount = parsedInfo.input.length;
+      const outputCount = parsedInfo.output.length;
+      let message = '文件解析完成！';
+      
+      if (inputCount > 0 || outputCount > 0) {
+        message += ` 已自动识别 ${inputCount} 个输入参数和 ${outputCount} 个输出参数`;
+      } else {
+        message += ' 未识别到函数参数，请手动添加';
+      }
+      
+      ElMessage.success(message);
+    } catch (error) {
+      console.error('文件读取错误:', error);
+      ElMessage.error('文件读取失败，请检查文件格式');
+    }
+  };
+  
+  reader.onerror = () => {
+    ElMessage.error('文件读取失败');
+  };
+  
+  reader.readAsText(file, 'UTF-8');
+  
   dialogVisible.value = true;
   console.log(fileInfo.value);
 };
