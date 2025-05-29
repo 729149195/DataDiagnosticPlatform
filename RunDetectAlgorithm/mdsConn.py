@@ -322,31 +322,49 @@ print(error_indexes)
 # print(data, len(data))
 # print(re.match(r'^[^\d]*', 'TS01_1_1064')[0])
 
-# 全局连接池（进程内唯一）
-_MDS_TREE_POOL = {}
-_MDS_TREE_POOL_LOCK = threading.Lock()
+# 全局Connection池（进程内唯一）
+_MDS_CONN_POOL = {}
+_MDS_CONN_POOL_LOCK = threading.Lock()
 
-def get_mds_tree_with_pool(shot, dbname, path, subtrees, max_retries=5, timeout=10):
-    """带连接池和重试的MdsTree获取"""
-    key = (shot, dbname, path)
-    with _MDS_TREE_POOL_LOCK:
-        if key in _MDS_TREE_POOL:
-            return _MDS_TREE_POOL[key]
-    # 没有则新建，带重试和超时
+# 全局Tree池（已废弃，不再缓存MdsTree对象）
+# _MDS_TREE_POOL = {}
+# _MDS_TREE_POOL_LOCK = threading.Lock()
+
+def get_connection_with_pool(dbname, path, max_retries=5, timeout=10):
+    key = (dbname, path)
+    with _MDS_CONN_POOL_LOCK:
+        if key in _MDS_CONN_POOL:
+            return _MDS_CONN_POOL[key]
     for retry in range(max_retries):
         try:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(MdsTree, shot, dbname, path, subtrees)
-                tree = future.result(timeout=timeout)
-            with _MDS_TREE_POOL_LOCK:
-                _MDS_TREE_POOL[key] = tree
-            return tree
+            ip = path.split('::')[0]
+            conn = Connection(ip)
+            with _MDS_CONN_POOL_LOCK:
+                _MDS_CONN_POOL[key] = conn
+            return conn
         except Exception as e:
             if retry < max_retries - 1:
-                wait_time = (2 ** retry) * 0.5
-                time.sleep(wait_time)
+                time.sleep((2 ** retry) * 0.5)
                 continue
             raise e
+
+def close_all_connections():
+    with _MDS_CONN_POOL_LOCK:
+        for conn in _MDS_CONN_POOL.values():
+            try:
+                conn.disconnect()
+            except:
+                pass
+        _MDS_CONN_POOL.clear()
+
+def get_mds_tree_with_pool(shot, dbname, path, subtrees, max_retries=5, timeout=10):
+    """
+    每次新建MdsTree对象，但底层Connection可复用。
+    """
+    conn = get_connection_with_pool(dbname, path, max_retries, timeout)
+    # MDSplus.Tree暂不支持直接传入Connection对象，只能每次新建Tree
+    # 如果Tree支持connection参数，可改为: Tree(dbname, shot, path=path, connection=conn)
+    return MdsTree(shot, dbname, path, subtrees)
 
 def close_all_mds_trees():
     """关闭池中所有MdsTree连接"""
