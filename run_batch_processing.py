@@ -179,7 +179,7 @@ PROCESS_SCRIPT = "/home/diag/DataDiagnostic/DataDiagnosticPlatform/RunDetectAlgo
 WORKING_DIR = "~/DataDiagnostic/DataDiagnosticPlatform"
 CONDA_ENV = "mdsplus"
 SHOT_PROCESS_TIME = 160  # 每个炮号处理时间约160秒
-REFRESH_INTERVAL = 1.0   # 进度更新频率(秒)
+REFRESH_INTERVAL = 0.1   # 进度更新频率(秒)
 
 
 
