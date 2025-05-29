@@ -5,6 +5,9 @@
 import importlib.util as iu
 import re
 import time
+import threading
+from contextlib import contextmanager
+import concurrent.futures
 
 import numpy as np
 from MDSplus import Tree, mdsExceptions, Connection # type: ignore
@@ -318,3 +321,39 @@ print(error_indexes)
 # data = conn.get(r"\{}".format(temp)).data()
 # print(data, len(data))
 # print(re.match(r'^[^\d]*', 'TS01_1_1064')[0])
+
+# 全局连接池（进程内唯一）
+_MDS_TREE_POOL = {}
+_MDS_TREE_POOL_LOCK = threading.Lock()
+
+def get_mds_tree_with_pool(shot, dbname, path, subtrees, max_retries=5, timeout=10):
+    """带连接池和重试的MdsTree获取"""
+    key = (shot, dbname, path)
+    with _MDS_TREE_POOL_LOCK:
+        if key in _MDS_TREE_POOL:
+            return _MDS_TREE_POOL[key]
+    # 没有则新建，带重试和超时
+    for retry in range(max_retries):
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(MdsTree, shot, dbname, path, subtrees)
+                tree = future.result(timeout=timeout)
+            with _MDS_TREE_POOL_LOCK:
+                _MDS_TREE_POOL[key] = tree
+            return tree
+        except Exception as e:
+            if retry < max_retries - 1:
+                wait_time = (2 ** retry) * 0.5
+                time.sleep(wait_time)
+                continue
+            raise e
+
+def close_all_mds_trees():
+    """关闭池中所有MdsTree连接"""
+    with _MDS_TREE_POOL_LOCK:
+        for tree in _MDS_TREE_POOL.values():
+            try:
+                tree.close()
+            except:
+                pass
+        _MDS_TREE_POOL.clear()

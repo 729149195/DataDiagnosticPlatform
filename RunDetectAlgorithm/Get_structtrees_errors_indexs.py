@@ -21,7 +21,7 @@ import numpy as np
 from pymongo import MongoClient, ASCENDING, UpdateMany
 from tqdm import tqdm
 
-from mdsConn import MdsTree
+from mdsConn import get_mds_tree_with_pool, close_all_mds_trees
 
 # 配置日志
 logging.basicConfig(
@@ -129,20 +129,13 @@ def process_channel(channel_args):
     # 创建独立的MdsTree连接，添加重试机制
     tree = None
     max_retries = 10
-    for retry in range(max_retries):
-        try:
-            tree = MdsTree(shot_num, dbname=DB, path=tree_path, subtrees=subtrees)
-            break
-        except Exception as e:
-            if retry < max_retries - 1:
-                # 指数退避策略
-                wait_time = (2 ** retry) * 0.5 + random.uniform(0, 0.5)
-                time.sleep(wait_time)
-                continue
-            logger.warning(f"创建通道 {channel_name} 的MdsTree连接失败: {e}")
-            temp['status'] = 'failed'
-            temp['status_message'] = f'MdsTree连接失败: {str(e)}'
-            return temp, None
+    try:
+        tree = get_mds_tree_with_pool(shot_num, DB, tree_path, subtrees, max_retries=max_retries, timeout=10)
+    except Exception as e:
+        logger.warning(f"创建通道 {channel_name} 的MdsTree连接失败: {e}")
+        temp['status'] = 'failed'
+        temp['status_message'] = f'MdsTree连接失败: {str(e)}'
+        return temp, None
     
     # 为批量插入准备的数据
     error_data_list = []
@@ -157,8 +150,6 @@ def process_channel(channel_args):
         if not has_matching_algorithm:
             temp['status'] = 'no_algorithm'
             temp['status_message'] = f'没有匹配的算法类型: {detect_type}'
-            if tree is not None:
-                tree.close()
             return temp, None
         
         # 读取通道数据，添加重试机制
@@ -178,15 +169,11 @@ def process_channel(channel_args):
                 # 最后一次重试失败
                 temp['status'] = 'data_read_failed'
                 temp['status_message'] = f'数据读取失败: {str(e)}'
-                if tree is not None:
-                    tree.close()
                 return temp, None
             
         if X_value is None or Y_value is None or len(Y_value) == 0:
             temp['status'] = 'empty_data'
             temp['status_message'] = '数据为空或无效'
-            if tree is not None:
-                tree.close()
             return temp, None
             
         X_unit = 's'
@@ -291,13 +278,6 @@ def process_channel(channel_args):
         temp['status'] = 'processing_error'
         temp['status_message'] = f'处理异常: {str(e)}'
     
-    # 确保关闭连接
-    if tree is not None:
-        try:
-            tree.close()
-        except:
-            pass
-            
     return temp, error_data_list
 
 def RUN(shot_list, channel_list, db_name):
@@ -401,7 +381,7 @@ def RUN(shot_list, channel_list, db_name):
                 }
                 
             try:
-                tree = MdsTree(shot_num, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
+                tree = get_mds_tree_with_pool(shot_num, DB, DBS[DB]['path'], DBS[DB]['subtrees'], max_retries=10, timeout=10)
                 pool = tree.formChannelPool()
                 channels_count = 0
                 
@@ -415,7 +395,6 @@ def RUN(shot_list, channel_list, db_name):
                 data_statistics["by_db"][DB]["total"] += channels_count
                 data_statistics["by_shot"][str(shot_num)]["total"] += channels_count
                 
-                tree.close()
             except Exception as e:
                 logger.warning(f"统计炮号{str(shot_num)}时发生异常: {e}")
     
@@ -450,14 +429,11 @@ def RUN(shot_list, channel_list, db_name):
             # 获取通道列表，增加重试机制
             for db_retry in range(max_db_retries):
                 try:
-                    # 随机延迟以避免同时连接
                     delay = random.uniform(1.0, 3.0)
                     time.sleep(delay)
-                    
-                    tree = MdsTree(shot_num, dbname=DB, path=DBS[DB]['path'], subtrees=DBS[DB]['subtrees'])
+                    tree = get_mds_tree_with_pool(shot_num, DB, DBS[DB]['path'], DBS[DB]['subtrees'], max_retries=max_db_retries, timeout=10)
                     channel_pool = tree.formChannelPool()
-                    tree.close()  # 关闭主连接，每个进程将创建自己的连接
-                    break  # 成功获取通道列表，跳出重试循环
+                    break
                 except Exception as e:
                     error_msg = str(e)
                     if 'Broken pipe' in error_msg or 'TREE-E-FOPENR' in error_msg:
@@ -471,7 +447,6 @@ def RUN(shot_list, channel_list, db_name):
                         time.sleep(retry_delay)
                     else:
                         logger.error(f"获取炮号 {shot_num} 的 {DB} 数据库通道列表已达最大重试次数，跳过此数据库")
-                        # 记录连接失败的数据库统计
                         if "connection_failures" not in data_statistics:
                             data_statistics["connection_failures"] = []
                         data_statistics["connection_failures"].append({
@@ -685,6 +660,9 @@ def RUN(shot_list, channel_list, db_name):
     
     print(f"\n总处理通道数: {processed_channels}/{total_channels}")
     print("所有索引数据已成功存储到MongoDB的index集合中")
+
+    # 进程结束时关闭所有MdsTree连接
+    close_all_mds_trees()
 
 def create_shot_index(db, shot_number, struct_tree_data):
     """为单个炮号的结构树创建索引数据并存储到MongoDB"""
