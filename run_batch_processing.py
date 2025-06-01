@@ -554,8 +554,8 @@ class BatchProcessor:
                     # 用 live.update 刷新表格
                     live.update(table)
                     # 表格上方加简约标题
-                    if self.current_batch_index == 1:
-                        console.print("[b white on #222244] 数据诊断平台批量处理进度 [/b white on #222244]\n")
+                    # if self.current_batch_index == 1:
+                    #     console.print("[b white on #222244] 数据诊断平台批量处理进度 [/b white on #222244]\n")
                 time.sleep(REFRESH_INTERVAL)
 
 def main():
