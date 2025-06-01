@@ -2,7 +2,7 @@ import re
 import time
 import subprocess
 from pymongo import MongoClient
-from MDSplus import Tree
+from MDSplus import Tree # type: ignore
 from RunDetectAlgorithm.mdsConn import currentShot
 
 MG_DB_PREFIX = "DataDiagnosticPlatform_"
