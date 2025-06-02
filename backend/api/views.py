@@ -2421,26 +2421,24 @@ try:
     
     if os.path.exists(monitor_path):
         sys.path.insert(0, project_root)
-        from monitor_status import get_monitor_status, start_monitor
-        # 确保监控程序启动
-        start_monitor()
-        print("监控模块导入成功")
+        from monitor_status import get_monitor_status
+        # 不自动启动监控，让独立服务负责
+        print("监控模块导入成功（使用独立服务模式）")
     else:
         print(f"监控模块文件不存在: {monitor_path}")
         get_monitor_status = None
-        start_monitor = None
 except Exception as e:
     print(f"监控模块导入失败: {e}")
     import traceback
     traceback.print_exc()
     get_monitor_status = None
-    start_monitor = None
 
 @require_GET
 def get_system_monitor_status(request):
     """
     获取系统监控状态
     返回MDS+和MongoDB的最新炮号信息
+    从独立监控服务的状态文件中读取
     """
     try:
         if get_monitor_status is None:
@@ -2448,15 +2446,11 @@ def get_system_monitor_status(request):
                 'success': False,
                 'error': '监控模块未正确加载'
             }, status=503)
-        
-        # 强制重新启动监控以确保最新状态
-        if start_monitor:
-            start_monitor()
             
         status = get_monitor_status()
         
         # 添加调试信息
-        print(f"[API调试] 获取监控状态: {status}")
+        print(f"[API调试] 从独立服务获取监控状态: {status}")
         print(f"[API调试] 监控是否运行: {status.get('is_running', False)}")
         print(f"[API调试] MDS+最新炮号: {status.get('mds_latest_shot', 'N/A')}")
         print(f"[API调试] MongoDB最新炮号: {status.get('mongo_latest_shot', 'N/A')}")
