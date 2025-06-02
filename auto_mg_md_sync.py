@@ -10,7 +10,7 @@ MG_DB_PATTERN = re.compile(r"DataDiagnosticPlatform_\[(\d+)_(\d+)\]")
 MDSPLUS_TREE = 'exl50u'
 MDSPLUS_PATH = '192.168.20.11::/media/ennfusion/trees/exl50u'
 BATCH_SIZE = 100
-CONCURRENT = 5
+CONCURRENT = 1
 CHECK_INTERVAL = 60  # 秒
 
 
