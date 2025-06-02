@@ -298,25 +298,28 @@ def process_channel(channel_args):
     
     return temp, error_data_list
 
-def RUN(shot_list, channel_list, db_name):
-    # 连接MongoDB
+def RUN(shot_list, channel_list, db_name, reset=False):
+    # Connect to MongoDB
     client = MongoClient("mongodb://localhost:27017")
     db = client[db_name]
     errors_collection = db["errors_data"]
     struct_trees_collection = db["struct_trees"]
-    data_stats_collection = db["data_statistics"]  # 新增统计集合
+    data_stats_collection = db["data_statistics"]  # stats collection
     
-    # 清空数据库中已有的数据
-    print("正在清空数据库中已有的数据...")
-    try:
-        errors_collection.delete_many({})
-        struct_trees_collection.delete_many({})
-        data_stats_collection.delete_many({})
-        db["index"].delete_many({})
-        print("已成功清空数据库中的所有集合")
-    except Exception as e:
-        logger.error(f"清空数据库时发生异常: {e}")
-        print(f"清空数据库失败: {e}")
+    # Only clear database if reset is True
+    if reset:
+        print("[reset mode] Clearing all data in the database...")
+        try:
+            errors_collection.delete_many({})
+            struct_trees_collection.delete_many({})
+            data_stats_collection.delete_many({})
+            db["index"].delete_many({})
+            print("All collections in the database have been cleared.")
+        except Exception as e:
+            logger.error(f"Exception occurred while clearing database: {e}")
+            print(f"Failed to clear database: {e}")
+    else:
+        print("[resume mode] Not clearing database, will continue from breakpoint.")
     
     # 创建复合索引
     errors_collection.create_index([
@@ -423,6 +426,20 @@ def RUN(shot_list, channel_list, db_name):
     num_processes = min(64, max(1, mp.cpu_count() - 1))
     print(f"将使用 {num_processes} 个进程并行处理数据")
     
+    # 断点续跑模式下，提前查出所有已完成的通道集合
+    finished_channels_set = set()
+    if not reset:
+        print("[resume mode] Querying finished channels from MongoDB for breakpoint resume...")
+        for doc in struct_trees_collection.find({}, {"shot_number": 1, "struct_tree": 1}):
+            shot_number = doc.get("shot_number")
+            struct_tree = doc.get("struct_tree", [])
+            for item in struct_tree:
+                # Only consider status==success
+                if item.get("status") == "success":
+                    # Use (shot_number, db_name, channel_name) as unique key
+                    finished_channels_set.add((str(shot_number), item.get("db_name", ""), item.get("channel_name", "")))
+        print(f"[resume mode] Found {len(finished_channels_set)} finished channels, will skip them.")
+    
     # 处理每个炮号
     for shot_num in shot_range:
         shot_start = time.time()
@@ -483,7 +500,9 @@ def RUN(shot_list, channel_list, db_name):
                 channels_to_process = channel_pool
             else:
                 channels_to_process = [c for c in channel_pool if c in channel_list]
-            
+            # 断点续跑模式下，过滤掉已完成的通道
+            if not reset:
+                channels_to_process = [c for c in channels_to_process if (str(shot_num), DB, c) not in finished_channels_set]
             print(f"  炮号 {shot_num} 在 {DB} 数据库共有 {len(channels_to_process)} 个通道需要处理")
             
             # 并发通道处理，限制最大并发数
@@ -733,6 +752,9 @@ def create_shot_index(db, shot_number, struct_tree_data):
     
 if __name__ == "__main__":
     # 检查命令行参数
+    reset = False
+    if len(sys.argv) >= 4 and sys.argv[3].lower() == 'reset':
+        reset = True
     if len(sys.argv) >= 3:
         # 从命令行获取两个参数，并转为整数
         shot_start = int(sys.argv[1])
@@ -744,7 +766,7 @@ if __name__ == "__main__":
     channel_list = []
     # 动态设置数据库名
     db_name = f"DataDiagnosticPlatform_[{shot_list[0]}_{shot_list[1]}]"
-    RUN(shot_list, channel_list, db_name)
+    RUN(shot_list, channel_list, db_name, reset=reset)
 
 
 

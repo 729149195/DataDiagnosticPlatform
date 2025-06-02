@@ -186,7 +186,7 @@ REFRESH_INTERVAL = 0.1   # 进度更新频率(秒)
 class ProcessRunner:
     """处理单个批次的炮号范围的进程管理类"""
     
-    def __init__(self, process_id, start_shot, end_shot, working_dir, script_path, conda_env, global_expected_channels_map):
+    def __init__(self, process_id, start_shot, end_shot, working_dir, script_path, conda_env, global_expected_channels_map, reset=False):
         self.process_id = process_id
         self.start_shot = start_shot
         self.end_shot = end_shot
@@ -202,6 +202,7 @@ class ProcessRunner:
         self.channels_processed = 0
         self.lock = threading.Lock()
         self.expected_channels_map = {}
+        self.reset = reset  # 新增 reset 参数
         # 从全局map切片出自己负责的shot范围
         for shot in range(self.start_shot, self.end_shot + 1):
             self.expected_channels_map[str(shot)] = global_expected_channels_map.get(str(shot), 0)
@@ -222,7 +223,10 @@ class ProcessRunner:
         with self.lock:
             self.status = "运行中"
             self.start_time = datetime.now()
+            # 拼接命令，支持 reset 参数
             cmd = f"cd {self.working_dir} && conda run -n {self.conda_env} python {self.script_path} {self.start_shot} {self.end_shot}"
+            if self.reset:
+                cmd += " reset"
             self.process = subprocess.Popen(
                 cmd,
                 shell=True,
@@ -374,7 +378,7 @@ class BatchProcessor:
     """批量处理管理类"""
     
     def __init__(self, start_shot, end_shot, batch_size, concurrent_processes, 
-                 working_dir, script_path, conda_env):
+                 working_dir, script_path, conda_env, reset=False):
         self.start_shot = start_shot
         self.end_shot = end_shot
         self.batch_size = batch_size
@@ -382,6 +386,7 @@ class BatchProcessor:
         self.working_dir = working_dir
         self.script_path = script_path
         self.conda_env = conda_env
+        self.reset = reset  # 新增 reset 参数
         
         # 计算批次
         self.batches = []
@@ -460,7 +465,8 @@ class BatchProcessor:
             working_dir=self.working_dir,
             script_path=self.script_path,
             conda_env=self.conda_env,
-            global_expected_channels_map=self.global_expected_channels_map
+            global_expected_channels_map=self.global_expected_channels_map,
+            reset=self.reset
         )
         
         self.processes.append(proc)
@@ -567,6 +573,7 @@ def main():
     parser.add_argument('--working-dir', type=str, default=WORKING_DIR, help=f'工作目录 (默认: {WORKING_DIR})')
     parser.add_argument('--script', type=str, default=PROCESS_SCRIPT, help=f'处理脚本路径 (默认: {PROCESS_SCRIPT})')
     parser.add_argument('--conda-env', type=str, default=CONDA_ENV, help=f'Conda环境名称 (默认: {CONDA_ENV})')
+    parser.add_argument('--reset', action='store_true', help='是否覆盖检测（默认断点续跑）')
     
     args = parser.parse_args()
     
@@ -577,7 +584,8 @@ def main():
         concurrent_processes=args.concurrent,
         working_dir=args.working_dir,
         script_path=args.script,
-        conda_env=args.conda_env
+        conda_env=args.conda_env,
+        reset=args.reset
     )
     
     processor.start()
