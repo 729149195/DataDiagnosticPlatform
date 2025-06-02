@@ -260,6 +260,7 @@ DBS = {
             'subtrees':['AI']
         },
     }
+
 def import_module_from_path(module_name, file_path):
     # 创建一个模块规范
     spec = iu.spec_from_file_location(module_name, file_path)
@@ -268,59 +269,6 @@ def import_module_from_path(module_name, file_path):
     # 执行模块
     spec.loader.exec_module(module)
     return module
-
-
-path = 'RunDetectAlgorithm/algorithm/MP/error_magnetics_drift.py'
-channel_name = 'MP051t'
-error = 'error_magnetics_drift'
-DB = 'exl50u'
-tree = MdsTree(4579, DB, DBS[DB]['path'], DBS[DB]['subtrees'])
-moduleX = import_module_from_path(error, path)
-start = time.time()
-data_x, data_y = tree.getData(channel_name)
-print(len(data_y))
-print(data_x[0], data_x[-1])
-error_indexes = moduleX.func(data_y)
-print(data_y[error_indexes[0][0]], data_y[error_indexes[0][0]+24999])
-print(data_x[error_indexes[0][0]], data_x[error_indexes[0][0]+24999])
-print(error_indexes)
-# print(list(map(lambda d: [data_x[d[0]], data_x[d[1]]], error_indexes)))
-
-
-# error_indexes = moduleX.func(data_y)
-# end = time.time()
-# print(error_indexes)
-# print(len(data_y))
-# print(len(data_y[data_y > 1000]))
-# plt.ion()  # 启用交互模式
-# plt.plot(data_x, data_y, ',', linewidth=2, markersize=8)
-# plt.title('折线图示例', fontsize=14)
-# plt.xlabel('X 轴', fontsize=12)
-# plt.ylabel('Y 轴', fontsize=12)
-# plt.grid(True)
-# plt.xlim(min(data_x)-0.5, max(data_x)+0.5)
-# plt.ylim(min(data_y)-0.5, max(data_y)+0.5)
-
-# plt.show()
-# print(data_x)
-# error_indexes = moduleX.func(data_y, data_x)
-# print(len(data))
-# end = time.time()
-# print(data_y)
-# print(len(data_y))
-# print(error_indexes)
-# print(MDSplus.__version__)
-# for indices in error_indexes:
-#     print(data[0][indices[0]], data[0][indices[1]])
-# RunDetectAlgorithm
-# print(error_indexes)
-
-# conn = MDSplus.Connection('192.168.20.11') # EXL50 database
-# conn.openTree('exl50u', 4470)
-# temp = 'EXL50U::TOP.AI:TS' + '03_1_1064'
-# data = conn.get(r"\{}".format(temp)).data()
-# print(data, len(data))
-# print(re.match(r'^[^\d]*', 'TS01_1_1064')[0])
 
 # 全局连接池（进程内唯一）
 _MDS_TREE_POOL = {}

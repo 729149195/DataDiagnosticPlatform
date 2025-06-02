@@ -36,4 +36,7 @@ urlpatterns = [
     path('sketch-templates/save', views.save_sketch_template, name='save_sketch_template'),
     path('sketch-templates/list', views.get_sketch_templates, name='get_sketch_templates'),
     path('sketch-templates/delete', views.delete_sketch_template, name='delete_sketch_template'),
+    
+    # 系统监控状态
+    path('system-monitor-status', views.get_system_monitor_status, name='get_system_monitor_status'),
 ]

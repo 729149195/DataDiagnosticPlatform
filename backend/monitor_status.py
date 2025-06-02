@@ -1,0 +1,231 @@
+import threading
+import time
+from datetime import datetime, timedelta
+from pymongo import MongoClient
+import re
+import sys
+import os
+
+# 添加项目根目录到Python路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.insert(0, project_root)
+
+# 导入MDS+相关模块
+try:
+    from RunDetectAlgorithm.mdsConn import currentShot
+    print("成功导入 currentShot 函数")
+except ImportError as e:
+    print(f"导入 currentShot 失败: {e}")
+    # 备用导入方式
+    try:
+        sys.path.append(os.path.join(project_root, 'RunDetectAlgorithm'))
+        from mdsConn import currentShot
+        print("通过备用方式成功导入 currentShot 函数")
+    except ImportError as e2:
+        print(f"备用导入方式也失败: {e2}")
+        # 定义一个备用函数
+        def currentShot(dbname, path):
+            print(f"警告: 无法连接MDS+，返回模拟炮号")
+            return 5000  # 返回一个模拟的炮号
+        print("使用备用 currentShot 函数")
+
+# 全局监控状态
+monitor_status = {
+    'mds_latest_shot': 0,
+    'mongo_processing_shot': 0,
+    'mongo_latest_shot': 0,
+    'last_update': None,
+    'next_update': None,
+    'is_running': False
+}
+
+# 监控锁
+monitor_lock = threading.Lock()
+
+# MDS+配置
+MDSPLUS_TREE = 'exl50u'
+MDSPLUS_PATH = '192.168.20.11::/media/ennfusion/trees/exl50u'
+
+# MongoDB配置
+MONGO_CLIENT = MongoClient("mongodb://localhost:27017")
+MG_DB_PATTERN = re.compile(r"DataDiagnosticPlatform_\[(\d+)_(\d+)\]")
+
+def get_latest_mongo_db_info():
+    """获取最新的MongoDB数据库信息"""
+    try:
+        db_names = MONGO_CLIENT.list_database_names()
+        ddp_dbs = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+        
+        if not ddp_dbs:
+            return None, 0, 0
+            
+        # 解析数据库名称获取范围
+        db_ranges = []
+        for name in ddp_dbs:
+            # 处理新格式 DataDiagnosticPlatform_[start_end] 和旧格式 DataDiagnosticPlatform_start_end
+            if '[' in name and ']' in name:
+                # 新格式
+                match = re.search(r'DataDiagnosticPlatform_\[(\d+)_(\d+)\]', name)
+            else:
+                # 旧格式
+                match = re.search(r'DataDiagnosticPlatform_(\d+)_(\d+)', name)
+            
+            if match:
+                start, end = int(match.group(1)), int(match.group(2))
+                db_ranges.append((name, start, end))
+        
+        if not db_ranges:
+            return None, 0, 0
+            
+        # 按结束炮号排序，获取最新的数据库
+        db_ranges.sort(key=lambda x: x[2], reverse=True)
+        latest_db_name, db_start, db_end = db_ranges[0]
+        
+        # 获取该数据库中实际存在的最大炮号
+        db = MONGO_CLIENT[latest_db_name]
+        if 'struct_trees' in db.list_collection_names():
+            struct_trees = db['struct_trees']
+            # 获取所有炮号并转换为整数
+            shot_numbers = []
+            for doc in struct_trees.find({}, {'shot_number': 1}):
+                try:
+                    shot_num = int(doc.get('shot_number', 0))
+                    if shot_num > 0:
+                        shot_numbers.append(shot_num)
+                except (ValueError, TypeError):
+                    continue
+            
+            mongo_latest_shot = max(shot_numbers) if shot_numbers else db_start
+        else:
+            mongo_latest_shot = db_start
+            
+        return latest_db_name, mongo_latest_shot, db_end
+        
+    except Exception as e:
+        print(f"获取MongoDB信息失败: {e}")
+        return None, 0, 0
+
+def get_mds_latest_shot():
+    """获取MDS+最新炮号"""
+    try:
+        shot = currentShot(MDSPLUS_TREE, MDSPLUS_PATH)
+        return int(shot) if shot else 0
+    except Exception as e:
+        print(f"获取MDS+最新炮号失败: {e}")
+        return 0
+
+def monitor_loop():
+    """监控循环"""
+    global monitor_status
+    
+    while True:
+        try:
+            current_time = datetime.now()
+            
+            # 获取MDS+最新炮号
+            mds_latest = get_mds_latest_shot()
+            
+            # 获取MongoDB信息
+            latest_db_name, mongo_latest, db_end = get_latest_mongo_db_info()
+            
+            # 计算正在处理的炮号（MongoDB最新炮号+1，但不超过MDS+最新炮号）
+            if mongo_latest < mds_latest:
+                processing_shot = mongo_latest + 1
+            else:
+                processing_shot = mongo_latest
+                
+            # 更新全局状态
+            with monitor_lock:
+                monitor_status.update({
+                    'mds_latest_shot': mds_latest,
+                    'mongo_processing_shot': processing_shot,
+                    'mongo_latest_shot': mongo_latest,
+                    'last_update': current_time.isoformat(),
+                    'next_update': (current_time + timedelta(seconds=10)).isoformat(),
+                    'is_running': True,
+                    'latest_db_name': latest_db_name,
+                    'db_end_range': db_end
+                })
+                
+            print(f"[监控更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
+            
+        except Exception as e:
+            print(f"监控循环出错: {e}")
+            with monitor_lock:
+                monitor_status['is_running'] = False
+                
+        # 等待10秒
+        time.sleep(10)
+
+def start_monitor():
+    """启动监控线程"""
+    global monitor_status
+    
+    with monitor_lock:
+        if monitor_status['is_running']:
+            print("监控程序已在运行中，跳过启动")
+            return False  # 已经在运行
+            
+    # 创建并启动监控线程
+    monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+    monitor_thread.start()
+    
+    print("监控程序已启动")
+    
+    # 等待监控线程初始化并获取第一次数据
+    time.sleep(2)
+    
+    # 立即执行一次监控更新
+    try:
+        current_time = datetime.now()
+        
+        # 获取MDS+最新炮号
+        mds_latest = get_mds_latest_shot()
+        
+        # 获取MongoDB信息
+        latest_db_name, mongo_latest, db_end = get_latest_mongo_db_info()
+        
+        # 计算正在处理的炮号
+        if mongo_latest < mds_latest:
+            processing_shot = mongo_latest + 1
+        else:
+            processing_shot = mongo_latest
+            
+        # 更新全局状态
+        with monitor_lock:
+            monitor_status.update({
+                'mds_latest_shot': mds_latest,
+                'mongo_processing_shot': processing_shot,
+                'mongo_latest_shot': mongo_latest,
+                'last_update': current_time.isoformat(),
+                'next_update': (current_time + timedelta(seconds=10)).isoformat(),
+                'is_running': True,
+                'latest_db_name': latest_db_name,
+                'db_end_range': db_end
+            })
+            
+        print(f"[立即更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
+        
+    except Exception as e:
+        print(f"立即更新监控状态出错: {e}")
+    
+    return True
+
+def get_monitor_status():
+    """获取当前监控状态"""
+    with monitor_lock:
+        current_status = monitor_status.copy()
+        print(f"[状态查询] 返回监控状态: is_running={current_status.get('is_running', False)}, mds={current_status.get('mds_latest_shot', 'N/A')}, mongo={current_status.get('mongo_latest_shot', 'N/A')}")
+        return current_status
+
+def stop_monitor():
+    """停止监控（通过设置标志）"""
+    global monitor_status
+    with monitor_lock:
+        monitor_status['is_running'] = False
+
+# 自动启动监控
+if __name__ != "__main__":
+    # 当模块被导入时自动启动监控
+    start_monitor() 
