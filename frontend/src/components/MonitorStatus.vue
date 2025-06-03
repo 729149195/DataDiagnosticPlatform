@@ -4,9 +4,15 @@
     <div class="status-container">
       <!-- <span class="status-title">MDS数据库检测状态</span> -->
       <div class="shot-info">
-        <span class="processing-shot">{{ monitorData.mongo_latest_shot || '--' }}</span>
+        <div class="shot-block">
+          <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
+          <span class="shot-tag">检测中炮号</span>
+        </div>
         <span class="separator">/</span>
-        <span class="latest-shot">{{ monitorData.mds_latest_shot || '--' }}</span>
+        <div class="shot-block">
+          <span class="shot-value">{{ monitorData.mds_latest_shot || '--' }}</span>
+          <span class="shot-tag">当前总炮号</span>
+        </div>
       </div>
     </div>
   </div>
@@ -27,7 +33,6 @@ const monitorData = ref({
 });
 
 const countdownSeconds = ref(10);
-const countdownText = computed(() => `${countdownSeconds.value}s`);
 
 let monitorTimer = null;
 let countdownTimer = null;
@@ -94,26 +99,56 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .shot-info {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   margin-bottom: 4px;
   font-size: 16px;
   font-weight: 500;
   line-height: 1.2;
 }
-.processing-shot {
-  color: #8b8b8b;
-  font-weight: 600;
-  font-size: 16px;
+.shot-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 70px;
 }
-.separator {
-  margin: 0 8px;
-  color: #5F6368;
-  font-weight: 400;
-}
-.latest-shot {
+.shot-value {
   color: #4285F4;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 18px;
+  margin-bottom: 2px;
+}
+.shot-tag {
+  display: inline-block;
+  background: #f1f3f4;
+  color: #5f6368;
+  font-size: 12px;
+  border-radius: 8px;
+  padding: 2px 8px;
+  margin-top: 0px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
+.separator {
+  margin: 0 16px 8px 16px;
+  color: #dadce0;
+  font-weight: 400;
+  font-size: 18px;
+}
+.status-container {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(60,64,67,0.08), 0 1.5px 6px rgba(60,64,67,0.08);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.monitor-status {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  background: transparent;
 }
 .countdown-info {
   display: flex;

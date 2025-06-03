@@ -922,6 +922,14 @@ const isExpandable = (row) => {
 }
 
 .monitor-status-wrapper {
-
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+
 </style>
