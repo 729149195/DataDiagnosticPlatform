@@ -35,10 +35,7 @@
                     </el-icon>
                   </el-tooltip></span>
               </span>
-              <!-- 右上角监控状态 -->
-              <div class="monitor-status-wrapper">
-                <MonitorStatus />
-              </div>
+              
               <Filter />
             </el-card>
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
@@ -773,7 +770,6 @@ import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalcul
 
 import OverviewBrush from '@/components/OverviewBrush.vue';
 
-import MonitorStatus from '@/components/MonitorStatus.vue'; // 引入监控状态组件
 
 import { ElDialog, ElForm, ElFormItem, ElCheckbox, ElRadio, ElTag, ElScrollbar, ElProgress } from 'element-plus'
 
@@ -3238,9 +3234,5 @@ const chartAreaHeight = computed(() => {
   line-height: 30px;
 }
 
-.monitor-status-wrapper {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-}
+
 </style>

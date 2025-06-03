@@ -14,7 +14,9 @@
         <span v-if="selectedButton === 'channel'">通道分析模块</span>
       </el-button>
     </div>
-
+    <div class="monitor-status-wrapper">
+      <MonitorStatus />
+    </div>
     <el-dropdown trigger="click">
       <el-avatar :style="avatarStyle" size="default">{{ avatarText }}</el-avatar>
       <template #dropdown>
@@ -177,6 +179,7 @@ import { useRouter } from 'vue-router';
 import { User, SwitchButton, Delete, InfoFilled, DataAnalysis, Odometer, Timer } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import indexedDBService from '@/services/indexedDBService';
+import MonitorStatus from '@/components/MonitorStatus.vue'; // 引入监控状态组件
 
 const store = useStore()
 const router = useRouter()
@@ -916,5 +919,9 @@ const isExpandable = (row) => {
 
 .loading-dialog-mask {
   backdrop-filter: blur(2px);
+}
+
+.monitor-status-wrapper {
+
 }
 </style>
