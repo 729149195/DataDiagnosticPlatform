@@ -5,13 +5,13 @@
       <!-- <span class="status-title">MDS数据库检测状态</span> -->
       <div class="shot-info">
         <div class="shot-block">
-          <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
           <span class="shot-tag">检测中炮号</span>
+          <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
         </div>
         <span class="separator">/</span>
         <div class="shot-block">
-          <span class="shot-value">{{ monitorData.mds_latest_shot || '--' }}</span>
           <span class="shot-tag">当前总炮号</span>
+          <span class="shot-value">{{ monitorData.mds_latest_shot || '--' }}</span>
         </div>
       </div>
     </div>
@@ -99,7 +99,7 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .shot-info {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   margin-bottom: 4px;
   font-size: 16px;
   font-weight: 500;
@@ -107,29 +107,29 @@ onBeforeUnmount(() => {
 }
 .shot-block {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   min-width: 70px;
+  margin: 0 4px;
 }
 .shot-value {
   color: #4285F4;
   font-weight: 600;
   font-size: 18px;
-  margin-bottom: 2px;
+  margin-left: 8px;
 }
 .shot-tag {
-  display: inline-block;
-  background: #f1f3f4;
   color: #5f6368;
-  font-size: 12px;
-  border-radius: 8px;
-  padding: 2px 8px;
-  margin-top: 0px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: 500;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
   letter-spacing: 0.2px;
 }
 .separator {
-  margin: 0 16px 8px 16px;
+  margin: 0 16px;
   color: #dadce0;
   font-weight: 400;
   font-size: 18px;
@@ -138,9 +138,10 @@ onBeforeUnmount(() => {
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 1px 4px rgba(60,64,67,0.08), 0 1.5px 6px rgba(60,64,67,0.08);
-  padding: 8px;
+  padding: 4px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   align-items: center;
 }
 .monitor-status {
