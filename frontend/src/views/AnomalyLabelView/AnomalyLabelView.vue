@@ -35,6 +35,10 @@
                     </el-icon>
                   </el-tooltip></span>
               </span>
+              <!-- 右上角监控状态 -->
+              <div class="monitor-status-wrapper">
+                <MonitorStatus />
+              </div>
               <Filter />
             </el-card>
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
@@ -769,7 +773,11 @@ import ChannelCalculationResults from '@/views/ChannelAnalysisView/ChannelCalcul
 
 import OverviewBrush from '@/components/OverviewBrush.vue';
 
+import MonitorStatus from '@/components/MonitorStatus.vue'; // 引入监控状态组件
+
 import { ElDialog, ElForm, ElFormItem, ElCheckbox, ElRadio, ElTag, ElScrollbar, ElProgress } from 'element-plus'
+
+
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
@@ -2591,6 +2599,7 @@ const chartAreaHeight = computed(() => {
 
 .filtandsearch {
   flex-shrink: 0;
+  position: relative;
 }
 
 .table {
@@ -3227,5 +3236,11 @@ const chartAreaHeight = computed(() => {
 :deep(.el-form-item__label) {
   padding-bottom: 4px;
   line-height: 30px;
+}
+
+.monitor-status-wrapper {
+  position: absolute;
+  top: 10px;
+  right: 10px;
 }
 </style>

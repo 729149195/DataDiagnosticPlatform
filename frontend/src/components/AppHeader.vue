@@ -14,24 +14,7 @@
         <span v-if="selectedButton === 'channel'">通道分析模块</span>
       </el-button>
     </div>
-    
-    <!-- 监控状态显示区域 -->
-    <div class="monitor-status">
-      <div class="status-container">
-        <div class="shot-info">
-          <span class="processing-shot">{{ monitorData.mongo_processing_shot || '--' }}</span>
-          <span class="separator">/</span>
-          <span class="latest-shot">{{ monitorData.mds_latest_shot || '--' }}</span>
-        </div>
-        <div class="countdown-info">
-          <el-icon :size="12" class="timer-icon">
-            <Timer />
-          </el-icon>
-          <span class="countdown">{{ countdownText }}</span>
-        </div>
-      </div>
-    </div>
-    
+
     <el-dropdown trigger="click">
       <el-avatar :style="avatarStyle" size="default">{{ avatarText }}</el-avatar>
       <template #dropdown>
@@ -199,93 +182,6 @@ const store = useStore()
 const router = useRouter()
 const selectedButton = ref('anay');
 
-// 添加监控相关的响应式数据
-const monitorData = ref({
-  mds_latest_shot: 0,
-  mongo_processing_shot: 0,
-  mongo_latest_shot: 0,
-  last_update: null,
-  next_update: null,
-  is_running: false
-});
-
-const countdownSeconds = ref(10);
-const countdownText = computed(() => {
-  return `${countdownSeconds.value}s`;
-});
-
-// 监控相关的定时器
-let monitorTimer = null;
-let countdownTimer = null;
-
-// 获取监控状态的函数
-const fetchMonitorStatus = async () => {
-  try {
-    // 尝试HTTPS请求
-    let response;
-    response = await fetch('https://10.1.108.231:5000/api/system-monitor-status');
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const result = await response.json();
-    
-    if (result.success && result.data) {
-      monitorData.value = result.data;
-      
-      // 重置倒计时
-      countdownSeconds.value = 10;
-    } else {
-      console.warn('监控状态API返回错误:', result.error || '未知错误');
-    }
-  } catch (error) {
-    console.error('获取监控状态失败:', error);
-    // 静默失败，不影响用户体验
-    // 但可以设置一些默认值表示连接问题
-    monitorData.value = {
-      mds_latest_shot: '--',
-      mongo_processing_shot: '--',
-      mongo_latest_shot: '--',
-      is_running: false
-    };
-  }
-};
-
-// 启动监控和倒计时
-const startMonitoring = () => {
-  // 立即获取一次状态
-  fetchMonitorStatus();
-  
-  // 每10秒获取一次监控状态
-  monitorTimer = setInterval(fetchMonitorStatus, 10000);
-  
-  // 每秒更新倒计时
-  countdownTimer = setInterval(() => {
-    countdownSeconds.value--;
-    if (countdownSeconds.value <= 0) {
-      countdownSeconds.value = 10; // 重置倒计时
-    }
-  }, 1000);
-};
-
-// 停止监控
-const stopMonitoring = () => {
-  if (monitorTimer) {
-    clearInterval(monitorTimer);
-    monitorTimer = null;
-  }
-  if (countdownTimer) {
-    clearInterval(countdownTimer);
-    countdownTimer = null;
-  }
-};
-
-onBeforeUnmount(() => {
-  // 移除强制重置逻辑，让父组件控制状态
-  // 停止监控定时器
-  stopMonitoring();
-})
 
 // 添加缓存服务性能优化
 let isCachePreloading = false;
@@ -350,8 +246,6 @@ onMounted(() => {
   // 预加载缓存索引
   preloadCacheData();
 
-  // 启动监控和倒计时
-  startMonitoring();
 });
 
 // 移除 initialButton prop 监听，因为现在总是强制设置为 'anay'
@@ -1022,76 +916,5 @@ const isExpandable = (row) => {
 
 .loading-dialog-mask {
   backdrop-filter: blur(2px);
-}
-
-.monitor-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex: 1;
-  padding: 0 20px;
-}
-
-.status-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: linear-gradient(135deg, rgba(66, 133, 244, 0.08), rgba(66, 133, 244, 0.04));
-  border-radius: 16px;
-  padding: 12px 20px;
-  border: 1px solid rgba(66, 133, 244, 0.12);
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.08);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.status-container:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(66, 133, 244, 0.12);
-}
-
-.shot-info {
-  display: flex;
-  align-items: center;
-  margin-bottom: 4px;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.2;
-}
-
-.processing-shot {
-  color: #EA4335;
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.separator {
-  margin: 0 8px;
-  color: #5F6368;
-  font-weight: 400;
-}
-
-.latest-shot {
-  color: #137333;
-  font-weight: 600;
-  font-size: 16px;
-}
-
-.countdown-info {
-  display: flex;
-  align-items: center;
-  color: #5F6368;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.timer-icon {
-  margin-right: 4px;
-  color: #4285F4;
-}
-
-.countdown {
-  font-weight: 500;
-  color: #4285F4;
 }
 </style>

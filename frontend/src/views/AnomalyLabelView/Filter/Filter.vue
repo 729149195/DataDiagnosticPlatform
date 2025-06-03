@@ -1,58 +1,62 @@
 <template>
-  <div class="filter-container">
-    <div class="form-items">
-      <div class="form-item">
-        <span class="label">数据库：</span>
-        <div class="input-container">
-          <el-select v-model="selectedDbSuffix" placeholder="请选择数据库" @change="handleDbSuffixChange" :loading="isDbLoading" clearable class="db-select">
-            <el-option v-for="item in dbSuffixOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+  <!-- 外层flex布局，右上角插入监控状态 -->
+  <div class="filter-container-flex">
+    <div class="filter-main">
+      <!-- 原有过滤器内容 -->
+      <div class="form-items">
+        <div class="form-item">
+          <span class="label">数据库：</span>
+          <div class="input-container">
+            <el-select v-model="selectedDbSuffix" placeholder="请选择数据库" @change="handleDbSuffixChange" :loading="isDbLoading" clearable class="db-select">
+              <el-option v-for="item in dbSuffixOptions" :key="item" :label="item" :value="item" />
+            </el-select>
+          </div>
+        </div>
+        <div class="form-item">
+          <span class="label">炮　号：</span>
+          <div class="input-container">
+            <el-autocomplete
+              :model-value="gunNumberInput"
+              :fetch-suggestions="querySearchGunNumbers"
+              placeholder="请输入炮号，例如 1-5,7,9-12"
+              @select="handleGunNumberSelect"
+              @input="handleInput"
+              @clear="handleGunNumberClear"
+              @blur="handleGunNumberBlur"
+              @keyup.enter="onGunNumberConfirm"
+              class="gun-number-input"
+              :disabled="!selectedDbSuffix"
+            >
+              <template #append>
+                <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
+              </template>
+            </el-autocomplete>
+          </div>
+        </div>
+        <div class="form-item">
+          <span class="label">通道名：</span>
+          <div class="input-container">
+            <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword class="tag-select" :disabled="isChannelNameDisabled || isIndexLoading || !hasIndexLoaded">
+              <el-option v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
+              <el-option v-for="item in filteredChannelNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
+            </el-select>
+          </div>
+        </div>
+        <div class="form-item">
+          <span class="label">异常名：</span>
+          <div class="input-container">
+            <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword class="tag-select" :disabled="isErrorNameDisabled || isIndexLoading || !hasIndexLoaded">
+              <el-option v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
+              <el-option v-for="item in filteredErrorsNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
+            </el-select>
+          </div>
         </div>
       </div>
-      <div class="form-item">
-        <span class="label">炮　号：</span>
-        <div class="input-container">
-          <el-autocomplete
-            :model-value="gunNumberInput"
-            :fetch-suggestions="querySearchGunNumbers"
-            placeholder="请输入炮号，例如 1-5,7,9-12"
-            @select="handleGunNumberSelect"
-            @input="handleInput"
-            @clear="handleGunNumberClear"
-            @blur="handleGunNumberBlur"
-            @keyup.enter="onGunNumberConfirm"
-            class="gun-number-input"
-            :disabled="!selectedDbSuffix"
-          >
-            <template #append>
-              <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
-            </template>
-          </el-autocomplete>
-        </div>
+      <div class="buttons">
+        <el-button type="primary" @click="filterGunNumbers" style="width: 100%;">
+          过滤
+        </el-button>
       </div>
-      <div class="form-item">
-        <span class="label">通道名：</span>
-        <div class="input-container">
-          <el-select v-model="selectedChannelNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入通道名" @clear="handleChannelNameClear" clearable :filter-method="filterChannelNameMethod" reserve-keyword class="tag-select" :disabled="isChannelNameDisabled || isIndexLoading || !hasIndexLoaded">
-            <el-option v-if="filteredChannelNameKeyword && filteredChannelNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
-            <el-option v-for="item in filteredChannelNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
-          </el-select>
-        </div>
-      </div>
-      <div class="form-item">
-        <span class="label">异常名：</span>
-        <div class="input-container">
-          <el-select v-model="selectederrorsNames" filterable multiple collapse-tags collapse-tags-tooltip placeholder="请输入异常名" @clear="handleErrorsNameClear" clearable :filter-method="filterErrorsNameMethod" reserve-keyword class="tag-select" :disabled="isErrorNameDisabled || isIndexLoading || !hasIndexLoaded">
-            <el-option v-if="filteredErrorsNameKeyword && filteredErrorsNameResultOptions.length > 0" key="select-search-results" label="选择所有搜索结果" value="select-search-results" />
-            <el-option v-for="item in filteredErrorsNameOptionsList" :key="item.value" :label="item.value" :value="item.value" />
-          </el-select>
-        </div>
-      </div>
-    </div>
-    <div class="buttons">
-      <el-button type="primary" @click="filterGunNumbers" style="width: 100%;">
-        过滤
-      </el-button>
     </div>
   </div>
 </template>
@@ -64,6 +68,7 @@ import { useStore } from 'vuex';
 import { ElMessage } from 'element-plus';
 import { debounce } from 'lodash';
 import _ from 'lodash';
+
 
 const store = useStore();
 
@@ -890,6 +895,20 @@ const onGunNumberConfirm = async () => {
 </script>
 
 <style scoped lang="scss">
+/* 新增flex布局样式 */
+.filter-container-flex {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+}
+.filter-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .filter-container {
   width: 100%;
   display: flex;
