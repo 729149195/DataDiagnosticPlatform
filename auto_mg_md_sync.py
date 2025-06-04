@@ -76,14 +76,40 @@ def main_loop():
                 run_batch(batch_start, batch_end, batch_size=BATCH_SIZE, concurrent=CONCURRENT)
                 mg_latest = batch_end
         else:
-            # 单炮补齐，db_name动态扩展
-            print_progress(mg_latest, md_latest, "单炮补齐")
-            current_start = mg_latest + 1
-            current_end = mg_latest + 1
-            for shot in range(current_start, md_latest + 1):
-                run_batch(shot, shot, batch_size=1, concurrent=1)
-                current_end = shot
-                # 可选：这里可以实现db_name动态扩展逻辑（如需手动管理db_name）
+            # 单炮聚合补齐，聚合多个炮号直到满100个或处理完所有待补齐炮号
+            print_progress(mg_latest, md_latest, "单炮聚合补齐")
+            
+            while mg_latest < md_latest:
+                # 重新获取最新的md炮号，因为可能在处理过程中有新的炮号产生
+                current_md_latest = get_latest_md_shot()
+                if current_md_latest > md_latest:
+                    old_md_latest = md_latest
+                    md_latest = current_md_latest
+                    print(f"[更新] 检测到新的md炮号，从 {old_md_latest} 更新为: {md_latest}")
+                
+                # 收集待处理的炮号
+                pending_shots = []
+                current_shot = mg_latest + 1
+                
+                # 收集炮号直到达到批次大小或没有更多炮号
+                while current_shot <= md_latest and len(pending_shots) < BATCH_SIZE:
+                    pending_shots.append(current_shot)
+                    current_shot += 1
+                
+                if pending_shots:
+                    batch_start = pending_shots[0]
+                    batch_end = pending_shots[-1]
+                    batch_count = len(pending_shots)
+                    
+                    print_progress(mg_latest, md_latest, f"单炮聚合补齐(聚合{batch_count}个炮号)", batch_start, batch_end)
+                    run_batch(batch_start, batch_end, batch_size=batch_count, concurrent=CONCURRENT)
+                    
+                    # 更新mg_latest为已处理的最新炮号
+                    mg_latest = batch_end
+                    print(f"[完成] 已处理炮号 {batch_start}-{batch_end}，mg数据库最新炮号更新为: {mg_latest}")
+                else:
+                    # 没有待处理的炮号，退出循环
+                    break
         print("[等待] 休眠60秒后继续监控...")
         time.sleep(CHECK_INTERVAL)
 
