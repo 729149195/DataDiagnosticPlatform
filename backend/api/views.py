@@ -627,7 +627,28 @@ def get_channel_data(request, channel_key=None):
                         y_normalized = list(data_y / y_abs_max)
                     else:
                         y_normalized = list(data_y)
-                    
+
+                    # ====== FFT 计算及计时 ======
+                    fft_start_time = time.time()
+                    N = len(data_y)
+                    if N > 1:
+                        # 采样间隔
+                        dt = (data_x[-1] - data_x[0]) / (N - 1)
+                        fft_result = np.fft.fft(data_y)
+                        freq = np.fft.fftfreq(N, d=dt)
+                        amplitude = np.abs(fft_result) / N
+                        # 只保留正频率部分
+                        pos_mask = freq >= 0
+                        freq = freq[pos_mask]
+                        amplitude = amplitude[pos_mask]
+                    else:
+                        freq = np.array([])
+                        amplitude = np.array([])
+                    fft_time = time.time() - fft_start_time
+                    logs.append(f"FFT计算耗时: {fft_time:.4f}秒")
+                    logs.append(f"FFT点数: {len(freq)}")
+                    # ====== END FFT ======
+
                     logs.append(f"计算统计数据耗时: {time.time() - calculate_start_time:.2f}秒")
                     
                     data = {
@@ -654,6 +675,9 @@ def get_channel_data(request, channel_key=None):
                         },
                         'is_digital': is_digital,
                         'Y_normalized': y_normalized,
+                        # 新增FFT结果
+                        'freq': freq.tolist(),
+                        'amplitude': amplitude.tolist(),
                     }
                     
                     # 使用orjson替代标准json进行序列化，大幅提升性能
