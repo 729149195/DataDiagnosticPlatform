@@ -256,25 +256,33 @@ class ProcessRunner:
             with self.lock:
                 db = mongo_client[self.db_name]
                 
-                # 获取数据统计
+                # 获取数据统计 - 按顺序找第一个未完成的炮号
                 stats_collection = db["data_statistics"]
-                stats_docs = list(stats_collection.find({}))
+                struct_trees = db["struct_trees"]
                 
-                if stats_docs:
-                    # 找出最新的处理中的炮号
-                    latest_shot = None
-                    max_processed = 0
+                # 按顺序检查每个炮号的完成情况
+                current_processing_shot = None
+                for shot in range(self.start_shot, self.end_shot + 1):
+                    shot_str = str(shot)
                     
-                    for doc in stats_docs:
-                        shot_num = doc.get("shot_number")
-                        if shot_num and shot_num.isdigit():
-                            processed = doc.get("total_channels_processed", 0)
-                            if processed > 0:
-                                if latest_shot is None or (latest_shot.isdigit() and int(shot_num) > int(latest_shot)):
-                                    latest_shot = shot_num
-                                    
-                    if latest_shot:
-                        self.current_shot = latest_shot
+                    # 检查该炮号的struct_tree是否完整
+                    struct_doc = struct_trees.find_one({"shot_number": shot_str})
+                    expected_channels = self.expected_channels_map.get(shot_str, 0)
+                    
+                    if struct_doc and "struct_tree" in struct_doc:
+                        actual_channels = len(struct_doc["struct_tree"])
+                        # 如果通道数未达到期望值，说明正在处理或未完成
+                        if actual_channels < expected_channels:
+                            current_processing_shot = shot_str
+                            break
+                        # 如果通道数已达到期望值，继续检查下一个炮号
+                    else:
+                        # 没有struct_tree记录，说明未开始处理
+                        current_processing_shot = shot_str
+                        break
+                
+                if current_processing_shot:
+                    self.current_shot = current_processing_shot
                 
                 # 获取结构树中记录的通道总数和处理情况
                 struct_trees = db["struct_trees"]
@@ -347,10 +355,13 @@ class ProcessRunner:
     def get_status_info(self):
         """获取当前状态信息"""
         with self.lock:
-            # 计算炮号进度
+            # 计算炮号进度 - 注意：这个方法通常不能访问MongoDB，所以简化处理
             total_shots = self.end_shot - self.start_shot + 1
-            if self.current_shot != "N/A":
-                shots_completed = max(0, int(self.current_shot) - self.start_shot)
+            # 基于当前处理的炮号估算已完成数量
+            if self.current_shot != "N/A" and self.current_shot.isdigit():
+                current_shot_num = int(self.current_shot)
+                # 已完成的炮号数 = 当前炮号 - 起始炮号（不包含当前正在处理的）
+                shots_completed = max(0, current_shot_num - self.start_shot)
                 shot_progress = f"{shots_completed}/{total_shots}"
             else:
                 shot_progress = f"0/{total_shots}"
@@ -515,12 +526,31 @@ class BatchProcessor:
                     for proc in self.processes:
                         db = self.mongo_client[proc.db_name]
                         struct_trees = db["struct_trees"]
-                        all_shots = [doc for doc in struct_trees.find({}, {"shot_number": 1}) if doc.get("shot_number", "").isdigit()]
-                        if all_shots:
-                            current_shot = max(int(doc["shot_number"]) for doc in all_shots if doc.get("shot_number", "").isdigit())
-                            proc.current_shot = str(current_shot)
+                        
+                        # 按顺序找第一个未完成的炮号
+                        current_processing_shot = None
+                        for shot in range(proc.start_shot, proc.end_shot + 1):
+                            shot_str = str(shot)
+                            struct_doc = struct_trees.find_one({"shot_number": shot_str})
+                            expected_channels = proc.expected_channels_map.get(shot_str, 0)
+                            
+                            if struct_doc and "struct_tree" in struct_doc:
+                                actual_channels = len(struct_doc["struct_tree"])
+                                # 如果通道数未达到期望值，说明正在处理或未完成
+                                if actual_channels < expected_channels:
+                                    current_processing_shot = shot_str
+                                    break
+                                # 如果通道数已达到期望值，继续检查下一个炮号
+                            else:
+                                # 没有struct_tree记录，说明未开始处理
+                                current_processing_shot = shot_str
+                                break
+                        
+                        if current_processing_shot:
+                            proc.current_shot = current_processing_shot
                         else:
-                            proc.current_shot = "N/A"
+                            # 所有炮号都已完成
+                            proc.current_shot = str(proc.end_shot)
                         processed_channels = proc.channels_processed
                         expected_channels = proc.channels_total if proc.channels_total > 0 else 1
                         percent = f"{processed_channels / expected_channels * 100:.1f}%"
@@ -535,16 +565,17 @@ class BatchProcessor:
                         percent_color = "#ff5555" if percent_value < 30 else "#ffaa00" if percent_value < 70 else "#00ff99"
                         percent_disp = f"[bold {percent_color}]{percent}[/bold {percent_color}]"
                         total_shots = proc.end_shot - proc.start_shot + 1
-                        # 修正 shots_completed 计算，避免 int('N/A')
-                        if isinstance(proc.current_shot, str) and proc.current_shot.isdigit():
-                            shots_completed = max(0, int(proc.current_shot) - proc.start_shot)
-                        else:
-                            shots_completed = 0
+                        # 按顺序计算已完成的炮号数
+                        shots_completed = 0
                         for shot in range(proc.start_shot, proc.end_shot + 1):
-                            doc = struct_trees.find_one({"shot_number": str(shot)})
-                            expected = proc.expected_channels_map.get(str(shot), 0)
-                            if doc and "struct_tree" in doc and len(doc["struct_tree"]) == expected and expected > 0:
+                            shot_str = str(shot)
+                            doc = struct_trees.find_one({"shot_number": shot_str})
+                            expected = proc.expected_channels_map.get(shot_str, 0)
+                            if doc and "struct_tree" in doc and len(doc["struct_tree"]) >= expected and expected > 0:
                                 shots_completed += 1
+                            else:
+                                # 遇到第一个未完成的炮号就停止计数
+                                break
                         shot_progress = f"{shots_completed}/{total_shots}"
                         elapsed = proc.get_elapsed_time()
                         table.add_row(
