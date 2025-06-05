@@ -999,20 +999,29 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         return;
       }
 
-      // 准备数据
+      // 准备数据，过滤无效数据点
       const originalData = [];
       for (let i = 0; i < data.X_value.length; i++) {
-        originalData.push([data.X_value[i], data.Y_value[i]]);
+        if (isFinite(data.X_value[i]) && isFinite(data.Y_value[i])) {
+          originalData.push([data.X_value[i], data.Y_value[i]]);
+        }
       }
 
       // 使用后端提供的统计数据设置Y轴范围
       const stats = data.stats || {};
 
       // 使用后端计算的Y轴范围 (如果有)，否则计算默认值
+      // 使用安全的方式计算Y值范围，避免栈溢出
+      const safeYMin = data.Y_value.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+      const safeYMax = data.Y_value.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+      const finalYMin = isFinite(safeYMin) ? safeYMin : 0;
+      const finalYMax = isFinite(safeYMax) ? safeYMax : 1;
+      const yRange = finalYMax - finalYMin;
+      
       const yMin = stats.y_axis_min !== undefined ? stats.y_axis_min :
-        Math.min(...data.Y_value) - (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
+        finalYMin - yRange * 0.2;
       const yMax = stats.y_axis_max !== undefined ? stats.y_axis_max :
-        Math.max(...data.Y_value) + (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
+        finalYMax + yRange * 0.2;
 
       // 设置X轴和Y轴范围
       let xDomain, yDomain;
@@ -1020,12 +1029,21 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
       
       if (showFFT.value && data.freq && data.amplitude) {
         // FFT模式下使用频率范围
-        xDomain = domains.value.x[channelName] || [Math.min(...data.freq), Math.max(...data.freq)];
+        // 使用安全的方式计算最小值和最大值，避免栈溢出
+        const safeFreqMin = data.freq.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+        const safeFreqMax = data.freq.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+        const finalFreqMin = isFinite(safeFreqMin) ? safeFreqMin : 0;
+        const finalFreqMax = isFinite(safeFreqMax) ? safeFreqMax : 1000;
+        
+        xDomain = domains.value.x[channelName] || [finalFreqMin, finalFreqMax];
         
         // FFT幅值处理：确保合理的Y轴范围
-        const ampMax = Math.max(...data.amplitude);
-        const ampMin = Math.min(...data.amplitude);
-        let yMin_fft = 0; // FFT通常从0开始
+        const safeAmpMax = data.amplitude.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+        const safeAmpMin = data.amplitude.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+        const ampMax = isFinite(safeAmpMax) ? safeAmpMax : 1;
+        const ampMin = isFinite(safeAmpMin) ? safeAmpMin : 0;
+        
+        let yMin_fft = Math.max(0, ampMin); // FFT通常从0开始
         let yMax_fft = ampMax;
         
         // 如果最大值很小，调整范围
@@ -1042,43 +1060,73 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           yMin_fft = ampMin * 1.1;
         }
         
+        // 确保Y轴范围是有效的
+        if (!isFinite(yMin_fft) || !isFinite(yMax_fft) || yMin_fft >= yMax_fft) {
+          yMin_fft = 0;
+          yMax_fft = 1;
+        }
+        
         yDomain = domains.value.y[channelName] || [yMin_fft, yMax_fft];
         
         // 保存FFT模式的原始范围
         originalFreqDomain = {
-          x: [Math.min(...data.freq), Math.max(...data.freq)],
+          x: [finalFreqMin, finalFreqMax],
           y: [yMin_fft, yMax_fft]
         };
         
         // 保存时域原始范围（用于模式切换）
+        const safeXMin = data.X_value.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+        const safeXMax = data.X_value.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+        const finalXMin = isFinite(safeXMin) ? safeXMin : (stats.x_min !== undefined ? stats.x_min : 0);
+        const finalXMax = isFinite(safeXMax) ? safeXMax : (stats.x_max !== undefined ? stats.x_max : 1);
+        
         originalTimeDomain = {
           x: stats.x_min !== undefined && stats.x_max !== undefined ?
-            [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)],
+            [stats.x_min, stats.x_max] : [finalXMin, finalXMax],
           y: [yMin, yMax]
         };
       } else {
         // 原始数据模式
+        // 使用安全的方式计算最小值和最大值
+        const safeXMin = data.X_value.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+        const safeXMax = data.X_value.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+        const finalXMin = isFinite(safeXMin) ? safeXMin : (stats.x_min !== undefined ? stats.x_min : 0);
+        const finalXMax = isFinite(safeXMax) ? safeXMax : (stats.x_max !== undefined ? stats.x_max : 1);
+        
         xDomain = domains.value.x[channelName] ||
           (stats.x_min !== undefined && stats.x_max !== undefined ?
-            [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)]);
+            [stats.x_min, stats.x_max] : [finalXMin, finalXMax]);
         yDomain = domains.value.y[channelName] || [yMin, yMax];
         
         // 保存时域原始范围
         originalTimeDomain = {
           x: stats.x_min !== undefined && stats.x_max !== undefined ?
-            [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)],
+            [stats.x_min, stats.x_max] : [finalXMin, finalXMax],
           y: [yMin, yMax]
         };
         
         // 如果有FFT数据，也保存FFT原始范围
         if (data.freq && data.amplitude) {
-          const ampMax = Math.max(...data.amplitude);
-          const ampMin = Math.min(...data.amplitude);
+          const safeAmpMax = data.amplitude.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+          const safeAmpMin = data.amplitude.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+          const ampMax = isFinite(safeAmpMax) ? safeAmpMax : 1;
+          const ampMin = isFinite(safeAmpMin) ? safeAmpMin : 0;
           let yMin_fft = Math.max(0, ampMin);
           let yMax_fft = ampMax * 1.1;
           
+          const safeFreqMin = data.freq.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+          const safeFreqMax = data.freq.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+          const finalFreqMin = isFinite(safeFreqMin) ? safeFreqMin : 0;
+          const finalFreqMax = isFinite(safeFreqMax) ? safeFreqMax : 1000;
+          
+          // 确保FFT Y轴范围是有效的
+          if (!isFinite(yMin_fft) || !isFinite(yMax_fft) || yMin_fft >= yMax_fft) {
+            yMin_fft = 0;
+            yMax_fft = 1;
+          }
+          
           originalFreqDomain = {
-            x: [Math.min(...data.freq), Math.max(...data.freq)],
+            x: [finalFreqMin, finalFreqMax],
             y: [yMin_fft, yMax_fft]
           };
         }
@@ -1851,8 +1899,21 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           {
             id: 'original',
             type: 'line',
-            data: showFFT.value && data.freq && data.amplitude ? 
-              data.freq.map((freq, index) => [freq, data.amplitude[index]]) : originalData,
+            data: (() => {
+              if (showFFT.value && data.freq && data.amplitude) {
+                // FFT模式：过滤无效数据点
+                const validFFTData = [];
+                for (let i = 0; i < data.freq.length; i++) {
+                  if (isFinite(data.freq[i]) && isFinite(data.amplitude[i])) {
+                    validFFTData.push([data.freq[i], data.amplitude[i]]);
+                  }
+                }
+                return validFFTData;
+              } else {
+                // 时域模式：使用已过滤的原始数据
+                return originalData;
+              }
+            })(),
             color: color,
             lineWidth: 1.5,
             marker: { enabled: false },
@@ -2746,13 +2807,27 @@ watch(showFFT, async (newShowFFT) => {
             
             if (newShowFFT && cachedData.freq && cachedData.amplitude) {
               // FFT模式：使用频率和幅值数据
-              newData = cachedData.freq.map((freq, index) => [freq, cachedData.amplitude[index]]);
+              // 过滤无效数据点以避免显示问题
+              const validIndices = [];
+              for (let i = 0; i < cachedData.freq.length; i++) {
+                if (isFinite(cachedData.freq[i]) && isFinite(cachedData.amplitude[i])) {
+                  validIndices.push(i);
+                }
+              }
+              newData = validIndices.map(i => [cachedData.freq[i], cachedData.amplitude[i]]);
               newTitle = `${channel.channel_name} - FFT`;
               xAxisTitle = 'Frequency (Hz)';
               yAxisTitle = 'Amplitude';
             } else {
               // 时域模式：使用原始数据
-              newData = cachedData.X_value.map((x, index) => [x, cachedData.Y_value[index]]);
+              // 过滤无效数据点
+              const validIndices = [];
+              for (let i = 0; i < cachedData.X_value.length; i++) {
+                if (isFinite(cachedData.X_value[i]) && isFinite(cachedData.Y_value[i])) {
+                  validIndices.push(i);
+                }
+              }
+              newData = validIndices.map(i => [cachedData.X_value[i], cachedData.Y_value[i]]);
               const freqValue = cachedData.originalFrequency || '?';
               newTitle = `${channel.channel_name} (${freqValue.toFixed ? freqValue.toFixed(2) : freqValue}KHz -> ${currentSampling.toFixed(2)}KHz)`;
               xAxisTitle = '';
@@ -2790,10 +2865,16 @@ watch(showFFT, async (newShowFFT) => {
             
             // 设置坐标轴范围和保存原始范围
             if (newShowFFT && cachedData.freq && cachedData.amplitude) {
-              const freqMin = Math.min(...cachedData.freq);
-              const freqMax = Math.max(...cachedData.freq);
-              const ampMax = Math.max(...cachedData.amplitude);
-              const ampMin = Math.min(...cachedData.amplitude);
+              // 使用安全的方式计算频率和幅值范围
+              const safeFreqMin = cachedData.freq.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+              const safeFreqMax = cachedData.freq.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+              const freqMin = isFinite(safeFreqMin) ? safeFreqMin : 0;
+              const freqMax = isFinite(safeFreqMax) ? safeFreqMax : 1000;
+              
+              const safeAmpMax = cachedData.amplitude.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+              const safeAmpMin = cachedData.amplitude.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+              const ampMax = isFinite(safeAmpMax) ? safeAmpMax : 1;
+              const ampMin = isFinite(safeAmpMin) ? safeAmpMin : 0;
               
               // 计算合理的FFT Y轴范围
               let yMin_fft = Math.max(0, ampMin);
@@ -2805,6 +2886,12 @@ watch(showFFT, async (newShowFFT) => {
                 yMax_fft = ampMax * 1.2;
               } else {
                 yMax_fft = ampMax * 1.1;
+              }
+              
+              // 确保Y轴范围是有效的
+              if (!isFinite(yMin_fft) || !isFinite(yMax_fft) || yMin_fft >= yMax_fft) {
+                yMin_fft = 0;
+                yMax_fft = 1;
               }
               
               chart.xAxis[0].setExtremes(freqMin, freqMax, false);
@@ -2828,10 +2915,15 @@ watch(showFFT, async (newShowFFT) => {
                 chart.yAxis[0].setExtremes(originalDomain.time.y[0], originalDomain.time.y[1], false);
               } else if (cachedData && cachedData.X_value && cachedData.Y_value) {
                 // 如果没有保存的时域范围，计算默认范围
-                const xMin = Math.min(...cachedData.X_value);
-                const xMax = Math.max(...cachedData.X_value);
-                const yMin = Math.min(...cachedData.Y_value);
-                const yMax = Math.max(...cachedData.Y_value);
+                const safeXMin = cachedData.X_value.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+                const safeXMax = cachedData.X_value.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+                const safeYMin = cachedData.Y_value.reduce((min, val) => (!isFinite(val) ? min : Math.min(min, val)), Infinity);
+                const safeYMax = cachedData.Y_value.reduce((max, val) => (!isFinite(val) ? max : Math.max(max, val)), -Infinity);
+                
+                const xMin = isFinite(safeXMin) ? safeXMin : 0;
+                const xMax = isFinite(safeXMax) ? safeXMax : 1;
+                const yMin = isFinite(safeYMin) ? safeYMin : 0;
+                const yMax = isFinite(safeYMax) ? safeYMax : 1;
                 const yRange = yMax - yMin;
                 const yMinWithMargin = yMin - yRange * 0.1;
                 const yMaxWithMargin = yMax + yRange * 0.1;
