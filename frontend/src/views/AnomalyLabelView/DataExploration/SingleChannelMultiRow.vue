@@ -72,6 +72,7 @@ import { ref, reactive, watch, computed, onMounted, nextTick, onUnmounted, toRaw
 import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElMessage } from 'element-plus';
 import { useStore } from 'vuex';
 import ChannelColorPicker from '@/components/ChannelColorPicker.vue';
+import { dataCache } from '@/services/cacheManager';
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
@@ -98,6 +99,8 @@ const sampling = computed(() => store.state.sampling);
 const smoothnessValue = computed(() => store.state.smoothness);
 const channelSvgElementsRefs = computed(() => store.state.channelSvgElementsRefs);
 const isBoxSelect = computed(() => store.state.isBoxSelect);
+// 添加FFT显示状态的计算属性
+const showFFT = computed(() => store.state.showFFT);
 const domains = computed(() => ({
   x: store.state.xDomains,
   y: store.state.yDomains
@@ -126,6 +129,9 @@ const filteredMatchedResults = computed(() => {
 const matchedResultsCleared = computed(() => store.state.matchedResultsCleared);
 // 添加一个标记，用于忽略初始化时的变化
 const initialMatchedResultsClearedValue = ref(store.state.matchedResultsCleared);
+
+// 添加FFT切换状态标记，避免重复处理
+const isFFTSwitching = ref(false);
 
 // 存储原始的显示范围
 const originalDomains = ref({});
@@ -307,7 +313,10 @@ const processChannelData = async (data, channel) => {
         stats: processedData.stats,
         is_digital: processedData.is_digital,
         Y_normalized: processedData.Y_normalized,
-        channel_type: processedData.channel_type
+        channel_type: processedData.channel_type,
+        // 添加FFT相关字段
+        freq: processedData.freq,
+        amplitude: processedData.amplitude
       },
       errorDataResults,
       channelKey,
@@ -968,10 +977,6 @@ watch(isBoxSelect, (newValue) => {
 const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelType, shotNumber) => {
   return new Promise((resolve, reject) => {
     try {
-      // 添加调试语句，查看data对象的结构
-      // console.log(`绘制图表 ${channelName}，原始频率数据:`, { 
-      //   originalFrequency: data.originalFrequency
-      // });
 
       // 保持原始频率值不变
       const freqValue = data.originalFrequency;
@@ -1010,10 +1015,74 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         Math.max(...data.Y_value) + (Math.max(...data.Y_value) - Math.min(...data.Y_value)) * 0.2;
 
       // 设置X轴和Y轴范围
-      const xDomain = domains.value.x[channelName] ||
-        (stats.x_min !== undefined && stats.x_max !== undefined ?
-          [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)]);
-      const yDomain = domains.value.y[channelName] || [yMin, yMax];
+      let xDomain, yDomain;
+      let originalTimeDomain, originalFreqDomain;
+      
+      if (showFFT.value && data.freq && data.amplitude) {
+        // FFT模式下使用频率范围
+        xDomain = domains.value.x[channelName] || [Math.min(...data.freq), Math.max(...data.freq)];
+        
+        // FFT幅值处理：确保合理的Y轴范围
+        const ampMax = Math.max(...data.amplitude);
+        const ampMin = Math.min(...data.amplitude);
+        let yMin_fft = 0; // FFT通常从0开始
+        let yMax_fft = ampMax;
+        
+        // 如果最大值很小，调整范围
+        if (ampMax < 1e-6) {
+          yMax_fft = ampMax * 2;
+        } else if (ampMax < 0.001) {
+          yMax_fft = ampMax * 1.2;
+        } else {
+          yMax_fft = ampMax * 1.1;
+        }
+        
+        // 如果有负值（理论上FFT幅值不应该有负值，但为了安全起见）
+        if (ampMin < 0) {
+          yMin_fft = ampMin * 1.1;
+        }
+        
+        yDomain = domains.value.y[channelName] || [yMin_fft, yMax_fft];
+        
+        // 保存FFT模式的原始范围
+        originalFreqDomain = {
+          x: [Math.min(...data.freq), Math.max(...data.freq)],
+          y: [yMin_fft, yMax_fft]
+        };
+        
+        // 保存时域原始范围（用于模式切换）
+        originalTimeDomain = {
+          x: stats.x_min !== undefined && stats.x_max !== undefined ?
+            [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)],
+          y: [yMin, yMax]
+        };
+      } else {
+        // 原始数据模式
+        xDomain = domains.value.x[channelName] ||
+          (stats.x_min !== undefined && stats.x_max !== undefined ?
+            [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)]);
+        yDomain = domains.value.y[channelName] || [yMin, yMax];
+        
+        // 保存时域原始范围
+        originalTimeDomain = {
+          x: stats.x_min !== undefined && stats.x_max !== undefined ?
+            [stats.x_min, stats.x_max] : [Math.min(...data.X_value), Math.max(...data.X_value)],
+          y: [yMin, yMax]
+        };
+        
+        // 如果有FFT数据，也保存FFT原始范围
+        if (data.freq && data.amplitude) {
+          const ampMax = Math.max(...data.amplitude);
+          const ampMin = Math.min(...data.amplitude);
+          let yMin_fft = Math.max(0, ampMin);
+          let yMax_fft = ampMax * 1.1;
+          
+          originalFreqDomain = {
+            x: [Math.min(...data.freq), Math.max(...data.freq)],
+            y: [yMin_fft, yMax_fft]
+          };
+        }
+      }
 
       // 使用后端判断是否为数字信号
       const isDigitalSignal = data.is_digital === true;
@@ -1174,10 +1243,10 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
       const chart = Highcharts.chart(`chart-${channelName}`, {
         chart: {
           height: 260,
-          zoomType: isBoxSelect.value ? 'x' : 'xy',
+          zoomType: isBoxSelect.value ? 'x' : 'xy', // 允许FFT模式下的缩放，只在框选模式下限制为x轴
           animation: false,
           spacing: [0, 15, 10, 10], // 添加统一的内部间距 [top, right, bottom, left]
-          marginLeft: 90, // 增加左边距，确保有足够空间显示Y轴标签
+          marginLeft: 120, // 增大左边距，防止Y轴标签溢出
           resetZoomButton: {
             enabled: false,
             theme: {
@@ -1194,6 +1263,41 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
             selection: function (event) {
               // 确保在框选模式下只处理框选，不处理缩放
               if (isBoxSelect.value) {
+                // FFT模式下禁用异常标注功能，但允许缩放
+                if (showFFT.value) {
+                  // FFT模式下只允许缩放，不允许异常标注
+                  if (event.xAxis) {
+                    const [xMin, xMax] = [event.xAxis[0].min, event.xAxis[0].max];
+                    const [yMin, yMax] = event.yAxis ? [event.yAxis[0].min, event.yAxis[0].max] : [chart.yAxis[0].min, chart.yAxis[0].max];
+
+                    // 保存FFT模式的原始范围（如果还没有保存）
+                    if (!originalDomains.value[channelName]) {
+                      originalDomains.value[channelName] = {};
+                    }
+                    if (!originalDomains.value[channelName].freq) {
+                      // 从图表获取当前的完整范围作为原始FFT范围
+                      const fullXMin = chart.xAxis[0].dataMin;
+                      const fullXMax = chart.xAxis[0].dataMax;
+                      const fullYMin = chart.yAxis[0].dataMin;
+                      const fullYMax = chart.yAxis[0].dataMax;
+                      originalDomains.value[channelName].freq = {
+                        x: [fullXMin, fullXMax],
+                        y: [fullYMin, fullYMax]
+                      };
+                    }
+
+                    // 更新store中的范围
+                    store.dispatch('updateDomains', {
+                      channelName,
+                      xDomain: [xMin, xMax],
+                      yDomain: [yMin, yMax]
+                    });
+                    
+                    // 允许默认的缩放行为
+                    return true;
+                  }
+                  return false;
+                }
                 // 处理框选
                 if (event.xAxis) {
                   const [x0, x1] = [event.xAxis[0].min, event.xAxis[0].max];
@@ -1290,7 +1394,10 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                   const endX = anomaly.endX;
 
                   // 获取当前通道的数据
-                  const channelData = channelDataCache.value[channelName];
+                  const dbSuffixPart = store.state.currentDbSuffix ? `_db_${store.state.currentDbSuffix}` : '';
+                  const cacheKey = `${channelName}${dbSuffixPart}`;
+                  const cached = dataCache.get(cacheKey);
+                  const channelData = cached?.data;
                   if (channelData && channelData.X_value && channelData.Y_value) {
                     // 找到区间内的所有点
                     for (let i = 0; i < channelData.X_value.length; i++) {
@@ -1479,19 +1586,42 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
 
                   // 保存原始范围（如果还没有保存）
                   if (!originalDomains.value[channelName]) {
-                    originalDomains.value[channelName] = {
-                      x: [parseFloat(brush_begin.value), parseFloat(brush_end.value)],
-                      y: [yMin, yMax]
-                    };
+                    originalDomains.value[channelName] = {};
+                  }
+                  
+                  if (showFFT.value) {
+                    // FFT模式下保存频域原始范围
+                    if (!originalDomains.value[channelName].freq) {
+                      const fullXMin = chart.xAxis[0].dataMin;
+                      const fullXMax = chart.xAxis[0].dataMax;
+                      const fullYMin = chart.yAxis[0].dataMin;
+                      const fullYMax = chart.yAxis[0].dataMax;
+                      originalDomains.value[channelName].freq = {
+                        x: [fullXMin, fullXMax],
+                        y: [fullYMin, fullYMax]
+                      };
+                    }
+                  } else {
+                    // 时域模式下保存时域原始范围
+                    if (!originalDomains.value[channelName].time) {
+                      const fullXMin = chart.xAxis[0].dataMin;
+                      const fullXMax = chart.xAxis[0].dataMax;
+                      const fullYMin = chart.yAxis[0].dataMin;
+                      const fullYMax = chart.yAxis[0].dataMax;
+                      originalDomains.value[channelName].time = {
+                        x: [fullXMin, fullXMax],
+                        y: [fullYMin, fullYMax]
+                      };
+                    }
                   }
 
-                  // 更新store中的范围，只更新x轴，保持y轴不变
+                  // 更新store中的范围
                   store.dispatch('updateDomains', {
                     channelName,
                     xDomain: [xMin, xMax],
-                    // 不再更新yDomain，保持y轴不变
+                    yDomain: [yMin, yMax]
                   });
-                  // 允许默认的缩放行为，不再重新绘制整个图表
+                  // 允许默认的缩放行为
                   return true;
                 }
               }
@@ -1504,12 +1634,36 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
               this.lastClickTime = now;
 
               if (now - lastClick < 300) { // 如果两次点击间隔小于300毫秒，认为是双击
-                // 获取初始绘制时保存的原始范围
-                const originalDomain = originalDomains.value[channelName];
-                if (originalDomain) {
-                  // 恢复到初始绘制时的范围
-                  const [xMin, xMax] = originalDomain.x;
-                  const [yMin, yMax] = originalDomain.y;
+                // 根据当前FFT状态选择正确的原始范围
+                const currentOriginalDomains = originalDomains.value[channelName];
+                let targetDomain;
+                
+                if (showFFT.value) {
+                  // FFT模式下恢复到频域范围
+                  targetDomain = currentOriginalDomains?.freq;
+                  // 如果没有保存的频域范围，使用图表的数据范围
+                  if (!targetDomain) {
+                    targetDomain = {
+                      x: [this.xAxis[0].dataMin, this.xAxis[0].dataMax],
+                      y: [this.yAxis[0].dataMin, this.yAxis[0].dataMax]
+                    };
+                  }
+                } else {
+                  // 时域模式下恢复到时域范围
+                  targetDomain = currentOriginalDomains?.time;
+                  // 如果没有保存的时域范围，使用图表的数据范围
+                  if (!targetDomain) {
+                    targetDomain = {
+                      x: [this.xAxis[0].dataMin, this.xAxis[0].dataMax],
+                      y: [this.yAxis[0].dataMin, this.yAxis[0].dataMax]
+                    };
+                  }
+                }
+                
+                if (targetDomain) {
+                  // 恢复到对应模式的范围
+                  const [xMin, xMax] = targetDomain.x;
+                  const [yMin, yMax] = targetDomain.y;
 
                   // 设置坐标轴范围
                   this.xAxis[0].setExtremes(xMin, xMax);
@@ -1537,7 +1691,9 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           color: color
         },
         title: {
-          text: `${channelName || channelName.split('_')[0]} (${freqValue ? freqValue.toFixed(2) : '?'}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
+          text: showFFT.value ? 
+            `${channelName || channelName.split('_')[0]} - FFT` :
+            `${channelName || channelName.split('_')[0]} (${freqValue ? freqValue.toFixed(2) : '?'}KHz -> ${(sampling.value).toFixed(2)}KHz)`,
           align: 'right',
           x: -10, // 向左偏移10像素，使其位于右上角
           y: 60,  // 向下偏移20像素，确保在图表内部
@@ -1559,6 +1715,13 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           min: xDomain[0],
           max: xDomain[1],
           plotBands: getPlotBands(),
+          title: {
+            text: showFFT.value ? 'Frequency (Hz)' : '',
+            style: {
+              fontSize: '1.05em',
+              fontWeight: 'bold'
+            }
+          },
           labels: {
             style: {
               fontSize: '1em',
@@ -1572,8 +1735,25 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         yAxis: {
           min: yDomain[0],
           max: yDomain[1],
+          // 添加刻度控制，避免重复标签
+          tickAmount: 6, // 限制刻度数量
+          minTickInterval: (() => {
+            const range = yDomain[1] - yDomain[0];
+            if (range < 0.001) {
+              return range / 10;
+            } else if (range < 0.1) {
+              return range / 20;
+            } else if (range < 10) {
+              return range / 20;
+            } else {
+              return range / 20;
+            }
+          })(), // 动态设置最小刻度间隔
+          allowDecimals: true,
+          startOnTick: false,
+          endOnTick: false,
           title: {
-            text: yUnit,
+            text: showFFT.value ? 'Amplitude' : yUnit,
             align: 'middle', // 居中对齐
             margin: 15, // 增加标题与轴的距离
             style: {
@@ -1593,17 +1773,32 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
             reserveSpace: true, // 保留固定空间
             padding: 5, // 添加内边距
             formatter: function () {
-              const absValue = Math.abs(this.value);
-              if (absValue < 0.01 && absValue != 0) {
-                return this.value.toExponential(1); // 使用科学计数法
+              const value = this.value;
+              const absValue = Math.abs(value);
+              
+              // 处理极小值和零值
+              if (absValue === 0) {
+                return '0';
+              }
+              
+              // 使用科学计数法表示非常小的数值
+              if (absValue < 0.001) {
+                return value.toExponential(1);
+              }
+              
+              // 根据数值大小选择不同的精度
+              if (absValue < 0.1) {
+                return value.toFixed(3);
+              } else if (absValue < 1) {
+                return value.toFixed(2);
               } else if (absValue < 10) {
-                return this.value.toFixed(1); // 小数点后3位
+                return value.toFixed(1);
               } else if (absValue < 100) {
-                return this.value.toFixed(1); // 小数点后2位
+                return value.toFixed(1);
               } else if (absValue < 1000) {
-                return this.value.toFixed(1); // 小数点后1位
+                return value.toFixed(0);
               } else {
-                return Math.round(this.value); // 整数
+                return value.toExponential(2);
               }
             }
           },
@@ -1656,7 +1851,8 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
           {
             id: 'original',
             type: 'line',
-            data: originalData,
+            data: showFFT.value && data.freq && data.amplitude ? 
+              data.freq.map((freq, index) => [freq, data.amplitude[index]]) : originalData,
             color: color,
             lineWidth: 1.5,
             marker: { enabled: false },
@@ -1867,13 +2063,41 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
         });
       }
 
-      // 保存原始显示范围，用于双击重置
+      // 保存原始显示范围，用于双击重置，分别保存时域和频域
       if (!originalDomains.value[channelName]) {
-        originalDomains.value[channelName] = {
-          x: [xDomain[0], xDomain[1]],
-          y: [yDomain[0], yDomain[1]]
-        };
+        originalDomains.value[channelName] = {};
       }
+      
+      // 等待图表渲染完成后获取实际的数据范围
+      requestAnimationFrame(() => {
+        if (chart && chart.xAxis && chart.yAxis) {
+          if (showFFT.value) {
+            // FFT模式下保存频域范围
+            if (!originalDomains.value[channelName].freq) {
+              originalDomains.value[channelName].freq = {
+                x: [chart.xAxis[0].dataMin, chart.xAxis[0].dataMax],
+                y: [chart.yAxis[0].dataMin, chart.yAxis[0].dataMax]
+              };
+            }
+            // 如果还没有时域范围，也保存一份
+            if (!originalDomains.value[channelName].time) {
+              originalDomains.value[channelName].time = originalTimeDomain;
+            }
+          } else {
+            // 时域模式下保存时域范围
+            if (!originalDomains.value[channelName].time) {
+              originalDomains.value[channelName].time = {
+                x: [chart.xAxis[0].dataMin, chart.xAxis[0].dataMax],
+                y: [chart.yAxis[0].dataMin, chart.yAxis[0].dataMax]
+              };
+            }
+            // 如果还没有频域范围且有FFT数据，也保存一份
+            if (!originalDomains.value[channelName].freq && originalFreqDomain) {
+              originalDomains.value[channelName].freq = originalFreqDomain;
+            }
+          }
+        }
+      });
 
       performance.mark(`Draw Chart ${channelName}-end`);
       performance.measure(`Draw Chart ${channelName}`,
@@ -1889,6 +2113,16 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
 
       // 图表初始化完成后，添加匹配高亮
       updateMatchedHighlights(chart, channelName);
+      
+      // 确保颜色选择器位置正确
+      const channelObj = {
+        channel_name: channelName.split('_')[0],
+        shot_number: shotNumber,
+        color: color
+      };
+      setTimeout(() => {
+        adjustColorPickerPosition(chart, channelObj);
+      }, 100);
 
       resolve();
     } catch (error) {
@@ -1989,30 +2223,47 @@ const adjustColorPickerPosition = (chart, channel) => {
   // 使用requestAnimationFrame确保在DOM完全渲染后执行
   requestAnimationFrame(() => {
     try {
+      if (!chart || !chart.container) {
+        console.warn('图表或容器不存在，无法调整颜色选择器位置');
+        return;
+      }
+
       // 获取title元素
       const titleElement = chart.container.querySelector('.highcharts-title');
-      if (titleElement) {
-        // 获取title的宽度和位置
-        const titleRect = titleElement.getBoundingClientRect();
-        const chartRect = chart.container.getBoundingClientRect();
+      if (!titleElement) {
+        console.warn('找不到图表标题元素');
+        return;
+      }
 
-        // 计算title左边界相对于图表的位置
-        const titleLeftPosition = titleRect.left - chartRect.left;
+      // 获取title的位置信息
+      const titleRect = titleElement.getBoundingClientRect();
+      const chartRect = chart.container.getBoundingClientRect();
 
-        // 获取颜色选择器容器
-        const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const colorPickerContainer = chart.container.closest('.chart-wrapper')?.querySelector('.color-picker-container');
+      if (titleRect.width === 0 || chartRect.width === 0) {
+        // 如果尺寸为0，说明DOM还没完全渲染，延迟执行
+        setTimeout(() => adjustColorPickerPosition(chart, channel), 100);
+        return;
+      }
 
-        if (colorPickerContainer) {
-          // 设置颜色选择器的位置，使其位于title的左侧
-          const rightPosition = chartRect.width - titleLeftPosition;
-          colorPickerContainer.style.right = `${rightPosition}px`;
-          // 确保可见度和透明度相应更新
-          if (renderingStates[channelKey] === 100) {
-            colorPickerContainer.style.opacity = '1';
-            colorPickerContainer.style.visibility = 'visible';
-          }
+      // 计算title左边界相对于图表的位置
+      const titleLeftPosition = titleRect.left - chartRect.left;
+
+      // 获取颜色选择器容器
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      const colorPickerContainer = chart.container.closest('.chart-wrapper')?.querySelector('.color-picker-container');
+
+      if (colorPickerContainer) {
+        // 设置颜色选择器的位置，使其位于title的左侧，添加一些间距
+        const rightPosition = Math.max(10, chartRect.width - titleLeftPosition + 10);
+        colorPickerContainer.style.right = `${rightPosition}px`;
+        
+        // 确保可见度和透明度相应更新
+        if (renderingStates[channelKey] === 100) {
+          colorPickerContainer.style.opacity = '1';
+          colorPickerContainer.style.visibility = 'visible';
         }
+      } else {
+        console.warn(`找不到通道 ${channelKey} 的颜色选择器容器`);
       }
     } catch (error) {
       console.warn('调整颜色选择器位置时出错:', error);
@@ -2207,8 +2458,11 @@ const updateMatchedHighlights = (chart, channelKey) => {
           borderWidth: 1
         });
 
-        // 获取当前通道的数据
-        const channelData = channelDataCache.value[channelKey];
+        // 获取当前通道的数据，使用正确的缓存键
+        const dbSuffixPart = store.state.currentDbSuffix ? `_db_${store.state.currentDbSuffix}` : '';
+        const cacheKey = `${channelKey}${dbSuffixPart}`;
+        const cached = dataCache.get(cacheKey);
+        const channelData = cached?.data;
         if (channelData && channelData.X_value && channelData.Y_value) {
           // 找到区间内的所有点
           const pointsInRange = [];
@@ -2400,12 +2654,13 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
           channelTimings[channelKey].endTime = performance.now();
           channelTimings[channelKey].totalDuration = ((channelTimings[channelKey].endTime - channelTimings[channelKey].startTime) / 1000).toFixed(2);
           renderedChannels.value.add(channelKey);
-          requestAnimationFrame(() => {
+          // 在渲染完成后调整颜色选择器位置（延迟确保图表完全渲染）
+          setTimeout(() => {
             const chart = window.chartInstances?.[channelKey];
             if (chart) {
               adjustColorPickerPosition(chart, channel);
             }
-          });
+          }, 150);
         });
         count++;
       }
@@ -2426,6 +2681,294 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
     ElMessage.error(`渲染图表错误: ${error.message}`);
   }
 }, 200);
+
+// ========== 监听FFT显示状态变化 ===========
+watch(showFFT, async (newShowFFT) => {
+  if (!isActive.value || isFFTSwitching.value) return;
+  
+  // 设置切换标记，避免重复处理
+  isFFTSwitching.value = true;
+  
+  try {
+    // 当FFT显示状态改变时，更新现有图表的数据系列，而不是完全重新渲染
+    if (selectedChannels.value && selectedChannels.value.length > 0) {
+    // 批量更新现有图表的数据，而不是销毁重建
+    for (const channel of selectedChannels.value) {
+      const channelKey = `${channel.channel_name}_${channel.shot_number}`;
+      const chart = window.chartInstances?.[channelKey];
+      
+      if (chart) {
+        try {
+          // 更新图表缩放类型，保持缩放功能
+          chart.update({
+            chart: {
+              zoomType: isBoxSelect.value ? 'x' : 'xy'
+            }
+          }, false);
+          
+          // 生成正确的缓存键（与store.js中的逻辑完全一致）
+          const currentSampling = store.state.sampling;
+          const dbSuffixPart = store.state.currentDbSuffix ? `_db_${store.state.currentDbSuffix}` : '';
+          // 默认使用downsample模式的缓存键（与store.js中fetchChannelData保持一致）
+          const cacheKey = `${channelKey}${dbSuffixPart}`;
+          
+          // 使用dataCache.get()方法获取缓存数据
+          const cached = dataCache.get(cacheKey);
+          let cachedData = null;
+          
+          if (cached && cached.data) {
+            // 检查缓存是否在有效期内（30分钟）
+            if (Date.now() - cached.timestamp < 30 * 60 * 1000) {
+              cachedData = cached.data;
+            }
+          }
+          
+          // 如果缓存中没有数据或已过期，尝试从store获取
+          if (!cachedData) {
+            try {
+              cachedData = await store.dispatch('fetchChannelData', { 
+                channel, 
+                forceRefresh: false,
+                db_suffix: store.state.currentDbSuffix
+              });
+            } catch (error) {
+              console.error(`获取通道数据失败: ${channelKey}`, error);
+              cachedData = null;
+            }
+          }
+          
+          if (cachedData && cachedData.X_value && cachedData.Y_value) {
+            // 准备新的数据系列
+            let newData;
+            let newTitle;
+            let xAxisTitle;
+            let yAxisTitle;
+            
+            if (newShowFFT && cachedData.freq && cachedData.amplitude) {
+              // FFT模式：使用频率和幅值数据
+              newData = cachedData.freq.map((freq, index) => [freq, cachedData.amplitude[index]]);
+              newTitle = `${channel.channel_name} - FFT`;
+              xAxisTitle = 'Frequency (Hz)';
+              yAxisTitle = 'Amplitude';
+            } else {
+              // 时域模式：使用原始数据
+              newData = cachedData.X_value.map((x, index) => [x, cachedData.Y_value[index]]);
+              const freqValue = cachedData.originalFrequency || '?';
+              newTitle = `${channel.channel_name} (${freqValue.toFixed ? freqValue.toFixed(2) : freqValue}KHz -> ${currentSampling.toFixed(2)}KHz)`;
+              xAxisTitle = '';
+              yAxisTitle = cachedData.Y_unit || 'Y';
+            }
+            
+            // 更新图表标题
+            chart.setTitle({
+              text: newTitle,
+              align: 'right',
+              x: -10,
+              y: 60,
+              style: {
+                color: channel.color,
+                fontSize: '1.0em',
+                fontWeight: 'medium'
+              }
+            });
+            
+            // 更新坐标轴标题
+            chart.xAxis[0].setTitle({ text: xAxisTitle });
+            chart.yAxis[0].setTitle({ text: yAxisTitle });
+            
+            // 更新数据系列
+            const originalSeries = chart.series.find(s => s.options.id === 'original');
+            if (originalSeries) {
+              originalSeries.setData(newData, false);
+            }
+            
+            // 在标题更新后，重新调整颜色选择器位置
+            // 使用延迟确保标题已完全更新
+            setTimeout(() => {
+              adjustColorPickerPosition(chart, channel);
+            }, 50);
+            
+            // 设置坐标轴范围和保存原始范围
+            if (newShowFFT && cachedData.freq && cachedData.amplitude) {
+              const freqMin = Math.min(...cachedData.freq);
+              const freqMax = Math.max(...cachedData.freq);
+              const ampMax = Math.max(...cachedData.amplitude);
+              const ampMin = Math.min(...cachedData.amplitude);
+              
+              // 计算合理的FFT Y轴范围
+              let yMin_fft = Math.max(0, ampMin);
+              let yMax_fft = ampMax;
+              
+              if (ampMax < 1e-6) {
+                yMax_fft = ampMax * 2;
+              } else if (ampMax < 0.001) {
+                yMax_fft = ampMax * 1.2;
+              } else {
+                yMax_fft = ampMax * 1.1;
+              }
+              
+              chart.xAxis[0].setExtremes(freqMin, freqMax, false);
+              chart.yAxis[0].setExtremes(yMin_fft, yMax_fft, false);
+              
+              // 确保保存FFT模式的原始范围
+              if (!originalDomains.value[channelKey]) {
+                originalDomains.value[channelKey] = {};
+              }
+              if (!originalDomains.value[channelKey].freq) {
+                originalDomains.value[channelKey].freq = {
+                  x: [freqMin, freqMax],
+                  y: [yMin_fft, yMax_fft]
+                };
+              }
+            } else {
+              // 恢复时域范围
+              const originalDomain = originalDomains.value[channelKey];
+              if (originalDomain?.time) {
+                chart.xAxis[0].setExtremes(originalDomain.time.x[0], originalDomain.time.x[1], false);
+                chart.yAxis[0].setExtremes(originalDomain.time.y[0], originalDomain.time.y[1], false);
+              } else if (cachedData && cachedData.X_value && cachedData.Y_value) {
+                // 如果没有保存的时域范围，计算默认范围
+                const xMin = Math.min(...cachedData.X_value);
+                const xMax = Math.max(...cachedData.X_value);
+                const yMin = Math.min(...cachedData.Y_value);
+                const yMax = Math.max(...cachedData.Y_value);
+                const yRange = yMax - yMin;
+                const yMinWithMargin = yMin - yRange * 0.1;
+                const yMaxWithMargin = yMax + yRange * 0.1;
+                
+                chart.xAxis[0].setExtremes(xMin, xMax, false);
+                chart.yAxis[0].setExtremes(yMinWithMargin, yMaxWithMargin, false);
+                
+                // 保存计算的时域范围
+                if (!originalDomains.value[channelKey]) {
+                  originalDomains.value[channelKey] = {};
+                }
+                originalDomains.value[channelKey].time = {
+                  x: [xMin, xMax],
+                  y: [yMinWithMargin, yMaxWithMargin]
+                };
+              }
+            }
+            
+            // 更新Y轴配置以匹配新的数据范围
+            const currentYRange = chart.yAxis[0].max - chart.yAxis[0].min;
+            chart.yAxis[0].update({
+              tickAmount: 6,
+              minTickInterval: (() => {
+                if (currentYRange < 0.001) {
+                  return currentYRange / 10;
+                } else if (currentYRange < 0.1) {
+                  return currentYRange / 20;
+                } else if (currentYRange < 10) {
+                  return currentYRange / 20;
+                } else {
+                  return currentYRange / 20;
+                }
+              })(),
+              allowDecimals: true,
+              startOnTick: false,
+              endOnTick: false
+            }, false);
+            
+            // 一次性重绘图表
+            chart.redraw();
+            
+            // 在图表重绘后，再次调整颜色选择器位置
+            requestAnimationFrame(() => {
+              adjustColorPickerPosition(chart, channel);
+            });
+          } else {
+            // 如果缓存中没有数据，重新加载数据（但避免重复加载）
+            if (!loadingStates[channelKey] || loadingStates[channelKey] === 100) {
+              console.log(`通道 ${channelKey} 缓存为空，重新加载数据`);
+              try {
+                const data = await fetchChannelData(channel, false);
+                if (data) {
+                  await processChannelData(data, channel);
+                }
+              } catch (loadError) {
+                console.error(`重新加载通道 ${channelKey} 数据失败:`, loadError);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`更新图表 ${channelKey} 时出错:`, error);
+          // 如果更新失败，回退到完全重新渲染，但不阻塞其他图表的更新
+          if (!loadingStates[channelKey] || loadingStates[channelKey] === 100) {
+            console.log(`回退到重新渲染图表 ${channelKey}`);
+            try {
+              // 标记该通道需要重新渲染
+              renderedChannels.value.delete(channelKey);
+              // 异步重新渲染该通道，不阻塞其他通道
+              nextTick(async () => {
+                try {
+                  const data = await fetchChannelData(channel, true);
+                  if (data) {
+                    await processChannelData(data, channel);
+                    renderedChannels.value.add(channelKey);
+                    // 在重新渲染后调整颜色选择器位置
+                    const chart = window.chartInstances?.[channelKey];
+                    if (chart) {
+                      requestAnimationFrame(() => {
+                        adjustColorPickerPosition(chart, channel);
+                      });
+                    }
+                  }
+                } catch (retryError) {
+                  console.error(`重新渲染图表 ${channelKey} 也失败了:`, retryError);
+                }
+              });
+            } catch (fallbackError) {
+              console.error(`回退渲染 ${channelKey} 时出错:`, fallbackError);
+            }
+          }
+        }
+      } else {
+        // 如果图表实例不存在，说明图表还没有渲染，重新渲染
+        if (!loadingStates[channelKey] || loadingStates[channelKey] === 100) {
+          console.log(`图表实例 ${channelKey} 不存在，重新渲染`);
+          try {
+            // 标记该通道需要重新渲染
+            renderedChannels.value.delete(channelKey);
+            const data = await fetchChannelData(channel, false);
+            if (data) {
+              await processChannelData(data, channel);
+              renderedChannels.value.add(channelKey);
+              // 在重新渲染后调整颜色选择器位置
+              const chart = window.chartInstances?.[channelKey];
+              if (chart) {
+                requestAnimationFrame(() => {
+                  adjustColorPickerPosition(chart, channel);
+                });
+              }
+            }
+          } catch (renderError) {
+            console.error(`渲染图表 ${channelKey} 失败:`, renderError);
+          }
+        }
+      }
+    }
+  }
+  
+  // 单独更新没有图表实例的图表的缩放类型
+  Object.values(window.chartInstances || {}).forEach(chart => {
+    if (chart) {
+      chart.update({
+        chart: {
+          zoomType: isBoxSelect.value ? 'x' : 'xy'
+        }
+      }, false);
+      chart.redraw();
+    }
+  });
+  
+  } finally {
+    // 重置切换标记
+    setTimeout(() => {
+      isFFTSwitching.value = false;
+    }, 100);
+  }
+});
 
 // ========== 监听 errorNamesVersion，只刷新指定通道的 error plotBand ===========
 watch(

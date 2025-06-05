@@ -100,6 +100,7 @@ const store = createStore({
       visibleMatchedResultIds: [],
       errorNamesVersion: { version: 0, channels: [] }, // 新增：异常名索引版本号，包含变动通道key数组
       currentDbSuffix: null, // 新增：当前数据库后缀
+      showFFT: false, // 新增：是否显示FFT数据，默认为false
     };
   },
   getters: {
@@ -718,6 +719,9 @@ const store = createStore({
     setSelectedDbSuffix(state, value) {
       state.currentDbSuffix = value;
     },
+    updateShowFFT(state, value) {
+      state.showFFT = value;
+    },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, filterParams = []) {
@@ -1026,6 +1030,9 @@ const store = createStore({
             channel_type: originalData.channel_type || channel.channel_type,
             is_digital: originalData.is_digital || false,
             Y_normalized: originalData.Y_normalized || [],
+            // 确保FFT相关字段被正确保存
+            freq: originalData.freq || null,
+            amplitude: originalData.amplitude || null,
           };
 
           // 异步存储到缓存，不阻塞主流程
@@ -1307,6 +1314,9 @@ const store = createStore({
     },
     updateSelectedDbSuffix({ commit }, dbSuffix) {
       commit("setSelectedDbSuffix", dbSuffix);
+    },
+    updateShowFFT({ commit }, value) {
+      commit("updateShowFFT", value);
     },
   },
 });

@@ -163,6 +163,22 @@
                         </el-tooltip>
                       </div>
 
+                      <!-- FFT数据显示控制按钮 -->
+                      <div class="control-item">
+                        <el-tooltip placement="top">
+                          <template #content>
+                            <div>
+                              {{ showFFT ? '点击隐藏FFT数据' : '点击显示FFT数据' }}
+                              <br/>
+                              <span style="color: #E6A23C;">FFT模式下禁用框选标注功能</span>
+                            </div>
+                          </template>
+                          <el-button circle :type="showFFT ? 'primary' : 'info'" @click="updateShowFFT(!showFFT)">
+                            FFT
+                          </el-button>
+                        </el-tooltip>
+                      </div>
+
                       <div class="control-item">
                         <span class="control-label">采样频率</span>
                         <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
@@ -171,9 +187,17 @@
 
                       <div class="control-item">
                         <el-button-group>
-                          <el-button :type="boxSelect ? 'primary' : 'default'" :plain="!boxSelect" @click="updateBoxSelect(true)" style="font-size: 0.9em;">
-                            框选标注/编辑
-                          </el-button>
+                          <el-tooltip :content="showFFT ? 'FFT模式下不支持框选标注功能' : '框选标注/编辑'" placement="top">
+                            <el-button 
+                              :type="boxSelect ? 'primary' : 'default'" 
+                              :plain="!boxSelect" 
+                              @click="updateBoxSelect(true)" 
+                              :disabled="showFFT"
+                              style="font-size: 0.9em;"
+                            >
+                              框选标注/编辑
+                            </el-button>
+                          </el-tooltip>
                           <el-button :type="!boxSelect ? 'primary' : 'default'" :plain="boxSelect" @click="updateBoxSelect(false)" style="font-size: 0.9em;">
                             局部缩放
                           </el-button>
@@ -739,7 +763,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, reactive, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import { Upload, Refresh } from '@element-plus/icons-vue'
+import { Upload, Refresh, TrendCharts } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
@@ -810,6 +834,20 @@ const resultRef = ref(null)
 const heatMapRef = ref(null)
 const selectedChannels = computed(() => store.state.selectedChannels);
 
+// 添加FFT显示状态的计算属性
+const showFFT = computed(() => store.state.showFFT);
+
+// 添加更新FFT显示状态的方法
+const updateShowFFT = (value) => {
+  store.dispatch('updateShowFFT', value);
+  localStorage.setItem('showFFT', value.toString());
+  
+  // 如果激活FFT模式，自动切换到局部缩放模式
+  if (value === true && boxSelect.value === true) {
+    store.dispatch('updateIsBoxSelect', false);
+  }
+};
+
 const boxSelect = computed({
   get: () => {
     if (store.state.authority === '0') {
@@ -852,6 +890,12 @@ onMounted(() => {
   const savedShowAnomaly = localStorage.getItem('showAnomaly');
   if (savedShowAnomaly !== null) {
     showAnomaly.value = savedShowAnomaly === 'true';
+  }
+
+  // 恢复FFT显示状态
+  const savedShowFFT = localStorage.getItem('showFFT');
+  if (savedShowFFT !== null) {
+    store.dispatch('updateShowFFT', savedShowFFT === 'true');
   }
 
   // 创建并启动MutationObserver，监听图表变化
