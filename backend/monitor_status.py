@@ -13,23 +13,9 @@ project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
 # 导入MDS+相关模块
-try:
-    from RunDetectAlgorithm.mdsConn import currentShot
-    print("成功导入 currentShot 函数")
-except ImportError as e:
-    print(f"导入 currentShot 失败: {e}")
-    # 备用导入方式
-    try:
-        sys.path.append(os.path.join(project_root, 'RunDetectAlgorithm'))
-        from mdsConn import currentShot
-        print("通过备用方式成功导入 currentShot 函数")
-    except ImportError as e2:
-        print(f"备用导入方式也失败: {e2}")
-        # 定义一个备用函数
-        def currentShot(dbname, path):
-            print(f"警告: 无法连接MDS+，返回模拟炮号")
-            return 5000  # 返回一个模拟的炮号
-        print("使用备用 currentShot 函数")
+
+from RunDetectAlgorithm.mdsConn import currentShot
+print("成功导入 currentShot 函数")
 
 # 全局监控状态
 monitor_status = {
