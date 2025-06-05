@@ -5,6 +5,7 @@ from pymongo import MongoClient
 import re
 import sys
 import os
+import json
 
 # 添加项目根目录到Python路径
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -50,6 +51,8 @@ MDSPLUS_PATH = '192.168.20.11::/media/ennfusion/trees/exl50u'
 # MongoDB配置
 MONGO_CLIENT = MongoClient("mongodb://localhost:27017")
 MG_DB_PATTERN = re.compile(r"DataDiagnosticPlatform_\[(\d+)_(\d+)\]")
+
+STATUS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_status.json")
 
 def get_latest_mongo_db_info():
     """获取最新的MongoDB数据库信息"""
@@ -115,6 +118,21 @@ def get_mds_latest_shot():
         print(f"获取MDS+最新炮号失败: {e}")
         return 0
 
+def write_status_to_file(status):
+    try:
+        with open(STATUS_FILE_PATH, "w") as f:
+            json.dump(status, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"写入监控状态文件失败: {e}")
+
+def read_status_from_file():
+    try:
+        with open(STATUS_FILE_PATH, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"读取监控状态文件失败: {e}")
+        return {}
+
 def monitor_loop():
     """监控循环"""
     global monitor_status
@@ -147,14 +165,17 @@ def monitor_loop():
                     'latest_db_name': latest_db_name,
                     'db_end_range': db_end
                 })
-                
+                # 每次更新后写入文件
+                write_status_to_file(monitor_status)
+            
             print(f"[监控更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
             
         except Exception as e:
             print(f"监控循环出错: {e}")
             with monitor_lock:
                 monitor_status['is_running'] = False
-                
+                write_status_to_file(monitor_status)
+            
         # 等待10秒
         time.sleep(10)
 
@@ -204,7 +225,8 @@ def start_monitor():
                 'latest_db_name': latest_db_name,
                 'db_end_range': db_end
             })
-            
+            write_status_to_file(monitor_status)
+        
         print(f"[立即更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
         
     except Exception as e:
@@ -226,6 +248,6 @@ def stop_monitor():
         monitor_status['is_running'] = False
 
 # 自动启动监控
-if __name__ != "__main__":
-    # 当模块被导入时自动启动监控
-    start_monitor() 
+# if __name__ != "__main__":
+#     # 当模块被导入时自动启动监控
+#     start_monitor() 
