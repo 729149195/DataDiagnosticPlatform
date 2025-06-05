@@ -2410,51 +2410,24 @@ def delete_sketch_template(request):
         traceback.print_exc()
         return JsonResponse({'error': error_msg}, status=500)
 
-# 导入监控模块
-try:
-    import sys
-    import os
-    # 确保正确的导入路径
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    monitor_path = os.path.join(project_root, 'monitor_status.py')
-    
-    if os.path.exists(monitor_path):
-        sys.path.insert(0, project_root)
-        from monitor_status import get_monitor_status
-        # 不自动启动监控，让独立服务负责
-        print("监控模块导入成功（使用独立服务模式）")
-    else:
-        print(f"监控模块文件不存在: {monitor_path}")
-        get_monitor_status = None
-except Exception as e:
-    print(f"监控模块导入失败: {e}")
-    import traceback
-    traceback.print_exc()
-    get_monitor_status = None
-
 @require_GET
 def get_system_monitor_status(request):
     """
     获取系统监控状态
-    返回MDS+和MongoDB的最新炮号信息
-    从独立监控服务的状态文件中读取
+    直接读取 monitor_status.json 文件
     """
     try:
-        if get_monitor_status is None:
+        # 构造状态文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_dir = os.path.dirname(current_dir)
+        status_file = os.path.join(backend_dir, "monitor_status.json")
+        if not os.path.exists(status_file):
             return OrJsonResponse({
                 'success': False,
-                'error': '监控模块未正确加载'
+                'error': '监控状态文件不存在'
             }, status=503)
-            
-        status = get_monitor_status()
-        
-        # 添加调试信息
-        print(f"[API调试] 从独立服务获取监控状态: {status}")
-        print(f"[API调试] 监控是否运行: {status.get('is_running', False)}")
-        print(f"[API调试] MDS+最新炮号: {status.get('mds_latest_shot', 'N/A')}")
-        print(f"[API调试] MongoDB最新炮号: {status.get('mongo_latest_shot', 'N/A')}")
-        
+        with open(status_file, "r") as f:
+            status = json.load(f)
         return OrJsonResponse({
             'success': True,
             'data': status

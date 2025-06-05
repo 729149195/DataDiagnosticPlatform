@@ -32,7 +32,7 @@ const monitorData = ref({
   is_running: false
 });
 
-const countdownSeconds = ref(10);
+const countdownSeconds = ref(60);
 
 let monitorTimer = null;
 let countdownTimer = null;
@@ -45,7 +45,7 @@ const fetchMonitorStatus = async () => {
     const result = await response.json();
     if (result.success && result.data) {
       monitorData.value = result.data;
-      countdownSeconds.value = 10;
+      countdownSeconds.value = 60;
     } else {
       monitorData.value = {
         mds_latest_shot: '--',
@@ -71,7 +71,7 @@ const startMonitoring = () => {
   countdownTimer = setInterval(() => {
     countdownSeconds.value--;
     if (countdownSeconds.value <= 0) {
-      countdownSeconds.value = 10;
+      countdownSeconds.value = 60;
     }
   }, 1000);
 };

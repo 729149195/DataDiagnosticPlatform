@@ -1,0 +1,10 @@
+{
+    "mds_latest_shot": 11661,
+    "mongo_processing_shot": 11612,
+    "mongo_latest_shot": 11611,
+    "last_update": "2025-06-05T09:12:31.297395",
+    "next_update": "2025-06-05T09:12:41.297395",
+    "is_running": true,
+    "latest_db_name": "DataDiagnosticPlatform_[11601_11656]",
+    "db_end_range": 11656
+  }
