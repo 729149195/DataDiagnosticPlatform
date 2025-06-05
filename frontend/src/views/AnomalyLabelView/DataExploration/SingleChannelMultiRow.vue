@@ -130,8 +130,7 @@ const matchedResultsCleared = computed(() => store.state.matchedResultsCleared);
 // 添加一个标记，用于忽略初始化时的变化
 const initialMatchedResultsClearedValue = ref(store.state.matchedResultsCleared);
 
-// 添加FFT切换状态标记，避免重复处理
-const isFFTSwitching = ref(false);
+
 
 // 存储原始的显示范围
 const originalDomains = ref({});
@@ -2140,17 +2139,15 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                 y: [chart.yAxis[0].dataMin, chart.yAxis[0].dataMax]
               };
             }
-            // 如果还没有时域范围，也保存一份
+            // 如果还没有时域范围，也保存一份（使用预先计算的originalTimeDomain）
             if (!originalDomains.value[channelName].time) {
               originalDomains.value[channelName].time = originalTimeDomain;
             }
           } else {
-            // 时域模式下保存时域范围
+            // 时域模式下保存时域范围（优先使用预先计算的originalTimeDomain）
             if (!originalDomains.value[channelName].time) {
-              originalDomains.value[channelName].time = {
-                x: [chart.xAxis[0].dataMin, chart.xAxis[0].dataMax],
-                y: [chart.yAxis[0].dataMin, chart.yAxis[0].dataMax]
-              };
+              // 使用预先计算的originalTimeDomain，它包含了正确的边距
+              originalDomains.value[channelName].time = originalTimeDomain;
             }
             // 如果还没有频域范围且有FFT数据，也保存一份
             if (!originalDomains.value[channelName].freq && originalFreqDomain) {
@@ -2745,10 +2742,7 @@ const renderCharts = debounce(async (forceRenderAll = false) => {
 
 // ========== 监听FFT显示状态变化 ===========
 watch(showFFT, async (newShowFFT) => {
-  if (!isActive.value || isFFTSwitching.value) return;
-  
-  // 设置切换标记，避免重复处理
-  isFFTSwitching.value = true;
+  if (!isActive.value) return;
   
   try {
     // 当FFT显示状态改变时，更新现有图表的数据系列，而不是完全重新渲染
@@ -2863,6 +2857,23 @@ watch(showFFT, async (newShowFFT) => {
               adjustColorPickerPosition(chart, channel);
             }, 50);
             
+            // 在切换到FFT之前，先保存当前的时域范围（如果还没有保存）
+            if (newShowFFT && !originalDomains.value[channelKey]?.time) {
+              // 获取当前图表的X和Y轴范围
+              const currentXMin = chart.xAxis[0].min;
+              const currentXMax = chart.xAxis[0].max;
+              const currentYMin = chart.yAxis[0].min;
+              const currentYMax = chart.yAxis[0].max;
+              
+              if (!originalDomains.value[channelKey]) {
+                originalDomains.value[channelKey] = {};
+              }
+              originalDomains.value[channelKey].time = {
+                x: [currentXMin, currentXMax],
+                y: [currentYMin, currentYMax]
+              };
+            }
+            
             // 设置坐标轴范围和保存原始范围
             if (newShowFFT && cachedData.freq && cachedData.amplitude) {
               // 使用安全的方式计算频率和幅值范围
@@ -2910,7 +2921,9 @@ watch(showFFT, async (newShowFFT) => {
             } else {
               // 恢复时域范围
               const originalDomain = originalDomains.value[channelKey];
+              
               if (originalDomain?.time) {
+                // 直接设置轴范围，不触发store更新避免冲突
                 chart.xAxis[0].setExtremes(originalDomain.time.x[0], originalDomain.time.x[1], false);
                 chart.yAxis[0].setExtremes(originalDomain.time.y[0], originalDomain.time.y[1], false);
               } else if (cachedData && cachedData.X_value && cachedData.Y_value) {
@@ -2925,11 +2938,14 @@ watch(showFFT, async (newShowFFT) => {
                 const yMin = isFinite(safeYMin) ? safeYMin : 0;
                 const yMax = isFinite(safeYMax) ? safeYMax : 1;
                 const yRange = yMax - yMin;
-                const yMinWithMargin = yMin - yRange * 0.1;
-                const yMaxWithMargin = yMax + yRange * 0.1;
+                
+                // 使用与后端计算一致的Y轴范围计算方式
+                const stats = cachedData.stats || {};
+                const finalYMin = stats.y_axis_min !== undefined ? stats.y_axis_min : yMin - yRange * 0.2;
+                const finalYMax = stats.y_axis_max !== undefined ? stats.y_axis_max : yMax + yRange * 0.2;
                 
                 chart.xAxis[0].setExtremes(xMin, xMax, false);
-                chart.yAxis[0].setExtremes(yMinWithMargin, yMaxWithMargin, false);
+                chart.yAxis[0].setExtremes(finalYMin, finalYMax, false);
                 
                 // 保存计算的时域范围
                 if (!originalDomains.value[channelKey]) {
@@ -2937,33 +2953,75 @@ watch(showFFT, async (newShowFFT) => {
                 }
                 originalDomains.value[channelKey].time = {
                   x: [xMin, xMax],
-                  y: [yMinWithMargin, yMaxWithMargin]
+                  y: [finalYMin, finalYMax]
                 };
               }
             }
             
             // 更新Y轴配置以匹配新的数据范围
-            const currentYRange = chart.yAxis[0].max - chart.yAxis[0].min;
-            chart.yAxis[0].update({
-              tickAmount: 6,
-              minTickInterval: (() => {
-                if (currentYRange < 0.001) {
-                  return currentYRange / 10;
-                } else if (currentYRange < 0.1) {
-                  return currentYRange / 20;
-                } else if (currentYRange < 10) {
-                  return currentYRange / 20;
-                } else {
-                  return currentYRange / 20;
-                }
-              })(),
-              allowDecimals: true,
-              startOnTick: false,
-              endOnTick: false
-            }, false);
+            // 在时域恢复模式下，使用更宽松的配置以避免自动调整Y轴范围
+            if (!newShowFFT) {
+              const originalDomain = originalDomains.value[channelKey];
+              if (originalDomain?.time) {
+                const targetYRange = originalDomain.time.y[1] - originalDomain.time.y[0];
+                chart.yAxis[0].update({
+                  tickAmount: 6,
+                  minTickInterval: null, // 不设置最小刻度间隔，让Highcharts自动计算
+                  allowDecimals: true,
+                  startOnTick: false,
+                  endOnTick: false,
+                  min: originalDomain.time.y[0], // 直接在配置中设置最小值
+                  max: originalDomain.time.y[1]  // 直接在配置中设置最大值
+                }, false);
+              } else {
+                // 其他情况使用原来的配置
+                const currentYRange = chart.yAxis[0].max - chart.yAxis[0].min;
+                chart.yAxis[0].update({
+                  tickAmount: 6,
+                  minTickInterval: (() => {
+                    if (currentYRange < 0.001) {
+                      return currentYRange / 10;
+                    } else if (currentYRange < 0.1) {
+                      return currentYRange / 20;
+                    } else if (currentYRange < 10) {
+                      return currentYRange / 20;
+                    } else {
+                      return currentYRange / 20;
+                    }
+                  })(),
+                  allowDecimals: true,
+                  startOnTick: false,
+                  endOnTick: false
+                }, false);
+              }
+            } else {
+              // FFT模式使用原来的配置
+              const currentYRange = chart.yAxis[0].max - chart.yAxis[0].min;
+              chart.yAxis[0].update({
+                tickAmount: 6,
+                minTickInterval: (() => {
+                  if (currentYRange < 0.001) {
+                    return currentYRange / 10;
+                  } else if (currentYRange < 0.1) {
+                    return currentYRange / 20;
+                  } else if (currentYRange < 10) {
+                    return currentYRange / 20;
+                  } else {
+                    return currentYRange / 20;
+                  }
+                })(),
+                allowDecimals: true,
+                startOnTick: false,
+                endOnTick: false
+              }, false);
+            }
+            
+
             
             // 一次性重绘图表
             chart.redraw();
+            
+
             
             // 在图表重绘后，再次调整颜色选择器位置
             requestAnimationFrame(() => {
@@ -2972,7 +3030,6 @@ watch(showFFT, async (newShowFFT) => {
           } else {
             // 如果缓存中没有数据，重新加载数据（但避免重复加载）
             if (!loadingStates[channelKey] || loadingStates[channelKey] === 100) {
-              console.log(`通道 ${channelKey} 缓存为空，重新加载数据`);
               try {
                 const data = await fetchChannelData(channel, false);
                 if (data) {
@@ -2987,7 +3044,6 @@ watch(showFFT, async (newShowFFT) => {
           console.error(`更新图表 ${channelKey} 时出错:`, error);
           // 如果更新失败，回退到完全重新渲染，但不阻塞其他图表的更新
           if (!loadingStates[channelKey] || loadingStates[channelKey] === 100) {
-            console.log(`回退到重新渲染图表 ${channelKey}`);
             try {
               // 标记该通道需要重新渲染
               renderedChannels.value.delete(channelKey);
@@ -3018,7 +3074,6 @@ watch(showFFT, async (newShowFFT) => {
       } else {
         // 如果图表实例不存在，说明图表还没有渲染，重新渲染
         if (!loadingStates[channelKey] || loadingStates[channelKey] === 100) {
-          console.log(`图表实例 ${channelKey} 不存在，重新渲染`);
           try {
             // 标记该通道需要重新渲染
             renderedChannels.value.delete(channelKey);
@@ -3054,11 +3109,8 @@ watch(showFFT, async (newShowFFT) => {
     }
   });
   
-  } finally {
-    // 重置切换标记
-    setTimeout(() => {
-      isFFTSwitching.value = false;
-    }, 100);
+  } catch (error) {
+    console.error('FFT切换时出错:', error);
   }
 });
 
