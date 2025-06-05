@@ -5,7 +5,7 @@
       <!-- <span class="status-title">MDS数据库检测状态</span> -->
       <div class="shot-info">
         <div class="shot-block">
-          <span class="shot-tag">检测中炮号</span>
+          <span class="shot-tag">{{ shotStatusLabel }}</span>
           <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
         </div>
         <span class="separator">/</span>
@@ -36,6 +36,21 @@ const countdownSeconds = ref(60);
 
 let monitorTimer = null;
 let countdownTimer = null;
+
+// 计算属性：判断检测状态并返回相应的标签文本
+const shotStatusLabel = computed(() => {
+  const { mds_latest_shot, mongo_processing_shot, mongo_latest_shot } = monitorData.value;
+  
+  // 当所有shot值都相同时，显示"检测完全炮号"
+  if (mds_latest_shot === mongo_processing_shot && 
+      mongo_processing_shot === mongo_latest_shot && 
+      mds_latest_shot !== 0) {
+    return '检测完全炮号';
+  }
+  
+  // 否则显示"检测中炮号"
+  return '检测中炮号';
+});
 
 // 获取监控状态
 const fetchMonitorStatus = async () => {
