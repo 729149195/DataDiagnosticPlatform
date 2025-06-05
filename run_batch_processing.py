@@ -269,7 +269,10 @@ class ProcessRunner:
                     struct_doc = struct_trees.find_one({"shot_number": shot_str})
                     expected_channels = self.expected_channels_map.get(shot_str, 0)
                     
-                    if struct_doc and "struct_tree" in struct_doc:
+                    if expected_channels == 0:
+                        # 如果期望通道数为0，跳过这个炮号（认为该炮号无需处理）
+                        continue
+                    elif struct_doc and "struct_tree" in struct_doc:
                         actual_channels = len(struct_doc["struct_tree"])
                         # 如果通道数未达到期望值，说明正在处理或未完成
                         if actual_channels < expected_channels:
@@ -534,7 +537,10 @@ class BatchProcessor:
                             struct_doc = struct_trees.find_one({"shot_number": shot_str})
                             expected_channels = proc.expected_channels_map.get(shot_str, 0)
                             
-                            if struct_doc and "struct_tree" in struct_doc:
+                            if expected_channels == 0:
+                                # 如果期望通道数为0，跳过这个炮号（认为该炮号无需处理）
+                                continue
+                            elif struct_doc and "struct_tree" in struct_doc:
                                 actual_channels = len(struct_doc["struct_tree"])
                                 # 如果通道数未达到期望值，说明正在处理或未完成
                                 if actual_channels < expected_channels:
@@ -571,10 +577,22 @@ class BatchProcessor:
                             shot_str = str(shot)
                             doc = struct_trees.find_one({"shot_number": shot_str})
                             expected = proc.expected_channels_map.get(shot_str, 0)
-                            if doc and "struct_tree" in doc and len(doc["struct_tree"]) >= expected and expected > 0:
+                            
+                            # 检查炮号是否完成的逻辑要与当前炮号判断逻辑一致
+                            if expected == 0:
+                                # 如果期望通道数为0，跳过这个炮号（认为该炮号无需处理）
                                 shots_completed += 1
+                                continue
+                            elif doc and "struct_tree" in doc:
+                                actual_channels = len(doc["struct_tree"])
+                                if actual_channels >= expected:
+                                    # 通道数达到期望值，认为该炮号已完成
+                                    shots_completed += 1
+                                else:
+                                    # 通道数未达到期望值，停止计数
+                                    break
                             else:
-                                # 遇到第一个未完成的炮号就停止计数
+                                # 没有struct_tree记录，停止计数
                                 break
                         shot_progress = f"{shots_completed}/{total_shots}"
                         elapsed = proc.get_elapsed_time()
