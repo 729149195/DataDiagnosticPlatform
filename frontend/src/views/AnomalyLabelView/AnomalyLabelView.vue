@@ -154,10 +154,11 @@
 
                       <!-- 是否显示异常区域的按钮 -->
                       <div class="control-item">
-                        <el-tooltip :content="showAnomaly ? '点击隐藏异常区域' : '点击显示异常区域'" placement="top">
+                        <el-tooltip :content="showAnomaly ? '点击隐藏异常区域' : '点击显示异常区域'" placement="top" effect="light">
                           <el-button circle :type="showAnomaly ? 'primary' : 'info'" @click="updateShowAnomaly(!showAnomaly)">
                             <el-icon>
-                              <component :is="showAnomaly ? 'View' : 'Hide'" />
+                              <!-- <component :is="showAnomaly ? 'View' : 'Hide'" /> -->
+                              异常
                             </el-icon>
                           </el-button>
                         </el-tooltip>
@@ -165,7 +166,7 @@
 
                       <!-- FFT数据显示控制按钮 -->
                       <div class="control-item">
-                        <el-tooltip placement="top">
+                        <el-tooltip placement="top" effect="light">
                           <template #content>
                             <div>
                               {{ showFFT ? '点击隐藏FFT数据' : '点击显示FFT数据' }}
@@ -187,7 +188,7 @@
 
                       <div class="control-item">
                         <el-button-group>
-                          <el-tooltip :content="showFFT ? 'FFT模式下不支持框选标注功能' : '框选标注/编辑'" placement="top">
+                          <el-tooltip :content="showFFT ? 'FFT模式下不支持框选标注功能' : '框选标注/编辑'" placement="top" effect="light">
                             <el-button 
                               :type="boxSelect ? 'primary' : 'default'" 
                               :plain="!boxSelect" 
