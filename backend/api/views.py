@@ -634,13 +634,41 @@ def get_channel_data(request, channel_key=None):
                     if N > 1:
                         # 采样间隔
                         dt = (data_x[-1] - data_x[0]) / (N - 1)
+                        # 采样频率
+                        fs = 1.0 / dt
+                        
+                        # 执行FFT（与MATLAB保持一致的处理方式）
                         fft_result = np.fft.fft(data_y)
-                        freq = np.fft.fftfreq(N, d=dt)
-                        amplitude = np.abs(fft_result) / N
-                        # 只保留正频率部分
-                        pos_mask = freq >= 0
-                        freq = freq[pos_mask]
-                        amplitude = amplitude[pos_mask]
+                        
+                        # 计算双边谱的幅度（不进行归一化，保持MATLAB的原始幅度）
+                        amplitude_double_sided = np.abs(fft_result)
+                        
+                        # 生成频率轴（双边谱）
+                        freq_double_sided = np.fft.fftfreq(N, d=dt)
+                        
+                        # 转换为单边谱（只保留正频率和零频率）
+                        if N % 2 == 0:  # 偶数长度
+                            # 正频率点数（包含零频率，不包含Nyquist频率的负频率对应）
+                            n_positive = N // 2 + 1
+                            freq = freq_double_sided[:n_positive]
+                            amplitude = amplitude_double_sided[:n_positive].copy()
+                            
+                            # 单边谱幅度处理：除直流和Nyquist分量外，其他分量乘以2
+                            amplitude[1:-1] = amplitude[1:-1] * 2
+                        else:  # 奇数长度
+                            n_positive = (N + 1) // 2
+                            freq = freq_double_sided[:n_positive]
+                            amplitude = amplitude_double_sided[:n_positive].copy()
+                            
+                            # 单边谱幅度处理：除直流分量外，其他分量乘以2
+                            amplitude[1:] = amplitude[1:] * 2
+                        
+                        # 如果需要归一化到N（可选），可以取消下面的注释
+                        # amplitude = amplitude / N
+                        
+                        logs.append(f"采样频率: {fs:.2f} Hz")
+                        logs.append(f"频率分辨率: {fs/N:.4f} Hz")
+                        logs.append(f"最大频率: {freq[-1]:.2f} Hz")
                     else:
                         freq = np.array([])
                         amplitude = np.array([])
