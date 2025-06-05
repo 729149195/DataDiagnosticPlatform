@@ -129,8 +129,9 @@
                             <hr style="margin:8px 0;">
                             <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                             <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                              <li>显示/隐藏异常：控制异常区域的可见性</li>
                               <li>采样频率：调整数据采样频率，影响显示精度</li>
+                              <li>显示/隐藏异常：控制异常区域的可见性</li>
+                              <li>显示/隐藏FFT: 控制FFT数据的显示</li>
                               <li>框选标注/编辑：在图表上框选区域进行标注异常</li>
                               <li>单通道多行/多通道单行：切换数据显示模式</li>
                               <li>修改颜色：点击圆形色块可自定义通道颜色</li>
@@ -152,13 +153,19 @@
                       </el-tooltip></span>
                     <div class="control-panel">
 
+                      <div class="control-item">
+                        <span class="control-label">采样频率</span>
+                        <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
+                        <span class="control-unit">KHz</span>
+                      </div>
+
                       <!-- 是否显示异常区域的按钮 -->
                       <div class="control-item">
                         <el-tooltip :content="showAnomaly ? '点击隐藏异常区域' : '点击显示异常区域'" placement="top" effect="light">
-                          <el-button circle :type="showAnomaly ? 'primary' : 'info'" @click="updateShowAnomaly(!showAnomaly)">
+                          <el-button  :type="showAnomaly ? 'primary' : 'info'" @click="updateShowAnomaly(!showAnomaly)">
+                            <span style="margin-right: 5px;">异常</span>
                             <el-icon>
-                              <!-- <component :is="showAnomaly ? 'View' : 'Hide'" /> -->
-                              异常
+                              <component :is="showAnomaly ? 'View' : 'Hide'" />
                             </el-icon>
                           </el-button>
                         </el-tooltip>
@@ -174,17 +181,16 @@
                               <span style="color: #E6A23C;">FFT模式下禁用框选标注功能</span>
                             </div>
                           </template>
-                          <el-button circle :type="showFFT ? 'primary' : 'info'" @click="updateShowFFT(!showFFT)">
-                            FFT
+                          <el-button  :type="showFFT ? 'primary' : 'info'" @click="updateShowFFT(!showFFT)">
+                            <span style="margin-right: 5px;">FFT</span>
+                            <el-icon>
+                              <component :is="showFFT ? 'View' : 'Hide'" />
+                            </el-icon>
                           </el-button>
                         </el-tooltip>
                       </div>
 
-                      <div class="control-item">
-                        <span class="control-label">采样频率</span>
-                        <el-input-number v-model="sampling" :precision="2" :step="0.1" :min="0.1" :max="1000" @change="updateSampling" />
-                        <span class="control-unit">KHz</span>
-                      </div>
+                      
 
                       <div class="control-item">
                         <el-button-group>

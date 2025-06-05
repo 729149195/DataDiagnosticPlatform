@@ -147,7 +147,7 @@
                   </template>
                   <el-input v-model="lowpassAmplitude" size="small" style="width: 100%;" />
                 </el-form-item>
-                <el-form-item label="匹配数量上限">
+                <el-form-item label="匹配数量上限" label-position="top">
                   <el-input v-model="maxMatchPerChannel" size="small" style="width: 100%;" />
                 </el-form-item>
               </el-form>
@@ -197,12 +197,12 @@
 
     <!-- 保存模板对话框 -->
     <el-dialog v-model="saveTemplateDialogVisible" title="保存手绘曲线模板" width="500px" :close-on-click-modal="false">
-      <el-form :model="templateForm" :rules="templateRules" ref="templateFormRef" label-width="80px">
-        <el-form-item label="模板名称" prop="templateName">
-          <el-input v-model="templateForm.templateName" placeholder="请输入模板名称" />
+      <el-form :model="templateForm" :rules="templateRules" ref="templateFormRef">
+        <el-form-item label="模板名称" prop="templateName" >
+          <el-input v-model="templateForm.templateName" placeholder="请输入模板名称" style="margin-left: 10px;"/>
         </el-form-item>
-        <el-form-item label="模板描述" prop="description">
-          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="请输入模板描述（可选）" />
+        <el-form-item label="模板描述" prop="description" >
+          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="请输入模板描述（可选）" style="margin-left: 10px;"/>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -2620,7 +2620,6 @@ const handleAmplitudeCellClick = (clickedRow) => {
 }
 
 :deep(.el-form-item__label) {
-  padding: 0px 0px 4px 0px !important;
   margin-bottom: 0px !important;
   font-weight: 600;
   color: #303133;
