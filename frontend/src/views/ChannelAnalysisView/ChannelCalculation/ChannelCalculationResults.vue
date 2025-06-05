@@ -23,12 +23,12 @@
         </transition>
         
         <div class="chart-wrapper">
-            <!-- 空状态显示 -->
+            <!-- 图表容器 - 始终存在，避免Highcharts找不到容器的错误 -->
+            <div id="calculation-result-container" ref="chartContainerRef"></div>
+            <!-- 空状态显示 - 覆盖在图表容器上方 -->
             <div v-if="!hasCalculationResult && !isCalculating" class="empty-state">
                 <el-empty description="请输入公式并点击计算" />
             </div>
-            <!-- 图表容器 -->
-            <div v-else id="calculation-result-container" ref="chartContainerRef"></div>
         </div>
     </div>
 </template>
@@ -38,7 +38,7 @@ import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';  // 引入Boost模块以提高大数据集的性能
 import 'highcharts/modules/accessibility';  // 引入无障碍模块
 import { useStore } from 'vuex';
-import { computed, ref, watch, onMounted, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
@@ -63,11 +63,20 @@ const chartInstance = ref(null);
 const isCalculating = computed(() => store.state.isCalculating);
 const calculatingProgress = computed(() => store.state.calculatingProgress);
 
-// 判断是否有计算结果
+// 判断是否有计算结果或单个通道数据
 const hasCalculationResult = computed(() => {
-    return CalculateResult.value && 
-           (CalculateResult.value.X_value || CalculateResult.value.X_range) &&
-           curChannel.value.channel_name;
+    // 有计算结果
+    const hasCalcResult = CalculateResult.value && 
+                         (CalculateResult.value.X_value || CalculateResult.value.X_range) &&
+                         curChannel.value.channel_name;
+    
+    // 有单个通道数据（通过点击通道卡片选择）
+    const hasChannelData = curChannel.value.channel_name && 
+                          chartInstance.value && 
+                          chartInstance.value.series && 
+                          chartInstance.value.series.length > 0;
+    
+    return hasCalcResult || hasChannelData;
 });
 
 // 用于标识当前组件的图表实例
@@ -144,6 +153,16 @@ const fetchChannelData = async (channel) => {
             channelData = data; // 获取最新数据
         }
 
+        // 确保DOM元素存在后再绘制图表
+        await nextTick();
+        
+        // 检查容器是否存在
+        const container = document.getElementById('calculation-result-container');
+        if (!container) {
+            console.error('Chart container not found');
+            return;
+        }
+
         // 强制重新绘制
         drawChart(
             channelData.X_value,
@@ -158,7 +177,7 @@ const fetchChannelData = async (channel) => {
 };
 
 // 优化数据处理函数，减少数据点数量
-const optimizeDataPoints = (xValues, yValues, maxPoints = 100000) => {
+const optimizeDataPoints = (xValues, yValues, maxPoints = 50000) => {
     const totalPoints = xValues.length;
 
     // 如果数据点少于最大点数，直接返回原始数据
@@ -166,25 +185,35 @@ const optimizeDataPoints = (xValues, yValues, maxPoints = 100000) => {
         return { xValues, yValues };
     }
 
-    // 计算采样间隔
+    // 使用更高效的采样策略
     const interval = Math.ceil(totalPoints / maxPoints);
-
-    // 采样数据
-    const sampledX = [];
-    const sampledY = [];
-
+    
+    // 预分配数组，提高性能
+    const sampledLength = Math.floor(totalPoints / interval) + 1;
+    const sampledX = new Array(sampledLength);
+    const sampledY = new Array(sampledLength);
+    
+    let sampledIndex = 0;
+    
+    // 采样数据，使用更高效的循环
     for (let i = 0; i < totalPoints; i += interval) {
-        sampledX.push(xValues[i]);
-        sampledY.push(yValues[i]);
+        sampledX[sampledIndex] = xValues[i];
+        sampledY[sampledIndex] = yValues[i];
+        sampledIndex++;
     }
 
     // 确保包含最后一个点
-    if (sampledX[sampledX.length - 1] !== xValues[totalPoints - 1]) {
-        sampledX.push(xValues[totalPoints - 1]);
-        sampledY.push(yValues[totalPoints - 1]);
+    if (sampledX[sampledIndex - 1] !== xValues[totalPoints - 1]) {
+        sampledX[sampledIndex] = xValues[totalPoints - 1];
+        sampledY[sampledIndex] = yValues[totalPoints - 1];
+        sampledIndex++;
     }
 
-    return { xValues: sampledX, yValues: sampledY };
+    // 裁剪数组到实际长度
+    return { 
+        xValues: sampledX.slice(0, sampledIndex), 
+        yValues: sampledY.slice(0, sampledIndex) 
+    };
 };
 
 const drawChart = (xValues, yValues, channel, channelKey) => {
@@ -258,10 +287,10 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                                 progress: 100
                             });
                             
-                            // 延迟清除计算状态
-                            setTimeout(() => {
+                            // 使用 requestAnimationFrame 避免性能警告
+                            requestAnimationFrame(() => {
                                 store.commit('setCalculatingStatus', false);
-                            }, 500);
+                            });
                         }
                         
                         const container = this.container;
@@ -415,30 +444,40 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
         try {
             chartInstance.value = new Highcharts.Chart(options);
             
-            // 确保图表完全渲染后轴标签可见
-            setTimeout(() => {
+            // 使用 requestAnimationFrame 替代 setTimeout，提高性能
+            requestAnimationFrame(() => {
                 if (chartInstance.value) {
                     try {
-                        // 强制更新轴以确保标签可见
-                        chartInstance.value.xAxis[0].update({
-                            labels: {
-                                enabled: true,
-                                y: 20
-                            }
-                        }, false);
-
-                        chartInstance.value.yAxis[0].update({
-                            labels: {
-                                enabled: true
-                            }
-                        }, false);
-
+                        // 轴标签在初始配置中已经设置好，通常不需要额外更新
+                        // 只在必要时进行更新
+                        const xAxis = chartInstance.value.xAxis[0];
+                        const yAxis = chartInstance.value.yAxis[0];
+                        
+                        // 检查标签是否已经正确显示
+                        if (!xAxis.labelGroup || xAxis.labelGroup.element.style.visibility === 'hidden') {
+                            xAxis.update({
+                                labels: {
+                                    enabled: true,
+                                    y: 20
+                                }
+                            }, false);
+                        }
+                        
+                        if (!yAxis.labelGroup || yAxis.labelGroup.element.style.visibility === 'hidden') {
+                            yAxis.update({
+                                labels: {
+                                    enabled: true
+                                }
+                            }, false);
+                        }
+                        
+                        // 只在需要时重绘
                         chartInstance.value.redraw(false);
                     } catch (error) {
                         console.error("更新轴标签时出错:", error);
                     }
                 }
-            }, 200);
+            });
         } catch (error) {
             console.error("创建图表实例时出错:", error);
             
@@ -448,9 +487,10 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                     step: '图表渲染出错',
                     progress: 0
                 });
+                // 使用更短的延迟，避免性能警告
                 setTimeout(() => {
                     store.commit('setCalculatingStatus', false);
-                }, 2000);
+                }, 100);
             }
         }
     } catch (error) {
@@ -462,9 +502,10 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                 step: '绘制图表出错',
                 progress: 0
             });
+            // 使用更短的延迟，避免性能警告
             setTimeout(() => {
                 store.commit('setCalculatingStatus', false);
-            }, 2000);
+            }, 100);
         }
     }
 };
@@ -563,10 +604,10 @@ const drawResult = async (CalculateResult) => {
                                 progress: 100
                             });
                             
-                            // 延迟清除计算状态
-                            setTimeout(() => {
+                            // 使用 requestAnimationFrame 避免性能警告
+                            requestAnimationFrame(() => {
                                 store.commit('setCalculatingStatus', false);
-                            }, 500);
+                            });
                         }
                     } else {
                         // 如果没有系列，添加一个新的
@@ -827,7 +868,7 @@ const debouncedDrawResult = debounce(async (newCalculateResult) => {
     if (newCalculateResult) {
         await drawResult(newCalculateResult);
     }
-}, 50); // 50ms的防抖延迟
+}, 16); // 减少防抖延迟到16ms（约1帧），提高响应性
 
 watch(CalculateResult, (newCalculateResult, oldV) => {
     debouncedDrawResult(newCalculateResult);
@@ -1081,6 +1122,7 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
     /* 减去通道信息的高度 */
     min-height: 400px;
     /* 增加最小高度，确保有足够空间显示X轴标签 */
+    position: relative; /* 添加相对定位，使空状态可以绝对定位 */
 }
 
 #calculation-result-container {
@@ -1113,12 +1155,17 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
 
 /* 空状态样式 */
 .empty-state {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 400px;
+    background-color: rgba(255, 255, 255, 0.95);
+    z-index: 10;
 }
 
 /* 通道名称中的 tag 样式 */
