@@ -674,9 +674,9 @@ const handleButtonClick = async (button, index) => {
 // 辅助函数：根据文件路径获取函数类型标识
 const getFunctionTypeLabel = (filePath) => {
   if (filePath && filePath.endsWith('.py')) {
-    return 'Py';
+    return 'Python';
   } else if (filePath && filePath.endsWith('.m')) {
-    return 'M';
+    return 'Matlab';
   }
   return '';
 };
