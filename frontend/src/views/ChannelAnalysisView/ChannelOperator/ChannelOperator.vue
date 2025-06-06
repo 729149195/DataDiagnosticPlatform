@@ -38,7 +38,7 @@
       </el-dropdown>
 
       <!-- 其他功能按钮保持不变 -->
-      <el-tooltip v-else :content="button.explanation" effect="dark" placement="top">
+      <el-tooltip v-else :content="button.explanation" effect="light" placement="top">
         <el-button :type="button.type" plain size="large" @click="handleButtonClick(button, index)">
           {{ button.label }}
         </el-button>
@@ -575,7 +575,12 @@ const handleSubmit = async () => {
     // 发送函数上传事件，通知其他组件刷新函数列表
     window.dispatchEvent(new CustomEvent('functionUploaded'));
   } catch (error) {
-    ElMessage.error('文件上传失败');
+    // 检查是否是后端返回的具体错误信息
+    if (error.response && error.response.data && error.response.data.error) {
+      ElMessage.error(error.response.data.error);
+    } else {
+      ElMessage.error('文件上传失败');
+    }
   }
 };
 
@@ -728,7 +733,12 @@ const confirmDeleteFunc = (operator) => {
       // 发送函数删除事件，通知其他组件刷新函数列表
       window.dispatchEvent(new CustomEvent('functionDeleted'));
     } catch (error) {
-      ElMessage.error('删除失败');
+      // 检查是否是后端返回的具体错误信息
+      if (error.response && error.response.data && error.response.data.error) {
+        ElMessage.error(error.response.data.error);
+      } else {
+        ElMessage.error('删除失败');
+      }
     }
   }).catch(() => {});
 };

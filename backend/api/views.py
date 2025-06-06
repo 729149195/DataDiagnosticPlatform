@@ -1464,6 +1464,13 @@ def update_functions_file(function_data):
     else:
         existing_data = []
 
+    # Check if function with the same name already exists
+    function_name = function_data.get('name')
+    if function_name:
+        for existing_func in existing_data:
+            if existing_func.get('name') == function_name:
+                raise ValueError(f"算法 '{function_name}' 已存在，不能重复导入")
+
     # Append the new function data to existing data
     existing_data.append(function_data)
 
@@ -1534,8 +1541,14 @@ def upload_file(request):
             return JsonResponse({"error": "Unsupported file type or MATLAB engine not available"}, status=400)
 
         # Update the functions JSON file with the new functions
-        for func_name, params in functions.items():
-            update_functions_file(fileInfo)
+        try:
+            for func_name, params in functions.items():
+                update_functions_file(fileInfo)
+        except ValueError as e:
+            # 如果函数已存在，删除已保存的文件并返回错误信息
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return JsonResponse({"error": str(e)}, status=400)
 
         return JsonResponse({"functions": [{"name": k, "parameters": v} for k, v in functions.items()]})
 
