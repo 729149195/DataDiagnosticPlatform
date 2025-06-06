@@ -2,7 +2,8 @@
   "HXR": {
     "error_hxr_saturation_counts": ["HXR001", "HXR002", "HXR003", "HXR004", "HXR005", "HXR006", "HXR007", "HXR008", "HXR009"],
     "error_hxr_saturation_counts_ex": ["HXR001", "HXR002", "HXR003", "HXR004", "HXR005", "HXR006", "HXR007", "HXR008", "HXR009"],
-    "error_hxr_baseline_shift": ["HXR001", "HXR002", "HXR003", "HXR004", "HXR005", "HXR006", "HXR007", "HXR008", "HXR009"]
+    "error_hxr_baseline_shift": ["HXR001", "HXR002", "HXR003", "HXR004", "HXR005", "HXR006", "HXR007", "HXR008", "HXR009"],
+    "error_hxr_saturation_amplitude":[]
   },
   "MP": {
     "error_magnetics_error_integrator": [
@@ -30,13 +31,19 @@
     "error_ha_saturation": ["HA001", "HA002", "HA003", "HA004", "HA005", "HA006", "HA007", "HA008", "HA009"]
   },
   "HCN_NE": {
-    "error_hcn_hop": ["HCN_NE001", "HCN_NE002"] 
+    "error_hcn_hop": ["HCN_NE001", "HCN_NE002"],
+    "error_hcn_saturation_amplitude":[] 
   },
   "VB": {
     "error_VisibleBrems_Saturation": ["VB01","VB02","VB03","VB13","VB04","VB09"]
   },
   "TS": {
     "error_TS_empty_amplitude": ["TS03_1_1064"]
+  },
+  "CXRS": {
+    "error_cxrs_error_0f_fitting": []
+  },
+  "EUV": {
+    "error_EUVL_saturation":[]
   }
-
 }
