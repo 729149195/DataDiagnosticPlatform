@@ -2307,27 +2307,56 @@ def delete_imported_function(request):
     try:
         data = json.loads(request.body)
         function_name = data.get('function_name')
+        file_type = data.get('file_type', '')  # 新增：获取文件类型
+
         if not function_name:
             return JsonResponse({'error': 'function_name required'}, status=400)
+
         # 1. 删除 imported_functions.json 里的对应项
         file_path = os.path.join(settings.MEDIA_ROOT, "imported_functions.json")
         if not os.path.exists(file_path):
             return JsonResponse({'error': 'imported_functions.json not found'}, status=404)
+
         with open(file_path, "r", encoding="utf-8") as f:
             functions = json.load(f)
-        new_functions = [f for f in functions if f.get('name') != function_name]
-        # 2. 删除上传的文件（可选，需记录文件名）
-        file_to_delete = None
+
+        # 2. 查找要删除的函数（根据名称和文件类型）
+        function_to_delete = None
+        new_functions = []
+
         for f in functions:
             if f.get('name') == function_name:
-                file_to_delete = f.get('file')  # 你需要确保 fileInfo 里有 file 字段
-        if file_to_delete:
-            file_abs = os.path.join(settings.MEDIA_ROOT, "uploads", file_to_delete)
+                # 如果指定了文件类型，则需要匹配文件类型
+                if file_type:
+                    func_file_path = f.get('file_path', '')
+                    if func_file_path.endswith(file_type):
+                        function_to_delete = f
+                        continue  # 跳过这个函数，不添加到新列表中
+                else:
+                    # 如果没有指定文件类型，删除所有同名函数（保持原有行为）
+                    function_to_delete = f
+                    continue
+            new_functions.append(f)
+
+        if not function_to_delete:
+            error_msg = f"算法 '{function_name}'"
+            if file_type:
+                type_name = 'Python' if file_type == '.py' else 'MATLAB' if file_type == '.m' else file_type
+                error_msg += f" ({type_name})"
+            error_msg += " 不存在"
+            return JsonResponse({'error': error_msg}, status=404)
+
+        # 3. 删除对应的文件
+        file_to_delete_path = function_to_delete.get('file_path')
+        if file_to_delete_path:
+            file_abs = os.path.join(settings.MEDIA_ROOT, file_to_delete_path)
             if os.path.exists(file_abs):
                 os.remove(file_abs)
-        # 3. 保存新列表
+
+        # 4. 保存新列表
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(new_functions, f, ensure_ascii=False, indent=4)
+
         return JsonResponse({'success': True})
     except Exception as e:
         import traceback

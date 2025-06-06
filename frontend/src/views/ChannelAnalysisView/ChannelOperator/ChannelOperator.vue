@@ -716,8 +716,25 @@ onMounted(async () => {
 const confirmDeleteFunc = (operator) => {
   // 提取函数名，去掉 () 和类型标识 [Py] 或 [M]
   const funcName = operator.replace(/\(\)\s*\[.*?\]$/, '').replace(/\(\)$/, '');
+
+  // 提取文件类型信息
+  let fileType = '';
+  const pythonMatch = operator.match(/⟨🐍 Python⟩/);
+  const matlabMatch = operator.match(/⟨📊 MATLAB⟩/);
+
+  if (pythonMatch) {
+    fileType = '.py';
+  } else if (matlabMatch) {
+    fileType = '.m';
+  }
+
+  const typeDisplayName = fileType === '.py' ? 'Python' : fileType === '.m' ? 'MATLAB' : '';
+  const confirmMessage = typeDisplayName ?
+    `确定要删除算法 "${funcName}" (${typeDisplayName}) 吗？` :
+    `确定要删除算法 "${funcName}" 吗？`;
+
   ElMessageBox.confirm(
-    `确定要删除算法 "${funcName}" 吗？`,
+    confirmMessage,
     '删除确认',
     {
       confirmButtonText: '删除',
@@ -726,7 +743,11 @@ const confirmDeleteFunc = (operator) => {
     }
   ).then(async () => {
     try {
-      await axios.post('https://10.1.108.231:5000/api/delete-function', { function_name: funcName });
+      // 传递函数名和文件类型给后端
+      await axios.post('https://10.1.108.231:5000/api/delete-function', {
+        function_name: funcName,
+        file_type: fileType
+      });
       ElMessage.success('删除成功');
       // 刷新导入函数列表
       const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
