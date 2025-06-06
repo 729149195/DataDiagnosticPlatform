@@ -7,15 +7,15 @@
         <!-- 已检测炮号 -->
         <div class="shot-block">
           <el-icon class="shot-icon completed"><CircleCheck /></el-icon>
-          <span class="shot-tag">已检测炮号</span>
+          <span class="shot-tag">完成检测炮号</span>
           <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
         </div>
         <span class="separator">/</span>
         
         <!-- 正在检测炮号 -->
         <div class="shot-block">
-          <el-icon class="shot-icon processing"><Loading /></el-icon>
-          <span class="shot-tag">正在检测炮号</span>
+          <el-icon class="shot-icon processing" :class="{ spinning: showProgress }"><Loading /></el-icon>
+          <span class="shot-tag">检测中炮号</span>
           <span class="shot-value">{{ currentProcessingShot }}</span>
           
           <!-- Element圆形进度条 - 同一行显示 -->
@@ -36,7 +36,7 @@
         <!-- 总待检测炮号 -->
         <div class="shot-block">
           <el-icon class="shot-icon total"><DataBoard /></el-icon>
-          <span class="shot-tag">总待检测炮号</span>
+          <span class="shot-tag">总炮号</span>
           <span class="shot-value">{{ monitorData.mds_latest_shot || '--' }}</span>
         </div>
       </div>
@@ -85,24 +85,12 @@ const processingProgress = computed(() => {
 // 计算属性：当前正在检测的炮号显示
 const currentProcessingShot = computed(() => {
   const progress = processingProgress.value;
-  
-  // 如果进度达到100%，显示N/A
-  if (progress.is_processing && progress.progress_percent >= 100) {
-    return 'N/A';
+  // 只要is_processing为true就显示当前炮号
+  if (progress.is_processing) {
+    return progress.current_shot || 'N/A';
   }
-  
-  // 如果没有正在处理的炮号或炮号为0，显示N/A
-  if (!monitorData.value.mongo_processing_shot || monitorData.value.mongo_processing_shot <= 0) {
-    return 'N/A';
-  }
-  
-  // 如果MongoDB最新炮号等于或超过MDS最新炮号，说明没有待处理的，显示N/A
-  if (monitorData.value.mongo_latest_shot >= monitorData.value.mds_latest_shot) {
-    return 'N/A';
-  }
-  
-  // 正常显示正在处理的炮号
-  return monitorData.value.mongo_processing_shot;
+  // 其他情况才判断是否N/A
+  return 'N/A';
 });
 
 // 计算属性：是否显示进度条
@@ -232,7 +220,11 @@ onBeforeUnmount(() => {
   }
   
   &.processing {
-    color: #409eff; /* 蓝色 - 正在处理 */
+    color: #409eff;
+  }
+  
+  &.spinning {
+    animation: el-icon-rotate 1s linear infinite;
   }
   
   &.total {
@@ -311,5 +303,11 @@ onBeforeUnmount(() => {
 
 :deep(.el-progress-circle__path) {
   stroke: #4285f4;
+}
+
+@keyframes el-icon-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
 }
 </style> 
