@@ -209,14 +209,20 @@ onBeforeUnmount(() => {
   align-items: center;
   min-width: 70px;
   margin: 0 4px;
+  gap: 2px;
 }
 
 .shot-icon {
-  font-size: 14px;
+  font-size: 18px;
+  line-height: 1;
+  vertical-align: middle;
   margin-right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   
   &.completed {
-    color: #67c23a; /* 绿色 - 已完成 */
+    color: #409eff; /* 绿色 - 已完成 */
   }
   
   &.processing {
@@ -228,26 +234,26 @@ onBeforeUnmount(() => {
   }
   
   &.total {
-    color: #909399; /* 灰色 - 统计信息 */
+    color: #409eff; /* 灰色 - 统计信息 */
   }
+}
+
+.shot-tag {
+  color: #5f6368;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0 2px 0 0;
+  line-height: 1;
 }
 
 .shot-value {
   color: #4285F4;
   font-weight: 600;
   font-size: 18px;
-  margin-left: 8px;
-}
-
-.shot-tag {
-  color: #5f6368;
-  font-size: 14px;
-  font-weight: 500;
-  background: none;
-  border-radius: 0;
-  padding: 0;
-  margin: 0;
-  letter-spacing: 0.2px;
+  margin-left: 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 .separator {
