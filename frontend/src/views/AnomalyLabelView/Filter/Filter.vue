@@ -7,7 +7,7 @@
         <div class="form-item">
           <span class="label">数据库：</span>
           <div class="input-container">
-            <el-select v-model="selectedDbSuffix" placeholder="请选择数据库" @change="handleDbSuffixChange" :loading="isDbLoading" clearable class="db-select">
+            <el-select v-model="selectedDbSuffix" placeholder="请选择数据库" @change="handleDbSuffixChange" @focus="fetchDbSuffixOptions" :loading="isDbLoading" clearable class="db-select">
               <el-option v-for="item in dbSuffixOptions" :key="item" :label="item" :value="item" />
             </el-select>
           </div>
