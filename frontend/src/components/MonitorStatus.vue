@@ -87,10 +87,10 @@ const currentProcessingShot = computed(() => {
   const progress = processingProgress.value;
   // 只要is_processing为true就显示当前炮号
   if (progress.is_processing) {
-    return progress.current_shot || 'N/A';
+    return progress.current_shot || '无';
   }
   // 其他情况才判断是否N/A
-  return 'N/A';
+  return '无';
 });
 
 // 计算属性：是否显示进度条
@@ -99,7 +99,7 @@ const showProgress = computed(() => {
   return progress.is_processing && 
          progress.total_channels > 0 && 
          progress.progress_percent < 100 &&
-         currentProcessingShot.value !== 'N/A';
+         currentProcessingShot.value !== '无';
 });
 
 // 计算属性：进度百分比文本
