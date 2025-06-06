@@ -45,7 +45,7 @@
       </el-tooltip>
     </template>
     <!-- upload 算法导入按钮 -->
-    <el-upload v-model:file-list="fileList" class="upload-demo" :on-success="handleUpload" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
+    <el-upload v-model:file-list="fileList" class="upload-demo" :show-file-list="false" :http-request="handleFileSelect" accept=".py, .m" :limit="3" style="margin-left: 105px;">
       <el-button type="primary" size="large" class="import-button">
         <el-icon style="margin-right: 5px;">
           <Upload />
@@ -549,20 +549,25 @@ const handleSubmit = async () => {
     });
     ElMessage.success('文件上传成功');
 
-    let ttda = ["Pca()"]
-    let ttcp = ['FFT()']
     // 更新 detect anomaly functions
     const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
+
+    // 保留内置函数，追加导入的函数
+    let importedDaFunctions = [];
+    let importedChannelFunctions = [];
+
     for (let func of response2.data.imported_functions) {
       if (func.type === '诊断分析') {
-        ttda.push(func['name'] + '()')
+        importedDaFunctions.push(func['name'] + '()');
       }
       else {
-        ttcp.push(func['name'] + '()')
+        importedChannelFunctions.push(func['name'] + '()');
       }
     }
-    operators['da_functions'] = ttda;
-    operators['functions'] = ttcp;
+
+    // 将导入的函数追加到内置函数后面
+    operators['da_functions'] = ["Pca()"].concat(importedDaFunctions);
+    operators['functions'] = ["FFT()"].concat(importedChannelFunctions);
 
     dialogVisible.value = false;
     importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
@@ -658,27 +663,29 @@ const handleButtonClick = async (button, index) => {
   }
 };
 
-const handleUpload = (files, res) => {
-  operators['da_functions'] = operators['da_functions'].concat(res.response.functions.map(d => d['name'] + "()"));
-  console.log(res);
-};
+
 
 // 初始化时加载已导入的函数
 onMounted(async () => {
   // 更新 detect anomaly functions
   const response = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
-  let ttda = ["Pca()"]
-  let ttcp = ['FFT()']
+
+  // 保留内置函数，追加导入的函数
+  let importedDaFunctions = [];
+  let importedChannelFunctions = [];
+
   for (let func of response.data.imported_functions) {
     if (func.type === '诊断分析') {
-      ttda.push(func['name'] + '()')
+      importedDaFunctions.push(func['name'] + '()');
     }
     else {
-      ttcp.push(func['name'] + '()')
+      importedChannelFunctions.push(func['name'] + '()');
     }
   }
-  operators['da_functions'] = ttda;
-  operators['functions'] = ttcp;
+
+  // 将导入的函数追加到内置函数后面
+  operators['da_functions'] = ["Pca()"].concat(importedDaFunctions);
+  operators['functions'] = ["FFT()"].concat(importedChannelFunctions);
   importedFunc.value = response.data.imported_functions.map(d => d['name'] + '()');
 });
 
@@ -699,18 +706,23 @@ const confirmDeleteFunc = (operator) => {
       ElMessage.success('删除成功');
       // 刷新导入函数列表
       const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
-      let ttda = ["Pca()"]
-      let ttcp = ['FFT()']
+
+      // 保留内置函数，追加导入的函数
+      let importedDaFunctions = [];
+      let importedChannelFunctions = [];
+
       for (let func of response2.data.imported_functions) {
         if (func.type === '诊断分析') {
-          ttda.push(func['name'] + '()')
+          importedDaFunctions.push(func['name'] + '()');
         }
         else {
-          ttcp.push(func['name'] + '()')
+          importedChannelFunctions.push(func['name'] + '()');
         }
       }
-      operators['da_functions'] = ttda;
-      operators['functions'] = ttcp;
+
+      // 将导入的函数追加到内置函数后面
+      operators['da_functions'] = ["Pca()"].concat(importedDaFunctions);
+      operators['functions'] = ["FFT()"].concat(importedChannelFunctions);
       importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
       
       // 发送函数删除事件，通知其他组件刷新函数列表
