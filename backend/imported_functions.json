@@ -3,6 +3,7 @@
         "name": "NoiseThreshold",
         "description": "过滤噪声，产出新数据",
         "type": "通道运算",
+        "file_path": "uploads/NoiseThreshold.py",
         "input": [
             {
                 "paraName": "channel_key",
@@ -41,6 +42,7 @@
         "name": "LargerThanThreshold",
         "description": "绝对值大于阈值的时间段都会被标记",
         "type": "诊断分析",
+        "file_path": "uploads/LargerThanThreshold.py",
         "input": [
             {
                 "paraName": "channel_key",

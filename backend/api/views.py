@@ -1543,6 +1543,8 @@ def upload_file(request):
         # Update the functions JSON file with the new functions
         try:
             for func_name, params in functions.items():
+                # 添加文件路径信息到fileInfo中
+                fileInfo['file_path'] = file_name  # 使用相对路径，相对于MEDIA_ROOT
                 update_functions_file(fileInfo)
         except ValueError as e:
             # 如果函数已存在，删除已保存的文件并返回错误信息
