@@ -197,10 +197,9 @@ onBeforeUnmount(() => {
 .shot-info {
   display: flex;
   align-items: center;
-  margin-bottom: 4px;
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 1.2;
+  justify-content: center;
+  margin: 0 auto;
+  width: auto;
 }
 
 .shot-block {
@@ -265,7 +264,7 @@ onBeforeUnmount(() => {
 
 .status-container {
   background: #fff;
-  border-radius: 8px;
+  border-radius: 4px;
   box-shadow: 0 1px 4px rgba(60,64,67,0.08), 0 1.5px 6px rgba(60,64,67,0.08);
   padding: 4px;
   display: flex;
