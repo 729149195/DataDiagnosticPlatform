@@ -2,15 +2,41 @@
   <!-- 监控状态显示卡片 -->
   <div class="monitor-status">
     <div class="status-container">
-      <!-- <span class="status-title">MDS数据库检测状态</span> -->
+      <!-- 三列炮号信息 - 水平排列 -->
       <div class="shot-info">
+        <!-- 已检测炮号 -->
         <div class="shot-block">
-          <span class="shot-tag">{{ shotStatusLabel }}</span>
+          <el-icon class="shot-icon completed"><CircleCheck /></el-icon>
+          <span class="shot-tag">已检测炮号</span>
           <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
         </div>
         <span class="separator">/</span>
+        
+        <!-- 正在检测炮号 -->
         <div class="shot-block">
-          <span class="shot-tag">当前总炮号</span>
+          <el-icon class="shot-icon processing"><Loading /></el-icon>
+          <span class="shot-tag">正在检测炮号</span>
+          <span class="shot-value">{{ currentProcessingShot }}</span>
+          
+          <!-- Element圆形进度条 - 同一行显示 -->
+          <div v-if="showProgress" class="inline-progress">
+            <el-progress
+              type="circle"
+              :percentage="Math.round(processingProgress.progress_percent)"
+              :width="20"
+              :stroke-width="3"
+              :show-text="false"
+              color="#4285f4"
+            />
+            <span class="progress-text-inline">{{ progressPercentText }}</span>
+          </div>
+        </div>
+        <span class="separator">/</span>
+        
+        <!-- 总待检测炮号 -->
+        <div class="shot-block">
+          <el-icon class="shot-icon total"><DataBoard /></el-icon>
+          <span class="shot-tag">总待检测炮号</span>
           <span class="shot-value">{{ monitorData.mds_latest_shot || '--' }}</span>
         </div>
       </div>
@@ -21,6 +47,7 @@
 <script setup>
 // 监控状态显示组件，包含状态获取和倒计时逻辑
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { CircleCheck, Loading, DataBoard } from '@element-plus/icons-vue';
 
 // 响应式数据
 const monitorData = ref({
@@ -29,7 +56,14 @@ const monitorData = ref({
   mongo_latest_shot: 0,
   last_update: null,
   next_update: null,
-  is_running: false
+  is_running: false,
+  processing_progress: {
+    current_shot: 0,
+    total_channels: 0,
+    processed_channels: 0,
+    progress_percent: 0.0,
+    is_processing: false
+  }
 });
 
 const countdownSeconds = ref(60);
@@ -37,19 +71,65 @@ const countdownSeconds = ref(60);
 let monitorTimer = null;
 let countdownTimer = null;
 
-// 计算属性：判断检测状态并返回相应的标签文本
-const shotStatusLabel = computed(() => {
-  const { mds_latest_shot, mongo_processing_shot, mongo_latest_shot } = monitorData.value;
+// 计算属性：处理进度
+const processingProgress = computed(() => {
+  return monitorData.value.processing_progress || {
+    current_shot: 0,
+    total_channels: 0,
+    processed_channels: 0,
+    progress_percent: 0.0,
+    is_processing: false
+  };
+});
+
+// 计算属性：当前正在检测的炮号显示
+const currentProcessingShot = computed(() => {
+  const progress = processingProgress.value;
   
-  // 当所有shot值都相同时，显示"检测完全炮号"
-  if (mds_latest_shot === mongo_processing_shot && 
-      mongo_processing_shot === mongo_latest_shot && 
-      mds_latest_shot !== 0) {
-    return '检测完全炮号';
+  // 如果进度达到100%，显示N/A
+  if (progress.is_processing && progress.progress_percent >= 100) {
+    return 'N/A';
   }
   
-  // 否则显示"检测中炮号"
-  return '检测中炮号';
+  // 如果没有正在处理的炮号或炮号为0，显示N/A
+  if (!monitorData.value.mongo_processing_shot || monitorData.value.mongo_processing_shot <= 0) {
+    return 'N/A';
+  }
+  
+  // 如果MongoDB最新炮号等于或超过MDS最新炮号，说明没有待处理的，显示N/A
+  if (monitorData.value.mongo_latest_shot >= monitorData.value.mds_latest_shot) {
+    return 'N/A';
+  }
+  
+  // 正常显示正在处理的炮号
+  return monitorData.value.mongo_processing_shot;
+});
+
+// 计算属性：是否显示进度条
+const showProgress = computed(() => {
+  const progress = processingProgress.value;
+  return progress.is_processing && 
+         progress.total_channels > 0 && 
+         progress.progress_percent < 100 &&
+         currentProcessingShot.value !== 'N/A';
+});
+
+// 计算属性：进度百分比文本
+const progressPercentText = computed(() => {
+  const progress = processingProgress.value;
+  
+  // 如果进度为0，显示"等待稳定"
+  if (progress.progress_percent === 0 || progress.progress_percent < 0.1) {
+    return '等待稳定';
+  }
+  
+  // 如果进度达到100%，显示"完成"
+  if (progress.progress_percent >= 100) {
+    return '完成';
+  }
+  
+  // 正常显示百分比
+  return `${Math.round(progress.progress_percent)}%`;
 });
 
 // 获取监控状态
@@ -66,7 +146,14 @@ const fetchMonitorStatus = async () => {
         mds_latest_shot: '--',
         mongo_processing_shot: '--',
         mongo_latest_shot: '--',
-        is_running: false
+        is_running: false,
+        processing_progress: {
+          current_shot: 0,
+          total_channels: 0,
+          processed_channels: 0,
+          progress_percent: 0.0,
+          is_processing: false
+        }
       };
     }
   } catch (error) {
@@ -74,7 +161,14 @@ const fetchMonitorStatus = async () => {
       mds_latest_shot: '--',
       mongo_processing_shot: '--',
       mongo_latest_shot: '--',
-      is_running: false
+      is_running: false,
+      processing_progress: {
+        current_shot: 0,
+        total_channels: 0,
+        processed_channels: 0,
+        progress_percent: 0.0,
+        is_processing: false
+      }
     };
   }
 };
@@ -120,6 +214,7 @@ onBeforeUnmount(() => {
   font-weight: 500;
   line-height: 1.2;
 }
+
 .shot-block {
   display: flex;
   flex-direction: row;
@@ -127,12 +222,31 @@ onBeforeUnmount(() => {
   min-width: 70px;
   margin: 0 4px;
 }
+
+.shot-icon {
+  font-size: 14px;
+  margin-right: 4px;
+  
+  &.completed {
+    color: #67c23a; /* 绿色 - 已完成 */
+  }
+  
+  &.processing {
+    color: #409eff; /* 蓝色 - 正在处理 */
+  }
+  
+  &.total {
+    color: #909399; /* 灰色 - 统计信息 */
+  }
+}
+
 .shot-value {
   color: #4285F4;
   font-weight: 600;
   font-size: 18px;
   margin-left: 8px;
 }
+
 .shot-tag {
   color: #5f6368;
   font-size: 14px;
@@ -143,12 +257,14 @@ onBeforeUnmount(() => {
   margin: 0;
   letter-spacing: 0.2px;
 }
+
 .separator {
   margin: 0 16px;
   color: #dadce0;
   font-weight: 400;
   font-size: 18px;
 }
+
 .status-container {
   background: #fff;
   border-radius: 8px;
@@ -159,6 +275,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   align-items: center;
 }
+
 .monitor-status {
   display: flex;
   justify-content: center;
@@ -166,20 +283,33 @@ onBeforeUnmount(() => {
   width: 100%;
   background: transparent;
 }
-.countdown-info {
+
+/* 内联进度条样式 */
+.inline-progress {
   display: flex;
   align-items: center;
-  color: #5F6368;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1;
+  margin-left: 8px;
+  gap: 6px;
 }
-.timer-icon {
-  margin-right: 4px;
-  color: #4285F4;
-}
-.countdown {
+
+.progress-text-inline {
+  color: #5f6368;
+  font-size: 11px;
   font-weight: 500;
-  color: #4285F4;
+  white-space: nowrap;
+}
+
+/* Element Plus 进度条样式调整 */
+:deep(.el-progress-circle) {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+:deep(.el-progress-circle__track) {
+  stroke: #e8eaed;
+}
+
+:deep(.el-progress-circle__path) {
+  stroke: #4285f4;
 }
 </style> 

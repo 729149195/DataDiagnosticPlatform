@@ -13,9 +13,8 @@ project_root = os.path.dirname(current_dir)
 sys.path.insert(0, project_root)
 
 # 导入MDS+相关模块
-
-from RunDetectAlgorithm.mdsConn import currentShot
-print("成功导入 currentShot 函数")
+from RunDetectAlgorithm.mdsConn import currentShot, MdsTree
+print("成功导入 currentShot 和 MdsTree 函数")
 
 # 全局监控状态
 monitor_status = {
@@ -24,7 +23,14 @@ monitor_status = {
     'mongo_latest_shot': 0,
     'last_update': None,
     'next_update': None,
-    'is_running': False
+    'is_running': False,
+    'processing_progress': {
+        'current_shot': 0,
+        'total_channels': 0,
+        'processed_channels': 0,
+        'progress_percent': 0.0,
+        'is_processing': False
+    }
 }
 
 # 监控锁
@@ -38,7 +44,88 @@ MDSPLUS_PATH = '192.168.20.11::/media/ennfusion/trees/exl50u'
 MONGO_CLIENT = MongoClient("mongodb://localhost:27017")
 MG_DB_PATTERN = re.compile(r"DataDiagnosticPlatform_\[(\d+)_(\d+)\]")
 
+# DBS配置，与检测脚本保持一致
+DBS = {
+    'exl50u': {
+        'name': 'exl50u',
+        'addr': '192.168.20.11',
+        'path': '192.168.20.11::/media/ennfusion/trees/exl50u',
+        'subtrees': ['FBC', 'PAI', 'PMNT']
+    },
+    'eng50u': {
+        'name': 'eng50u',
+        'addr': '192.168.20.41',
+        'path': '192.168.20.41::/media/ennfusion/ENNMNT/trees/eng50u',
+        'subtrees': ['PMNT']
+    }
+}
+
 STATUS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "monitor_status.json")
+
+def get_shot_channel_count(shot_num):
+    """获取指定炮号的总通道数"""
+    total_channels = 0
+    for db_name, db_config in DBS.items():
+        try:
+            tree = MdsTree(shot_num, dbname=db_name, path=db_config['path'], subtrees=db_config['subtrees'])
+            channels = tree.formChannelPool()
+            total_channels += len(channels)
+            tree.close()
+        except Exception as e:
+            print(f"[警告] 获取炮号 {shot_num} 在数据库 {db_name} 的通道数失败: {e}")
+    return total_channels
+
+def get_processing_progress(processing_shot, latest_db_name):
+    """获取正在处理炮号的进度信息"""
+    if not processing_shot or not latest_db_name:
+        return {
+            'current_shot': 0,
+            'total_channels': 0,
+            'processed_channels': 0,
+            'progress_percent': 0.0,
+            'is_processing': False
+        }
+    
+    try:
+        # 获取该炮号的期望总通道数
+        total_channels = get_shot_channel_count(processing_shot)
+        
+        # 获取MongoDB中已处理的通道数
+        db = MONGO_CLIENT[latest_db_name]
+        struct_trees_collection = db["struct_trees"]
+        
+        # 查找该炮号的struct_tree记录
+        struct_doc = struct_trees_collection.find_one({"shot_number": str(processing_shot)})
+        processed_channels = 0
+        
+        if struct_doc and "struct_tree" in struct_doc:
+            processed_channels = len(struct_doc["struct_tree"])
+        
+        # 计算进度百分比
+        progress_percent = 0.0
+        if total_channels > 0:
+            progress_percent = (processed_channels / total_channels) * 100.0
+        
+        # 判断是否正在处理（有总通道数但未完成）
+        is_processing = total_channels > 0 and processed_channels < total_channels
+        
+        return {
+            'current_shot': processing_shot,
+            'total_channels': total_channels,
+            'processed_channels': processed_channels,
+            'progress_percent': round(progress_percent, 1),
+            'is_processing': is_processing
+        }
+        
+    except Exception as e:
+        print(f"获取处理进度失败: {e}")
+        return {
+            'current_shot': processing_shot,
+            'total_channels': 0,
+            'processed_channels': 0,
+            'progress_percent': 0.0,
+            'is_processing': False
+        }
 
 def get_latest_mongo_db_info():
     """获取最新的MongoDB数据库信息"""
@@ -138,6 +225,9 @@ def monitor_loop():
                 processing_shot = mongo_latest + 1
             else:
                 processing_shot = mongo_latest
+            
+            # 获取处理进度信息
+            progress_info = get_processing_progress(processing_shot, latest_db_name)
                 
             # 更新全局状态
             with monitor_lock:
@@ -149,12 +239,15 @@ def monitor_loop():
                     'next_update': (current_time + timedelta(seconds=10)).isoformat(),
                     'is_running': True,
                     'latest_db_name': latest_db_name,
-                    'db_end_range': db_end
+                    'db_end_range': db_end,
+                    'processing_progress': progress_info
                 })
                 # 每次更新后写入文件
                 write_status_to_file(monitor_status)
             
             print(f"[监控更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
+            if progress_info['is_processing']:
+                print(f"[处理进度] 炮号 {processing_shot}: {progress_info['processed_channels']}/{progress_info['total_channels']} ({progress_info['progress_percent']}%)")
             
         except Exception as e:
             print(f"监控循环出错: {e}")
@@ -198,6 +291,9 @@ def start_monitor():
             processing_shot = mongo_latest + 1
         else:
             processing_shot = mongo_latest
+        
+        # 获取处理进度信息
+        progress_info = get_processing_progress(processing_shot, latest_db_name)
             
         # 更新全局状态
         with monitor_lock:
@@ -209,11 +305,14 @@ def start_monitor():
                 'next_update': (current_time + timedelta(seconds=10)).isoformat(),
                 'is_running': True,
                 'latest_db_name': latest_db_name,
-                'db_end_range': db_end
+                'db_end_range': db_end,
+                'processing_progress': progress_info
             })
             write_status_to_file(monitor_status)
         
         print(f"[立即更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
+        if progress_info['is_processing']:
+            print(f"[处理进度] 炮号 {processing_shot}: {progress_info['processed_channels']}/{progress_info['total_channels']} ({progress_info['progress_percent']}%)")
         
     except Exception as e:
         print(f"立即更新监控状态出错: {e}")
