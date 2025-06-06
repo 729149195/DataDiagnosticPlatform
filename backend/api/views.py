@@ -1464,12 +1464,32 @@ def update_functions_file(function_data):
     else:
         existing_data = []
 
-    # Check if function with the same name already exists
+    # Check if function with the same name and file type already exists
     function_name = function_data.get('name')
+    function_file_path = function_data.get('file_path', '')
+
     if function_name:
+        # 获取当前文件的扩展名
+        current_file_ext = ''
+        if function_file_path.endswith('.py'):
+            current_file_ext = '.py'
+        elif function_file_path.endswith('.m'):
+            current_file_ext = '.m'
+
         for existing_func in existing_data:
             if existing_func.get('name') == function_name:
-                raise ValueError(f"算法 '{function_name}' 已存在，不能重复导入")
+                # 获取已存在文件的扩展名
+                existing_file_path = existing_func.get('file_path', '')
+                existing_file_ext = ''
+                if existing_file_path.endswith('.py'):
+                    existing_file_ext = '.py'
+                elif existing_file_path.endswith('.m'):
+                    existing_file_ext = '.m'
+
+                # 只有当名称和文件类型都相同时才报错
+                if current_file_ext == existing_file_ext:
+                    file_type_name = 'Python' if current_file_ext == '.py' else 'MATLAB'
+                    raise ValueError(f"算法 '{function_name}' ({file_type_name}) 已存在，不能重复导入")
 
     # Append the new function data to existing data
     existing_data.append(function_data)

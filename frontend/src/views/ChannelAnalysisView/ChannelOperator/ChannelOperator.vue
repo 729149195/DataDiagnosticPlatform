@@ -557,11 +557,12 @@ const handleSubmit = async () => {
     let importedChannelFunctions = [];
 
     for (let func of response2.data.imported_functions) {
+      const displayName = getFunctionDisplayName(func);
       if (func.type === '诊断分析') {
-        importedDaFunctions.push(func['name'] + '()');
+        importedDaFunctions.push(displayName);
       }
       else {
-        importedChannelFunctions.push(func['name'] + '()');
+        importedChannelFunctions.push(displayName);
       }
     }
 
@@ -570,7 +571,7 @@ const handleSubmit = async () => {
     operators['functions'] = ["FFT()"].concat(importedChannelFunctions);
 
     dialogVisible.value = false;
-    importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
+    importedFunc.value = response2.data.imported_functions.map(d => getFunctionDisplayName(d));
     
     // 发送函数上传事件，通知其他组件刷新函数列表
     window.dispatchEvent(new CustomEvent('functionUploaded'));
@@ -670,6 +671,22 @@ const handleButtonClick = async (button, index) => {
 
 
 
+// 辅助函数：根据文件路径获取函数类型标识
+const getFunctionTypeLabel = (filePath) => {
+  if (filePath && filePath.endsWith('.py')) {
+    return 'Py';
+  } else if (filePath && filePath.endsWith('.m')) {
+    return 'M';
+  }
+  return '';
+};
+
+// 辅助函数：生成带类型标识的函数显示名
+const getFunctionDisplayName = (func) => {
+  const typeLabel = getFunctionTypeLabel(func.file_path);
+  return typeLabel ? `${func.name}() [${typeLabel}]` : `${func.name}()`;
+};
+
 // 初始化时加载已导入的函数
 onMounted(async () => {
   // 更新 detect anomaly functions
@@ -680,23 +697,25 @@ onMounted(async () => {
   let importedChannelFunctions = [];
 
   for (let func of response.data.imported_functions) {
+    const displayName = getFunctionDisplayName(func);
     if (func.type === '诊断分析') {
-      importedDaFunctions.push(func['name'] + '()');
+      importedDaFunctions.push(displayName);
     }
     else {
-      importedChannelFunctions.push(func['name'] + '()');
+      importedChannelFunctions.push(displayName);
     }
   }
 
   // 将导入的函数追加到内置函数后面
   operators['da_functions'] = ["Pca()"].concat(importedDaFunctions);
   operators['functions'] = ["FFT()"].concat(importedChannelFunctions);
-  importedFunc.value = response.data.imported_functions.map(d => d['name'] + '()');
+  importedFunc.value = response.data.imported_functions.map(d => getFunctionDisplayName(d));
 });
 
 // 删除自定义算法
 const confirmDeleteFunc = (operator) => {
-  const funcName = operator.replace(/\(\)$/,'');
+  // 提取函数名，去掉 () 和类型标识 [Py] 或 [M]
+  const funcName = operator.replace(/\(\)\s*\[.*?\]$/, '').replace(/\(\)$/, '');
   ElMessageBox.confirm(
     `确定要删除算法 "${funcName}" 吗？`,
     '删除确认',
@@ -717,18 +736,19 @@ const confirmDeleteFunc = (operator) => {
       let importedChannelFunctions = [];
 
       for (let func of response2.data.imported_functions) {
+        const displayName = getFunctionDisplayName(func);
         if (func.type === '诊断分析') {
-          importedDaFunctions.push(func['name'] + '()');
+          importedDaFunctions.push(displayName);
         }
         else {
-          importedChannelFunctions.push(func['name'] + '()');
+          importedChannelFunctions.push(displayName);
         }
       }
 
       // 将导入的函数追加到内置函数后面
       operators['da_functions'] = ["Pca()"].concat(importedDaFunctions);
       operators['functions'] = ["FFT()"].concat(importedChannelFunctions);
-      importedFunc.value = response2.data.imported_functions.map(d => d['name'] + '()');
+      importedFunc.value = response2.data.imported_functions.map(d => getFunctionDisplayName(d));
       
       // 发送函数删除事件，通知其他组件刷新函数列表
       window.dispatchEvent(new CustomEvent('functionDeleted'));
