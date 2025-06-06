@@ -1538,9 +1538,6 @@ def upload_file(request):
             update_functions_file(fileInfo)
 
         return JsonResponse({"functions": [{"name": k, "parameters": v} for k, v in functions.items()]})
-    ##
-    # 需要补一段用到 fileinfo 的代码，将前端输入的函数文件信息保存到 imported_functions 里
-    ##
 
     return JsonResponse({"error": "Invalid request"}, status=400)
 
