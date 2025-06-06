@@ -39,4 +39,14 @@ urlpatterns = [
     
     # 系统监控状态
     path('system-monitor-status', views.get_system_monitor_status, name='get_system_monitor_status'),
+
+    # 算法管理相关路由
+    path('algorithm-channel-map', views.get_algorithm_channel_map, name='get_algorithm_channel_map'),
+    path('algorithm-channel-category', views.create_algorithm_channel_category, name='create_algorithm_channel_category'),
+    path('algorithm-channel-category/<str:category_name>', views.delete_algorithm_channel_category, name='delete_algorithm_channel_category'),
+    path('algorithm-channel-algorithm', views.create_algorithm_channel_algorithm, name='create_algorithm_channel_algorithm'),
+    path('algorithm-channel-algorithm/<str:category_name>/<str:algorithm_name>', views.delete_algorithm_channel_algorithm, name='delete_algorithm_channel_algorithm'),
+    path('algorithm-channel-channels', views.create_algorithm_channel_channels, name='create_algorithm_channel_channels'),
+    path('algorithm-channel-channels/<str:category_name>/<str:algorithm_name>/<str:channel_name>', views.delete_algorithm_channel_channel, name='delete_algorithm_channel_channel'),
+    path('algorithm-upload-files', views.upload_algorithm_files, name='upload_algorithm_files'),
 ]

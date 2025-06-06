@@ -6,48 +6,97 @@
       <div class="shot-info">
         <!-- 已检测炮号 -->
         <div class="shot-block">
-          <el-icon class="shot-icon completed"><CircleCheck /></el-icon>
+          <el-icon class="shot-icon completed">
+            <CircleCheck />
+          </el-icon>
           <span class="shot-tag">完成检测炮号</span>
           <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
         </div>
         <span class="separator">/</span>
-        
+
         <!-- 正在检测炮号 -->
         <div class="shot-block">
-          <el-icon class="shot-icon processing" :class="{ spinning: showProgress }"><Loading /></el-icon>
+          <el-icon class="shot-icon processing" :class="{ spinning: showProgress }">
+            <Loading />
+          </el-icon>
           <span class="shot-tag">检测中炮号</span>
           <span class="shot-value">{{ currentProcessingShot }}</span>
-          
+
           <!-- Element圆形进度条 - 同一行显示 -->
           <div v-if="showProgress" class="inline-progress">
-            <el-progress
-              type="circle"
-              :percentage="Math.round(processingProgress.progress_percent)"
-              :width="20"
-              :stroke-width="3"
-              :show-text="false"
-              color="#4285f4"
-            />
+            <el-progress type="circle" :percentage="Math.round(processingProgress.progress_percent)" :width="20"
+              :stroke-width="3" :show-text="false" color="#4285f4" />
             <span class="progress-text-inline">{{ progressPercentText }}</span>
           </div>
         </div>
         <span class="separator">/</span>
-        
+
         <!-- 总待检测炮号 -->
         <div class="shot-block">
-          <el-icon class="shot-icon total"><DataBoard /></el-icon>
+          <el-icon class="shot-icon total">
+            <DataBoard />
+          </el-icon>
           <span class="shot-tag">总炮号</span>
           <span class="shot-value">{{ monitorData.mds_latest_shot || '--' }}</span>
         </div>
       </div>
+
+      <!-- 编辑自动异常检测方法按钮 -->
+      <div class="edit-algorithm-section">
+        <el-tooltip content="编辑自动异常检测方法" placement="top" effect="light">
+          <el-button type="primary" @click="openAlgorithmDialog" :icon="Setting">
+          </el-button>
+        </el-tooltip>
+      </div>
     </div>
+
+    <!-- 算法编辑对话框 -->
+    <el-dialog v-model="algorithmDialogVisible" title="编辑自动异常检测方法" width="90%" :close-on-click-modal="false"
+      :close-on-press-escape="true" destroy-on-close append-to-body top="5vh">
+      <div class="algorithm-dialog-content">
+        <!-- 三列布局 -->
+        <div class="algorithm-sections">
+          <!-- 左侧：内置算法 -->
+          <div class="algorithm-section built-in-section">
+            <div class="section-header">
+              <h3>内置算法</h3>
+            </div>
+            <div class="section-content">
+              <AlgorithmManager v-if="algorithmDialogVisible" :algorithm-data="algorithmData"
+                @refresh-data="loadAlgorithmData" />
+            </div>
+          </div>
+
+          <!-- 中间：导入算法 -->
+          <div class="algorithm-section import-section">
+            <div class="section-header">
+              <h3>导入算法</h3>
+            </div>
+            <div class="section-content placeholder-content">
+              <el-empty description="功能开发中，敬请期待" />
+            </div>
+          </div>
+
+          <!-- 右侧：手绘模式 -->
+          <div class="algorithm-section manual-section">
+            <div class="section-header">
+              <h3>手绘模式</h3>
+            </div>
+            <div class="section-content placeholder-content">
+              <el-empty description="功能开发中，敬请期待" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 // 监控状态显示组件，包含状态获取和倒计时逻辑
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { CircleCheck, Loading, DataBoard } from '@element-plus/icons-vue';
+import { CircleCheck, Loading, DataBoard, Setting } from '@element-plus/icons-vue';
+import AlgorithmManager from './AlgorithmManager.vue';
 
 // 响应式数据
 const monitorData = ref({
@@ -67,6 +116,10 @@ const monitorData = ref({
 });
 
 const countdownSeconds = ref(60);
+
+// 算法对话框相关数据
+const algorithmDialogVisible = ref(false);
+const algorithmData = ref({});
 
 let monitorTimer = null;
 let countdownTimer = null;
@@ -96,26 +149,26 @@ const currentProcessingShot = computed(() => {
 // 计算属性：是否显示进度条
 const showProgress = computed(() => {
   const progress = processingProgress.value;
-  return progress.is_processing && 
-         progress.total_channels > 0 && 
-         progress.progress_percent < 100 &&
-         currentProcessingShot.value !== '无';
+  return progress.is_processing &&
+    progress.total_channels > 0 &&
+    progress.progress_percent < 100 &&
+    currentProcessingShot.value !== '无';
 });
 
 // 计算属性：进度百分比文本
 const progressPercentText = computed(() => {
   const progress = processingProgress.value;
-  
+
   // 如果进度为0，显示"等待稳定"
   if (progress.progress_percent === 0 || progress.progress_percent < 0.1) {
     return '等待稳定';
   }
-  
+
   // 如果进度达到100%，显示"完成"
   if (progress.progress_percent >= 100) {
     return '完成';
   }
-  
+
   // 正常显示百分比
   return `${Math.round(progress.progress_percent)}%`;
 });
@@ -185,6 +238,34 @@ const stopMonitoring = () => {
   }
 };
 
+// 打开算法编辑对话框
+const openAlgorithmDialog = () => {
+  algorithmDialogVisible.value = true;
+  loadAlgorithmData();
+};
+
+// 加载算法数据
+const loadAlgorithmData = async () => {
+  try {
+    const response = await fetch('https://10.1.108.231:5000/api/algorithm-channel-map');
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        algorithmData.value = result.data || {};
+      } else {
+        console.error('Failed to load algorithm data:', result.error);
+        algorithmData.value = {};
+      }
+    } else {
+      console.error('Failed to load algorithm data: HTTP', response.status);
+      algorithmData.value = {};
+    }
+  } catch (error) {
+    console.error('Error loading algorithm data:', error);
+    algorithmData.value = {};
+  }
+};
+
 onMounted(() => {
   startMonitoring();
 });
@@ -219,21 +300,23 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  
+
   &.completed {
-    color: #409eff; /* 绿色 - 已完成 */
+    color: #409eff;
+    /* 绿色 - 已完成 */
   }
-  
+
   &.processing {
     color: #409eff;
   }
-  
+
   &.spinning {
     animation: el-icon-rotate 1s linear infinite;
   }
-  
+
   &.total {
-    color: #409eff; /* 灰色 - 统计信息 */
+    color: #409eff;
+    /* 灰色 - 统计信息 */
   }
 }
 
@@ -265,10 +348,10 @@ onBeforeUnmount(() => {
 .status-container {
   background: #fff;
   border-radius: 4px;
-  box-shadow: 0 1px 4px rgba(60,64,67,0.08), 0 1.5px 6px rgba(60,64,67,0.08);
+  box-shadow: 0 1px 4px rgba(60, 64, 67, 0.08), 0 1.5px 6px rgba(60, 64, 67, 0.08);
   padding: 4px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
   align-items: center;
 }
@@ -315,4 +398,85 @@ onBeforeUnmount(() => {
     transform: rotate(360deg);
   }
 }
-</style> 
+
+/* 编辑算法按钮样式 */
+.edit-algorithm-section {
+  margin-left: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 算法对话框样式 */
+.algorithm-dialog-content {
+  height: 70vh;
+  overflow: hidden;
+}
+
+.algorithm-sections {
+  display: flex;
+  height: 100%;
+  gap: 16px;
+}
+
+.algorithm-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.section-header {
+  background: #f5f7fa;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.section-content {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+.placeholder-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.built-in-section {
+  border-color: #409eff;
+}
+
+.built-in-section .section-header {
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+.import-section {
+  border-color: #67c23a;
+}
+
+.import-section .section-header {
+  background: #f0f9ff;
+  color: #67c23a;
+}
+
+.manual-section {
+  border-color: #e6a23c;
+}
+
+.manual-section .section-header {
+  background: #fdf6ec;
+  color: #e6a23c;
+}
+</style>

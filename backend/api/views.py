@@ -2493,3 +2493,463 @@ def get_system_monitor_status(request):
             'success': False,
             'error': error_msg
         }, status=500)
+
+# 算法管理相关视图函数
+
+@require_GET
+def get_algorithm_channel_map(request):
+    """
+    获取算法通道映射数据
+    """
+    try:
+        # 构造算法映射文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+
+        if not os.path.exists(algorithm_map_file):
+            return OrJsonResponse({
+                'success': False,
+                'error': '算法映射文件不存在'
+            }, status=404)
+
+        with open(algorithm_map_file, "r", encoding='utf-8') as f:
+            algorithm_data = json.load(f)
+
+        return OrJsonResponse({
+            'success': True,
+            'data': algorithm_data
+        })
+
+    except Exception as e:
+        import traceback
+        error_msg = f"获取算法映射数据失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({
+            'success': False,
+            'error': error_msg
+        }, status=500)
+
+@csrf_exempt
+def create_algorithm_channel_category(request):
+    """
+    创建新的通道类别
+    POST请求，参数格式：
+    {
+        "category_name": "类别名称"
+    }
+    """
+    if request.method != 'POST':
+        return OrJsonResponse({'error': 'Only POST method is allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        category_name = data.get('category_name', '').strip()
+
+        if not category_name:
+            return OrJsonResponse({'error': '类别名称不能为空'}, status=400)
+
+        # 构造文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+        algorithm_dir = os.path.join(project_root, "RunDetectAlgorithm", "algorithm")
+
+        # 读取现有数据
+        if os.path.exists(algorithm_map_file):
+            with open(algorithm_map_file, "r", encoding='utf-8') as f:
+                algorithm_data = json.load(f)
+        else:
+            algorithm_data = {}
+
+        # 检查类别是否已存在
+        if category_name in algorithm_data:
+            return OrJsonResponse({'error': '类别已存在'}, status=400)
+
+        # 添加新类别
+        algorithm_data[category_name] = {}
+
+        # 保存到JSON文件
+        with open(algorithm_map_file, "w", encoding='utf-8') as f:
+            json.dump(algorithm_data, f, ensure_ascii=False, indent=2)
+
+        # 创建对应的文件夹
+        category_folder = os.path.join(algorithm_dir, category_name)
+        if not os.path.exists(category_folder):
+            os.makedirs(category_folder)
+
+        print(f"通道类别创建成功: {category_name}")
+        return OrJsonResponse({'success': True, 'message': '类别创建成功'})
+
+    except Exception as e:
+        import traceback
+        error_msg = f"创建通道类别失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def delete_algorithm_channel_category(request, category_name):
+    """
+    删除通道类别
+    """
+    if request.method != 'DELETE':
+        return OrJsonResponse({'error': 'Only DELETE method is allowed'}, status=405)
+
+    try:
+        # 构造文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+        algorithm_dir = os.path.join(project_root, "RunDetectAlgorithm", "algorithm")
+
+        # 读取现有数据
+        if not os.path.exists(algorithm_map_file):
+            return OrJsonResponse({'error': '算法映射文件不存在'}, status=404)
+
+        with open(algorithm_map_file, "r", encoding='utf-8') as f:
+            algorithm_data = json.load(f)
+
+        # 检查类别是否存在
+        if category_name not in algorithm_data:
+            return OrJsonResponse({'error': '类别不存在'}, status=404)
+
+        # 删除类别
+        del algorithm_data[category_name]
+
+        # 保存到JSON文件
+        with open(algorithm_map_file, "w", encoding='utf-8') as f:
+            json.dump(algorithm_data, f, ensure_ascii=False, indent=2)
+
+        # 删除对应的文件夹
+        import shutil
+        category_folder = os.path.join(algorithm_dir, category_name)
+        if os.path.exists(category_folder):
+            shutil.rmtree(category_folder)
+
+        print(f"通道类别删除成功: {category_name}")
+        return OrJsonResponse({'success': True, 'message': '类别删除成功'})
+
+    except Exception as e:
+        import traceback
+        error_msg = f"删除通道类别失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def create_algorithm_channel_algorithm(request):
+    """
+    创建新的算法
+    POST请求，参数格式：
+    {
+        "category_name": "类别名称",
+        "algorithm_name": "算法名称"
+    }
+    """
+    if request.method != 'POST':
+        return OrJsonResponse({'error': 'Only POST method is allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        category_name = data.get('category_name', '').strip()
+        algorithm_name = data.get('algorithm_name', '').strip()
+
+        if not category_name or not algorithm_name:
+            return OrJsonResponse({'error': '类别名称和算法名称不能为空'}, status=400)
+
+        # 构造文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+
+        # 读取现有数据
+        if not os.path.exists(algorithm_map_file):
+            return OrJsonResponse({'error': '算法映射文件不存在'}, status=404)
+
+        with open(algorithm_map_file, "r", encoding='utf-8') as f:
+            algorithm_data = json.load(f)
+
+        # 检查类别是否存在
+        if category_name not in algorithm_data:
+            return OrJsonResponse({'error': '类别不存在'}, status=404)
+
+        # 检查算法是否已存在
+        if algorithm_name in algorithm_data[category_name]:
+            return OrJsonResponse({'error': '算法已存在'}, status=400)
+
+        # 添加新算法
+        algorithm_data[category_name][algorithm_name] = []
+
+        # 保存到JSON文件
+        with open(algorithm_map_file, "w", encoding='utf-8') as f:
+            json.dump(algorithm_data, f, ensure_ascii=False, indent=2)
+
+        print(f"算法创建成功: {category_name}/{algorithm_name}")
+        return OrJsonResponse({'success': True, 'message': '算法创建成功'})
+
+    except Exception as e:
+        import traceback
+        error_msg = f"创建算法失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def delete_algorithm_channel_algorithm(request, category_name, algorithm_name):
+    """
+    删除算法
+    """
+    if request.method != 'DELETE':
+        return OrJsonResponse({'error': 'Only DELETE method is allowed'}, status=405)
+
+    try:
+        # 构造文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+        algorithm_dir = os.path.join(project_root, "RunDetectAlgorithm", "algorithm")
+
+        # 读取现有数据
+        if not os.path.exists(algorithm_map_file):
+            return OrJsonResponse({'error': '算法映射文件不存在'}, status=404)
+
+        with open(algorithm_map_file, "r", encoding='utf-8') as f:
+            algorithm_data = json.load(f)
+
+        # 检查类别和算法是否存在
+        if category_name not in algorithm_data:
+            return OrJsonResponse({'error': '类别不存在'}, status=404)
+
+        if algorithm_name not in algorithm_data[category_name]:
+            return OrJsonResponse({'error': '算法不存在'}, status=404)
+
+        # 删除算法
+        del algorithm_data[category_name][algorithm_name]
+
+        # 保存到JSON文件
+        with open(algorithm_map_file, "w", encoding='utf-8') as f:
+            json.dump(algorithm_data, f, ensure_ascii=False, indent=2)
+
+        # 删除对应的算法文件
+        category_folder = os.path.join(algorithm_dir, category_name)
+        if os.path.exists(category_folder):
+            mat_file = os.path.join(category_folder, f"{algorithm_name}.mat")
+            py_file = os.path.join(category_folder, f"{algorithm_name}.py")
+
+            if os.path.exists(mat_file):
+                os.remove(mat_file)
+            if os.path.exists(py_file):
+                os.remove(py_file)
+
+        print(f"算法删除成功: {category_name}/{algorithm_name}")
+        return OrJsonResponse({'success': True, 'message': '算法删除成功'})
+
+    except Exception as e:
+        import traceback
+        error_msg = f"删除算法失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def create_algorithm_channel_channels(request):
+    """
+    添加通道到算法
+    POST请求，参数格式：
+    {
+        "category_name": "类别名称",
+        "algorithm_name": "算法名称",
+        "channel_names": ["通道1", "通道2", ...]
+    }
+    """
+    if request.method != 'POST':
+        return OrJsonResponse({'error': 'Only POST method is allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        category_name = data.get('category_name', '').strip()
+        algorithm_name = data.get('algorithm_name', '').strip()
+        channel_names = data.get('channel_names', [])
+
+        if not category_name or not algorithm_name or not channel_names:
+            return OrJsonResponse({'error': '参数不能为空'}, status=400)
+
+        # 构造文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+
+        # 读取现有数据
+        if not os.path.exists(algorithm_map_file):
+            return OrJsonResponse({'error': '算法映射文件不存在'}, status=404)
+
+        with open(algorithm_map_file, "r", encoding='utf-8') as f:
+            algorithm_data = json.load(f)
+
+        # 检查类别和算法是否存在
+        if category_name not in algorithm_data:
+            return OrJsonResponse({'error': '类别不存在'}, status=404)
+
+        if algorithm_name not in algorithm_data[category_name]:
+            return OrJsonResponse({'error': '算法不存在'}, status=404)
+
+        # 添加通道（去重）
+        existing_channels = set(algorithm_data[category_name][algorithm_name])
+        new_channels = [ch.strip() for ch in channel_names if ch.strip() not in existing_channels]
+
+        if new_channels:
+            algorithm_data[category_name][algorithm_name].extend(new_channels)
+
+            # 保存到JSON文件
+            with open(algorithm_map_file, "w", encoding='utf-8') as f:
+                json.dump(algorithm_data, f, ensure_ascii=False, indent=2)
+
+            print(f"通道添加成功: {category_name}/{algorithm_name} - {new_channels}")
+            return OrJsonResponse({'success': True, 'message': f'成功添加 {len(new_channels)} 个通道'})
+        else:
+            return OrJsonResponse({'success': True, 'message': '所有通道已存在，无需添加'})
+
+    except Exception as e:
+        import traceback
+        error_msg = f"添加通道失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def delete_algorithm_channel_channel(request, category_name, algorithm_name, channel_name):
+    """
+    删除通道
+    """
+    if request.method != 'DELETE':
+        return OrJsonResponse({'error': 'Only DELETE method is allowed'}, status=405)
+
+    try:
+        # 构造文件路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_map_file = os.path.join(project_root, "RunDetectAlgorithm", "algorithmChannelMap.json")
+
+        # 读取现有数据
+        if not os.path.exists(algorithm_map_file):
+            return OrJsonResponse({'error': '算法映射文件不存在'}, status=404)
+
+        with open(algorithm_map_file, "r", encoding='utf-8') as f:
+            algorithm_data = json.load(f)
+
+        # 检查类别、算法和通道是否存在
+        if category_name not in algorithm_data:
+            return OrJsonResponse({'error': '类别不存在'}, status=404)
+
+        if algorithm_name not in algorithm_data[category_name]:
+            return OrJsonResponse({'error': '算法不存在'}, status=404)
+
+        if channel_name not in algorithm_data[category_name][algorithm_name]:
+            return OrJsonResponse({'error': '通道不存在'}, status=404)
+
+        # 删除通道
+        algorithm_data[category_name][algorithm_name].remove(channel_name)
+
+        # 保存到JSON文件
+        with open(algorithm_map_file, "w", encoding='utf-8') as f:
+            json.dump(algorithm_data, f, ensure_ascii=False, indent=2)
+
+        print(f"通道删除成功: {category_name}/{algorithm_name}/{channel_name}")
+        return OrJsonResponse({'success': True, 'message': '通道删除成功'})
+
+    except Exception as e:
+        import traceback
+        error_msg = f"删除通道失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def upload_algorithm_files(request):
+    """
+    上传算法文件（.mat 和 .py）
+    POST请求，multipart/form-data格式：
+    - category: 类别名称
+    - algorithm: 算法名称
+    - mat_file: .mat文件
+    - py_file: .py文件
+    """
+    if request.method != 'POST':
+        return OrJsonResponse({'error': 'Only POST method is allowed'}, status=405)
+
+    try:
+        category_name = request.POST.get('category', '').strip()
+        algorithm_name = request.POST.get('algorithm', '').strip()
+        mat_file = request.FILES.get('mat_file')
+        py_file = request.FILES.get('py_file')
+
+        if not category_name or not algorithm_name:
+            return OrJsonResponse({'error': '类别名称和算法名称不能为空'}, status=400)
+
+        if not mat_file or not py_file:
+            return OrJsonResponse({'error': '必须同时上传 .mat 和 .py 文件'}, status=400)
+
+        # 验证文件扩展名
+        if not mat_file.name.endswith('.mat'):
+            return OrJsonResponse({'error': '.mat 文件格式不正确'}, status=400)
+
+        if not py_file.name.endswith('.py'):
+            return OrJsonResponse({'error': '.py 文件格式不正确'}, status=400)
+
+        # 验证文件名是否一致
+        mat_basename = os.path.splitext(mat_file.name)[0]
+        py_basename = os.path.splitext(py_file.name)[0]
+
+        if mat_basename != py_basename:
+            return OrJsonResponse({'error': '.mat 和 .py 文件名必须相同'}, status=400)
+
+        # 构造目标路径
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(current_dir))
+        algorithm_dir = os.path.join(project_root, "RunDetectAlgorithm", "algorithm")
+        category_folder = os.path.join(algorithm_dir, category_name)
+
+        # 确保目录存在
+        if not os.path.exists(category_folder):
+            os.makedirs(category_folder)
+
+        # 保存文件
+        mat_path = os.path.join(category_folder, mat_file.name)
+        py_path = os.path.join(category_folder, py_file.name)
+
+        # 写入 .mat 文件
+        with open(mat_path, 'wb') as f:
+            for chunk in mat_file.chunks():
+                f.write(chunk)
+
+        # 写入 .py 文件
+        with open(py_path, 'wb') as f:
+            for chunk in py_file.chunks():
+                f.write(chunk)
+
+        # 简单的文件验证（检查文件是否可读）
+        try:
+            # 验证 .py 文件语法
+            with open(py_path, 'r', encoding='utf-8') as f:
+                py_content = f.read()
+                compile(py_content, py_path, 'exec')
+
+            print(f"算法文件上传成功: {category_name}/{algorithm_name}")
+            return OrJsonResponse({'success': True, 'message': '文件上传成功'})
+
+        except SyntaxError as e:
+            # 如果Python文件有语法错误，删除已上传的文件
+            if os.path.exists(mat_path):
+                os.remove(mat_path)
+            if os.path.exists(py_path):
+                os.remove(py_path)
+            return OrJsonResponse({'error': f'Python文件语法错误: {str(e)}'}, status=400)
+
+    except Exception as e:
+        import traceback
+        error_msg = f"上传算法文件失败: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({'error': error_msg}, status=500)
