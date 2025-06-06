@@ -719,8 +719,8 @@ const confirmDeleteFunc = (operator) => {
 
   // 提取文件类型信息
   let fileType = '';
-  const pythonMatch = operator.match(/⟨🐍 Python⟩/);
-  const matlabMatch = operator.match(/⟨📊 MATLAB⟩/);
+  const pythonMatch = operator.match(/\[Python\]/);
+  const matlabMatch = operator.match(/\[Matlab\]/);
 
   if (pythonMatch) {
     fileType = '.py';

@@ -32,7 +32,13 @@
             <div class="tooltip-content">
                 <div class="function-header">
                     <h4 class="function-name-title">{{ currentFunctionInfo.name }}</h4>
-                    <span class="function-type">{{ currentFunctionInfo.type }}</span>
+                    <div class="function-badges">
+                        <span class="function-type">{{ currentFunctionInfo.type }}</span>
+                        <span v-if="currentFunctionInfo.file_path" class="function-file-type"
+                              :class="getFileTypeClass(currentFunctionInfo.file_path)">
+                            {{ getFileTypeDisplay(currentFunctionInfo.file_path) }}
+                        </span>
+                    </div>
                 </div>
                 
                 <div class="function-description">
@@ -98,6 +104,36 @@ let currentCursorPosition = 0; // 用于记录光标位置
 // 导入的函数列表
 const importedFunctions = ref([]);
 
+// 辅助函数：根据文件路径获取函数类型标识
+const getFunctionTypeLabel = (filePath) => {
+  if (filePath && filePath.endsWith('.py')) {
+    return 'Python';
+  } else if (filePath && filePath.endsWith('.m')) {
+    return 'Matlab';
+  }
+  return '';
+};
+
+// 辅助函数：获取文件类型显示文本
+const getFileTypeDisplay = (filePath) => {
+  if (filePath && filePath.endsWith('.py')) {
+    return '🐍 Python';
+  } else if (filePath && filePath.endsWith('.m')) {
+    return '📊 MATLAB';
+  }
+  return '';
+};
+
+// 辅助函数：获取文件类型CSS类
+const getFileTypeClass = (filePath) => {
+  if (filePath && filePath.endsWith('.py')) {
+    return 'python-type';
+  } else if (filePath && filePath.endsWith('.m')) {
+    return 'matlab-type';
+  }
+  return '';
+};
+
 // 函数详情弹窗相关
 const showFunctionTooltip = ref(false);
 const tooltipPosition = ref({ x: 0, y: 0 });
@@ -152,18 +188,27 @@ const highlightChannels = () => {
         return acc;
     }, {});
 
-    // 获取导入函数的名称列表
+    // 获取导入函数的名称列表（包含类型标识的完整显示名）
+    const functionDisplayNames = importedFunctions.value.map(func => {
+        const typeLabel = getFunctionTypeLabel(func.file_path);
+        return typeLabel ? `${func.name}() [${typeLabel}]` : `${func.name}()`;
+    });
+
+    // 同时保留纯函数名列表用于向后兼容
     const functionNames = importedFunctions.value.map(func => func.name);
 
-    const tokens = tokenizeContent(content, channelIdentifiers, functionNames);
+    const tokens = tokenizeContent(content, channelIdentifiers, functionNames, functionDisplayNames);
 
     const highlightedContent = tokens
         .map((token) => {
             if (channelIdentifiers.includes(token)) {
                 const color = colors[token] || '#409EFF';
                 return `<span class="tag" style="background-color: ${color};">${token}</span>`;
+            } else if (functionDisplayNames.includes(token)) {
+                // 为带类型标识的函数名添加特殊样式和事件处理
+                return `<span class="function-name" data-function-display-name="${token}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token}</span>`;
             } else if (functionNames.includes(token)) {
-                // 为函数名添加特殊样式和事件处理
+                // 为纯函数名添加特殊样式和事件处理（向后兼容）
                 return `<span class="function-name" data-function-name="${token}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token}</span>`;
             } else {
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -468,11 +513,13 @@ const sendClickedChannelNames = async () => {
     }
 };
 
-const tokenizeContent = (content, channelIdentifiers, functionNames = []) => {
+const tokenizeContent = (content, channelIdentifiers, functionNames = [], functionDisplayNames = []) => {
     if (!content) return [];
     
     // 对channelIdentifiers按长度降序排序，确保先匹配较长的标识符
     const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
+    // 对functionDisplayNames按长度降序排序，优先匹配带类型标识的函数名
+    const sortedFunctionDisplayNames = [...functionDisplayNames].sort((a, b) => b.length - a.length);
     // 对functionNames也按长度降序排序
     const sortedFunctionNames = [...functionNames].sort((a, b) => b.length - a.length);
     
@@ -495,18 +542,40 @@ const tokenizeContent = (content, channelIdentifiers, functionNames = []) => {
             }
         }
         
-        // 如果不是通道标识符，检查是否是函数名
+        // 如果不是通道标识符，先检查是否是带类型标识的函数名
+        if (!matched) {
+            for (const funcDisplayName of sortedFunctionDisplayNames) {
+                if (content.substring(i, i + funcDisplayName.length) === funcDisplayName) {
+                    // 确保这是完整的函数名（前面和后面都应该是分隔符）
+                    const prevChar = i > 0 ? content[i - 1] : null;
+                    const nextChar = content[i + funcDisplayName.length];
+
+                    // 前面应该是开始、空格或运算符，后面应该是结束、空格、运算符或括号
+                    const validBefore = !prevChar || /\s|[+\-*/()]/.test(prevChar);
+                    const validAfter = !nextChar || /\s|[+\-*/()]/.test(nextChar);
+
+                    if (validBefore && validAfter) {
+                        tokens.push(funcDisplayName);
+                        i += funcDisplayName.length;
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 如果不是带类型标识的函数名，检查是否是纯函数名
         if (!matched) {
             for (const funcName of sortedFunctionNames) {
                 if (content.substring(i, i + funcName.length) === funcName) {
                     // 确保这是完整的函数名（前面和后面都应该是分隔符）
                     const prevChar = i > 0 ? content[i - 1] : null;
                     const nextChar = content[i + funcName.length];
-                    
+
                     // 前面应该是开始、空格或运算符，后面应该是结束、空格、运算符或括号
                     const validBefore = !prevChar || /\s|[+\-*/()]/.test(prevChar);
                     const validAfter = !nextChar || /\s|[+\-*/()]/.test(nextChar);
-                    
+
                     if (validBefore && validAfter) {
                         tokens.push(funcName);
                         i += funcName.length;
@@ -692,19 +761,41 @@ const addFunctionEventListeners = () => {
 
 // 鼠标进入函数名时的处理
 const handleFunctionMouseEnter = (event) => {
+    // 优先获取带类型标识的函数显示名
+    const functionDisplayName = event.target.getAttribute('data-function-display-name');
     const functionName = event.target.getAttribute('data-function-name');
-    const functionInfo = importedFunctions.value.find(func => func.name === functionName);
-    
+
+    let functionInfo = null;
+
+    if (functionDisplayName) {
+        // 如果有完整的显示名，解析出函数名和文件类型
+        const match = functionDisplayName.match(/^(.+?)\(\)\s*\[(.+?)\]$/);
+        if (match) {
+            const [, name, typeLabel] = match;
+            const fileType = typeLabel.includes('Python') ? '.py' : typeLabel.includes('Matlab') ? '.m' : '';
+
+            // 根据函数名和文件类型查找对应的函数信息
+            functionInfo = importedFunctions.value.find(func =>
+                func.name === name &&
+                func.file_path &&
+                func.file_path.endsWith(fileType)
+            );
+        }
+    } else if (functionName) {
+        // 向后兼容：如果只有函数名，查找第一个匹配的函数
+        functionInfo = importedFunctions.value.find(func => func.name === functionName);
+    }
+
     if (functionInfo) {
         currentFunctionInfo.value = functionInfo;
-        
+
         // 计算tooltip位置，显示在函数名下方
         const rect = event.target.getBoundingClientRect();
         tooltipPosition.value = {
             x: rect.left + rect.width / 2,
             y: rect.bottom + 10  // 改为显示在下方
         };
-        
+
         showFunctionTooltip.value = true;
     }
 };
@@ -834,6 +925,12 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
     color: #1a73e8;
 }
 
+.function-badges {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
 .function-type {
     background: #e1f3ff;
     color: #409EFF;
@@ -841,6 +938,25 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
     border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
+}
+
+.function-file-type {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+
+    &.python-type {
+        background: linear-gradient(135deg, #3776ab 0%, #4b8bbe 100%);
+        color: white;
+        box-shadow: 0 2px 4px rgba(55, 118, 171, 0.3);
+    }
+
+    &.matlab-type {
+        background: linear-gradient(135deg, #e97627 0%, #f39c12 100%);
+        color: white;
+        box-shadow: 0 2px 4px rgba(233, 118, 39, 0.3);
+    }
 }
 
 .function-description {
