@@ -19,8 +19,8 @@
         </span>
         
         <!-- 函数详情tooltip -->
-        <div 
-            v-if="showFunctionTooltip && currentFunctionInfo" 
+        <div
+            v-if="showFunctionTooltip && currentFunctionInfo"
             class="function-tooltip"
             :style="{
                 left: tooltipPosition.x + 'px',
@@ -30,21 +30,32 @@
             @mouseleave="showFunctionTooltip = false"
         >
             <div class="tooltip-content">
+                <!-- 只显示带前缀函数的详细信息 -->
                 <div class="function-header">
-                    <h4 class="function-name-title">{{ currentFunctionInfo.name }}</h4>
+                    <h4 class="function-name-title">
+                        {{ currentFunctionInfo.name }}
+                    </h4>
+                </div>
+
+                <!-- 标识标签行 -->
+                <div class="function-tags">
+                    <span v-if="currentFunctionInfo.typeLabel"
+                          :class="['function-type-prefix', `type-${currentFunctionInfo.typeLabel.toLowerCase()}`]">
+                        [{{ currentFunctionInfo.typeLabel }}]
+                    </span>
                     <span class="function-type">{{ currentFunctionInfo.type }}</span>
                 </div>
-                
+
                 <div class="function-description">
                     <strong>说明：</strong>{{ currentFunctionInfo.description }}
                 </div>
-                
+
                 <div class="function-params" v-if="currentFunctionInfo.input && currentFunctionInfo.input.length > 0">
                     <strong>输入参数：</strong>
                     <div class="param-list">
-                        <div 
-                            v-for="(param, index) in currentFunctionInfo.input" 
-                            :key="index" 
+                        <div
+                            v-for="(param, index) in currentFunctionInfo.input"
+                            :key="index"
                             class="param-item"
                         >
                             <span class="param-name">{{ param.paraName }}</span>
@@ -56,13 +67,13 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="function-output" v-if="currentFunctionInfo.output && currentFunctionInfo.output.length > 0">
                     <strong>输出结果：</strong>
                     <div class="output-list">
-                        <div 
-                            v-for="(output, index) in currentFunctionInfo.output" 
-                            :key="index" 
+                        <div
+                            v-for="(output, index) in currentFunctionInfo.output"
+                            :key="index"
                             class="output-item"
                         >
                             <span class="output-name">{{ output.outputName }}</span>
@@ -119,10 +130,11 @@ const clickedChannelNames = computed(() => store.state.clickedChannelNames);
 const CalculateResult = computed(() => store.state.CalculateResult);
 
 onMounted(async () => {
-    highlightChannels();
     // 获取导入的函数列表
     await loadImportedFunctions();
-    
+    // 在函数列表加载后进行高亮
+    highlightChannels();
+
     // 监听函数上传事件
     window.addEventListener('functionUploaded', handleFunctionUploaded);
     window.addEventListener('functionDeleted', handleFunctionDeleted);
@@ -139,6 +151,16 @@ onUnmounted(() => {
     window.removeEventListener('functionDeleted', handleFunctionDeleted);
 });
 
+// 辅助函数：根据文件路径获取函数类型标识（在 highlightChannels 中使用）
+const getFunctionTypeLabel = (filePath) => {
+    if (filePath && filePath.endsWith('.py')) {
+        return 'Python';
+    } else if (filePath && filePath.endsWith('.m')) {
+        return 'Matlab';
+    }
+    return '';
+};
+
 const highlightChannels = () => {
     const editableDiv = document.querySelector('.editable-div');
     if (!editableDiv) return;
@@ -152,19 +174,55 @@ const highlightChannels = () => {
         return acc;
     }, {});
 
-    // 获取导入函数的名称列表
-    const functionNames = importedFunctions.value.map(func => func.name);
+    // 只获取带前缀的函数显示名称列表（不包括括号）
+    const functionDisplayNames = [];
 
-    const tokens = tokenizeContent(content, channelIdentifiers, functionNames);
+    importedFunctions.value.forEach(func => {
+        const typeLabel = getFunctionTypeLabel(func.file_path);
+        if (typeLabel) {
+            // 只添加不带括号的版本，避免括号被高亮
+            functionDisplayNames.push(`[${typeLabel}]${func.name}`);
+        }
+    });
+
+    const tokens = tokenizeContent(content, channelIdentifiers, functionDisplayNames, importedFunctions.value);
 
     const highlightedContent = tokens
         .map((token) => {
+            // 处理特殊的函数对象 token
+            if (typeof token === 'object' && token.type === 'functionWithBrackets') {
+                const match = token.highlightText.match(/^\[(\w+)\]\s+(.+)$/);
+                if (match) {
+                    const [, typeLabel, funcName] = match;
+                    const matchingFunction = importedFunctions.value.find(func =>
+                        func.name === funcName && getFunctionTypeLabel(func.file_path) === typeLabel
+                    );
+                    if (matchingFunction) {
+                        const functionData = JSON.stringify([matchingFunction]).replace(/"/g, '&quot;');
+                        return `<span class="function-name" data-function-name="${funcName}" data-function-type="${typeLabel}" data-function-list="${functionData}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token.highlightText}</span>`;
+                    }
+                }
+                return token.highlightText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            }
+
+            // 处理字符串 token
             if (channelIdentifiers.includes(token)) {
                 const color = colors[token] || '#409EFF';
                 return `<span class="tag" style="background-color: ${color};">${token}</span>`;
-            } else if (functionNames.includes(token)) {
-                // 为函数名添加特殊样式和事件处理
-                return `<span class="function-name" data-function-name="${token}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token}</span>`;
+            } else if (functionDisplayNames.includes(token)) {
+                // 只处理带前缀的函数名匹配（不包括括号）
+                const match = token.match(/^\[(\w+)\](.+)$/);
+                if (match) {
+                    const [, typeLabel, funcName] = match;
+                    const matchingFunction = importedFunctions.value.find(func =>
+                        func.name === funcName && getFunctionTypeLabel(func.file_path) === typeLabel
+                    );
+                    if (matchingFunction) {
+                        const functionData = JSON.stringify([matchingFunction]).replace(/"/g, '&quot;');
+                        return `<span class="function-name" data-function-name="${funcName}" data-function-type="${typeLabel}" data-function-list="${functionData}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token}</span>`;
+                    }
+                }
+                return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             } else {
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             }
@@ -185,7 +243,6 @@ const restoreCursorPosition = (element, cursorPosition) => {
     const selection = window.getSelection();
     const range = document.createRange();
     let charCount = 0;
-    let node;
 
     const traverseNodes = (currentNode) => {
         if (currentNode.nodeType === Node.TEXT_NODE) {
@@ -468,23 +525,23 @@ const sendClickedChannelNames = async () => {
     }
 };
 
-const tokenizeContent = (content, channelIdentifiers, functionNames = []) => {
+const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = []) => {
     if (!content) return [];
-    
+
     // 对channelIdentifiers按长度降序排序，确保先匹配较长的标识符
     const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
-    // 对functionNames也按长度降序排序
-    const sortedFunctionNames = [...functionNames].sort((a, b) => b.length - a.length);
-    
+    // 对带前缀的函数名按长度降序排序，优先匹配
+    const sortedFunctionDisplayNames = [...functionDisplayNames].sort((a, b) => b.length - a.length);
+
     // 运算符列表
     const operators = ['+', '-', '*', '/', '(', ')'];
-    
+
     const tokens = [];
     let i = 0;
-    
+
     while (i < content.length) {
         let matched = false;
-        
+
         // 先检查是否是通道标识符
         for (const identifier of sortedIdentifiers) {
             if (content.substring(i, i + identifier.length) === identifier) {
@@ -494,29 +551,56 @@ const tokenizeContent = (content, channelIdentifiers, functionNames = []) => {
                 break;
             }
         }
-        
-        // 如果不是通道标识符，检查是否是函数名
+
+        // 如果不是通道标识符，检查是否是带前缀的函数名（支持多种格式）
         if (!matched) {
-            for (const funcName of sortedFunctionNames) {
-                if (content.substring(i, i + funcName.length) === funcName) {
-                    // 确保这是完整的函数名（前面和后面都应该是分隔符）
+            for (const funcDisplayName of sortedFunctionDisplayNames) {
+                // 检查完全匹配（不带括号的版本）
+                if (content.substring(i, i + funcDisplayName.length) === funcDisplayName) {
                     const prevChar = i > 0 ? content[i - 1] : null;
-                    const nextChar = content[i + funcName.length];
-                    
-                    // 前面应该是开始、空格或运算符，后面应该是结束、空格、运算符或括号
-                    const validBefore = !prevChar || /\s|[+\-*/()]/.test(prevChar);
-                    const validAfter = !nextChar || /\s|[+\-*/()]/.test(nextChar);
-                    
-                    if (validBefore && validAfter) {
-                        tokens.push(funcName);
-                        i += funcName.length;
+                    const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                    if (validBefore) {
+                        tokens.push(funcDisplayName);
+                        i += funcDisplayName.length;
                         matched = true;
                         break;
                     }
                 }
+
+                // 检查带空格和括号的版本（如 "[Matlab] LargerThanThreshold()"）
+                if (!matched) {
+                    // 从 funcDisplayName 中提取类型和函数名
+                    const match = funcDisplayName.match(/^\[(\w+)\](.+)$/);
+                    if (match) {
+                        const [, typeLabel, funcName] = match;
+                        // 构建带空格和括号的版本
+                        const funcWithSpaceAndBrackets = `[${typeLabel}] ${funcName}()`;
+
+                        if (content.substring(i, i + funcWithSpaceAndBrackets.length) === funcWithSpaceAndBrackets) {
+                            const prevChar = i > 0 ? content[i - 1] : null;
+                            const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                            if (validBefore) {
+                                // 只高亮函数名部分，不包括括号
+                                const funcNamePart = `[${typeLabel}] ${funcName}`;
+                                tokens.push({
+                                    type: 'functionWithBrackets',
+                                    highlightText: funcNamePart,
+                                    standardFormat: funcDisplayName
+                                });
+                                // 添加括号作为普通文本
+                                tokens.push('()');
+                                i += funcWithSpaceAndBrackets.length;
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
         }
-        
+
         // 如果都不是，检查是否是运算符
         if (!matched) {
             const char = content[i];
@@ -533,7 +617,7 @@ const tokenizeContent = (content, channelIdentifiers, functionNames = []) => {
             }
         }
     }
-    
+
     return tokens;
 };
 
@@ -692,22 +776,41 @@ const addFunctionEventListeners = () => {
 
 // 鼠标进入函数名时的处理
 const handleFunctionMouseEnter = (event) => {
-    const functionName = event.target.getAttribute('data-function-name');
-    const functionInfo = importedFunctions.value.find(func => func.name === functionName);
-    
-    if (functionInfo) {
-        currentFunctionInfo.value = functionInfo;
-        
-        // 计算tooltip位置，显示在函数名下方
-        const rect = event.target.getBoundingClientRect();
-        tooltipPosition.value = {
-            x: rect.left + rect.width / 2,
-            y: rect.bottom + 10  // 改为显示在下方
-        };
-        
-        showFunctionTooltip.value = true;
+    const functionType = event.target.getAttribute('data-function-type');
+    const functionListData = event.target.getAttribute('data-function-list');
+
+    if (functionListData) {
+        try {
+            const matchingFunctions = JSON.parse(functionListData.replace(/&quot;/g, '"'));
+
+            // 现在只处理带前缀的函数，直接显示对应的函数信息
+            if (functionType && matchingFunctions.length > 0) {
+                const functionInfo = matchingFunctions[0]; // 带前缀的函数只会有一个匹配项
+                const typeLabel = getFunctionTypeLabel(functionInfo.file_path);
+                currentFunctionInfo.value = {
+                    ...functionInfo,
+                    typeLabel: typeLabel,
+                    isMultiple: false
+                };
+
+                // 计算tooltip位置，显示在函数名下方
+                const rect = event.target.getBoundingClientRect();
+                tooltipPosition.value = {
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10  // 改为显示在下方
+                };
+
+                showFunctionTooltip.value = true;
+            }
+        } catch (error) {
+            console.error('解析函数数据失败:', error);
+        }
     }
 };
+
+
+
+
 
 // 鼠标离开函数名时的处理
 const handleFunctionMouseLeave = () => {
@@ -819,10 +922,7 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
 }
 
 .function-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid #e1f3ff;
 }
@@ -834,6 +934,40 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
     color: #1a73e8;
 }
 
+.function-tags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.function-type-prefix {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+
+    /* 默认样式（Python） */
+    background: #f0f9ff;
+    color: #0369a1;
+    border-color: #bae6fd;
+
+    /* Python 样式 */
+    &.type-python {
+        background: #f0f9ff;
+        color: #0369a1;
+        border-color: #bae6fd;
+    }
+
+    /* Matlab 样式 */
+    &.type-matlab {
+        background: #fef3c7;
+        color: #d97706;
+        border-color: #fde68a;
+    }
+}
+
 .function-type {
     background: #e1f3ff;
     color: #409EFF;
@@ -841,6 +975,69 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
     border-radius: 4px;
     font-size: 11px;
     font-weight: 500;
+}
+
+/* 多个函数选择界面样式 */
+.multiple-functions {
+    .multiple-indicator {
+        background: #fff3cd;
+        color: #856404;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+        border: 1px solid #ffeaa7;
+    }
+}
+
+.function-selector {
+    margin-top: 12px;
+
+    .selector-hint {
+        font-size: 12px;
+        color: #606266;
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+}
+
+.function-options {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.function-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid #e4e7ed;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: #fafbfc;
+
+    &:hover {
+        border-color: #409EFF;
+        background: #f0f9ff;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(64, 158, 255, 0.15);
+    }
+
+    .function-name {
+        font-weight: 600;
+        color: #303133;
+        flex: 1;
+    }
+
+    .function-type-small {
+        font-size: 10px;
+        color: #909399;
+        background: #f5f7fa;
+        padding: 1px 6px;
+        border-radius: 3px;
+    }
 }
 
 .function-description {

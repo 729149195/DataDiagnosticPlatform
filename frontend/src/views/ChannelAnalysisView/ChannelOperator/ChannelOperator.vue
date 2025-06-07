@@ -684,7 +684,7 @@ const getFunctionTypeLabel = (filePath) => {
 // 辅助函数：生成带类型标识的函数显示名
 const getFunctionDisplayName = (func) => {
   const typeLabel = getFunctionTypeLabel(func.file_path);
-  return typeLabel ? `${func.name}() [${typeLabel}]` : `${func.name}()`;
+  return typeLabel ? `[${typeLabel}] ${func.name}()` : `${func.name}()`;
 };
 
 // 初始化时加载已导入的函数
@@ -714,18 +714,23 @@ onMounted(async () => {
 
 // 删除自定义算法
 const confirmDeleteFunc = (operator) => {
-  // 提取函数名，去掉 () 和类型标识 [Py] 或 [M]
-  const funcName = operator.replace(/\(\)\s*\[.*?\]$/, '').replace(/\(\)$/, '');
-
-  // 提取文件类型信息
+  // 提取函数名，去掉类型标识和括号
+  // 新格式: [Python] funcName() 或 [Matlab] funcName()
+  let funcName = operator;
   let fileType = '';
-  const pythonMatch = operator.match(/\[Python\]/);
-  const matlabMatch = operator.match(/\[Matlab\]/);
+
+  const pythonMatch = operator.match(/^\[Python\]\s+(.+?)\(\)$/);
+  const matlabMatch = operator.match(/^\[Matlab\]\s+(.+?)\(\)$/);
 
   if (pythonMatch) {
+    funcName = pythonMatch[1];
     fileType = '.py';
   } else if (matlabMatch) {
+    funcName = matlabMatch[1];
     fileType = '.m';
+  } else {
+    // 兼容旧格式或无类型标识的情况
+    funcName = operator.replace(/\(\)\s*\[.*?\]$/, '').replace(/\(\)$/, '');
   }
 
   const typeDisplayName = fileType === '.py' ? 'Python' : fileType === '.m' ? 'MATLAB' : '';
