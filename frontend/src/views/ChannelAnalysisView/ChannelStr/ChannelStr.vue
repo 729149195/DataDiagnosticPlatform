@@ -174,18 +174,21 @@ const highlightChannels = () => {
         return acc;
     }, {});
 
-    // 只获取带前缀的函数显示名称列表（不包括括号）
+    // 获取带前缀的函数显示名称列表（不包括括号，用于高亮识别）
     const functionDisplayNames = [];
 
     importedFunctions.value.forEach(func => {
         const typeLabel = getFunctionTypeLabel(func.file_path);
         if (typeLabel) {
-            // 只添加不带括号的版本，避免括号被高亮
+            // 添加紧凑格式（用于高亮识别）：[Python]functionName
             functionDisplayNames.push(`[${typeLabel}]${func.name}`);
         }
     });
 
     const tokens = tokenizeContent(content, channelIdentifiers, functionDisplayNames, importedFunctions.value);
+
+    // 简单函数列表（如FFT, Pca等）
+    const simpleFunctions = ['FFT', 'Pca']; // 可以根据需要扩展
 
     const highlightedContent = tokens
         .map((token) => {
@@ -207,6 +210,9 @@ const highlightChannels = () => {
                     }
                 }
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            } else if (simpleFunctions.includes(token)) {
+                // 处理简单函数名（如FFT, Pca）
+                return `<span style="color: #409EFF; font-weight: bold;">${token}</span>`;
             } else {
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             }
@@ -221,53 +227,7 @@ const highlightChannels = () => {
 
 
 
-const restoreCursorPosition = (element, cursorPosition) => {
-    const selection = window.getSelection();
-    const range = document.createRange();
-    let charCount = 0;
-    let found = false;
 
-    const traverseNodes = (currentNode) => {
-        if (found) return true;
-
-        if (currentNode.nodeType === Node.TEXT_NODE) {
-            const nextCharCount = charCount + currentNode.length;
-            if (nextCharCount >= cursorPosition) {
-                const offset = Math.min(cursorPosition - charCount, currentNode.length);
-                range.setStart(currentNode, offset);
-                range.setEnd(currentNode, offset);
-                found = true;
-                return true;
-            }
-            charCount = nextCharCount;
-        } else if (currentNode.nodeType === Node.ELEMENT_NODE) {
-            // 对于元素节点，遍历其子节点
-            for (let i = 0; i < currentNode.childNodes.length; i++) {
-                if (traverseNodes(currentNode.childNodes[i])) return true;
-            }
-        }
-        return false;
-    };
-
-    if (!traverseNodes(element) && element.childNodes.length > 0) {
-        // 如果没有找到合适的位置，将光标放在最后一个文本节点的末尾
-        const lastNode = element.lastChild;
-        if (lastNode && lastNode.nodeType === Node.TEXT_NODE) {
-            range.setStart(lastNode, lastNode.length);
-            range.setEnd(lastNode, lastNode.length);
-        } else {
-            range.setStart(element, element.childNodes.length);
-            range.setEnd(element, element.childNodes.length);
-        }
-    }
-
-    try {
-        selection.removeAllRanges();
-        selection.addRange(range);
-    } catch (error) {
-        console.warn('Failed to restore cursor position:', error);
-    }
-};
 
 // 轮询后端进度的函数
 const pollCalculationProgress = (taskId) => {
@@ -557,11 +517,69 @@ const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = [])
             }
         }
 
-        // 如果不是通道标识符，检查是否是带前缀的函数名（支持多种格式）
+        // 如果不是通道标识符，检查是否是带前缀的函数名
         if (!matched) {
             for (const funcDisplayName of sortedFunctionDisplayNames) {
-                // 检查完全匹配（不带括号的版本）
-                if (content.substring(i, i + funcDisplayName.length) === funcDisplayName) {
+                // funcDisplayName 格式: [Python]functionName 或 [Matlab]functionName
+                const match = funcDisplayName.match(/^\[(\w+)\](.+)$/);
+                if (!match) continue;
+
+                const [, typeLabel, funcName] = match;
+
+                // 1. 检查带空格和括号的完整版本（如 "[Python] functionName()"）
+                const funcWithSpaceAndBrackets = `[${typeLabel}] ${funcName}()`;
+                if (content.substring(i, i + funcWithSpaceAndBrackets.length) === funcWithSpaceAndBrackets) {
+                    const prevChar = i > 0 ? content[i - 1] : null;
+                    const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                    if (validBefore) {
+                        // 重要：只添加函数名部分用于高亮，括号单独处理
+                        // 这样可以确保高亮不受括号影响
+                        tokens.push(funcDisplayName); // [Python]functionName - 用于高亮
+
+                        // 跳过空格，直接处理括号
+                        const spaceAndFuncLength = `[${typeLabel}] ${funcName}`.length;
+                        i += spaceAndFuncLength; // 移动到左括号位置
+
+                        // 单独处理左括号
+                        if (content[i] === '(') {
+                            tokens.push('(');
+                            i++;
+                        }
+
+                        // 单独处理右括号
+                        if (content[i] === ')') {
+                            tokens.push(')');
+                            i++;
+                        }
+
+                        matched = true;
+                        break;
+                    }
+                }
+
+                // 1.5. 检查带空格但没有括号的版本（如 "[Python] functionName"）
+                const funcWithSpace = `[${typeLabel}] ${funcName}`;
+                if (!matched && content.substring(i, i + funcWithSpace.length) === funcWithSpace) {
+                    const prevChar = i > 0 ? content[i - 1] : null;
+                    const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                    if (validBefore) {
+                        // 检查后面是否紧跟着非字母数字字符（如运算符、空格等）
+                        const nextChar = i + funcWithSpace.length < content.length ? content[i + funcWithSpace.length] : null;
+                        const validAfter = !nextChar || !/[a-zA-Z0-9]/.test(nextChar);
+
+                        if (validAfter) {
+                            tokens.push(funcDisplayName); // [Python]functionName - 用于高亮
+                            i += funcWithSpace.length;
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 2. 检查紧凑格式（如 "[Python]functionName"，用户手动输入或编辑后的格式）
+                if (!matched && content.substring(i, i + funcDisplayName.length) === funcDisplayName) {
                     const prevChar = i > 0 ? content[i - 1] : null;
                     const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
 
@@ -572,36 +590,30 @@ const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = [])
                         break;
                     }
                 }
+            }
+        }
 
-                // 检查带空格和括号的版本（如 "[Matlab] LargerThanThreshold()"）
-                if (!matched) {
-                    // 从 funcDisplayName 中提取类型和函数名
-                    const match = funcDisplayName.match(/^\[(\w+)\](.+)$/);
-                    if (match) {
-                        const [, typeLabel, funcName] = match;
-                        // 构建带空格和括号的版本
-                        const funcWithSpaceAndBrackets = `[${typeLabel}] ${funcName}()`;
+        // 如果都不是，检查是否是简单函数（如FFT()）
+        if (!matched) {
+            // 检查简单函数模式：字母开头，后跟字母数字，然后是()
+            const simpleFunctionMatch = content.substring(i).match(/^([A-Za-z][A-Za-z0-9_]*)\(\)/);
+            if (simpleFunctionMatch) {
+                const funcName = simpleFunctionMatch[1];
+                const fullMatch = simpleFunctionMatch[0];
 
-                        if (content.substring(i, i + funcWithSpaceAndBrackets.length) === funcWithSpaceAndBrackets) {
-                            const prevChar = i > 0 ? content[i - 1] : null;
-                            const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+                const prevChar = i > 0 ? content[i - 1] : null;
+                const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
 
-                            if (validBefore) {
-                                // 添加高亮的函数名部分
-                                tokens.push(funcDisplayName); // 使用标准格式进行高亮
+                if (validBefore) {
+                    // 添加函数名（不包括括号）
+                    tokens.push(funcName);
+                    // 单独添加左括号
+                    tokens.push('(');
+                    // 单独添加右括号
+                    tokens.push(')');
 
-                                // 单独添加左括号
-                                tokens.push('(');
-
-                                // 单独添加右括号
-                                tokens.push(')');
-
-                                i += funcWithSpaceAndBrackets.length;
-                                matched = true;
-                                break;
-                            }
-                        }
-                    }
+                    i += fullMatch.length;
+                    matched = true;
                 }
             }
         }
@@ -653,6 +665,48 @@ const getCaretCharacterOffsetWithin = (element) => {
     return caretOffset;
 };
 
+// 简化的光标恢复函数
+const restoreCursorPosition = (element, cursorPosition) => {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    let charCount = 0;
+    let found = false;
+
+    const walkTextNodes = (node) => {
+        if (found) return true;
+
+        if (node.nodeType === Node.TEXT_NODE) {
+            const nextCharCount = charCount + node.length;
+            if (nextCharCount >= cursorPosition) {
+                const offset = Math.min(cursorPosition - charCount, node.length);
+                range.setStart(node, offset);
+                range.setEnd(node, offset);
+                found = true;
+                return true;
+            }
+            charCount = nextCharCount;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            for (let i = 0; i < node.childNodes.length; i++) {
+                if (walkTextNodes(node.childNodes[i])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    walkTextNodes(element);
+
+    if (found) {
+        try {
+            selection.removeAllRanges();
+            selection.addRange(range);
+        } catch (error) {
+            console.warn('Failed to restore cursor position:', error);
+        }
+    }
+};
+
 watch(
     selectedChannels,
     () => {
@@ -675,38 +729,25 @@ watch(
     clickedChannelNames,
     async (newstr) => {
         if (!newstr) return;
-        
+
         // console.log("接收到点击的通道标识符:", newstr);
-        
+
         const editableDiv = document.querySelector('.editable-div');
         if (!editableDiv) return;
 
-        // 使用全局光标位置记录
+        // 使用全局光标位置记录进行文本插入
         const beforeCursor = formulasarea.value.slice(0, currentCursorPosition);
         const afterCursor = formulasarea.value.slice(currentCursorPosition);
 
         formulasarea.value = beforeCursor + newstr + afterCursor;
 
-        // 扩展正则表达式以匹配 "函数名 + 括号" 或单独的括号对
-        const functionOrBracketPattern = /^[A-Za-z]*\(\)|^[A-Za-z]*\[\]|^[A-Za-z]*\{\}$/;
-        const isFunctionOrBracket = functionOrBracketPattern.test(newstr);
-
-        if (isFunctionOrBracket) {
-            // 若为括号形，将光标放在括号中间
-            currentCursorPosition += newstr.length - 1; // 移动光标到括号内部
-        } else {
-            // 否则，将光标放在新插入内容的后面
-            currentCursorPosition += newstr.length;
-        }
+        // 将光标放在新插入内容的后面
+        currentCursorPosition += newstr.length;
 
         await nextTick();
 
+        // 进行高亮处理
         highlightChannels();
-
-        // 使用 nextTick 确保 DOM 更新后再恢复光标
-        nextTick(() => {
-            restoreCursorPosition(editableDiv, currentCursorPosition);
-        });
     },
     { immediate: true }
 );
@@ -748,9 +789,13 @@ const onInput = (event) => {
     // 使用 nextTick 确保 DOM 更新后再进行高亮和光标恢复
     nextTick(() => {
         highlightChannels();
+
+        // 恢复光标位置
         nextTick(() => {
             const editableDiv = document.querySelector('.editable-div');
-            restoreCursorPosition(editableDiv, currentCursorPosition);
+            if (editableDiv) {
+                restoreCursorPosition(editableDiv, currentCursorPosition);
+            }
         });
     });
 };
@@ -864,6 +909,8 @@ const handleFunctionDeleted = async () => {
     console.log('检测到函数删除事件，重新加载函数列表');
     await loadImportedFunctions();
 };
+
+
 
 // 在 script setup 部分添加一个新的辅助函数
 const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => {
