@@ -1,6 +1,6 @@
 <template>
     <div>
-        <div class="editable-div" contenteditable="true" spellcheck="false" @input="onInput" @click="updateCursorPosition" @keyup="updateCursorPosition"></div>
+        <div class="editable-div" contenteditable="true" spellcheck="false" @input="onInput" @click="updateCursorPosition" @keyup="updateCursorPosition" @keydown="updateCursorPosition" @focus="updateCursorPosition"></div>
         <span style="position: absolute; bottom: 8px; right: 8px;">
             <!--            <span style="margin-right: 30px">{{output}}</span>-->
 
@@ -189,22 +189,6 @@ const highlightChannels = () => {
 
     const highlightedContent = tokens
         .map((token) => {
-            // 处理特殊的函数对象 token
-            if (typeof token === 'object' && token.type === 'functionWithBrackets') {
-                const match = token.highlightText.match(/^\[(\w+)\]\s+(.+)$/);
-                if (match) {
-                    const [, typeLabel, funcName] = match;
-                    const matchingFunction = importedFunctions.value.find(func =>
-                        func.name === funcName && getFunctionTypeLabel(func.file_path) === typeLabel
-                    );
-                    if (matchingFunction) {
-                        const functionData = JSON.stringify([matchingFunction]).replace(/"/g, '&quot;');
-                        return `<span class="function-name" data-function-name="${funcName}" data-function-type="${typeLabel}" data-function-list="${functionData}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token.highlightText}</span>`;
-                    }
-                }
-                return token.highlightText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            }
-
             // 处理字符串 token
             if (channelIdentifiers.includes(token)) {
                 const color = colors[token] || '#409EFF';
@@ -233,8 +217,6 @@ const highlightChannels = () => {
 
     // 为函数名添加鼠标事件监听器
     addFunctionEventListeners();
-
-    restoreCursorPosition(editableDiv, currentCursorPosition);
 };
 
 
@@ -243,25 +225,48 @@ const restoreCursorPosition = (element, cursorPosition) => {
     const selection = window.getSelection();
     const range = document.createRange();
     let charCount = 0;
+    let found = false;
 
     const traverseNodes = (currentNode) => {
+        if (found) return true;
+
         if (currentNode.nodeType === Node.TEXT_NODE) {
             const nextCharCount = charCount + currentNode.length;
             if (nextCharCount >= cursorPosition) {
-                range.setStart(currentNode, cursorPosition - charCount);
+                const offset = Math.min(cursorPosition - charCount, currentNode.length);
+                range.setStart(currentNode, offset);
+                range.setEnd(currentNode, offset);
+                found = true;
                 return true;
             }
             charCount = nextCharCount;
-        }
-        for (let i = 0; i < currentNode.childNodes.length; i++) {
-            if (traverseNodes(currentNode.childNodes[i])) return true;
+        } else if (currentNode.nodeType === Node.ELEMENT_NODE) {
+            // 对于元素节点，遍历其子节点
+            for (let i = 0; i < currentNode.childNodes.length; i++) {
+                if (traverseNodes(currentNode.childNodes[i])) return true;
+            }
         }
         return false;
     };
 
-    traverseNodes(element);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    if (!traverseNodes(element) && element.childNodes.length > 0) {
+        // 如果没有找到合适的位置，将光标放在最后一个文本节点的末尾
+        const lastNode = element.lastChild;
+        if (lastNode && lastNode.nodeType === Node.TEXT_NODE) {
+            range.setStart(lastNode, lastNode.length);
+            range.setEnd(lastNode, lastNode.length);
+        } else {
+            range.setStart(element, element.childNodes.length);
+            range.setEnd(element, element.childNodes.length);
+        }
+    }
+
+    try {
+        selection.removeAllRanges();
+        selection.addRange(range);
+    } catch (error) {
+        console.warn('Failed to restore cursor position:', error);
+    }
 };
 
 // 轮询后端进度的函数
@@ -582,15 +587,15 @@ const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = [])
                             const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
 
                             if (validBefore) {
-                                // 只高亮函数名部分，不包括括号
-                                const funcNamePart = `[${typeLabel}] ${funcName}`;
-                                tokens.push({
-                                    type: 'functionWithBrackets',
-                                    highlightText: funcNamePart,
-                                    standardFormat: funcDisplayName
-                                });
-                                // 添加括号作为普通文本
-                                tokens.push('()');
+                                // 添加高亮的函数名部分
+                                tokens.push(funcDisplayName); // 使用标准格式进行高亮
+
+                                // 单独添加左括号
+                                tokens.push('(');
+
+                                // 单独添加右括号
+                                tokens.push(')');
+
                                 i += funcWithSpaceAndBrackets.length;
                                 matched = true;
                                 break;
@@ -626,10 +631,24 @@ const getCaretCharacterOffsetWithin = (element) => {
     const selection = window.getSelection();
     if (selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
-        const preCaretRange = range.cloneRange();
-        preCaretRange.selectNodeContents(element);
-        preCaretRange.setEnd(range.endContainer, range.endOffset);
-        caretOffset = preCaretRange.toString().length;
+
+        // 遍历所有节点来计算正确的字符偏移量
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+
+        let node;
+        while (node = walker.nextNode()) {
+            if (node === range.endContainer) {
+                caretOffset += range.endOffset;
+                break;
+            } else {
+                caretOffset += node.textContent.length;
+            }
+        }
     }
     return caretOffset;
 };
@@ -683,7 +702,11 @@ watch(
         await nextTick();
 
         highlightChannels();
-        restoreCursorPosition(editableDiv, currentCursorPosition);
+
+        // 使用 nextTick 确保 DOM 更新后再恢复光标
+        nextTick(() => {
+            restoreCursorPosition(editableDiv, currentCursorPosition);
+        });
     },
     { immediate: true }
 );
@@ -692,6 +715,8 @@ watch(
 
 // Handle input event
 const onInput = (event) => {
+    // 先获取当前光标位置，避免在getPlainText后丢失
+    const currentPosition = getCaretCharacterOffsetWithin(event.target);
     const newText = getPlainText(event.target);
     const channelIdentifiers = selectedChannels.value.map((channel) =>
         `${channel.channel_name}_${channel.shot_number}`
@@ -710,17 +735,24 @@ const onInput = (event) => {
             currentCursorPosition = channelInfo.start;
         } else {
             formulasarea.value = newText;
-            currentCursorPosition = getCaretCharacterOffsetWithin(event.target);
+            currentCursorPosition = currentPosition;
         }
     } else {
         formulasarea.value = newText;
-        currentCursorPosition = getCaretCharacterOffsetWithin(event.target);
+        currentCursorPosition = currentPosition;
     }
 
-    highlightChannels();
+    // 立即更新全局光标位置
+    currentCursorPosition = currentPosition;
 
-    const editableDiv = document.querySelector('.editable-div');
-    restoreCursorPosition(editableDiv, currentCursorPosition);
+    // 使用 nextTick 确保 DOM 更新后再进行高亮和光标恢复
+    nextTick(() => {
+        highlightChannels();
+        nextTick(() => {
+            const editableDiv = document.querySelector('.editable-div');
+            restoreCursorPosition(editableDiv, currentCursorPosition);
+        });
+    });
 };
 
 
@@ -730,10 +762,11 @@ const getPlainText = (element) => {
     element.childNodes.forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE) {
             text += node.textContent;
-        } else if (node.nodeType === Node.ELEMENT_NODE && node.classList.contains('tag')) {
+        } else if (node.nodeType === Node.ELEMENT_NODE &&
+                   (node.classList.contains('tag') || node.classList.contains('function-name'))) {
             text += node.textContent;
-        } else {
-            text += node.innerText;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            text += node.innerText || node.textContent || '';
         }
     });
     return text;
