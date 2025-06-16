@@ -29,6 +29,7 @@
                 </el-tag>
               </div>
               <el-button 
+                v-if="data.category === '诊断分析'"
                 size="small" 
                 type="success" 
                 class="add-to-detection-btn"
