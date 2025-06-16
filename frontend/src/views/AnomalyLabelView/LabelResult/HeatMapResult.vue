@@ -365,8 +365,9 @@ const decodeChineseText = (text) => {
         }
       } catch (e) {
         try {
-          // 尝试使用 Buffer 解码（如果是 Node.js 环境）
-          return Buffer.from(text, 'binary').toString('utf8');
+          // 在浏览器环境中不使用Buffer，直接返回原文本
+          console.warn('Advanced text decoding not available in browser:', text);
+          return text;
         } catch (e2) {
           console.warn('Failed to decode text:', text, e2);
         }
@@ -799,15 +800,13 @@ const syncUpload = async () => {
       }
     });
 
-    // 这里补充 db_suffix 字段，并用 channels 字段包裹
+    // 用 channels 字段包裹
     const reorganizedData = Object.values(groupedByChannel);
-    const dbSuffix = store.state.currentDbSuffix;
     const postData = {
-      db_suffix: dbSuffix,
       channels: reorganizedData
     };
 
-    const response = await fetch('https://10.1.108.231:5000/api/sync-error-data', {
+    const response = await fetch('http://192.168.20.49:5000/api/sync-error-data', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1720,6 +1719,13 @@ async function renderHeatmap(channels, isOnlyAnomalyChange = false) {
                           processedData['通道名称'] = error.channelKey;
                         }
 
+                        // 保留原始字段以供删除操作使用
+                        processedData.diagnostic_name = machineError.diagnostic_name;
+                        processedData.channel_number = machineError.channel_number || error.channelKey.split('_')[0];
+                        processedData.shot_number = machineError.shot_number || error.channelKey.split('_')[1];
+                        processedData.error_type = machineError.error_type;
+                        processedData.channelKey = error.channelKey;
+
                         if (Object.keys(processedData).length > 0) {
                           // 使用时间范围作为唯一标识符
                           const key = typeof processedData['时间范围'] === 'object'
@@ -2304,20 +2310,31 @@ const deleteErrorData = (errorData, type) => {
 
       try {
         const requestData = {
-          diagnostic_name: errorData.diagnostic_name || errorData.诊断名称,
-          channel_number: errorData.channel_number || errorData.通道编号,
-          shot_number: errorData.shot_number || errorData.炮号,
-          error_type: errorData.error_type || errorData.错误类型,
-          db_suffix: store.state.currentDbSuffix // 这里补充 db_suffix
+          diagnostic_name: errorData.diagnostic_name || errorData.诊断名称 || errorData['诊断名称'],
+          channel_number: errorData.channel_number || errorData.通道编号 || errorData['通道名称'] || errorData.channel_name || errorData.channelName,
+          shot_number: errorData.shot_number || errorData.炮号 || errorData['炮号'] || errorData.shotNumber,
+          error_type: errorData.error_type || errorData.错误类型 || errorData['异常类别'] || errorData.anomalyCategory || errorData.errorType,
         };
+
+        // 如果还缺少炮号，尝试从通道名中解析
+        if (!requestData.shot_number) {
+          // 尝试从 channelKey 或其他地方获取炮号
+          if (errorData.channelKey) {
+            const parts = errorData.channelKey.split('_');
+            if (parts.length > 1) {
+              requestData.shot_number = parts[parts.length - 1];
+            }
+          }
+        }
 
         if (!requestData.diagnostic_name || !requestData.channel_number ||
           !requestData.shot_number || !requestData.error_type) {
           console.error('删除失败: 缺少必要的字段', errorData);
+          console.error('请求数据:', requestData);
           throw new Error('删除失败: 缺少必要的字段');
         }
 
-        const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
+        const response = await fetch('http://192.168.20.49:5000/api/delete-error-data', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2491,6 +2508,13 @@ const updateAnomalyDialogContent = () => {
                   processedData['通道名称'] = channelName;
                 }
 
+                // 保留原始字段以供删除操作使用
+                processedData.diagnostic_name = machineErrorCopy.diagnostic_name;
+                processedData.channel_number = machineErrorCopy.channel_number || channelName.split('_')[0];
+                processedData.shot_number = machineErrorCopy.shot_number || channelName.split('_')[1];
+                processedData.error_type = machineErrorCopy.error_type;
+                processedData.channelKey = channelName;
+
                 // 确保诊断时间正确显示
                 if (machineErrorCopy.diagnostic_time) {
                   // 格式化时间为可读格式
@@ -2650,7 +2674,7 @@ const deleteAllNonEditableAnomalies = async (channelKey) => {
                 }
 
                 try {
-                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
+                  const response = await fetch('http://192.168.20.49:5000/api/delete-error-data', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -2925,7 +2949,7 @@ const batchDeleteUploaded = async () => {
 
                 try {
                   // console.log(`删除异常类别: ${errorType}`, requestData);
-                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
+                  const response = await fetch('http://192.168.20.49:5000/api/delete-error-data', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -2978,7 +3002,7 @@ const batchDeleteUploaded = async () => {
 
                 try {
                   // console.log(`删除异常类别: ${errorType}`, requestData);
-                  const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
+                  const response = await fetch('http://192.168.20.49:5000/api/delete-error-data', {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -3354,7 +3378,7 @@ const deleteBatchUploaded = async (channelKey) => {
 
               try {
                 // console.log(`删除异常类别: ${errorType}`, requestData);
-                const response = await fetch('https://10.1.108.231:5000/api/delete-error-data', {
+                const response = await fetch('http://192.168.20.49:5000/api/delete-error-data', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',

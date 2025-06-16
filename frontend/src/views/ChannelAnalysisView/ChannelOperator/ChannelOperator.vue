@@ -542,7 +542,7 @@ const handleSubmit = async () => {
   }));
 
   try {
-    const response = await axios.post('https://10.1.108.231:5000/api/upload', formData, {
+    const response = await axios.post('http://192.168.20.49:5000/api/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -550,7 +550,7 @@ const handleSubmit = async () => {
     ElMessage.success('文件上传成功');
 
     // 更新 detect anomaly functions
-    const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
+    const response2 = await axios.get(`http://192.168.20.49:5000/api/view-functions`);
 
     // 保留内置函数，追加导入的函数
     let importedDaFunctions = [];
@@ -690,7 +690,7 @@ const getFunctionDisplayName = (func) => {
 // 初始化时加载已导入的函数
 onMounted(async () => {
   // 更新 detect anomaly functions
-  const response = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
+  const response = await axios.get(`http://192.168.20.49:5000/api/view-functions`);
 
   // 保留内置函数，追加导入的函数
   let importedDaFunctions = [];
@@ -749,13 +749,13 @@ const confirmDeleteFunc = (operator) => {
   ).then(async () => {
     try {
       // 传递函数名和文件类型给后端
-      await axios.post('https://10.1.108.231:5000/api/delete-function', {
+      await axios.post('http://192.168.20.49:5000/api/delete-function', {
         function_name: funcName,
         file_type: fileType
       });
       ElMessage.success('删除成功');
       // 刷新导入函数列表
-      const response2 = await axios.get(`https://10.1.108.231:5000/api/view-functions`);
+      const response2 = await axios.get(`http://192.168.20.49:5000/api/view-functions`);
 
       // 保留内置函数，追加导入的函数
       let importedDaFunctions = [];

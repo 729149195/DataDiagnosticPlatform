@@ -10,7 +10,7 @@
             <CircleCheck />
           </el-icon>
           <span class="shot-tag">完成检测炮号</span>
-          <span class="shot-value">{{ monitorData.mongo_latest_shot || '--' }}</span>
+          <span class="shot-value">{{ completedShotDisplay || '--' }}</span>
         </div>
         <span class="separator">/</span>
 
@@ -24,8 +24,7 @@
 
           <!-- Element圆形进度条 - 同一行显示 -->
           <div v-if="showProgress" class="inline-progress">
-            <el-progress type="circle" :percentage="Math.round(processingProgress.progress_percent)" :width="20"
-              :stroke-width="3" :show-text="false" color="#4285f4" />
+            <el-progress type="circle" :percentage="Math.round(processingProgress.progress_percent)" :width="20" :stroke-width="3" :show-text="false" color="#4285f4" />
             <span class="progress-text-inline">{{ progressPercentText }}</span>
           </div>
         </div>
@@ -51,39 +50,47 @@
     </div>
 
     <!-- 算法编辑对话框 -->
-    <el-dialog v-model="algorithmDialogVisible" title="编辑自动异常检测方法" width="90%" :close-on-click-modal="false"
-      :close-on-press-escape="true" destroy-on-close append-to-body top="5vh">
+    <el-dialog v-model="algorithmDialogVisible" title="编辑自动异常检测方法" width="90%" :close-on-click-modal="false" :close-on-press-escape="true" destroy-on-close append-to-body top="5vh">
       <div class="algorithm-dialog-content">
         <!-- 三列布局 -->
         <div class="algorithm-sections">
-          <!-- 左侧：内置算法 -->
+          <!-- 左侧：异常检测方法列表 -->
           <div class="algorithm-section built-in-section">
             <div class="section-header">
-              <h3>内置算法</h3>
+              <h3>异常检测方法列表</h3>
+              <div class="legend-container">
+                <div class="legend-item">
+                  <div class="legend-color legend-used"></div>
+                  <span class="legend-text">已使用</span>
+                </div>
+                <div class="legend-item">
+                  <div class="legend-color legend-unused"></div>
+                  <span class="legend-text">未使用</span>
+                </div>
+              </div>
             </div>
             <div class="section-content">
-              <AlgorithmManager v-if="algorithmDialogVisible" :algorithm-data="algorithmData"
-                @refresh-data="loadAlgorithmData" />
+              <AlgorithmManager v-if="algorithmDialogVisible" :algorithm-data="algorithmData" @refresh-data="loadAlgorithmData" />
             </div>
           </div>
 
-          <!-- 中间：导入算法 -->
+          <!-- 中间：算法列表 -->
           <div class="algorithm-section import-section">
             <div class="section-header">
-              <h3>导入算法</h3>
+              <h3>算法列表 </h3>
             </div>
-            <div class="section-content placeholder-content">
-              <el-empty description="功能开发中，敬请期待" />
+            <div class="section-content">
+              <ImportedAlgorithmList v-if="algorithmDialogVisible" />
             </div>
           </div>
 
-          <!-- 右侧：手绘模式 -->
+          <!-- 右侧：手绘模式列表 -->
           <div class="algorithm-section manual-section">
             <div class="section-header">
-              <h3>手绘模式</h3>
+              <h3>手绘模式列表</h3>
             </div>
-            <div class="section-content placeholder-content">
-              <el-empty description="功能开发中，敬请期待" />
+            <div class="section-content">
+              <SketchTemplateList v-if="algorithmDialogVisible" />
             </div>
           </div>
         </div>
@@ -97,6 +104,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { CircleCheck, Loading, DataBoard, Setting } from '@element-plus/icons-vue';
 import AlgorithmManager from './AlgorithmManager.vue';
+import ImportedAlgorithmList from './ImportedAlgorithmList.vue';
+import SketchTemplateList from './SketchTemplateList.vue';
 
 // 响应式数据
 const monitorData = ref({
@@ -173,10 +182,20 @@ const progressPercentText = computed(() => {
   return `${Math.round(progress.progress_percent)}%`;
 });
 
+// 新增：完成检测炮号的显示逻辑
+const completedShotDisplay = computed(() => {
+  const completed = Number(monitorData.value.mongo_latest_shot);
+  const processing = Number(currentProcessingShot.value);
+  if (!isNaN(completed) && !isNaN(processing) && completed === processing) {
+    return completed - 1;
+  }
+  return monitorData.value.mongo_latest_shot || '--';
+});
+
 // 获取监控状态
 const fetchMonitorStatus = async () => {
   try {
-    let response = await fetch('https://10.1.108.231:5000/api/system-monitor-status');
+    let response = await fetch('http://192.168.20.49:5000/api/system-monitor-status');
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json();
     if (result.success && result.data) {
@@ -247,7 +266,7 @@ const openAlgorithmDialog = () => {
 // 加载算法数据
 const loadAlgorithmData = async () => {
   try {
-    const response = await fetch('https://10.1.108.231:5000/api/algorithm-channel-map');
+    const response = await fetch('http://192.168.20.49:5000/api/algorithm-channel-map');
     if (response.ok) {
       const result = await response.json();
       if (result.success) {
@@ -431,6 +450,9 @@ onBeforeUnmount(() => {
   background: #f5f7fa;
   padding: 12px 16px;
   border-bottom: 1px solid #e4e7ed;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .section-header h3 {
@@ -438,6 +460,42 @@ onBeforeUnmount(() => {
   font-size: 16px;
   font-weight: 600;
   color: #303133;
+}
+
+/* 图例样式 */
+.legend-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.legend-used {
+  background-color: #409eff;
+  border: 1px solid #409eff;
+}
+
+.legend-unused {
+  background-color: #c0c4cc;
+  border: 1px solid #c0c4cc;
+}
+
+.legend-text {
+  font-size: 12px;
+  color: #606266;
+  font-weight: 500;
 }
 
 .section-content {
@@ -467,7 +525,7 @@ onBeforeUnmount(() => {
 }
 
 .import-section .section-header {
-  background: #f0f9ff;
+  background: #f0f9ec;
   color: #67c23a;
 }
 

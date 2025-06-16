@@ -432,7 +432,7 @@ const renderChart = async (forceRender = false) => {
       height: 80,
       marginLeft: 15,
       marginRight: 15,
-      marginTop: 5,
+      marginTop: 10,
       marginBottom: 30,
       animation: false,
       zoomType: 'x',
@@ -455,7 +455,7 @@ const renderChart = async (forceRender = false) => {
       max: dataRanges.xMax,
       lineWidth: 1,
       tickLength: 3,
-      labels: { style: { fontSize: '10px', fontWeight: 'bold' } },
+      labels: { style: { fontSize: '14px', fontWeight: 'bold' } },
       plotBands: [{
         from: initialBrushBegin,
         to: initialBrushEnd,
@@ -532,43 +532,24 @@ const calculateDataRanges = () => {
   
   // 优化遍历，避免嵌套循环
   for (const channel of overviewData.value) {
-    // 每个通道只检查部分点，提高性能
     const data = channel.data;
     const dataLength = data.length;
     
-    // 抽样检查点数，最多检查100个点
-    const sampleStep = Math.max(1, Math.floor(dataLength / 100));
-    
-    // 先检查首尾点
     if (dataLength > 0) {
-      // 检查第一个点
-      const firstPoint = data[0];
-      if (firstPoint[0] < xMin) xMin = firstPoint[0];
-      if (firstPoint[0] > xMax) xMax = firstPoint[0];
-      if (firstPoint[1] < yMin) yMin = firstPoint[1];
-      if (firstPoint[1] > yMax) yMax = firstPoint[1];
-      
-      // 检查最后一个点
-      const lastPoint = data[dataLength - 1];
-      if (lastPoint[0] < xMin) xMin = lastPoint[0];
-      if (lastPoint[0] > xMax) xMax = lastPoint[0];
-      if (lastPoint[1] < yMin) yMin = lastPoint[1];
-      if (lastPoint[1] > yMax) yMax = lastPoint[1];
-    }
-    
-    // 抽样检查中间点
-    for (let i = sampleStep; i < dataLength - 1; i += sampleStep) {
-      const point = data[i];
-      if (point[0] < xMin) xMin = point[0];
-      if (point[0] > xMax) xMax = point[0];
-      if (point[1] < yMin) yMin = point[1];
-      if (point[1] > yMax) yMax = point[1];
+      // 对于总览图，需要确保找到真实的Y轴范围，所以检查所有点
+      for (let i = 0; i < dataLength; i++) {
+        const point = data[i];
+        if (point[0] < xMin) xMin = point[0];
+        if (point[0] > xMax) xMax = point[0];
+        if (point[1] < yMin) yMin = point[1];
+        if (point[1] > yMax) yMax = point[1];
+      }
     }
   }
   
-  // 添加边距到Y值范围
+  // 添加更多边距到Y值范围，确保曲线不会被截断
   const yRange = yMax - yMin;
-  const yPadding = yRange * 0.05;
+  const yPadding = yRange * 0.1; // 增加到10%的边距
   
   return {
     xMin,
@@ -700,7 +681,7 @@ onBeforeUnmount(() => {
   position: absolute;
   bottom: -18px;
   background-color: white;
-  min-height: 130px;
+  min-height: 110px;
   box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.05);
 }
 
@@ -772,7 +753,7 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 999;
   background-color: white;
-  padding: 5px 2px;
+  padding: 3px 2px;
 }
 
 .el-divider--horizontal {

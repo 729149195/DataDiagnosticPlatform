@@ -99,8 +99,8 @@ const store = createStore({
       samplingVersion: 0,
       visibleMatchedResultIds: [],
       errorNamesVersion: { version: 0, channels: [] }, // 新增：异常名索引版本号，包含变动通道key数组
-      currentDbSuffix: null, // 新增：当前数据库后缀
       showFFT: false, // 新增：是否显示FFT数据，默认为false
+      calculationErrorRanges: [], // 新增：计算结果的异常区域数据
     };
   },
   getters: {
@@ -716,17 +716,18 @@ const store = createStore({
       };
       // console.log(state.errorNamesVersion);
     },
-    setSelectedDbSuffix(state, value) {
-      state.currentDbSuffix = value;
-    },
+
     updateShowFFT(state, value) {
       state.showFFT = value;
+    },
+    setCalculationErrorRanges(state, ranges) {
+      state.calculationErrorRanges = ranges || [];
     },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, filterParams = []) {
       try {
-        let url = "https://10.1.108.231:5000/api/struct-tree";
+        let url = "http://192.168.20.49:5000/api/struct-tree";
         let params = [];
         // 兼容老用法：如果传的是数组，视为shot_numbers
         if (Array.isArray(filterParams)) {
@@ -743,10 +744,7 @@ const store = createStore({
           if (filterParams.error_names && filterParams.error_names.length > 0) {
             params.push(`error_names=${filterParams.error_names.join(",")}`);
           }
-          // 添加数据库参数
-          if (filterParams.db_suffix) {
-            params.push(`db_suffix=${filterParams.db_suffix}`);
-          }
+          
         }
         if (params.length > 0) {
           url += "?" + params.join("&");
@@ -886,7 +884,7 @@ const store = createStore({
     async refreshStructTreeData({ commit, dispatch }) {
       try {
         const response = await fetch(
-          "https://10.1.108.231:5000/api/struct-tree"
+          "http://192.168.20.49:5000/api/struct-tree"
         );
         const data = await response.json();
         commit("refreshStructTree", data);
@@ -902,7 +900,6 @@ const store = createStore({
         forceRefresh = false,
         sample_mode = "downsample",
         sample_freq = null,
-        db_suffix = null, // 新增数据库参数
       }
     ) {
       const channelKey = `${channel.channel_name}_${channel.shot_number}`;
@@ -912,13 +909,11 @@ const store = createStore({
       // 为自定义频率创建特定的缓存键
       const hasCustomFreq =
         sample_freq !== null && sample_mode === "downsample";
-      // 在缓存键中增加数据库后缀
-      const dbSuffixPart = db_suffix ? `_db_${db_suffix}` : '';
       const cacheKey = useOriginalFrequency
-        ? `original_${channelKey}${dbSuffixPart}`
+        ? `original_${channelKey}`
         : hasCustomFreq
-        ? `custom_${sample_freq}_${channelKey}${dbSuffixPart}`
-        : `${channelKey}${dbSuffixPart}`;
+        ? `custom_${sample_freq}_${channelKey}`
+        : `${channelKey}`;
 
       // 如果强制刷新，跳过所有缓存检查
       if (forceRefresh) {
@@ -989,17 +984,12 @@ const store = createStore({
       } else {
         params.sample_freq = state.sampling;
       }
-      
-      // 添加数据库参数
-      if (db_suffix) {
-        params.db_suffix = db_suffix;
-      }
 
       // 创建请求的 Promise 并将其存储
       const requestPromise = new Promise(async (resolve, reject) => {
         try {
           const response = await axios.get(
-            `https://10.1.108.231:5000/api/channel-data`,
+            `http://192.168.20.49:5000/api/channel-data`,
             { params }
           );
           // 获取原始数据
@@ -1062,7 +1052,6 @@ const store = createStore({
     async fetchAllErrorData({ state, commit }, channel) {
       try {
         const channelKey = `${channel.channel_name}_${channel.shot_number}`;
-        const db_suffix = state.currentDbSuffix; // 获取通道中的数据库参数
         const errorResults = [];
 
         // 对每个错误类型进行处理
@@ -1070,9 +1059,8 @@ const store = createStore({
           // 如果是 NO ERROR，跳过
           if (error.error_name === "NO ERROR") continue;
 
-          // 构建缓存键（加入数据库参数）
-          const dbSuffixPart = db_suffix ? `_db_${db_suffix}` : '';
-          const errorCacheKey = `error-${channelKey}-${error.error_name}-${errorIndex}${dbSuffixPart}`;
+          // 构建缓存键
+          const errorCacheKey = `error-${channelKey}-${error.error_name}-${errorIndex}`;
 
           // 检查内存缓存中是否已有数据
           const cached = dataCache.get(errorCacheKey);
@@ -1125,15 +1113,10 @@ const store = createStore({
               error_name: error.error_name,
               error_index: errorIndex,
             };
-            
-            // 添加数据库参数
-            if (db_suffix) {
-              params.db_suffix = db_suffix;
-            }
 
             // 发送请求获取错误数据
             const response = await fetch(
-              `https://10.1.108.231:5000/api/error-data?${new URLSearchParams(
+              `http://192.168.20.49:5000/api/error-data?${new URLSearchParams(
                 params
               ).toString()}`
             );
@@ -1243,7 +1226,6 @@ const store = createStore({
       try {
         // 获取当前显示的所有通道
         const displayedChannels = [];
-        const db_suffix = state.currentDbSuffix; // 从state中获取当前数据库后缀
         
         if (state.displayedData) {
           state.displayedData.forEach((item) => {
@@ -1262,15 +1244,14 @@ const store = createStore({
         // 获取通道异常数据
         if (displayedChannels.length > 0) {
           const response = await fetch(
-            "https://10.1.108.231:5000/api/get-channels-errors",
+            "http://192.168.20.49:5000/api/get-channels-errors",
             {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({ 
-                channels: displayedChannels,
-                db_suffix: db_suffix  // 添加数据库参数
+                channels: displayedChannels
               }),
             }
           );
@@ -1296,24 +1277,22 @@ const store = createStore({
         console.error("Failed to update channel errors:", error);
       }
     },
-    async refreshErrorNames({ commit, state }) {
+    async refreshErrorNames({ commit, state }, shotNumbers = null) {
       try {
-        const response = await axios.get(
-          "https://10.1.108.231:5000/api/get-errors-name-index",
-          {
-            params: {
-              db_suffix: state.currentDbSuffix // 添加数据库参数
-            }
-          }
-        );
+        let url = "http://192.168.20.49:5000/api/get-errors-name-index";
+        const params = {};
+        
+        // 如果提供了炮号参数，添加到请求中
+        if (shotNumbers && shotNumbers.length > 0) {
+          params.shot_numbers = shotNumbers.join(',');
+        }
+        
+        const response = await axios.get(url, { params });
         return response.data;
       } catch (error) {
         console.error("异常名索引获取失败:", error);
         throw error;
       }
-    },
-    updateSelectedDbSuffix({ commit }, dbSuffix) {
-      commit("setSelectedDbSuffix", dbSuffix);
     },
     updateShowFFT({ commit }, value) {
       commit("updateShowFFT", value);

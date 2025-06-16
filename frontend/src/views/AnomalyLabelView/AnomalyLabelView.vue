@@ -15,7 +15,6 @@
                         <hr style="margin:8px 0;">
                         <div style="font-weight:bold;font-size:15px;margin-bottom:4px;">交互功能</div>
                         <ul style="margin:0 0 8px 18px;padding:0;list-style:disc;">
-                          <li>数据库：制定要查询的数据库，确定待查炮号范围</li>
                           <li>炮号：输入要查询的具体炮号，支持打印机输入格式如1-5,7,9-12，输入完成后直接回车或点击确认炮号按钮即可自动返回通道名和异常名</li>
                           <li>通道名：选择要显示的通道，可多选</li>
                           <li>异常名：根据异常类型筛选数据，可多选</li>
@@ -384,9 +383,9 @@
                       <!-- <el-button type="primary" :icon="FolderChecked">另存为新通道</el-button> -->
                     </span>
                   </span>
-                  <div style="display: flex; justify-content: center; align-items: center;">
-                    <div style="width: 100%">
-                      <ChannelCalculationResults ref="resultRef" />
+                  <div ref="resultContainerRef" style="display: flex; justify-content: center; align-items: center; height: calc(100% - 10px); width: 100%; padding-bottom: 10px;">
+                    <div style="width: 100%; height: 100%;">
+                      <ChannelCalculationResults ref="resultRef" :containerRef="resultContainerRef" />
                     </div>
                   </div>
                 </el-card>
@@ -838,6 +837,7 @@ watch(unit_sampling, (newValue) => {
 
 const MultiChannelRef = ref(null)
 const resultRef = ref(null)
+const resultContainerRef = ref(null)
 const heatMapRef = ref(null)
 const selectedChannels = computed(() => store.state.selectedChannels);
 
@@ -2708,6 +2708,22 @@ const chartAreaHeight = computed(() => {
     height: 100%;
     flex: 2.1;
     position: relative;
+    display: flex;
+    flex-direction: column;
+
+    /* 确保卡片内容区域能占满高度 */
+    :deep(.el-card__body) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 0; /* 触发flex布局 */
+    }
+
+    /* 确保结果容器占满剩余高度 */
+    > :deep(.el-card__body) > div:last-child {
+      flex: 1;
+      min-height: 0;
+    }
   }
 
   .collapse-control {

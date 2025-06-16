@@ -1,14 +1,14 @@
 <template>
   <div class="algorithm-manager">
     <!-- 工具栏 -->
-    <div class="toolbar">
-      <el-button type="primary" size="small" @click="showAddChannelCategoryDialog" :icon="Plus">
-        添加通道类别
+    <!-- <div class="toolbar">
+      <el-button type="primary" size="small" @click="showAddAlgorithmDialog()" :icon="Plus">
+        添加算法
       </el-button>
       <el-button type="success" size="small" @click="refreshData" :icon="Refresh">
         刷新
       </el-button>
-    </div>
+    </div> -->
 
     <!-- 算法树形结构 -->
     <div class="algorithm-tree">
@@ -17,33 +17,23 @@
         @node-collapse="handleNodeCollapse" @node-click="handleNodeClick">
         <template #default="{ data }">
           <div class="tree-node">
-            <!-- 通道类别节点 -->
-            <div v-if="data.type === 'category'" class="category-node">
-              <el-icon class="node-icon category-icon">
-                <Folder />
-              </el-icon>
-              <span class="node-label">{{ data.label }}</span>
-              <div class="node-actions">
-                <el-button type="primary" size="small" @click.stop="showAddAlgorithmDialog(data)" :icon="Plus">
-                  添加算法
-                </el-button>
-                <el-button type="danger" size="small" @click.stop="deleteChannelCategory(data)" :icon="Delete">
-                  删除类别
-                </el-button>
-              </div>
-            </div>
-
             <!-- 算法节点 -->
-            <div v-else-if="data.type === 'algorithm'" class="algorithm-node">
-              <el-icon class="node-icon algorithm-icon">
-                <Document />
-              </el-icon>
-              <span class="node-label">{{ data.label }}</span>
-              <div class="node-actions">
+            <div v-if="data.type === 'algorithm'" class="algorithm-node">
+              <div class="algorithm-info">
+                <el-icon class="node-icon algorithm-icon">
+                  <Document />
+                </el-icon>
+                <el-tag size="small" 
+                       :class="['category-tag', { 'category-tag-empty': !hasChannels(data) }]">
+                  {{ data.category }}
+                </el-tag>
+                <span class="node-label" :class="{ 'node-label-empty': !hasChannels(data) }">{{ data.algorithmName }}</span>
+              </div>
+              <!-- <div class="node-actions">
                 <el-button type="danger" size="small" @click.stop="deleteAlgorithm(data)" :icon="Delete">
                   删除算法
                 </el-button>
-              </div>
+              </div> -->
             </div>
 
             <!-- 通道标签区域 -->
@@ -94,24 +84,16 @@
       </el-tree>
     </div>
 
-    <!-- 添加通道类别对话框 -->
-    <el-dialog v-model="addCategoryDialogVisible" title="添加通道类别" width="400px" :close-on-click-modal="false">
-      <el-form :model="categoryForm" label-width="80px">
-        <el-form-item label="类别名称">
-          <el-input v-model="categoryForm.name" placeholder="请输入通道类别名称" maxlength="20" show-word-limit />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="addCategoryDialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="addChannelCategory">确定</el-button>
-        </span>
-      </template>
-    </el-dialog>
+
 
     <!-- 添加算法对话框 -->
     <el-dialog v-model="addAlgorithmDialogVisible" title="添加算法" width="600px" :close-on-click-modal="false">
       <el-form :model="algorithmForm" label-width="80px">
+        <el-form-item label="通道类别">
+          <el-select v-model="algorithmForm.category" placeholder="请选择或输入通道类别" allow-create filterable>
+            <el-option v-for="category in existingCategories" :key="category" :label="category" :value="category" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="算法名称">
           <el-input v-model="algorithmForm.name" placeholder="请输入算法名称" maxlength="50" show-word-limit />
         </el-form-item>
@@ -177,18 +159,15 @@ const treeProps = {
 };
 
 // 对话框控制
-const addCategoryDialogVisible = ref(false);
 const addAlgorithmDialogVisible = ref(false);
 
 // 表单数据
-const categoryForm = ref({ name: '' });
 const algorithmForm = ref({ name: '', category: '' });
 
 // 当前操作的数据
-const currentCategory = ref(null);
 const uploadFiles = ref([]);
 
-// 树形展开控制（手风琴模式）
+// 树形展开控制
 const expandedKeys = ref([]);
 
 // 通道选择状态
@@ -196,7 +175,10 @@ const selectedChannels = ref({});
 const selectAllChannels = ref({});
 const newChannelInput = ref({});
 
-// 更新树形数据结构
+// 现有类别列表
+const existingCategories = ref([]);
+
+// 更新树形数据结构 - 修改为平铺的算法列表
 const updateTreeData = (data) => {
   const tree = [];
 
@@ -207,14 +189,6 @@ const updateTreeData = (data) => {
   }
 
   Object.keys(data).forEach(categoryKey => {
-    const categoryNode = {
-      id: `category-${categoryKey}`,
-      label: categoryKey,
-      type: 'category',
-      key: categoryKey,
-      children: []
-    };
-
     const algorithms = data[categoryKey];
     if (!algorithms || typeof algorithms !== 'object') {
       return;
@@ -223,9 +197,10 @@ const updateTreeData = (data) => {
     Object.keys(algorithms).forEach(algorithmKey => {
       const algorithmNode = {
         id: `algorithm-${categoryKey}-${algorithmKey}`,
-        label: algorithmKey,
+        label: algorithmKey,  // 只显示算法名
         type: 'algorithm',
         category: categoryKey,
+        algorithmName: algorithmKey,
         key: algorithmKey,
         children: []
       };
@@ -242,13 +217,14 @@ const updateTreeData = (data) => {
       };
       algorithmNode.children.push(channelsNode);
 
-      categoryNode.children.push(algorithmNode);
+      tree.push(algorithmNode);
     });
-
-    tree.push(categoryNode);
   });
 
   treeData.value = tree;
+  
+  // 更新现有类别列表
+  existingCategories.value = Object.keys(data || {});
 };
 
 // 监听算法数据变化，更新树形结构
@@ -258,16 +234,11 @@ watch(() => props.algorithmData, (newData) => {
   }
 }, { immediate: true, deep: true });
 
-// 手风琴式展开控制
+// 展开控制
 const handleNodeExpand = (data) => {
-  // 如果是类别节点，关闭其他类别
-  if (data.type === 'category') {
+  // 对于算法节点，只展开当前节点
+  if (data.type === 'algorithm') {
     expandedKeys.value = [data.id];
-  }
-  // 如果是算法节点，关闭同级其他算法
-  else if (data.type === 'algorithm') {
-    const categoryId = `category-${data.category}`;
-    expandedKeys.value = [categoryId, data.id];
   }
 };
 
@@ -352,6 +323,16 @@ const hasSelectedChannels = (data) => {
   return (selectedChannels.value[key]?.length || 0) > 0;
 };
 
+// 判断算法是否有通道
+const hasChannels = (algorithmData) => {
+  if (algorithmData.type !== 'algorithm' || !algorithmData.children || algorithmData.children.length === 0) {
+    return false;
+  }
+  
+  const channelsNode = algorithmData.children.find(child => child.type === 'channels');
+  return channelsNode && channelsNode.channels && channelsNode.channels.length > 0;
+};
+
 // 内联添加通道
 const addChannelInline = async (data) => {
   const key = getChannelKey(data);
@@ -360,7 +341,7 @@ const addChannelInline = async (data) => {
   if (!channelName) return;
 
   try {
-    const response = await fetch('https://10.1.108.231:5000/api/algorithm-channel-channels', {
+    const response = await fetch('http://192.168.20.49:5000/api/algorithm-channel-channels', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -394,7 +375,7 @@ const batchDeleteChannels = async (data) => {
 
   try {
     for (const channel of channelsToDelete) {
-      const response = await fetch(`https://10.1.108.231:5000/api/algorithm-channel-channels/${data.parentCategory}/${data.parentAlgorithm}/${channel}`, {
+      const response = await fetch(`http://192.168.20.49:5000/api/algorithm-channel-channels/${data.parentCategory}/${data.parentAlgorithm}/${channel}`, {
         method: 'DELETE'
       });
 
@@ -418,52 +399,15 @@ const refreshData = () => {
   emit('refresh-data');
 };
 
-// 显示添加通道类别对话框
-const showAddChannelCategoryDialog = () => {
-  categoryForm.value = { name: '' };
-  addCategoryDialogVisible.value = true;
-};
-
 // 显示添加算法对话框
-const showAddAlgorithmDialog = (categoryData) => {
-  currentCategory.value = categoryData;
-  algorithmForm.value = { name: '', category: categoryData.key };
+const showAddAlgorithmDialog = (algorithmData = null) => {
+  algorithmForm.value = { name: '', category: algorithmData?.category || '' };
   addAlgorithmDialogVisible.value = true;
 };
 
 
 
-// 添加通道类别
-const addChannelCategory = async () => {
-  if (!categoryForm.value.name.trim()) {
-    ElMessage.warning('请输入通道类别名称');
-    return;
-  }
 
-  try {
-    const response = await fetch('https://10.1.108.231:5000/api/algorithm-channel-category', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        category_name: categoryForm.value.name.trim()
-      })
-    });
-
-    const result = await response.json();
-    if (result.success) {
-      ElMessage.success('通道类别添加成功');
-      addCategoryDialogVisible.value = false;
-      emit('refresh-data');
-    } else {
-      ElMessage.error(result.message || '添加失败');
-    }
-  } catch (error) {
-    console.error('添加通道类别失败:', error);
-    ElMessage.error('添加失败，请重试');
-  }
-};
 
 // 算法文件处理
 const handleAlgorithmFileChange = (_file, fileList) => {
@@ -477,6 +421,12 @@ const handleAlgorithmFileRemove = (_file, fileList) => {
 // 添加算法（包含文件上传）
 const addAlgorithm = async () => {
   const algorithmName = algorithmForm.value.name.trim();
+  const categoryName = algorithmForm.value.category.trim();
+
+  if (!categoryName) {
+    ElMessage.warning('请选择或输入通道类别');
+    return;
+  }
 
   if (!algorithmName) {
     ElMessage.warning('请输入算法名称');
@@ -517,13 +467,13 @@ const addAlgorithm = async () => {
 
   try {
     // 首先创建算法条目
-    const createResponse = await fetch('https://10.1.108.231:5000/api/algorithm-channel-algorithm', {
+    const createResponse = await fetch('http://192.168.20.49:5000/api/algorithm-channel-algorithm', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        category_name: algorithmForm.value.category,
+        category_name: categoryName,
         algorithm_name: algorithmName
       })
     });
@@ -536,12 +486,12 @@ const addAlgorithm = async () => {
 
     // 然后上传文件
     const formData = new FormData();
-    formData.append('category', algorithmForm.value.category);
+    formData.append('category', categoryName);
     formData.append('algorithm', algorithmName);
     formData.append('mat_file', matFiles[0].raw);
     formData.append('py_file', pyFiles[0].raw);
 
-    const uploadResponse = await fetch('https://10.1.108.231:5000/api/algorithm-upload-files', {
+    const uploadResponse = await fetch('http://192.168.20.49:5000/api/algorithm-upload-files', {
       method: 'POST',
       body: formData
     });
@@ -555,7 +505,7 @@ const addAlgorithm = async () => {
       emit('refresh-data');
     } else {
       // 如果文件上传失败，删除已创建的算法条目
-      await fetch(`https://10.1.108.231:5000/api/algorithm-channel-algorithm/${algorithmForm.value.category}/${algorithmName}`, {
+      await fetch(`http://192.168.20.49:5000/api/algorithm-channel-algorithm/${categoryName}/${algorithmName}`, {
         method: 'DELETE'
       });
       ElMessage.error(uploadResult.message || '文件上传失败');
@@ -568,36 +518,7 @@ const addAlgorithm = async () => {
 
 
 
-// 删除通道类别
-const deleteChannelCategory = async (categoryData) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除通道类别 "${categoryData.label}" 吗？这将删除该类别下的所有算法和文件。`,
-      '删除确认',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    );
 
-    const response = await fetch(`https://10.1.108.231:5000/api/algorithm-channel-category/${categoryData.key}`, {
-      method: 'DELETE'
-    });
-
-    const result = await response.json();
-    if (result.success) {
-      ElMessage.success('通道类别删除成功');
-      emit('refresh-data');
-    } else {
-      ElMessage.error(result.message || '删除失败');
-    }
-  } catch (error) {
-    if (error === 'cancel') return;
-    console.error('删除通道类别失败:', error);
-    ElMessage.error('删除失败，请重试');
-  }
-};
 
 // 删除算法
 const deleteAlgorithm = async (algorithmData) => {
@@ -612,7 +533,7 @@ const deleteAlgorithm = async (algorithmData) => {
       }
     );
 
-    const response = await fetch(`https://10.1.108.231:5000/api/algorithm-channel-algorithm/${algorithmData.category}/${algorithmData.key}`, {
+    const response = await fetch(`http://192.168.20.49:5000/api/algorithm-channel-algorithm/${algorithmData.category}/${algorithmData.key}`, {
       method: 'DELETE'
     });
 
@@ -643,7 +564,7 @@ const removeChannel = async (category, algorithm, channelName) => {
       }
     );
 
-    const response = await fetch(`https://10.1.108.231:5000/api/algorithm-channel-channels/${category}/${algorithm}/${channelName}`, {
+    const response = await fetch(`http://192.168.20.49:5000/api/algorithm-channel-channels/${category}/${algorithm}/${channelName}`, {
       method: 'DELETE'
     });
 
@@ -727,29 +648,51 @@ const removeChannel = async (category, algorithm, channelName) => {
   padding: 4px 0;
 }
 
-.category-node,
 .algorithm-node {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.algorithm-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
 }
 
 .node-icon {
-  margin-right: 8px;
-}
-
-.category-icon {
-  color: #409eff;
+  margin-right: 0;
 }
 
 .algorithm-icon {
   color: #67c23a;
 }
 
+.category-tag {
+  background-color: #409eff;
+  border-color: #409eff;
+  color: white;
+  font-size: 12px;
+  flex-shrink: 0;
+  
+  &.category-tag-empty {
+    background-color: #c0c4cc;
+    border-color: #c0c4cc;
+    color: #909399;
+  }
+}
+
 .node-label {
   flex: 1;
   font-weight: 500;
+  margin-left: 0;
+  
+  &.node-label-empty {
+    color: #909399;
+  }
 }
 
 .node-actions {
@@ -892,10 +835,12 @@ const removeChannel = async (category, algorithm, channelName) => {
   }
 }
 
-/* 手风琴式展开动画 */
+/* 展开动画 */
 :deep(.el-tree-node__children) {
   transition: all 0.3s ease;
 }
+
+
 
 /* 通道容器布局修复 */
 .channels-container {

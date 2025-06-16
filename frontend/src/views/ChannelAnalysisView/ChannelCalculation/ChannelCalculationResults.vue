@@ -4,7 +4,7 @@
             <div class="color-block" :style="{ backgroundColor: curChannel.color || 'steelblue' }"></div>
             <div class="channel-name" v-html="highlightedChannelName"></div>
         </div>
-        
+
         <!-- 美化后的进度条 -->
         <transition name="fade">
             <div v-if="isCalculating" class="progress-overlay">
@@ -21,7 +21,7 @@
                 </div>
             </div>
         </transition>
-        
+
         <div class="chart-wrapper">
             <!-- 图表容器 - 始终存在，避免Highcharts找不到容器的错误 -->
             <div id="calculation-result-container" ref="chartContainerRef"></div>
@@ -38,13 +38,13 @@ import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';  // 引入Boost模块以提高大数据集的性能
 import 'highcharts/modules/accessibility';  // 引入无障碍模块
 import { useStore } from 'vuex';
-import { computed, ref, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted, nextTick, toRaw } from "vue";
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
-  accessibility: {
-    enabled: false // 禁用无障碍功能，避免相关错误
-  }
+    accessibility: {
+        enabled: false // 禁用无障碍功能，避免相关错误
+    }
 });
 
 
@@ -66,21 +66,27 @@ const calculatingProgress = computed(() => store.state.calculatingProgress);
 // 判断是否有计算结果或单个通道数据
 const hasCalculationResult = computed(() => {
     // 有计算结果
-    const hasCalcResult = CalculateResult.value && 
-                         (CalculateResult.value.X_value || CalculateResult.value.X_range) &&
-                         curChannel.value.channel_name;
-    
+    const hasCalcResult = CalculateResult.value &&
+        (CalculateResult.value.X_value || CalculateResult.value.X_range) &&
+        curChannel.value.channel_name;
+
     // 有单个通道数据（通过点击通道卡片选择）
-    const hasChannelData = curChannel.value.channel_name && 
-                          chartInstance.value && 
-                          chartInstance.value.series && 
-                          chartInstance.value.series.length > 0;
-    
+    const hasChannelData = curChannel.value.channel_name &&
+        chartInstance.value &&
+        chartInstance.value.series &&
+        chartInstance.value.series.length > 0;
+
     return hasCalcResult || hasChannelData;
 });
 
 // 用于标识当前组件的图表实例
 const CHART_INSTANCE_ID = 'calculation-result-chart';
+
+// 定义props
+const props = defineProps({
+    containerRef: Object,
+    height: [String, Number]
+});
 
 defineExpose({
     chartContainerRef: chartContainerRef,
@@ -117,6 +123,12 @@ onUnmounted(() => {
 
     // 移除窗口大小变化监听
     window.removeEventListener('resize', handleResize);
+
+    // 移除ResizeObserver
+    if (chartResizeObserver && props.containerRef && props.containerRef.value) {
+        chartResizeObserver.unobserve(props.containerRef.value);
+        chartResizeObserver.disconnect();
+    }
 });
 
 // 处理键盘事件 - 改为绑定到容器元素而非全局
@@ -140,6 +152,33 @@ onMounted(() => {
 
     // 添加窗口大小变化监听 - 使用节流函数限制调用频率
     window.addEventListener('resize', handleResize);
+
+    // 监听父容器尺寸变化
+    if (props.containerRef && props.containerRef.value) {
+        chartResizeObserver = new ResizeObserver(() => {
+            const chart = chartInstance.value;
+            if (chart && props.containerRef && props.containerRef.value) {
+                const { clientWidth, clientHeight } = props.containerRef.value;
+                // 为X轴标签和标题预留更多空间
+                const adjustedHeight = Math.max(clientHeight - 20, 300);
+                chart.setSize(clientWidth, adjustedHeight, false);
+                chart.reflow();
+            }
+        });
+        chartResizeObserver.observe(props.containerRef.value);
+
+        // 初始化时也设置一次尺寸
+        nextTick(() => {
+            const chart = chartInstance.value;
+            if (chart && props.containerRef && props.containerRef.value) {
+                const { clientWidth, clientHeight } = props.containerRef.value;
+                // 为X轴标签和标题预留更多空间
+                const adjustedHeight = Math.max(clientHeight - 20, 300);
+                chart.setSize(clientWidth, adjustedHeight, false);
+                chart.reflow();
+            }
+        });
+    }
 });
 
 const fetchChannelData = async (channel) => {
@@ -155,24 +194,27 @@ const fetchChannelData = async (channel) => {
 
         // 确保DOM元素存在后再绘制图表
         await nextTick();
-        
+
         // 检查容器是否存在
         const container = document.getElementById('calculation-result-container');
         if (!container) {
-            console.error('Chart container not found');
             return;
         }
 
-        // 强制重新绘制
+        // 切换到通道数据时，清空异常区域数据
+        store.commit('setCalculationErrorRanges', []);
+
+        // 强制重新绘制（不传入异常区域数据，因为已清空）
         drawChart(
             channelData.X_value,
             channelData.Y_value,
             channel,
-            channelKey
+            channelKey,
+            [] // 传入空的异常区域数据
         );
 
     } catch (error) {
-        console.error('Error fetching channel data:', error);
+        // 忽略数据获取错误
     }
 };
 
@@ -187,14 +229,14 @@ const optimizeDataPoints = (xValues, yValues, maxPoints = 50000) => {
 
     // 使用更高效的采样策略
     const interval = Math.ceil(totalPoints / maxPoints);
-    
+
     // 预分配数组，提高性能
     const sampledLength = Math.floor(totalPoints / interval) + 1;
     const sampledX = new Array(sampledLength);
     const sampledY = new Array(sampledLength);
-    
+
     let sampledIndex = 0;
-    
+
     // 采样数据，使用更高效的循环
     for (let i = 0; i < totalPoints; i += interval) {
         sampledX[sampledIndex] = xValues[i];
@@ -210,13 +252,13 @@ const optimizeDataPoints = (xValues, yValues, maxPoints = 50000) => {
     }
 
     // 裁剪数组到实际长度
-    return { 
-        xValues: sampledX.slice(0, sampledIndex), 
-        yValues: sampledY.slice(0, sampledIndex) 
+    return {
+        xValues: sampledX.slice(0, sampledIndex),
+        yValues: sampledY.slice(0, sampledIndex)
     };
 };
 
-const drawChart = (xValues, yValues, channel, channelKey) => {
+const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) => {
     try {
         // 更新渲染进度 - 开始绘制图表
         if (store.state.isCalculating) {
@@ -225,11 +267,8 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                 progress: 100
             });
         }
-        
-        // console.log('初始化图表，通道:', channel?.channel_name);
-        
+
         if (!xValues || xValues.length === 0 || !yValues || yValues.length === 0) {
-            console.error('Invalid data for drawing chart');
             return;
         }
 
@@ -252,6 +291,8 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
             });
         }
 
+
+
         // 创建Highcharts配置 - 不使用全局配置，而是在每个实例中设置
         const options = {
             chart: {
@@ -273,11 +314,12 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                         y: -9999
                     }
                 },
-                spacing: [10, 10, 30, 10], // 增加底部间距，为X轴标签留出空间
+                spacing: [10, 10, 80, 10], // 增加底部间距，为X轴标签和标题留出更多空间
                 marginTop: 10,
-                marginBottom: 40, // 增加底部边距，确保X轴标签可见
-                marginLeft: 40, // 确保Y轴标签可见
+                marginBottom: 80, // 增加底部边距，确保X轴标签和标题可见
+                marginLeft: 60, // 增加左侧边距，确保Y轴标题可见
                 marginRight: 20, // 右侧留出一些空间
+                reflow: true, // 确保图表会重新计算尺寸
                 events: {
                     load: function () {
                         // 图表加载完成事件
@@ -286,13 +328,13 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                                 step: '图表渲染完成',
                                 progress: 100
                             });
-                            
+
                             // 使用 requestAnimationFrame 避免性能警告
                             requestAnimationFrame(() => {
                                 store.commit('setCalculatingStatus', false);
                             });
                         }
-                        
+
                         const container = this.container;
                         const chart = this;
 
@@ -303,6 +345,23 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                             chart.yAxis[0].setExtremes(null, null, false);
                             chart.redraw(false); // 禁用动画加速重绘
                         };
+
+                        // 在图表加载完成后立即添加异常区域
+                        setTimeout(() => {
+                            if (errorRanges && Array.isArray(errorRanges) && errorRanges.length > 0) {
+                                addErrorRangesToChart(chart, errorRanges);
+                            }
+                        }, 100);
+
+                        // 图表加载完成后，如果有父容器引用，设置图表尺寸
+                        if (props.containerRef && props.containerRef.value) {
+                            const { clientWidth, clientHeight } = props.containerRef.value;
+                            if (clientWidth > 0 && clientHeight > 0) {
+                                // 为X轴标签和标题预留更多空间
+                                const adjustedHeight = Math.max(clientHeight - 20, 300);
+                                this.setSize(clientWidth, adjustedHeight, false);
+                            }
+                        }
                     }
                 }
             },
@@ -311,16 +370,23 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                 useUTC: false
             },
             boost: {
-                useGPUTranslations: true,
-                usePreallocated: true,
-                seriesThreshold: 1
+                useGPUTranslations: false, // 禁用GPU翻译避免兼容性问题
+                usePreallocated: false,
+                seriesThreshold: 5000, // 提高阈值，避免小数据集触发boost
+                allowForce: false // 禁用强制boost模式
             },
             title: {
                 text: '', // 不使用标题
             },
             xAxis: {
                 title: {
-                    text: ''
+                    text: 'Time(s)', // 显示X轴单位标签
+                    style: {
+                        fontSize: '16px',
+                        color: '#666',
+                        fontWeight: 'normal'
+                    },
+                    margin: 10 // 标题与轴的距离
                 },
                 gridLineWidth: 1, // 恢复网格线
                 gridLineDashStyle: 'ShortDash', // 使用虚线样式
@@ -334,12 +400,19 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                         fontSize: '11px',
                         color: '#666'
                     },
-                    y: 20 // 增加标签与轴的距离
-                }
+                    y: 25 // 增加标签与轴的距离，确保不被截断
+                },
+                // plotBands将在图表创建后动态添加
             },
             yAxis: {
                 title: {
-                    text: ''
+                    text: '', // 显示Y轴单位标签
+                    style: {
+                        fontSize: '12px',
+                        color: '#666',
+                        fontWeight: 'normal'
+                    },
+                    margin: 10 // 标题与轴的距离
                 },
                 gridLineWidth: 1, // 恢复网格线
                 gridLineDashStyle: 'ShortDash', // 使用虚线样式
@@ -354,18 +427,19 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                         color: '#666'
                     },
                     align: 'right',
-                    x: -10 // 调整标签与轴的距离
-                }
-            },
-            boost: {
-                useGPUTranslations: true,
-                usePreallocated: true,
-                seriesThreshold: 1, // 启用boost模块的阈值
-                allowForce: true, // 强制使用boost模式
-                debug: {
-                    timeRendering: false,
-                    timeSeriesProcessing: false,
-                    timeSetup: false
+                    x: -10, // 调整标签与轴的距离
+                    formatter: function () {
+                        // 改进格式化函数，确保小数显示
+                        if (Math.abs(this.value) < 0.01) {
+                            return this.value.toFixed(3); // 非常小的数值显示3位小数
+                        } else if (Math.abs(this.value) < 0.1) {
+                            return this.value.toFixed(2); // 小数值显示2位小数
+                        } else if (Math.abs(this.value) < 1) {
+                            return this.value.toFixed(1); // 小于1的数值显示1位小数
+                        } else {
+                            return this.value.toFixed(1); // 大于等于1的数值显示1位小数
+                        }
+                    }
                 }
             },
             tooltip: {
@@ -397,12 +471,13 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                     },
                     states: {
                         hover: {
-                            enabled: false // 禁用悬停状态以提高性能
+                            enabled: true, // 启用悬停状态，避免与boost冲突
+                            lineWidthPlus: 1
                         }
                     },
-                    turboThreshold: 0, // 取消默认的1000点限制
+                    turboThreshold: 10000, // 设置合理的阈值，避免与boost冲突
                     findNearestPointBy: 'xy', // 优化点查找算法
-                    stickyTracking: false // 禁用粘性跟踪以提高性能
+                    stickyTracking: true // 启用粘性跟踪，提高拖拽体验
                 },
                 line: {
                     lineWidth: 1.5
@@ -426,9 +501,11 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                 name: channel?.channel_name || '',
                 color: channel?.color || 'steelblue',
                 data: seriesData,
-                boostThreshold: 1, // 当数据点超过1000时启用boost
+                boostThreshold: 5000, // 提高boost阈值，避免小数据集问题
                 lineWidth: 1.5,
-                animation: false // 禁用动画
+                animation: false, // 禁用动画
+                enableMouseTracking: true,
+                allowPointSelect: false // 禁用点选择，避免与拖拽冲突
             }]
         };
 
@@ -443,7 +520,7 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
         // 创建图表 - 使用try/catch捕获可能的错误
         try {
             chartInstance.value = new Highcharts.Chart(options);
-            
+
             // 使用 requestAnimationFrame 替代 setTimeout，提高性能
             requestAnimationFrame(() => {
                 if (chartInstance.value) {
@@ -452,17 +529,17 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                         // 只在必要时进行更新
                         const xAxis = chartInstance.value.xAxis[0];
                         const yAxis = chartInstance.value.yAxis[0];
-                        
+
                         // 检查标签是否已经正确显示
                         if (!xAxis.labelGroup || xAxis.labelGroup.element.style.visibility === 'hidden') {
                             xAxis.update({
                                 labels: {
                                     enabled: true,
-                                    y: 20
+                                    y: 25
                                 }
                             }, false);
                         }
-                        
+
                         if (!yAxis.labelGroup || yAxis.labelGroup.element.style.visibility === 'hidden') {
                             yAxis.update({
                                 labels: {
@@ -470,39 +547,33 @@ const drawChart = (xValues, yValues, channel, channelKey) => {
                                 }
                             }, false);
                         }
-                        
+
                         // 只在需要时重绘
                         chartInstance.value.redraw(false);
                     } catch (error) {
-                        console.error("更新轴标签时出错:", error);
+                        // 忽略轴标签更新错误
                     }
                 }
             });
         } catch (error) {
-            console.error("创建图表实例时出错:", error);
-            
             // 如果图表创建失败，清除计算状态
             if (store.state.isCalculating) {
                 store.commit('setCalculatingProgress', {
                     step: '图表渲染出错',
                     progress: 0
                 });
-                // 使用更短的延迟，避免性能警告
                 setTimeout(() => {
                     store.commit('setCalculatingStatus', false);
                 }, 100);
             }
         }
     } catch (error) {
-        console.error("DrawChart全局错误:", error);
-        
         // 如果绘制图表出错，清除计算状态
         if (store.state.isCalculating) {
             store.commit('setCalculatingProgress', {
                 step: '绘制图表出错',
                 progress: 0
             });
-            // 使用更短的延迟，避免性能警告
             setTimeout(() => {
                 store.commit('setCalculatingStatus', false);
             }, 100);
@@ -534,16 +605,76 @@ const scope2Index = (scope, X) => {
 const drawResult = async (CalculateResult) => {
     // 检查结果是否为空或无效
     if (!CalculateResult) {
-        console.error('Invalid calculation result');
         return;
     }
-    
+
     // 更新渲染进度 - 开始处理计算结果
     if (store.state.isCalculating) {
         store.commit('setCalculatingProgress', {
             step: '开始渲染计算结果',
             progress: 100
         });
+    }
+
+    // 声明异常区域数据变量
+    let ErrorLineXScopes = [];
+
+    // 处理异常区域数据并存储到store（在绘制图表之前）
+    if ('X_range' in CalculateResult) {
+        try {
+            // 解析X_range数据（支持多种格式）
+            if (typeof CalculateResult['X_range'] === 'string') {
+                // 格式1: X_range是JSON字符串
+                try {
+                    const parsedResult = JSON.parse(CalculateResult['X_range']);
+                    ErrorLineXScopes = parsedResult.X_range || parsedResult;
+                } catch (parseError) {
+                    ErrorLineXScopes = null;
+                }
+            } else if (Array.isArray(CalculateResult['X_range'])) {
+                // 格式2: X_range直接是数组
+                ErrorLineXScopes = CalculateResult['X_range'];
+            } else if (CalculateResult['X_range'] && typeof CalculateResult['X_range'] === 'object') {
+                // 格式3: X_range是对象，可能包含X_range属性
+                ErrorLineXScopes = CalculateResult['X_range'].X_range || CalculateResult['X_range'];
+            } else {
+                // 未知格式，尝试直接使用
+                ErrorLineXScopes = CalculateResult['X_range'];
+            }
+
+            // 转换Vue响应式Proxy对象为普通数组
+            if (ErrorLineXScopes && typeof ErrorLineXScopes === 'object') {
+                try {
+                    ErrorLineXScopes = toRaw(ErrorLineXScopes);
+                    // 如果还是代理对象，尝试转换为数组
+                    if (Array.isArray(ErrorLineXScopes) || ErrorLineXScopes.length !== undefined) {
+                        ErrorLineXScopes = Array.from(ErrorLineXScopes);
+                    }
+                } catch (error) {
+                    // 备用方法：如果toRaw失败，尝试JSON转换
+                    try {
+                        ErrorLineXScopes = JSON.parse(JSON.stringify(ErrorLineXScopes));
+                    } catch (jsonError) {
+                        // 转换失败，使用空数组
+                        ErrorLineXScopes = [];
+                    }
+                }
+            }
+
+            // 将异常区域数据存储到store
+            if (ErrorLineXScopes && Array.isArray(ErrorLineXScopes) && ErrorLineXScopes.length > 0) {
+                store.commit('setCalculationErrorRanges', ErrorLineXScopes);
+            } else {
+                store.commit('setCalculationErrorRanges', []);
+                ErrorLineXScopes = [];
+            }
+        } catch (error) {
+            store.commit('setCalculationErrorRanges', []);
+        }
+    } else {
+        // 如果没有异常区域数据，清空存储
+        store.commit('setCalculationErrorRanges', []);
+        ErrorLineXScopes = [];
     }
 
     // 绘制新通道数据
@@ -556,16 +687,6 @@ const drawResult = async (CalculateResult) => {
                     progress: 100
                 });
             }
-            
-            // console.log("开始绘制计算结果:", CalculateResult.channel_name);
-            
-            // 优化数据点数量
-            const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
-                CalculateResult['X_value'],
-                CalculateResult['Y_value']
-            );
-
-            const seriesData = optimizedX.map((x, i) => [x, optimizedY[i]]);
 
             // 更新通道信息显示 - 显示运算表达式作为通道名
             if (CalculateResult['channel_name']) {
@@ -583,60 +704,25 @@ const drawResult = async (CalculateResult) => {
                         progress: 100
                     });
                 }
-                
-                // console.log("更新现有图表...");
-                // 如果图表已存在，更新数据
-                try {
-                    if (chartInstance.value.series && chartInstance.value.series.length > 0) {
-                        // 更新图例标题（不使用update方法）
-                        if (CalculateResult['channel_name']) {
-                            chartInstance.value.series[0].name = CalculateResult['channel_name'];
-                        }
-                        
-                        // 直接使用setData替代update
-                        chartInstance.value.series[0].setData(seriesData, false); // 禁用动画
-                        chartInstance.value.redraw(false); // 禁用动画加速重绘
-                        
-                        // 更新渲染进度 - 图表更新完成
-                        if (store.state.isCalculating) {
-                            store.commit('setCalculatingProgress', {
-                                step: '图表更新完成',
-                                progress: 100
-                            });
-                            
-                            // 使用 requestAnimationFrame 避免性能警告
-                            requestAnimationFrame(() => {
-                                store.commit('setCalculatingStatus', false);
-                            });
-                        }
-                    } else {
-                        // 如果没有系列，添加一个新的
-                        chartInstance.value.addSeries({
-                            id: CHART_INSTANCE_ID, // 确保使用唯一ID
-                            name: CalculateResult['channel_name'] || '计算结果',
-                            data: seriesData,
-                            boostThreshold: 1000,
-                            lineWidth: 1.5,
-                            animation: false // 禁用动画
-                        }, false);
-                        chartInstance.value.redraw(false); // 禁用动画加速重绘
-                    }
-                } catch (error) {
-                    console.error("更新图表失败，尝试重新创建:", error);
-                    // 如果更新失败，尝试重新创建图表
-                    chartInstance.value.destroy();
-                    chartInstance.value = null;
-                    
-                    // 重新创建图表
-                    drawChart(
-                        CalculateResult['X_value'], 
-                        CalculateResult['Y_value'], 
-                        { 
-                            channel_name: CalculateResult['channel_name'] || '计算结果',
-                            color: 'steelblue'
-                        }
-                    );
-                }
+
+                // 如果图表已存在，销毁并重建
+                chartInstance.value.destroy();
+                chartInstance.value = null;
+
+                // 等待下一个tick确保store状态已更新
+                await nextTick();
+
+                // 重新创建图表，传入异常区域数据（如果没有异常区域数据则传入空数组）
+                drawChart(
+                    CalculateResult['X_value'],
+                    CalculateResult['Y_value'],
+                    {
+                        channel_name: CalculateResult['channel_name'] || '计算结果',
+                        color: 'steelblue'
+                    },
+                    null, // channelKey
+                    ErrorLineXScopes.length > 0 ? ErrorLineXScopes : [] // 确保传入正确的异常区域数据
+                );
             } else {
                 // 更新渲染进度 - 创建新图表
                 if (store.state.isCalculating) {
@@ -645,185 +731,24 @@ const drawResult = async (CalculateResult) => {
                         progress: 100
                     });
                 }
-                
-                // console.log("创建新图表...");
-                // 如果图表不存在，创建新图表
+
+                // 等待下一个tick确保store状态已更新
+                await nextTick();
+
+                // 如果图表不存在，创建新图表，传入异常区域数据（如果没有异常区域数据则传入空数组）
                 drawChart(
-                    CalculateResult['X_value'], 
-                    CalculateResult['Y_value'], 
-                    { 
+                    CalculateResult['X_value'],
+                    CalculateResult['Y_value'],
+                    {
                         channel_name: CalculateResult['channel_name'] || '计算结果',
                         color: 'steelblue'
-                    }
+                    },
+                    null, // channelKey
+                    ErrorLineXScopes.length > 0 ? ErrorLineXScopes : [] // 确保传入正确的异常区域数据
                 );
             }
         } catch (error) {
-            console.error('Error drawing calculation result:', error);
-        }
-    }
-
-    // 绘制异常数据
-    if ('X_range' in CalculateResult) {
-        try {
-            // console.log("绘制异常区域...");
-            await fetchChannelData(curChannel.value);
-            const ErrorLineXScopes = CalculateResult['X_range'];
-            const channelKey = curChannelKey.value;
-
-            const channelData = channelDataCache.value[channelKey];
-            if (!channelData) {
-                console.error('Channel data not found in cache:', channelKey);
-                return;
-            }
-
-            let xValues = channelData.X_value;
-            let yValues = channelData.Y_value;
-
-            // 移除之前的异常区域系列
-            if (chartInstance.value) {
-                try {
-                    // 保存第一个系列（主数据系列）
-                    const mainSeries = chartInstance.value.series[0];
-                    const mainSeriesOptions = {
-                        id: CHART_INSTANCE_ID,
-                        name: mainSeries.name,
-                        color: mainSeries.color,
-                        data: mainSeries.options.data,
-                        boostThreshold: 1000,
-                        lineWidth: 1.5,
-                        animation: false
-                    };
-
-                    // 准备所有异常区域系列数据
-                    const newSeriesOptions = [];
-                    newSeriesOptions.push(mainSeriesOptions);
-
-                    ErrorLineXScopes.forEach((ErrorLineXScope, errorIndex) => {
-                        let ErrorLineXIndex = scope2Index(ErrorLineXScope, xValues);
-
-                        // 优化异常区域数据点
-                        let X_value_error = xValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
-                        let Y_value_error = yValues.slice(ErrorLineXIndex[0], ErrorLineXIndex[1] + 1);
-
-                        // 对异常区域数据进行优化
-                        const { xValues: optimizedX, yValues: optimizedY } = optimizeDataPoints(
-                            X_value_error,
-                            Y_value_error,
-                            2000 // 异常区域使用更少的点
-                        );
-
-                        const errorData = optimizedX.map((x, i) => [x, optimizedY[i]]);
-
-                        newSeriesOptions.push({
-                            id: `${CHART_INSTANCE_ID}-error-${errorIndex}`,
-                            name: `异常区域 ${errorIndex + 1}`,
-                            data: errorData,
-                            color: '#ff6767',
-                            lineWidth: 2,
-                            opacity: 0.8,
-                            boostThreshold: 1000,
-                            animation: false
-                        });
-                    });
-
-                    // 销毁当前图表，创建新图表
-                    const container = chartInstance.value.container.id;
-                    chartInstance.value.destroy();
-                    
-                    // 创建新的图表配置
-                    const options = {
-                        chart: {
-                            renderTo: container,
-                            type: 'line',
-                            zoomType: 'xy',
-                            panning: true,
-                            panKey: 'shift',
-                            animation: false,
-                            resetZoomButton: {
-                                enabled: false,
-                                theme: { style: { display: 'none' } },
-                                position: { x: -9999, y: -9999 }
-                            },
-                            spacing: [10, 10, 30, 10],
-                            marginTop: 10,
-                            marginBottom: 40,
-                            marginLeft: 40,
-                            marginRight: 20
-                        },
-                        global: { useUTC: false },
-                        boost: {
-                            useGPUTranslations: true,
-                            usePreallocated: true,
-                            seriesThreshold: 1
-                        },
-                        title: { text: '' },
-                        xAxis: {
-                            title: { text: '' },
-                            gridLineWidth: 1,
-                            gridLineDashStyle: 'ShortDash',
-                            gridLineColor: '#e6e6e6',
-                            tickLength: 5,
-                            lineColor: '#ccc',
-                            lineWidth: 1,
-                            labels: {
-                                enabled: true,
-                                style: { fontSize: '11px', color: '#666' },
-                                y: 20
-                            }
-                        },
-                        yAxis: {
-                            title: { text: '' },
-                            gridLineWidth: 1,
-                            gridLineDashStyle: 'ShortDash',
-                            gridLineColor: '#e6e6e6',
-                            tickLength: 5,
-                            lineColor: '#ccc',
-                            lineWidth: 1,
-                            labels: {
-                                enabled: true,
-                                style: { fontSize: '11px', color: '#666' },
-                                align: 'right',
-                                x: -10
-                            }
-                        },
-                        tooltip: {
-                            enabled: true,
-                            formatter: function() {
-                                return `( ${this.x.toFixed(3)}, ${this.y.toFixed(3)} )`;
-                            },
-                            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                            borderWidth: 1,
-                            borderColor: '#ccc',
-                            shadow: false,
-                            style: { fontSize: '12px', padding: '2px 5px' }
-                        },
-                        plotOptions: {
-                            series: {
-                                animation: false,
-                                enableMouseTracking: true,
-                                marker: { enabled: false },
-                                states: { hover: { enabled: false } },
-                                turboThreshold: 0,
-                                findNearestPointBy: 'xy',
-                                stickyTracking: false
-                            },
-                            line: { lineWidth: 1.5 }
-                        },
-                        legend: { enabled: false },
-                        credits: { enabled: false },
-                        accessibility: { enabled: false },
-                        series: newSeriesOptions
-                    };
-                    
-                    // 创建新图表实例
-                    chartInstance.value = new Highcharts.Chart(options);
-                    
-                } catch (error) {
-                    console.error("绘制异常区域出错:", error);
-                }
-            }
-        } catch (error) {
-            console.error('Error drawing error ranges:', error);
+            // 忽略绘制错误
         }
     }
 };
@@ -874,6 +799,119 @@ watch(CalculateResult, (newCalculateResult, oldV) => {
     debouncedDrawResult(newCalculateResult);
 }, { deep: true });
 
+// 添加异常区域到图表的函数
+const addErrorRangesToChart = (chart, errorRanges) => {
+    if (!chart) {
+        return;
+    }
+
+    try {
+        // 首先清除之前的异常区域plotBands
+        if (chart.xAxis && chart.xAxis[0]) {
+            const bandsToRemove = [];
+            (chart.xAxis[0].plotLinesAndBands || []).forEach(band => {
+                if (band && band.id && band.id.startsWith('calculation-error-band-')) {
+                    bandsToRemove.push(band.id);
+                }
+            });
+            bandsToRemove.forEach(bandId => {
+                chart.xAxis[0].removePlotBand(bandId);
+            });
+        }
+
+        // 如果没有异常区域数据，只需清除即可，不需要添加新的
+        if (!errorRanges || !Array.isArray(errorRanges) || errorRanges.length === 0) {
+            chart.redraw();
+            return;
+        }
+
+        // 添加新的异常区域plotBands
+        errorRanges.forEach((errorRange, index) => {
+            if (Array.isArray(errorRange) && errorRange.length >= 2) {
+                const startTime = errorRange[0];
+                const endTime = errorRange[1];
+
+                // 添加背景高亮区域
+                chart.xAxis[0].addPlotBand({
+                    id: `calculation-error-band-${index}`,
+                    from: startTime,
+                    to: endTime,
+                    color: 'rgba(255, 103, 103, 0.3)', // 红色半透明背景
+                    borderColor: '#ff6767',
+                    borderWidth: 1,
+                    zIndex: 5,
+                    label: {
+                        text: `${startTime.toFixed(3)}`,
+                        align: 'left',
+                        verticalAlign: 'top',
+                        y: -25,
+                        style: {
+                            color: '#ff6767',
+                            fontWeight: 'bold',
+                            fontSize: '10px'
+                        }
+                    }
+                });
+
+                // 添加结束标签
+                chart.xAxis[0].addPlotBand({
+                    id: `calculation-error-band-end-${index}`,
+                    from: endTime,
+                    to: endTime,
+                    color: 'transparent',
+                    zIndex: 5,
+                    label: {
+                        text: `${endTime.toFixed(3)}`,
+                        align: 'right',
+                        verticalAlign: 'top',
+                        y: -25,
+                        x: -5,
+                        style: {
+                            color: '#ff6767',
+                            fontWeight: 'bold',
+                            fontSize: '10px'
+                        }
+                    }
+                });
+            }
+        });
+
+        // 重绘图表
+        chart.redraw();
+
+    } catch (error) {
+        // 忽略添加异常区域的错误
+    }
+};
+
+
+
+// 监听计算异常区域数据的变化
+const calculationErrorRanges = computed(() => store.state.calculationErrorRanges);
+watch(calculationErrorRanges, (newRanges, oldRanges) => {
+    // 处理newRanges，确保它是普通数组
+    let processedRanges = newRanges;
+    if (newRanges && typeof newRanges === 'object') {
+        try {
+            processedRanges = toRaw(newRanges);
+            if (Array.isArray(processedRanges) || processedRanges.length !== undefined) {
+                processedRanges = Array.from(processedRanges);
+            }
+        } catch (error) {
+            try {
+                processedRanges = JSON.parse(JSON.stringify(newRanges));
+            } catch (jsonError) {
+                processedRanges = [];
+            }
+        }
+    }
+
+    // 如果图表已存在，直接添加异常区域到现有图表
+    if (chartInstance.value) {
+        addErrorRangesToChart(chartInstance.value, processedRanges);
+    }
+}, { deep: true });
+
 // 节流函数限制事件触发频率
 const throttle = (fn, delay) => {
     let last = 0;
@@ -889,6 +927,16 @@ const throttle = (fn, delay) => {
 // 处理窗口大小变化
 const handleResize = throttle(() => {
     if (chartInstance.value) {
+        // 如果有父容器引用，使用父容器的尺寸
+        if (props.containerRef && props.containerRef.value) {
+            const { clientWidth, clientHeight } = props.containerRef.value;
+            if (clientWidth > 0 && clientHeight > 0) {
+                // 为X轴标签和标题预留更多空间
+                const adjustedHeight = Math.max(clientHeight - 20, 300);
+                chartInstance.value.setSize(clientWidth, adjustedHeight, false);
+            }
+        }
+
         chartInstance.value.reflow();
 
         // 确保X轴标签可见
@@ -896,7 +944,7 @@ const handleResize = throttle(() => {
             chartInstance.value.xAxis[0].update({
                 labels: {
                     enabled: true,
-                    y: 20
+                    y: 25
                 }
             }, false);
         }
@@ -917,12 +965,15 @@ const handleResize = throttle(() => {
 // 获取选中的通道列表，用于获取颜色信息
 const selectedChannels = computed(() => store.state.selectedChannels);
 
+// 定义ResizeObserver变量
+let chartResizeObserver = null;
+
 // 通道名称解析和高亮功能
 const highlightedChannelName = computed(() => {
     if (!curChannel.value.channel_name) return '';
-    
+
     const channelName = curChannel.value.channel_name;
-    
+
     // 获取通道标识符和颜色映射
     const channelIdentifiers = selectedChannels.value.map((channel) =>
         `${channel.channel_name}_${channel.shot_number}`
@@ -931,10 +982,10 @@ const highlightedChannelName = computed(() => {
         acc[`${channel.channel_name}_${channel.shot_number}`] = channel.color;
         return acc;
     }, {});
-    
+
     // 解析通道名称中的标识符
     const tokens = tokenizeChannelName(channelName, channelIdentifiers);
-    
+
     // 生成高亮内容
     const highlightedContent = tokens
         .map((token) => {
@@ -946,27 +997,27 @@ const highlightedChannelName = computed(() => {
             }
         })
         .join('');
-    
+
     return highlightedContent;
 });
 
 // 解析通道名称中的通道标识符
 const tokenizeChannelName = (content, channelIdentifiers) => {
     if (!content) return [];
-    
+
     // 对channelIdentifiers按长度降序排序，确保先匹配较长的标识符
     const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
-    
+
     // 运算符列表
     const operators = ['+', '-', '*', '/', '(', ')'];
-    
+
     const tokens = [];
     let i = 0;
-    
+
     while (i < content.length) {
         // 先检查是否是通道标识符
         let matched = false;
-        
+
         for (const identifier of sortedIdentifiers) {
             if (content.substring(i, i + identifier.length) === identifier) {
                 tokens.push(identifier);
@@ -975,7 +1026,7 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
                 break;
             }
         }
-        
+
         // 如果不是通道标识符，再检查是否是运算符
         if (!matched) {
             const char = content[i];
@@ -992,9 +1043,27 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
             }
         }
     }
-    
+
     return tokens;
 };
+
+// 监听props变化，特别是容器引用的变化
+watch(() => props.containerRef, (newContainerRef) => {
+    if (newContainerRef && newContainerRef.value && chartInstance.value) {
+        // 当容器引用变化时，重新设置图表尺寸
+        nextTick(() => {
+            if (chartInstance.value) {
+                const { clientWidth, clientHeight } = newContainerRef.value;
+                if (clientWidth > 0 && clientHeight > 0) {
+                    // 为X轴标签和标题预留更多空间
+                    const adjustedHeight = Math.max(clientHeight - 20, 300);
+                    chartInstance.value.setSize(clientWidth, adjustedHeight, false);
+                    chartInstance.value.reflow();
+                }
+            }
+        });
+    }
+}, { immediate: true });
 
 </script>
 
@@ -1004,14 +1073,18 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
     flex-direction: column;
     padding-bottom: 0;
     height: 100%;
-    position: relative; /* 添加相对定位，使进度条可以绝对定位 */
+    position: relative;
+    /* 添加相对定位，使进度条可以绝对定位 */
 }
 
 /* 淡入淡出动画 */
-.fade-enter-active, .fade-leave-active {
+.fade-enter-active,
+.fade-leave-active {
     transition: opacity 0.3s ease;
 }
-.fade-enter-from, .fade-leave-to {
+
+.fade-enter-from,
+.fade-leave-to {
     opacity: 0;
 }
 
@@ -1076,7 +1149,7 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
     top: 0;
     height: 100%;
     width: 15px;
-    background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.8), rgba(255,255,255,0));
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0));
     animation: pulse 1.5s infinite;
 }
 
@@ -1089,8 +1162,13 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
 }
 
 @keyframes pulse {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
 }
 
 .channel-info {
@@ -1120,17 +1198,25 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
     margin-bottom: 0;
     height: calc(100% - 30px);
     /* 减去通道信息的高度 */
-    min-height: 400px;
-    /* 增加最小高度，确保有足够空间显示X轴标签 */
-    position: relative; /* 添加相对定位，使空状态可以绝对定位 */
+    min-height: 300px;
+    /* 减少最小高度，让图表更好地自适应 */
+    position: relative;
+    /* 添加相对定位，使空状态可以绝对定位 */
+    overflow: visible;
+    /* 允许X轴标签显示在容器外 */
+    padding-bottom: 20px;
+    /* 为X轴标签预留底部空间 */
 }
 
 #calculation-result-container {
     width: 100%;
     height: 100%;
     /* 使用100%高度填充父容器 */
-    min-height: 400px;
-    /* 增加最小高度，确保有足够空间显示X轴标签 */
+    min-height: 300px;
+    /* 减少最小高度，让图表更好地自适应 */
+    position: relative;
+    overflow: visible;
+    /* 允许X轴标签显示 */
 }
 
 :deep(.highcharts-selection-marker) {
@@ -1163,7 +1249,7 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 400px;
+    min-height: 300px;
     background-color: rgba(255, 255, 255, 0.95);
     z-index: 10;
 }

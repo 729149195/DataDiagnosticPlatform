@@ -832,7 +832,7 @@ const submitData = async () => {
       }).filter(channel => channel !== null);
 
       // 发送请求到后端，增加参数
-      const response = await fetch('https://10.1.108.231:5000/api/sketch-query', {
+      const response = await fetch('http://192.168.20.49:5000/api/sketch-query', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -969,7 +969,7 @@ const confirmSaveTemplate = async () => {
     };
 
     // 发送保存请求
-    const response = await fetch('https://10.1.108.231:5000/api/sketch-templates/save', {
+    const response = await fetch('http://192.168.20.49:5000/api/sketch-templates/save', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1012,7 +1012,7 @@ const openTemplateDialog = () => {
 const loadTemplates = async () => {
   loadingTemplates.value = true;
   try {
-    const response = await fetch('https://10.1.108.231:5000/api/sketch-templates/list');
+    const response = await fetch('http://192.168.20.49:5000/api/sketch-templates/list');
     const data = await response.json();
     if (response.ok) {
       templates.value = data.templates || [];
@@ -1107,7 +1107,7 @@ const deleteTemplate = async (template) => {
   if (!confirmResult) return;
 
   try {
-    const response = await fetch('https://10.1.108.231:5000/api/sketch-templates/delete', {
+    const response = await fetch('http://192.168.20.49:5000/api/sketch-templates/delete', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

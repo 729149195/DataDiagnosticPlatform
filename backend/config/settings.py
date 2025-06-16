@@ -14,27 +14,24 @@ from pathlib import Path
 
 import os
 
-# 强制 HTTPS
-SECURE_SSL_REDIRECT = True  # 所有 HTTP 重定向到 HTTPS
-SECURE_HSTS_SECONDS = 3600  # 启用 HSTS
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+# 注释掉强制 HTTPS 配置，因为现在使用 HTTP
+# SECURE_SSL_REDIRECT = True  # 所有 HTTP 重定向到 HTTPS
+# SECURE_HSTS_SECONDS = 3600  # 启用 HSTS
+# SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+# SECURE_HSTS_PRELOAD = True
 SECURE_BROWSER_XSS_FILTER = True  # 防御 XSS 攻击
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
-# 仅允许安全 Cookie
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-
-
-
+# 注释掉仅允许安全 Cookie 的设置，因为现在使用 HTTP
+# SESSION_COOKIE_SECURE = True
+# CSRF_COOKIE_SECURE = True
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# 本地开发配置 HTTPS 证书路径
-DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.231.pem')  # 证书路径
-DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.231-key.pem')  # 私钥路径
+# 注释掉本地开发配置 HTTPS 证书路径，因为不再使用 HTTPS
+# DEV_CERT_PATH = os.path.join(BASE_DIR, '10.1.108.231.pem')  # 证书路径
+# DEV_KEY_PATH = os.path.join(BASE_DIR, '10.1.108.231-key.pem')  # 私钥路径
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.0/howto/deployment/checklist/
@@ -46,7 +43,6 @@ SECRET_KEY = 'django-insecure-q0(q!4x77pi(-81_r@#hr@ak1^v4-ulk^&c+f4s+r_m)=u772s
 DEBUG = True
 
 ALLOWED_HOSTS = ['*']
-
 
 # Application definition
 
@@ -70,20 +66,15 @@ CHANNEL_LAYERS = {
     },
 }
 
-
 MIDDLEWARE = [
-
-
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     # 'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -92,12 +83,10 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:8080',
     'http://localhost:5173',
     'http://192.168.21.179:5173',
-    'https://10.1.108.231:5173',
     'http://10.1.108.231:5173',
-    'https://10.1.108.231:5173',
-    'http://10.1.108.231:5173' ,
-    'https://192.168.20.49:5173',
-    'http://192.168.20.49:5173'
+    'http://192.168.20.49:5173',
+    'http://192.168.20.49:8080',
+    'http://192.168.20.49:3000',
 ]
 
 CORS_ALLOW_METHODS = [
@@ -141,10 +130,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-
-
-
-
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
 
@@ -154,7 +139,6 @@ DATABASES = {
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/4.0/ref/settings/#auth-password-validators
@@ -174,7 +158,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/4.0/topics/i18n/
 
@@ -186,11 +169,14 @@ USE_I18N = True
 
 USE_TZ = True
 
-
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+# Media files configuration
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR  # 设置为backend目录作为媒体文件根目录
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field

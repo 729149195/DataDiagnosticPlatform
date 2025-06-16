@@ -13,6 +13,7 @@ import threading
 from django.utils import timezone
 from datetime import datetime
 import unicodedata  # 添加这一行来导入unicodedata模块
+import inspect  # 添加inspect模块导入
 from django.views.decorators.csrf import csrf_exempt  # 添加CSRF豁免
 from django.views.decorators.http import require_GET
 from django.conf import settings
@@ -29,11 +30,201 @@ calculation_tasks = {}
 
 # MongoDB 配置：
 client = MongoClient("mongodb://localhost:27017")
+
+# 数据库范围缓存，避免重复解析数据库名称（缓存5分钟）
+_db_ranges_cache = None
+_db_ranges_cache_time = None
+_cache_duration = 300  # 5分钟缓存
 # 移除固定的db赋值，改为根据请求参数动态选择数据库
 # db = client["DataDiagnosticPlatform_4949_5071"]
 # 改为在各函数中动态获取数据库参数
 
 # 获取数据库实例的辅助函数
+def _get_db_ranges_cached():
+    """获取缓存的数据库范围信息"""
+    global _db_ranges_cache, _db_ranges_cache_time
+    
+    current_time = time.time()
+    
+    # 检查缓存是否过期
+    if (_db_ranges_cache is None or 
+        _db_ranges_cache_time is None or 
+        current_time - _db_ranges_cache_time > _cache_duration):
+        
+        # 重新解析数据库范围
+        db_names = client.list_database_names()
+        filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+        
+        db_ranges = {}  # {(start, end): db_suffix}
+        
+        for db_name in filtered_db_names:
+            # 从数据库名称解析炮号范围
+            if '[' in db_name and ']' in db_name:
+                # 新格式: DataDiagnosticPlatform_[1201_1300]
+                match = re.search(r'DataDiagnosticPlatform_\[(\d+)_(\d+)\]', db_name)
+                if match:
+                    db_start, db_end = int(match.group(1)), int(match.group(2))
+                    db_suffix = f"[{db_start}_{db_end}]"
+                    db_ranges[(db_start, db_end)] = db_suffix
+            else:
+                # 旧格式: DataDiagnosticPlatform_1201_1300
+                parts = db_name.replace("DataDiagnosticPlatform_", "").split("_")
+                if len(parts) >= 2:
+                    try:
+                        db_start, db_end = int(parts[0]), int(parts[1])
+                        db_suffix = f"{db_start}_{db_end}"
+                        db_ranges[(db_start, db_end)] = db_suffix
+                    except (ValueError, IndexError):
+                        continue
+        
+        # 更新缓存
+        _db_ranges_cache = db_ranges
+        _db_ranges_cache_time = current_time
+        
+        print(f"数据库范围缓存已更新，共找到 {len(db_ranges)} 个数据库")
+    
+    return _db_ranges_cache
+
+def find_databases_for_shot_numbers(shot_numbers):
+    """
+    根据炮号列表快速查找包含这些炮号的数据库
+    优化算法：基于炮号区间规律，炮号区间都是从100炮的开头开始，如1254炮在[1201_1300]区间
+    使用缓存机制避免重复解析数据库名称
+    
+    Args:
+        shot_numbers: 炮号列表
+    
+    Returns:
+        dict: {db_suffix: [matched_shot_numbers]}
+    """
+    if not shot_numbers:
+        return {}
+    
+    # 将炮号转换为整数进行范围比较
+    shot_numbers_int = []
+    for shot in shot_numbers:
+        try:
+            shot_numbers_int.append(int(shot))
+        except (ValueError, TypeError):
+            continue
+    
+    if not shot_numbers_int:
+        return {}
+    
+    # 获取缓存的数据库范围信息
+    db_ranges = _get_db_ranges_cached()
+    
+    if not db_ranges:
+        return {}
+    
+    # 快速匹配炮号到数据库
+    db_shot_mapping = {}
+    
+    for shot_int in shot_numbers_int:
+        # 快速计算该炮号应该在哪个数据库区间
+        # 基于100炮区间规律：1254 -> 应该在 [1201, 1300] 区间
+        
+        # 计算区间的起始炮号（向下取整到最近的 X01）
+        hundred_base = (shot_int // 100) * 100
+        expected_start = hundred_base + 1
+        
+        # 首先尝试直接命中预期区间（最快）
+        found_db = None
+        for (db_start, db_end), db_suffix in db_ranges.items():
+            if db_start == expected_start and db_start <= shot_int <= db_end:
+                found_db = db_suffix
+                break
+        
+        # 如果预期区间没找到，尝试相邻区间（处理边界情况）
+        if not found_db:
+            # 尝试上一个百位区间
+            alt_expected_start = hundred_base - 99  # 如 1154 -> 1101
+            for (db_start, db_end), db_suffix in db_ranges.items():
+                if db_start == alt_expected_start and db_start <= shot_int <= db_end:
+                    found_db = db_suffix
+                    break
+        
+        # 最后回退到完全匹配（兜底机制）
+        if not found_db:
+            for (db_start, db_end), db_suffix in db_ranges.items():
+                if db_start <= shot_int <= db_end:
+                    found_db = db_suffix
+                    break
+        
+        # 添加到结果中
+        if found_db:
+            if found_db not in db_shot_mapping:
+                db_shot_mapping[found_db] = []
+            db_shot_mapping[found_db].append(str(shot_int))
+    
+    return db_shot_mapping
+
+def get_multi_db_index_data(key, shot_numbers):
+    """
+    从多个数据库获取索引数据并合并
+    
+    Args:
+        key: 索引键 ('channel_name', 'error_name' 等)
+        shot_numbers: 炮号列表
+    
+    Returns:
+        dict: 合并后的索引数据，格式为 {item_name: [(shot_number, db_suffix)]}
+    """
+    db_shot_mapping = find_databases_for_shot_numbers(shot_numbers)
+    
+    if not db_shot_mapping:
+        return {}
+    
+    merged_index = {}
+    
+    for db_suffix, shots_in_db in db_shot_mapping.items():
+        try:
+            db = get_db(db_suffix)
+            index_collection = db["index"]
+            
+            # 获取该数据库的索引文档
+            doc = index_collection.find_one({'key': key})
+            if not doc or 'index_data' not in doc:
+                continue
+            
+            index_data = doc['index_data']
+            
+            # 遍历该数据库中匹配的炮号
+            for shot_number in shots_in_db:
+                if shot_number in index_data:
+                    shot_index = index_data[shot_number]
+                    
+                    # 根据索引键的不同，处理数据结构
+                    if key == 'channel_name':
+                        # channel_name索引: {shot: {channel_name: [channel_types]}}
+                        for channel_name, channel_types in shot_index.items():
+                            if channel_name not in merged_index:
+                                merged_index[channel_name] = []
+                            # 添加 (shot_number, db_suffix) 作为索引标识
+                            merged_index[channel_name].append((shot_number, db_suffix))
+                    
+                    elif key == 'error_name':
+                        # error_name索引: {shot: {error_name: [channel_names]}}
+                        for error_name, channel_names in shot_index.items():
+                            if error_name not in merged_index:
+                                merged_index[error_name] = []
+                            # 添加 (shot_number, db_suffix) 作为索引标识
+                            merged_index[error_name].append((shot_number, db_suffix))
+                    
+                    elif key == 'channel_type':
+                        # channel_type索引: {shot: {channel_type: [channel_names]}}
+                        for channel_type, channel_names in shot_index.items():
+                            if channel_type not in merged_index:
+                                merged_index[channel_type] = []
+                            # 添加 (shot_number, db_suffix) 作为索引标识
+                            merged_index[channel_type].append((shot_number, db_suffix))
+                            
+        except Exception as e:
+            print(f"获取数据库 {db_suffix} 的索引数据时出错: {str(e)}")
+            continue
+    
+    return merged_index
+
 def get_db(db_suffix=None):
     """
     根据参数动态获取MongoDB数据库实例
@@ -48,16 +239,31 @@ def get_db(db_suffix=None):
         # 默认使用第一个DataDiagnosticPlatform数据库
         db_names = client.list_database_names()
         filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
-        if filtered_db_names:
-            db = client[filtered_db_names[0]]
-        else:
-            db = client["DataDiagnosticPlatform_4949_5071"]  # 如果没有找到，使用默认值
+        db = client[filtered_db_names[0]]
     else:
         db_name = f"DataDiagnosticPlatform_{db_suffix}"
         db = client[db_name]
     
     # 确保数据库具有必要的索引
     return ensure_db_indices(db)
+
+def get_db_by_name(db_name):
+    """
+    根据数据库名获取数据库连接
+    """
+    return ensure_db_indices(client[db_name])
+
+def get_database_name_for_shot(shot_number):
+    """
+    根据炮号获取对应的数据库名
+    """
+    db_shot_mapping = find_databases_for_shot_numbers([int(shot_number)])
+    if not db_shot_mapping:
+        return None
+    
+    # 获取第一个数据库后缀
+    db_suffix = list(db_shot_mapping.keys())[0]
+    return f"DataDiagnosticPlatform_{db_suffix}"
 
 def ensure_db_indices(db):
     """
@@ -158,81 +364,136 @@ def ensure_db_indices(db):
     
     return db
 
+@require_GET
 def get_struct_tree(request):
     """
     获取结构树数据，支持shot_numbers, channel_names, error_names多条件过滤
+    支持跨数据库查询
     返回时整体按channel_type、channel_name排序。
     """
     shot_numbers = request.GET.get('shot_numbers')
     channel_names = request.GET.get('channel_names')
     error_names = request.GET.get('error_names')
-    db_suffix = request.GET.get('db_suffix')  # 新增参数
+    db_suffix = request.GET.get('db_suffix')  # 可选参数
     
     shot_numbers = shot_numbers.split(',') if shot_numbers else []
     channel_names = channel_names.split(',') if channel_names else []
     error_names = error_names.split(',') if error_names else []
 
-    # 获取对应的数据库
-    db = get_db(db_suffix)
-    struct_trees_collection = db["struct_trees"]
-
-    query = {}
-    if shot_numbers:
-        query['shot_number'] = {'$in': shot_numbers}
-    docs = struct_trees_collection.find(query)
     result = []
-    for doc in docs:
-        for item in doc.get('struct_tree', []):
-            if channel_names and item.get('channel_name') not in channel_names:
-                continue
-            if error_names:
-                item_errors = item.get('error_name', [])
-                # 兼容各种"无异常"情况
-                if item_errors is None or item_errors == "" or item_errors == []:
-                    item_errors_set = set(["NO ERROR"])
-                else:
-                    if isinstance(item_errors, str):
-                        item_errors_set = set([item_errors])
-                    else:
-                        item_errors_set = set(item_errors)
-                if "NO ERROR" in error_names:
-                    if not (not item_errors_set or "NO ERROR" in item_errors_set):
-                        continue
-                elif not item_errors_set.intersection(error_names):
+    
+    if db_suffix:
+        # 如果指定了数据库，使用原有逻辑
+        db = get_db(db_suffix)
+        struct_trees_collection = db["struct_trees"]
+
+        query = {}
+        if shot_numbers:
+            query['shot_number'] = {'$in': shot_numbers}
+        docs = struct_trees_collection.find(query)
+        
+        for doc in docs:
+            for item in doc.get('struct_tree', []):
+                if channel_names and item.get('channel_name') not in channel_names:
                     continue
-            result.append(item)
+                if error_names:
+                    item_errors = item.get('error_name', [])
+                    # 兼容各种"无异常"情况
+                    if item_errors is None or item_errors == "" or item_errors == []:
+                        item_errors_set = set(["NO ERROR"])
+                    else:
+                        if isinstance(item_errors, str):
+                            item_errors_set = set([item_errors])
+                        else:
+                            item_errors_set = set(item_errors)
+                    if "NO ERROR" in error_names:
+                        if not (not item_errors_set or "NO ERROR" in item_errors_set):
+                            continue
+                    elif not item_errors_set.intersection(error_names):
+                        continue
+                result.append(item)
+    else:
+        # 如果没有指定数据库，则根据炮号自动匹配多个数据库
+        if not shot_numbers:
+            return OrJsonResponse([])
+        
+        db_shot_mapping = find_databases_for_shot_numbers(shot_numbers)
+        
+        for db_suffix_auto, shots_in_db in db_shot_mapping.items():
+            try:
+                db = get_db(db_suffix_auto)
+                struct_trees_collection = db["struct_trees"]
+
+                query = {'shot_number': {'$in': shots_in_db}}
+                docs = struct_trees_collection.find(query)
+                
+                for doc in docs:
+                    for item in doc.get('struct_tree', []):
+                        if channel_names and item.get('channel_name') not in channel_names:
+                            continue
+                        if error_names:
+                            item_errors = item.get('error_name', [])
+                            # 兼容各种"无异常"情况
+                            if item_errors is None or item_errors == "" or item_errors == []:
+                                item_errors_set = set(["NO ERROR"])
+                            else:
+                                if isinstance(item_errors, str):
+                                    item_errors_set = set([item_errors])
+                                else:
+                                    item_errors_set = set(item_errors)
+                            if "NO ERROR" in error_names:
+                                if not (not item_errors_set or "NO ERROR" in item_errors_set):
+                                    continue
+                            elif not item_errors_set.intersection(error_names):
+                                continue
+                        
+                        # 添加数据库信息到结果中，以便前端知道数据来源
+                        item_with_db = item.copy()
+                        item_with_db['source_db'] = db_suffix_auto
+                        result.append(item_with_db)
+                        
+            except Exception as e:
+                print(f"从数据库 {db_suffix_auto} 获取数据时出错: {str(e)}")
+                continue
+
     # 整体排序：先按channel_type，再按channel_name
     result.sort(key=lambda x: (x.get('channel_type', ''), x.get('channel_name', '')))
     return OrJsonResponse(result)
 
+@require_GET
 def get_shot_number_index(request):
     """
-    获取所有炮号列表
+    获取所有炮号列表，支持跨数据库查询
     """
-    db_suffix = request.GET.get('db_suffix')  # 新增参数
-    db = get_db(db_suffix)
-    index_collection = db["index"]
+    # 获取所有DataDiagnosticPlatform数据库的炮号
+    db_names = client.list_database_names()
+    filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+    
+    all_shot_numbers = set()
+    
+    for db_name in filtered_db_names:
+        try:
+            db = client[db_name]
+            collections = db.list_collection_names()
+            
+            if 'index' in collections:
+                index_collection = db["index"]
+                all_docs = list(index_collection.find({}))
+                for doc in all_docs:
+                    all_shot_numbers.update(doc.get("index_data", {}).keys())
+            elif 'struct_trees' in collections:
+                # 如果索引集合不存在，尝试从struct_trees集合获取炮号
+                shot_numbers = set(db["struct_trees"].distinct("shot_number"))
+                all_shot_numbers.update(shot_numbers)
+            else:
+                print(f"警告: 数据库 {db_name} 中不存在index或struct_trees集合")
+                
+        except Exception as e:
+            print(f"警告: 从数据库 {db_name} 获取炮号时出错: {str(e)}")
+            continue
     
     try:
-        # 检查集合是否存在
-        collections = db.list_collection_names()
-        if 'index' not in collections:
-            print(f"警告: 数据库 {db.name} 中不存在'index'集合，从struct_trees集合获取炮号")
-            
-            # 如果索引集合不存在，尝试从struct_trees集合获取炮号
-            if 'struct_trees' in collections:
-                # 从struct_trees集合获取炮号
-                shot_numbers = set(db["struct_trees"].distinct("shot_number"))
-                return OrJsonResponse(sorted(list(shot_numbers)))
-            else:
-                print(f"警告: 数据库 {db.name} 中不存在struct_trees集合")
-                return OrJsonResponse([])
-        
-        all_docs = list(index_collection.find({}))
-        shot_numbers = set()
-        for doc in all_docs:
-            shot_numbers.update(doc.get("index_data", {}).keys())
-        return OrJsonResponse(sorted(list(shot_numbers)))
+        return OrJsonResponse(sorted(list(all_shot_numbers)))
     except Exception as e:
         import traceback
         error_msg = f"获取炮号索引出错: {str(e)}"
@@ -242,57 +503,55 @@ def get_shot_number_index(request):
 
 def get_index_by_key(key, request):
     """
-    通用索引获取函数，支持按炮号过滤
+    通用索引获取函数，支持按炮号过滤，支持跨数据库查询
     """
     shot_numbers = request.GET.getlist('shot_numbers[]') or request.GET.get('shot_numbers')
-    db_suffix = request.GET.get('db_suffix')  # 新增参数
-    
-    print(f"获取索引，key={key}, db_suffix={db_suffix}, shot_numbers={shot_numbers}")
     
     if isinstance(shot_numbers, str):
-        shot_numbers = [shot_numbers]
+        shot_numbers = shot_numbers.split(',') if shot_numbers else []
     
-    db = get_db(db_suffix)
-    index_collection = db["index"]
+    print(f"获取索引，key={key}, shot_numbers={shot_numbers}")
     
-    try:
-        # 检查集合是否存在
-        collections = db.list_collection_names()
-        if 'index' not in collections:
-            print(f"警告: 数据库 {db.name} 中不存在'index'集合")
-            return OrJsonResponse({"error": f"数据库 {db.name} 中不存在索引集合", "collections": collections}, status=404)
-        
-        # 检查索引数据是否存在
-        doc = index_collection.find_one({'key': key})
-        print(f"查询索引集合结果: key={key}, 结果={doc is not None}")
-        
-        result = {}
-        if doc and "index_data" in doc:
-            print(f"索引数据大小: {len(doc['index_data'])}")
-            if shot_numbers:
-                # 检查每个炮号是否在索引中
-                for shot in shot_numbers:
-                    if shot in doc["index_data"]:
-                        for name, indices in doc["index_data"].get(shot, {}).items():
-                            if name not in result:
-                                result[name] = set()
-                            result[name].update(indices)
-                    else:
-                        print(f"炮号 {shot} 不在索引中")
-                result = {k: list(v) for k, v in result.items()}
-            else:
+    # 如果有指定炮号，使用跨数据库查询
+    if shot_numbers:
+        print(f"使用跨数据库查询获取 {key} 索引")
+        result = get_multi_db_index_data(key, shot_numbers)
+        return OrJsonResponse(result)
+    
+    # 如果没有指定炮号，获取所有数据库的索引数据
+    db_names = client.list_database_names()
+    filtered_db_names = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
+    
+    result = {}
+    
+    for db_name in filtered_db_names:
+        try:
+            db = client[db_name]
+            collections = db.list_collection_names()
+            
+            if 'index' not in collections:
+                print(f"警告: 数据库 {db_name} 中不存在'index'集合")
+                continue
+            
+            index_collection = db["index"]
+            doc = index_collection.find_one({'key': key})
+            
+            if doc and "index_data" in doc:
                 for shot, name_dict in doc["index_data"].items():
                     for name, indices in name_dict.items():
                         if name not in result:
                             result[name] = set()
                         result[name].update(indices)
-                result = {k: list(v) for k, v in result.items()}
-            
-            print(f"处理后的结果大小: {len(result)}")
-            return OrJsonResponse(result)
-        else:
-            print(f"索引数据不存在: key={key}")
-            return OrJsonResponse({})
+                        
+        except Exception as e:
+            print(f"警告: 从数据库 {db_name} 获取索引时出错: {str(e)}")
+            continue
+    
+    try:
+        # 转换set为list
+        result = {k: list(v) for k, v in result.items()}
+        print(f"处理后的结果大小: {len(result)}")
+        return OrJsonResponse(result)
     except Exception as e:
         import traceback
         error_msg = f"获取索引出错: {str(e)}"
@@ -300,27 +559,32 @@ def get_index_by_key(key, request):
         traceback.print_exc()
         return OrJsonResponse({"error": error_msg}, status=500)
 
+@require_GET
 def get_channel_type_index(request):
     return get_index_by_key('channel_type', request)
 
+@require_GET
 def get_channel_name_index(request):
     return get_index_by_key('channel_name', request)
 
+@require_GET
 def get_errors_name_index(request):
     return get_index_by_key('error_name', request)
 
+@require_GET
 def get_error_origin_index(request):
     return get_index_by_key('error_origin', request)
 
+
+@require_GET
 def get_error_data(request):
     """
-    获取异常数据，直接查MongoDB
+    获取异常数据，直接查MongoDB，支持自动查找数据库
     """
     channel_key = request.GET.get('channel_key')
     channel_type = request.GET.get('channel_type')
     error_name = request.GET.get('error_name')
     error_index = request.GET.get('error_index')
-    db_suffix = request.GET.get('db_suffix')  # 新增参数
     
     if channel_key and channel_type and error_name and error_index is not None:
         try:
@@ -332,7 +596,16 @@ def get_error_data(request):
         else:
             return OrJsonResponse({'error': 'Invalid channel_key format'}, status=400)
             
-        db = get_db(db_suffix)
+        # 根据炮号自动查找正确的数据库
+        db_shot_mapping = find_databases_for_shot_numbers([str(shot_number)])
+        
+        if not db_shot_mapping:
+            return OrJsonResponse({'error': 'No database found for this shot number'}, status=404)
+        
+        # 使用第一个匹配的数据库
+        db_suffix_auto = list(db_shot_mapping.keys())[0]
+        db = get_db(db_suffix_auto)
+            
         errors_collection = db["errors_data"]
         
         doc = errors_collection.find_one({
@@ -340,6 +613,7 @@ def get_error_data(request):
             "channel_number": channel_name,
             "error_type": error_name
         })
+        
         if doc and "data" in doc:
             return OrJsonResponse(doc["data"])
         else:
@@ -476,6 +750,7 @@ def OrJsonResponse(data, status=200):
         status=status
     )
 
+@require_GET
 def get_channel_data(request, channel_key=None):
     """
     获取通道数据
@@ -490,7 +765,6 @@ def get_channel_data(request, channel_key=None):
         # 获取采样参数，默认采用降采样
         sample_mode = request.GET.get('sample_mode', 'downsample')  # 可选值: 'full', 'downsample'
         sample_freq = float(request.GET.get('sample_freq', 1000))   # 默认1KHz，改为float类型
-        db_suffix = request.GET.get('db_suffix')  # 新增参数
         
         # 收集日志信息，最后统一打印
         logs = []
@@ -921,20 +1195,35 @@ class ExpressionParser:
         """将表达式分词"""
         # 去除所有空格
         expression = expression.replace(" ", "")
-        
+
         # 实现一个简单的分词器
         self.tokens = []
         i = 0
-        
+
         while i < len(expression):
             char = expression[i]
-            
+
             # 处理运算符和括号
             if char in "+-*/()":
                 self.tokens.append(char)
                 i += 1
-            # 处理通道标识符（字母、数字、下划线的组合）
-            elif char.isalnum() or char == '_':
+            # 处理数字（包括小数）
+            elif char.isdigit() or char == '.':
+                start = i
+                # 继续读取数字和小数点
+                while i < len(expression) and (expression[i].isdigit() or expression[i] == '.'):
+                    i += 1
+                token = expression[start:i]
+                # 验证是否是有效的数字
+                try:
+                    float(token)
+                    self.tokens.append(token)
+                except ValueError:
+                    # 如果不是有效数字，按字符处理
+                    self.tokens.append(char)
+                    i = start + 1
+            # 处理通道标识符（字母开头，包含字母、数字、下划线）
+            elif char.isalpha() or char == '_':
                 start = i
                 # 继续读取直到遇到非标识符字符
                 while i < len(expression) and (expression[i].isalnum() or expression[i] == '_'):
@@ -942,99 +1231,254 @@ class ExpressionParser:
                 self.tokens.append(expression[start:i])
             else:
                 i += 1
-        
+
         return self.tokens
     
     def expression(self):
         """解析加减运算"""
         result = self.term()
-        
+
         while self.current < len(self.tokens) and self.tokens[self.current] in ['+', '-']:
             operator = self.tokens[self.current]
             self.current += 1
             right = self.term()
-            
+
             if operator == '+':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行加法
-                result['Y_value'] = [x + y for x, y in zip(result['Y_value'], right['Y_value'])]
+                result = self.add_operands(result, right)
             elif operator == '-':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行减法
-                result['Y_value'] = [x - y for x, y in zip(result['Y_value'], right['Y_value'])]
+                result = self.subtract_operands(result, right)
+
+        return result
+
+    def add_operands(self, left, right):
+        """执行加法运算，支持通道数据与常量的运算"""
+        # 如果两个都是常量，返回常量结果
+        if left.get('is_constant', False) and right.get('is_constant', False):
+            result_value = left['Y_value'] + right['Y_value']
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"({left['channel_name']}+{right['channel_name']})",
+                'is_constant': True
+            }
         
+        # 如果右操作数是常量
+        if right.get('is_constant', False):
+            constant_value = right['Y_value']
+            result = left.copy()
+            # 确保左操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [y + constant_value for y in result['Y_value']]
+            return result
+
+        # 如果左操作数是常量
+        if left.get('is_constant', False):
+            constant_value = left['Y_value']
+            result = right.copy()
+            # 确保右操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [y + constant_value for y in result['Y_value']]
+            return result
+
+        # 两个都是通道数据
+        min_len = min(len(left['X_value']), len(right['X_value']))
+        result = left.copy()
+        result['X_value'] = left['X_value'][:min_len]
+        result['Y_value'] = left['Y_value'][:min_len]
+        right_y = right['Y_value'][:min_len]
+
+        # 执行加法
+        result['Y_value'] = [x + y for x, y in zip(result['Y_value'], right_y)]
+        return result
+
+    def subtract_operands(self, left, right):
+        """执行减法运算，支持通道数据与常量的运算"""
+        # 如果两个都是常量，返回常量结果
+        if left.get('is_constant', False) and right.get('is_constant', False):
+            result_value = left['Y_value'] - right['Y_value']
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"({left['channel_name']}-{right['channel_name']})",
+                'is_constant': True
+            }
+        
+        # 如果右操作数是常量
+        if right.get('is_constant', False):
+            constant_value = right['Y_value']
+            result = left.copy()
+            # 确保左操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [y - constant_value for y in result['Y_value']]
+            return result
+
+        # 如果左操作数是常量
+        if left.get('is_constant', False):
+            constant_value = left['Y_value']
+            result = right.copy()
+            # 确保右操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [constant_value - y for y in result['Y_value']]
+            return result
+
+        # 两个都是通道数据
+        min_len = min(len(left['X_value']), len(right['X_value']))
+        result = left.copy()
+        result['X_value'] = left['X_value'][:min_len]
+        result['Y_value'] = left['Y_value'][:min_len]
+        right_y = right['Y_value'][:min_len]
+
+        # 执行减法
+        result['Y_value'] = [x - y for x, y in zip(result['Y_value'], right_y)]
         return result
     
     def term(self):
         """解析乘除运算"""
         result = self.factor()
-        
+
         while self.current < len(self.tokens) and self.tokens[self.current] in ['*', '/']:
             operator = self.tokens[self.current]
             self.current += 1
             right = self.factor()
-            
+
             if operator == '*':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行乘法
-                result['Y_value'] = [x * y for x, y in zip(result['Y_value'], right['Y_value'])]
+                result = self.multiply_operands(result, right)
             elif operator == '/':
-                # 确保X轴数据匹配
-                min_len = min(len(result['X_value']), len(right['X_value']))
-                result['X_value'] = result['X_value'][:min_len]
-                result['Y_value'] = result['Y_value'][:min_len]
-                right['X_value'] = right['X_value'][:min_len]
-                right['Y_value'] = right['Y_value'][:min_len]
-                
-                # 执行除法，避免除以0
-                result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], right['Y_value'])]
+                result = self.divide_operands(result, right)
+
+        return result
+
+    def multiply_operands(self, left, right):
+        """执行乘法运算，支持通道数据与常量的运算"""
+        # 如果两个都是常量，返回常量结果
+        if left.get('is_constant', False) and right.get('is_constant', False):
+            result_value = left['Y_value'] * right['Y_value']
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"({left['channel_name']}*{right['channel_name']})",
+                'is_constant': True
+            }
         
+        # 如果右操作数是常量
+        if right.get('is_constant', False):
+            constant_value = right['Y_value']
+            result = left.copy()
+            # 确保左操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [y * constant_value for y in result['Y_value']]
+            return result
+
+        # 如果左操作数是常量
+        if left.get('is_constant', False):
+            constant_value = left['Y_value']
+            result = right.copy()
+            # 确保右操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [y * constant_value for y in result['Y_value']]
+            return result
+
+        # 两个都是通道数据
+        min_len = min(len(left['X_value']), len(right['X_value']))
+        result = left.copy()
+        result['X_value'] = left['X_value'][:min_len]
+        result['Y_value'] = left['Y_value'][:min_len]
+        right_y = right['Y_value'][:min_len]
+
+        # 执行乘法
+        result['Y_value'] = [x * y for x, y in zip(result['Y_value'], right_y)]
+        return result
+
+    def divide_operands(self, left, right):
+        """执行除法运算，支持通道数据与常量的运算"""
+        # 如果两个都是常量，返回常量结果
+        if left.get('is_constant', False) and right.get('is_constant', False):
+            if right['Y_value'] == 0:
+                raise ValueError("除数不能为0")
+            result_value = left['Y_value'] / right['Y_value']
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"({left['channel_name']}/{right['channel_name']})",
+                'is_constant': True
+            }
+        
+        # 如果右操作数是常量
+        if right.get('is_constant', False):
+            constant_value = right['Y_value']
+            if constant_value == 0:
+                raise ValueError("除数不能为0")
+            result = left.copy()
+            # 确保左操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [y / constant_value for y in result['Y_value']]
+            return result
+
+        # 如果左操作数是常量
+        if left.get('is_constant', False):
+            constant_value = left['Y_value']
+            result = right.copy()
+            # 确保右操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            result['Y_value'] = [constant_value / y if y != 0 else float('inf') for y in result['Y_value']]
+            return result
+
+        # 两个都是通道数据
+        min_len = min(len(left['X_value']), len(right['X_value']))
+        result = left.copy()
+        result['X_value'] = left['X_value'][:min_len]
+        result['Y_value'] = left['Y_value'][:min_len]
+        right_y = right['Y_value'][:min_len]
+
+        # 执行除法，避免除以0
+        result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], right_y)]
         return result
     
     def factor(self):
-        """解析括号和通道标识符"""
+        """解析括号、通道标识符和数字常量"""
         if self.current < len(self.tokens):
             token = self.tokens[self.current]
-            
+
             # 处理括号表达式
             if token == '(':
                 self.current += 1
                 result = self.expression()
-                
+
                 # 必须有匹配的右括号
                 if self.current < len(self.tokens) and self.tokens[self.current] == ')':
                     self.current += 1
                     return result
                 else:
                     raise ValueError("缺少右括号")
-            
+
+            # 处理数字常量
+            elif self.is_number(token):
+                self.current += 1
+                # 返回数字常量，格式与通道数据一致
+                return {
+                    'X_value': [],  # 数字常量没有X轴数据
+                    'Y_value': float(token),  # 数字常量作为标量值
+                    'channel_name': str(token),
+                    'is_constant': True  # 标记为常量
+                }
+
             # 处理通道标识符
-            elif token.isalnum() or '_' in token:
+            elif token.isalpha() or '_' in token:
                 self.current += 1
                 # 获取通道数据
                 channel_key = token
-                
+
                 # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
                 response = self.get_channel_data_func(None, channel_key)
-                
+
                 if hasattr(response, 'content'):
                     # 对于HttpResponse对象
                     try:
@@ -1044,18 +1488,28 @@ class ExpressionParser:
                 else:
                     # 对于JsonResponse对象
                     channel_data = response
-                
+
                 # 检查返回的数据是否有效
                 if 'error' in channel_data:
                     raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
-                
+
                 # 确保返回的数据包含所需的键
                 if 'X_value' not in channel_data or 'Y_value' not in channel_data:
                     raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
-                
+
+                # 标记为通道数据
+                channel_data['is_constant'] = False
                 return channel_data
-        
+
         raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
+
+    def is_number(self, token):
+        """检查token是否是数字"""
+        try:
+            float(token)
+            return True
+        except ValueError:
+            return False
 
 
 def init_calculation(request):
@@ -1089,6 +1543,7 @@ def init_calculation(request):
         traceback.print_exc()
         return OrJsonResponse({'error': str(e)}, status=500)
 
+@require_GET
 def get_calculation_progress(request, task_id):
     """获取计算任务的进度"""
     try:
@@ -1184,7 +1639,30 @@ def operator_strs(request):
 
         # 判定是否函数名是导入函数
         end_idx = anomaly_func_str.find('(')
+
+        # 检查是否是带前缀的函数调用（如 [Python]FileName 或 [Matlab]FileName）
+        is_prefixed_function = False
+        actual_file_name = ""
+        file_extension = ""
+
+        if end_idx > 0 and ')' in anomaly_func_str[end_idx:]:
+            # 检查是否以 [Python] 或 [Matlab] 开头
+            if anomaly_func_str.startswith('[Python]') or anomaly_func_str.startswith('[Matlab]'):
+                is_prefixed_function = True
+                # 提取实际的文件名（去掉前缀）
+                if anomaly_func_str.startswith('[Python]'):
+                    actual_file_name = anomaly_func_str[8:end_idx]  # 去掉 "[Python]"
+                    file_extension = '.py'
+                elif anomaly_func_str.startswith('[Matlab]'):
+                    actual_file_name = anomaly_func_str[8:end_idx]  # 去掉 "[Matlab]"
+                    file_extension = '.m'
+
+        # 原有的函数调用判断逻辑（不带前缀的函数）
         is_function_call = end_idx > 0 and anomaly_func_str[0].isalpha() and ')' in anomaly_func_str[end_idx:]
+
+        # 如果是带前缀的函数调用，也认为是函数调用
+        if is_prefixed_function:
+            is_function_call = True
 
         # 创建通道键值映射，方便后续查找
         channel_map = {}
@@ -1204,8 +1682,14 @@ def operator_strs(request):
 
         # 检查是否是函数调用
         if is_function_call:
-            func_name = anomaly_func_str[:end_idx]
-            print(func_name)
+            # 如果是带前缀的函数调用，使用实际的文件名
+            if is_prefixed_function:
+                target_file_name = actual_file_name
+                target_extension = file_extension
+            else:
+                target_file_name = anomaly_func_str[:end_idx]
+                target_extension = None  # 不指定扩展名，会查找所有匹配的文件
+            print(f"识别到函数调用: {target_file_name} (原始字符串: {anomaly_func_str})")
 
             # 确保FUNCTIONS_FILE_PATH变量存在
             functions_file_path = os.path.join(settings.MEDIA_ROOT, "imported_functions.json")
@@ -1215,10 +1699,27 @@ def operator_strs(request):
                     functions_data = json.load(f)
             else:
                 functions_data = []
+            
+            # 根据文件名和类型查找导入的函数
             is_import_func = False
+            matched_function = None
             for function in functions_data:
-                if function['name'] == func_name:
-                    is_import_func = True
+                file_path = function.get('file_path', '')
+                # 提取文件名（不含扩展名）
+                file_basename = os.path.splitext(os.path.basename(file_path))[0]
+                
+                # 如果指定了扩展名，需要同时匹配文件名和扩展名
+                if target_extension:
+                    if file_basename == target_file_name and file_path.endswith(target_extension):
+                        is_import_func = True
+                        matched_function = function
+                        break
+                else:
+                    # 如果没有指定扩展名，只匹配文件名
+                    if file_basename == target_file_name:
+                        is_import_func = True
+                        matched_function = function
+                        break
                     
             # 更新进度：函数识别完成
             if task_id and task_id in calculation_tasks:
@@ -1227,29 +1728,33 @@ def operator_strs(request):
             if is_import_func:
                 # 更新进度：开始执行导入函数
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, f'开始执行函数 {func_name}', 35)
+                    update_calculation_progress(task_id, f'开始执行函数 {target_file_name}', 35)
                     
-                data = {}
-                data['function_name'] = func_name
+                func_data = {}
+                func_data['matched_function'] = matched_function  # 传递匹配的函数信息
+                func_data['target_file_name'] = target_file_name  # 传递目标文件名
+                func_data['original_func_str'] = anomaly_func_str  # 添加原始函数调用字符串
+                func_data['db_suffix'] = data.get('db_suffix')  # 从原始请求数据中获取数据库后缀
+                # 提取函数参数（无论是否带前缀，参数提取方式都一样）
                 params_str = anomaly_func_str[end_idx:].replace(" ", "").replace("(", "").replace(")", "")
-                data['parameters'] = params_str.split(',')
+                func_data['parameters'] = params_str.split(',')
 
                 ##
                 # 需要补一段输入参数转换的代码
                 ##
-                # data['parameters'] = [float(i) for i in data['parameters']]
-                if len(data['parameters']) > 1:  # 确保有足够的参数再访问索引1
-                    data['parameters'][1] = float(data['parameters'][1])
-                    
+                # func_data['parameters'] = [float(i) for i in func_data['parameters']]
+                if len(func_data['parameters']) > 1:  # 确保有足够的参数再访问索引1
+                    func_data['parameters'][1] = float(func_data['parameters'][1])
+
                 # 更新进度：函数参数解析完成
                 if task_id and task_id in calculation_tasks:
                     update_calculation_progress(task_id, '函数参数解析完成', 45)
-                    
+
                 # 更新进度：执行函数中
                 if task_id and task_id in calculation_tasks:
-                    update_calculation_progress(task_id, f'执行函数 {func_name} 中', 60)
-                    
-                ret = execute_function(data)
+                    update_calculation_progress(task_id, f'执行函数 {target_file_name} 中', 60)
+
+                ret = execute_function(func_data)
                 
                 # 更新进度：函数执行完成
                 if task_id and task_id in calculation_tasks:
@@ -1308,9 +1813,9 @@ def operator_strs(request):
                 else:
                     # 任务失败
                     if task_id and task_id in calculation_tasks:
-                        update_calculation_progress(task_id, f'未知的函数: {func_name}', 0, 'failed')
+                        update_calculation_progress(task_id, f'未知的函数: {target_file_name}', 0, 'failed')
                         
-                    raise ValueError(f"未知的函数: {func_name}")
+                    raise ValueError(f"未知的函数: {target_file_name}")
         else:
             # 更新进度：开始表达式解析
             if task_id and task_id in calculation_tasks:
@@ -1325,9 +1830,8 @@ def operator_strs(request):
                 if task_id and task_id in calculation_tasks:
                     update_calculation_progress(task_id, '解析复杂表达式', 40)
                     
-                # 修改表达式解析器初始化，传入采样率和数据库参数
-                db_suffix = data.get('db_suffix')
-                parser = ExpressionParser(lambda req, key: get_channel_data(create_mock_request(key, sample_freq, db_suffix), key))
+                # 修改表达式解析器初始化（新版本无需数据库选择）
+                parser = ExpressionParser(lambda req, key: get_channel_data(create_mock_request(key, sample_freq), key))
                 
                 # 更新进度：获取通道数据
                 if task_id and task_id in calculation_tasks:
@@ -1365,10 +1869,8 @@ def operator_strs(request):
                         if task_id and task_id in calculation_tasks:
                             update_calculation_progress(task_id, f'获取通道数据: {channel_key}', 60)
                             
-                        # 创建包含采样率和数据库参数的请求对象
-                        # 从原始请求中获取数据库后缀
-                        db_suffix = data.get('db_suffix')
-                        mock_request = create_mock_request(channel_key, sample_freq, db_suffix)
+                        # 创建包含采样率的请求对象（新版本无需数据库选择）
+                        mock_request = create_mock_request(channel_key, sample_freq)
                         response = get_channel_data(mock_request, channel_key)
                         channel_data = json.loads(response.content.decode('utf-8'))
                         
@@ -1423,18 +1925,18 @@ def operator_strs(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 # 添加一个创建模拟请求对象的辅助函数
-def create_mock_request(channel_key, sample_freq, db_suffix=None):
-    """创建一个包含采样率的模拟请求对象"""
+def create_mock_request(channel_key, sample_freq=1.0):
+    """创建模拟请求对象用于获取通道数据（新版本无需数据库选择）"""
     class MockRequest:
-        def __init__(self, channel_key, sample_freq, db_suffix):
+        def __init__(self, channel_key, sample_freq):
+            self.method = 'GET'  # 添加method属性，满足@require_GET装饰器要求
             self.GET = {
-                'channel_key': channel_key,
                 'sample_mode': 'downsample',
-                'sample_freq': sample_freq,
-                'db_suffix': db_suffix
+                'sample_freq': str(sample_freq)
             }
+            self.channel_key = channel_key
     
-    return MockRequest(channel_key, sample_freq, db_suffix)
+    return MockRequest(channel_key, sample_freq)
 
 import importlib.util
 import inspect
@@ -1448,7 +1950,7 @@ FUNCTIONS_FILE_PATH = os.path.join(settings.MEDIA_ROOT, "imported_functions.json
 
 # Import MATLAB engine if available
 try:
-    import matlab.engine
+    import matlab.engine # type: ignore
 
     matlab_engine_available = True
     eng = matlab.engine.start_matlab()
@@ -1599,49 +2101,361 @@ def view_imported_functions(request):
 
     return JsonResponse({"imported_functions": functions_data})
 
+
+
+def is_range_data(result):
+    """
+    判断函数结果是否为区间数据（X_range）而不是完整的通道数据
+    
+    Args:
+        result: 函数执行结果
+    
+    Returns:
+        bool: True 如果是区间数据，False 如果是完整通道数据
+    """
+    try:
+        # 如果是列表且包含区间信息（有start_x, end_x等字段），认为是区间数据
+        if isinstance(result, list) and len(result) > 0:
+            first_item = result[0]
+            if isinstance(first_item, dict):
+                # 检查是否包含区间相关的字段
+                range_fields = ['start_x', 'end_x', 'x_start', 'x_end', 'range_start', 'range_end']
+                has_range_fields = any(field in first_item for field in range_fields)
+                
+                # 检查是否缺少完整通道数据的字段
+                channel_fields = ['X_value', 'Y_value']
+                has_channel_fields = all(field in first_item for field in channel_fields)
+                
+                # 如果有区间字段但没有完整通道数据字段，认为是区间数据
+                if has_range_fields and not has_channel_fields:
+                    return True
+        
+        # 如果是字典且包含区间信息但没有完整通道数据
+        elif isinstance(result, dict):
+            range_fields = ['start_x', 'end_x', 'x_start', 'x_end', 'range_start', 'range_end', 'ranges', 'intervals']
+            has_range_fields = any(field in result for field in range_fields)
+            
+            channel_fields = ['X_value', 'Y_value']
+            has_channel_fields = all(field in result for field in channel_fields)
+            
+            if has_range_fields and not has_channel_fields:
+                return True
+        
+        return False
+    except Exception as e:
+        print(f"判断区间数据时出错: {str(e)}")
+        return False
+
+def normalize_algorithm_result(result):
+    """
+    统一处理算法结果，将不同格式的结果标准化
+    
+    Args:
+        result: 算法执行的原始结果
+    
+    Returns:
+        dict: 标准化后的结果字典
+    """
+    try:
+        normalized_result = {}
+        
+        # 情况1: result是字典类型
+        if isinstance(result, dict):
+            normalized_result.update(result)
+        
+        # 情况2: result是列表类型 (直接作为X_range)
+        elif isinstance(result, list):
+            normalized_result["X_range"] = result
+        
+        # 情况3: result是字符串类型，可能是JSON字符串
+        elif isinstance(result, str):
+            try:
+                # 尝试解析JSON字符串
+                parsed_result = json.loads(result)
+                if isinstance(parsed_result, dict):
+                    # 如果解析后是字典，则合并到结果中
+                    normalized_result.update(parsed_result)
+                elif isinstance(parsed_result, list):
+                    # 如果解析后是列表，作为X_range
+                    normalized_result["X_range"] = parsed_result
+                else:
+                    # 其他类型的解析结果，作为algorithm_result
+                    normalized_result["algorithm_result"] = parsed_result
+            except (json.JSONDecodeError, TypeError):
+                # 如果不是有效的JSON字符串，直接作为algorithm_result
+                normalized_result["algorithm_result"] = result
+        
+        # 情况4: 其他类型 (数字、布尔值等)
+        else:
+            normalized_result["algorithm_result"] = result
+        
+        return normalized_result
+        
+    except Exception as e:
+        print(f"标准化算法结果时出错: {str(e)}")
+        # 发生错误时，将原始结果作为algorithm_result返回
+        return {"algorithm_result": result}
+
 @csrf_exempt
 def execute_function(data):
     """
     执行函数
     """
-    global loaded_module
-    function_name = data.get("function_name")
+    # 优先使用传递的匹配函数信息
+    matched_func = data.get("matched_function")
+    target_file_name = data.get("target_file_name")
     parameters = data.get("parameters", [])
+    db_suffix = data.get("db_suffix")  # 获取数据库后缀
+    original_func_str = data.get("original_func_str", "")  # 获取完整的函数调用字符串
 
-    # 参数逻辑更换，如通道名的数据切换为通道数据
-    if os.path.exists(FUNCTIONS_FILE_PATH):
+    # 如果没有传递匹配的函数信息，则使用旧的查找方式（向后兼容）
+    if not matched_func:
+        function_name = data.get("function_name")
+        if not function_name:
+            return {"error": "No function information provided"}
+
+        # 从imported_functions.json中查找函数信息
+        if not os.path.exists(FUNCTIONS_FILE_PATH):
+            return {"error": "Functions file not found"}
+
         with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
             functions_data = json.load(f)
 
-    matched_func = next((d for d in functions_data if d.get('name') == function_name), None)
-    for idx, param in enumerate(matched_func['input']):
-        if param['paraType'] == '通道对象':
-            cur_param = parameters[idx]
-            response = get_channel_data('', cur_param)
-            ret = json.loads(response.content.decode('utf-8'))
-            fields_values = sum(([k, matlab.double(v) if isinstance(v, list) else v] for k, v in ret.items()), [])
-            parameters[idx] = eng.feval('struct', *fields_values)
+        # 根据原始函数调用字符串确定函数类型
+        original_func_str = data.get("original_func_str", "")
+        preferred_extension = None
 
-    if loaded_module:
-        # Execute Python function
-        func = getattr(loaded_module, function_name, None)
-        if not func:
-            return {"error": "Function not found"}
+        if original_func_str.startswith('[Python]'):
+            preferred_extension = '.py'
+        elif original_func_str.startswith('[Matlab]'):
+            preferred_extension = '.m'
+
+        # 查找匹配的函数，优先选择指定类型的函数
+        all_matches = [d for d in functions_data if d.get('name') == function_name]
+
+        if preferred_extension:
+            # 优先查找指定类型的函数
+            for func in all_matches:
+                file_path = func.get('file_path', '')
+                if file_path.endswith(preferred_extension):
+                    matched_func = func
+                    break
+
+        # 如果没找到指定类型的函数，使用第一个匹配的函数
+        if not matched_func and all_matches:
+            matched_func = all_matches[0]
+
+        if not matched_func:
+            return {"error": f"Function '{function_name}' not found in imported functions"}
+
+    if not matched_func:
+        return {"error": f"Function file '{target_file_name}' not found in imported functions"}
+
+    # 获取函数文件路径
+    file_path = matched_func.get('file_path')
+    if not file_path:
+        return {"error": f"File path not found for function file '{target_file_name}'"}
+
+    # 构建完整的文件路径
+    full_file_path = os.path.join(settings.MEDIA_ROOT, file_path)
+    if not os.path.exists(full_file_path):
+        return {"error": f"Function file not found: {file_path}"}
+
+    # 处理参数：将通道名转换为通道数据
+    processed_parameters = []
+    channel_data_for_result = []  # 保存所有通道数据用于最终结果合并
+    
+    for idx, param in enumerate(parameters):
+        if idx < len(matched_func.get('input', [])):
+            param_info = matched_func['input'][idx]
+            if param_info.get('paraType') == '通道对象':
+                try:
+                    # 检查参数是否为表达式（包含运算符）
+                    if any(op in str(param) for op in ['+', '-', '*', '/', '(', ')']):
+                        # 参数是表达式，需要先解析表达式
+                        print(f"检测到表达式参数: {param}")
+                        
+                        # 创建表达式解析器
+                        def get_channel_data_for_parser(req, key):
+                            mock_req = create_mock_request(key, 1.0)
+                            return get_channel_data(mock_req, key)
+                        parser = ExpressionParser(get_channel_data_for_parser)
+                        
+                        # 解析表达式得到结果
+                        channel_data = parser.parse(str(param))
+                        
+                        # 设置通道名称
+                        channel_data['channel_name'] = str(param)
+                        
+                        # 保存表达式计算的通道数据，用于最终结果合并
+                        result_data_copy = channel_data.copy()
+                        result_data_copy['expression'] = str(param)  # 标记这是表达式计算结果
+                        channel_data_for_result.append(result_data_copy)
+                        
+                        print(f"表达式解析成功: {param}")
+                    else:
+                        # 参数是单个通道名，直接获取通道数据
+                        mock_request = create_mock_request(param, 1.0)  # 使用默认采样率
+                        response = get_channel_data(mock_request, param)
+                        if hasattr(response, 'content'):
+                            channel_data = json.loads(response.content.decode('utf-8'))
+                        else:
+                            channel_data = response
+
+                        if 'error' in channel_data:
+                            return {"error": f"Failed to get channel data for {param}: {channel_data['error']}"}
+                        
+                        # 保存单个通道数据，用于最终结果合并
+                        result_data_copy = channel_data.copy()
+                        result_data_copy['channel_name'] = str(param)
+                        channel_data_for_result.append(result_data_copy)
+
+                    # 对于Python函数，直接传递字典；对于MATLAB函数，转换为struct
+                    if full_file_path.endswith('.py'):
+                        processed_parameters.append(channel_data)
+                    else:
+                        # MATLAB函数需要转换为struct
+                        fields_values = sum(([k, matlab.double(v) if isinstance(v, list) else v] for k, v in channel_data.items()), [])
+                        processed_parameters.append(eng.feval('struct', *fields_values))
+                except Exception as e:
+                    return {"error": f"Error processing channel parameter {param}: {str(e)}"}
+            else:
+                # 非通道对象参数直接使用
+                processed_parameters.append(param)
+        else:
+            processed_parameters.append(param)
+
+    # 根据文件类型执行函数
+    if full_file_path.endswith('.py'):
+        # 执行Python函数
         try:
-            result = func(*parameters)
-            return {"result": result}
+            print(f"尝试加载Python文件: {full_file_path}")
+            print(f"文件是否存在: {os.path.exists(full_file_path)}")
+            
+            # 动态加载Python模块
+            spec = importlib.util.spec_from_file_location("dynamic_module", full_file_path)
+            dynamic_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(dynamic_module)
+
+            # 获取模块中所有的函数
+            available_functions = [name for name, obj in inspect.getmembers(dynamic_module) if inspect.isfunction(obj)]
+            print(f"模块中可用的函数: {available_functions}")
+            
+            # 选择要执行的函数
+            func = None
+            function_name_to_use = None
+            
+            # 如果有传递的目标文件名，尝试找到同名函数
+            if target_file_name:
+                if target_file_name in available_functions:
+                    func = getattr(dynamic_module, target_file_name)
+                    function_name_to_use = target_file_name
+                    print(f"找到同名函数: {target_file_name}")
+            
+            # 如果没有找到同名函数，使用第一个可用函数
+            if not func and available_functions:
+                function_name_to_use = available_functions[0]
+                func = getattr(dynamic_module, function_name_to_use)
+                print(f"使用第一个可用函数: {function_name_to_use}")
+            
+            # 如果还是没有找到函数，返回错误
+            if not func:
+                return {"error": f"No functions found in file {full_file_path}"}
+
+            print(f"执行函数: {function_name_to_use}，参数: {processed_parameters}")
+            result = func(*processed_parameters)
+            print(f"函数执行成功，结果: {result}")
+            
+            # 如果有通道数据，将其合并到result中
+            if channel_data_for_result:
+                print(f"合并通道数据到结果中: {len(channel_data_for_result)} 个")
+                
+                # 将函数返回结果和通道数据合并
+                merged_result = {}
+                
+                # 首先使用标准化函数处理算法结果
+                normalized_result = normalize_algorithm_result(result)
+                merged_result.update(normalized_result)
+                
+                # 然后添加第一个通道数据的字段（如果有多个，取第一个）
+                channel_data = channel_data_for_result[0]
+                # 添加通道数据字段，但不覆盖已有的函数返回结果字段
+                for key, value in channel_data.items():
+                    if key not in merged_result and key not in ['expression', 'is_constant']:
+                        merged_result[key] = value
+                
+                # 使用完整的函数调用字符串作为channel_name，如果没有则使用通道数据中的channel_name
+                if original_func_str:
+                    merged_result['channel_name'] = original_func_str
+                elif 'channel_name' in channel_data:
+                    merged_result['channel_name'] = channel_data['channel_name']
+                if 'expression' in channel_data:
+                    merged_result['expression'] = channel_data['expression']
+                
+                function_result = {"result": merged_result}
+            else:
+                # 即使没有通道数据，也使用标准化函数处理结果
+                normalized_result = normalize_algorithm_result(result)
+                function_result = {"result": normalized_result}
+            
+            return function_result
         except Exception as e:
-            return {"error": str(e)}
-    elif matlab_engine_available:
-        # Execute MATLAB function
+            import traceback
+            error_traceback = traceback.format_exc()
+            print(f"执行Python函数时出错: {str(e)}")
+            print(f"错误堆栈: {error_traceback}")
+            return {"error": f"Error executing Python function: {str(e)}"}
+
+    elif full_file_path.endswith('.m') and matlab_engine_available:
+        # 执行MATLAB函数
         try:
-            result = getattr(eng, function_name)(*parameters)
+            # 添加MATLAB文件路径
+            eng.addpath(os.path.dirname(full_file_path))
+
+            # 对于MATLAB文件，函数名通常与文件名相同
+            matlab_function_name = target_file_name if target_file_name else os.path.splitext(os.path.basename(full_file_path))[0]
+            print(f"执行MATLAB函数: {matlab_function_name}")
+            
+            result = getattr(eng, matlab_function_name)(*processed_parameters)
             result = json.loads(result)
-            return {"result": result}
+            
+            # 如果有通道数据，将其合并到result中
+            if channel_data_for_result:
+                print(f"合并通道数据到结果中: {len(channel_data_for_result)} 个")
+                
+                # 将函数返回结果和通道数据合并
+                merged_result = {}
+                
+                # 首先使用标准化函数处理算法结果
+                normalized_result = normalize_algorithm_result(result)
+                merged_result.update(normalized_result)
+                
+                # 然后添加第一个通道数据的字段（如果有多个，取第一个）
+                channel_data = channel_data_for_result[0]
+                # 添加通道数据字段，但不覆盖已有的函数返回结果字段
+                for key, value in channel_data.items():
+                    if key not in merged_result and key not in ['expression', 'is_constant']:
+                        merged_result[key] = value
+                
+                # 使用完整的函数调用字符串作为channel_name，如果没有则使用通道数据中的channel_name
+                if original_func_str:
+                    merged_result['channel_name'] = original_func_str
+                elif 'channel_name' in channel_data:
+                    merged_result['channel_name'] = channel_data['channel_name']
+                if 'expression' in channel_data:
+                    merged_result['expression'] = channel_data['expression']
+                
+                function_result = {"result": merged_result}
+            else:
+                # 即使没有通道数据，也使用标准化函数处理结果
+                normalized_result = normalize_algorithm_result(result)
+                function_result = {"result": normalized_result}
+            
+            return function_result
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": f"Error executing MATLAB function: {str(e)}"}
     else:
-        return {"error": "MATLAB engine is not available"}
+        return {"error": "Unsupported file type or MATLAB engine not available"}
 
 def verify_user(request):
     """
@@ -1759,70 +2573,94 @@ def sync_error_data(request):
         }
     try:
         data = json.loads(request.body)
-        db_suffix = data.get('db_suffix')  # 新增参数
-        db = get_db(db_suffix)
-        errors_collection = db["errors_data"]
-        struct_trees_collection = db["struct_trees"]
-        index_collection = db["index"]
         
-        for channel_data in data.get('channels', []):  # 假设数据结构调整为包含channels字段
+        # 按炮号分组处理不同数据库
+        channels_by_shot = {}
+        for channel_data in data.get('channels', []):
             channel_key = channel_data['channelKey']
-            manual_errors, machine_errors = channel_data['errorData']
             channel_name, shot_number = channel_key.rsplit('_', 1)
             shot_number = str(shot_number)
-            # 格式化人工异常
-            formatted_manual_errors = [
-                format_manual_error(e, channel_name, shot_number)
-                for e in manual_errors
-                if (e.get('anomalyCategory') or e.get('error_type') or e.get('异常类别'))
-            ]
-            # 机器异常直接用原格式
-            formatted_machine_errors = [
-                e for e in machine_errors
-                if (e.get('anomalyCategory') or e.get('error_type') or e.get('异常类别'))
-            ]
-            # 合并所有异常类型
-            error_types = set()
-            for error in formatted_manual_errors:
-                if error['error_type']:
-                    error_types.add(error['error_type'])
-            for error in formatted_machine_errors:
-                et = error.get('error_type') or error.get('anomalyCategory') or error.get('异常类别')
-                if et:
-                    error_types.add(et)
-            # 保存到MongoDB（每个异常类型一条记录，人工和机器分开）
-            for error_type in error_types:
-                # 取该类型的人工异常和机器异常
-                manual_list = [e for e in formatted_manual_errors if e['error_type'] == error_type]
-                machine_list = [e for e in formatted_machine_errors if (e.get('error_type') or e.get('anomalyCategory') or e.get('异常类别')) == error_type]
-                errors_collection.update_one(
+            
+            if shot_number not in channels_by_shot:
+                channels_by_shot[shot_number] = []
+            channels_by_shot[shot_number].append({
+                'channel_key': channel_key,
+                'channel_name': channel_name,
+                'error_data': channel_data['errorData']
+            })
+        
+        # 为每个炮号组找到对应的数据库并处理
+        for shot_number, shot_channels in channels_by_shot.items():
+            # 根据炮号找到对应的数据库
+            db_name = get_database_name_for_shot(shot_number)
+            
+            if not db_name:
+                print(f"警告: 未找到炮号 {shot_number} 对应的数据库")
+                continue
+                
+            # 使用找到的数据库
+            db = get_db_by_name(db_name)
+            errors_collection = db["errors_data"]
+            struct_trees_collection = db["struct_trees"]
+            index_collection = db["index"]
+            
+            for channel_info in shot_channels:
+                channel_name = channel_info['channel_name']
+                manual_errors, machine_errors = channel_info['error_data']
+                
+                # 格式化人工异常
+                formatted_manual_errors = [
+                    format_manual_error(e, channel_name, shot_number)
+                    for e in manual_errors
+                    if (e.get('anomalyCategory') or e.get('error_type') or e.get('异常类别'))
+                ]
+                # 机器异常直接用原格式
+                formatted_machine_errors = [
+                    e for e in machine_errors
+                    if (e.get('anomalyCategory') or e.get('error_type') or e.get('异常类别'))
+                ]
+                # 合并所有异常类型
+                error_types = set()
+                for error in formatted_manual_errors:
+                    if error['error_type']:
+                        error_types.add(error['error_type'])
+                for error in formatted_machine_errors:
+                    et = error.get('error_type') or error.get('anomalyCategory') or error.get('异常类别')
+                    if et:
+                        error_types.add(et)
+                # 保存到MongoDB（每个异常类型一条记录，人工和机器分开）
+                for error_type in error_types:
+                    # 取该类型的人工异常和机器异常
+                    manual_list = [e for e in formatted_manual_errors if e['error_type'] == error_type]
+                    machine_list = [e for e in formatted_machine_errors if (e.get('error_type') or e.get('anomalyCategory') or e.get('异常类别')) == error_type]
+                    errors_collection.update_one(
+                        {
+                            "shot_number": shot_number,
+                            "channel_number": channel_name,
+                            "error_type": error_type
+                        },
+                        {
+                            "$set": {"data": [manual_list, machine_list]}
+                        },
+                        upsert=True
+                    )
+                # 2. 更新 struct_trees_collection
+                struct_trees_collection.update_one(
                     {
                         "shot_number": shot_number,
-                        "channel_number": channel_name,
-                        "error_type": error_type
+                        "struct_tree.channel_name": channel_name
                     },
                     {
-                        "$set": {"data": [manual_list, machine_list]}
-                    },
-                    upsert=True
+                        "$addToSet": {"struct_tree.$.error_name": {"$each": list(error_types)}}
+                    }
                 )
-            # 2. 更新 struct_trees_collection
-            struct_trees_collection.update_one(
-                {
-                    "shot_number": shot_number,
-                    "struct_tree.channel_name": channel_name
-                },
-                {
-                    "$addToSet": {"struct_tree.$.error_name": {"$each": list(error_types)}}
-                }
-            )
-            # 3. 更新 index_collection
-            for error_type in error_types:
-                index_collection.update_one(
-                    {"key": "error_name"},
-                    {"$addToSet": {f"index_data.{shot_number}.{error_type}": channel_name}},
-                    upsert=True
-                )
+                # 3. 更新 index_collection
+                for error_type in error_types:
+                    index_collection.update_one(
+                        {"key": "error_name"},
+                        {"$addToSet": {f"index_data.{shot_number}.{error_type}": channel_name}},
+                        upsert=True
+                    )
         return JsonResponse({'message': '同步成功'})
     except Exception as e:
         import traceback
@@ -1839,17 +2677,25 @@ def delete_error_data(request):
         channel_number = data.get('channel_number')
         shot_number = data.get('shot_number')
         error_type = data.get('error_type')
-        db_suffix = data.get('db_suffix')  # 新增参数
         
         if not all([diagnostic_name, channel_number, shot_number, error_type]):
             return JsonResponse({'error': '缺少必要参数', 'data': data}, status=400)
-            
-        db = get_db(db_suffix)
+        
+        shot_number = str(shot_number)
+        shot_number_int = int(shot_number)
+        
+        # 根据炮号找到对应的数据库
+        db_name = get_database_name_for_shot(shot_number)
+        
+        if not db_name:
+            return JsonResponse({'error': f'未找到炮号 {shot_number} 对应的数据库'}, status=404)
+        
+        # 使用找到的数据库
+        db = get_db_by_name(db_name)
         errors_collection = db["errors_data"]
         struct_trees_collection = db["struct_trees"]
         index_collection = db["index"]
         
-        shot_number = str(shot_number)
         # 1. 删除 errors_collection 中的异常（只移除diagnostic_name对应的异常，若人工和机器都空则整个记录删除）
         doc = errors_collection.find_one({
             "shot_number": shot_number,
@@ -2002,24 +2848,15 @@ def sketch_query(request):
         normalized_curve = bezier_to_points(raw_query_pattern)
         
         # 创建修改后的通道数据获取函数
-        def get_channel_data_local(channel, sampling_rate, db_suffix):
-            """为模式匹配专门定制的获取通道数据的函数"""
+        def get_channel_data_local(channel, sampling_rate):
+            """为模式匹配专门定制的获取通道数据的函数（新版本无需数据库选择）"""
             channel_key = f"{channel['channel_name']}_{channel['shot_number']}"
             
-            # 创建一个模拟请求对象
-            class MockRequest:
-                def __init__(self, channel_key, sample_freq, db_suffix):
-                    self.GET = {
-                        'channel_key': channel_key,
-                        'sample_mode': 'downsample',
-                        'sample_freq': sample_freq,
-                        'db_suffix': db_suffix  # 添加数据库参数
-                    }
-                
-            mock_request = MockRequest(channel_key, sampling_rate, db_suffix)
+            # 使用统一的create_mock_request函数
+            mock_request = create_mock_request(channel_key, sampling_rate)
             
             # 直接调用views中的get_channel_data函数
-            response = get_channel_data(mock_request)
+            response = get_channel_data(mock_request, channel_key)
             
             # 解析结果
             if hasattr(response, 'content'):
@@ -2036,7 +2873,7 @@ def sketch_query(request):
         # 准备通道数据
         channel_data_list = []
         for channel in selected_channels:
-            channel_data = get_channel_data_local(channel, sampling, db_suffix)
+            channel_data = get_channel_data_local(channel, sampling)
             if channel_data:
                 # 添加通道信息到数据中
                 channel_data['channel_name'] = channel['channel_name']
@@ -2077,9 +2914,9 @@ def sketch_query(request):
 def get_channels_errors(request):
     """
     获取多个通道的异常数据，专门用于更新通道异常数据而不刷新整个列表
+    支持自动跨数据库查询
     POST请求，参数格式：
     {
-        "db_suffix": "4949_5071",  // 新增参数
         "channels": [
             {
                 "channel_name": "通道名",
@@ -2095,44 +2932,75 @@ def get_channels_errors(request):
     try:
         data = json.loads(request.body)
         channels = data.get('channels', [])
-        db_suffix = data.get('db_suffix')  # 新增参数
         
         if not channels:
             return JsonResponse({'error': 'No channels provided'}, status=400)
-            
-        db = get_db(db_suffix)
-        struct_trees_collection = db["struct_trees"]
+        
+        # 按炮号分组通道
+        channels_by_shot = {}
+        for channel_info in channels:
+            shot_number = str(channel_info.get('shot_number', ''))
+            if shot_number:
+                if shot_number not in channels_by_shot:
+                    channels_by_shot[shot_number] = []
+                channels_by_shot[shot_number].append(channel_info)
         
         result = []
-        for channel_info in channels:
-            channel_name = channel_info.get('channel_name')
-            shot_number = channel_info.get('shot_number')
-            channel_type = channel_info.get('channel_type')
-            if not channel_name or not shot_number:
+        
+        # 为每个炮号组找到对应的数据库
+        for shot_number, shot_channels in channels_by_shot.items():
+            db_shot_mapping = find_databases_for_shot_numbers([shot_number])
+            
+            if not db_shot_mapping:
+                # 如果找不到数据库，为这些通道设置空异常
+                for channel_info in shot_channels:
+                    result.append({
+                        "channel_name": channel_info.get('channel_name'),
+                        "shot_number": channel_info.get('shot_number'),
+                        "errors": [{"error_name": "NO ERROR", "color": "rgba(0, 0, 0, 0)"}]
+                    })
                 continue
-            doc = struct_trees_collection.find_one({'shot_number': str(shot_number)})
-            channel_errors = []
-            if doc and "struct_tree" in doc:
-                for item in doc["struct_tree"]:
-                    if (item.get('channel_type') == channel_type and 
-                        item.get('channel_name') == channel_name and 
-                        str(item.get('shot_number')) == str(shot_number)):
-                        error_names = item.get('error_name', [])
-                        if not error_names:
-                            error_names = ["NO ERROR"]
-                        channel_errors = [
-                            {
-                                "error_name": error_name,
-                                "color": "rgba(0, 0, 0, 0)" if error_name == "NO ERROR" else "rgba(220, 20, 60, 0.3)"
-                            }
-                            for error_name in error_names
-                        ]
-                        break
-            result.append({
-                "channel_name": channel_name,
-                "shot_number": shot_number,
-                "errors": channel_errors
-            })
+            
+            # 使用第一个匹配的数据库
+            db_suffix_auto = list(db_shot_mapping.keys())[0]
+            db = get_db(db_suffix_auto)
+            struct_trees_collection = db["struct_trees"]
+            
+            # 查找该炮号的结构树数据
+            doc = struct_trees_collection.find_one({'shot_number': shot_number})
+            
+            for channel_info in shot_channels:
+                channel_name = channel_info.get('channel_name')
+                channel_type = channel_info.get('channel_type')
+                shot_num = channel_info.get('shot_number')
+                
+                channel_errors = []
+                if doc and "struct_tree" in doc:
+                    for item in doc["struct_tree"]:
+                        if (item.get('channel_type') == channel_type and 
+                            item.get('channel_name') == channel_name and 
+                            str(item.get('shot_number')) == str(shot_num)):
+                            error_names = item.get('error_name', [])
+                            if not error_names:
+                                error_names = ["NO ERROR"]
+                            channel_errors = [
+                                {
+                                    "error_name": error_name,
+                                    "color": "rgba(0, 0, 0, 0)" if error_name == "NO ERROR" else "rgba(220, 20, 60, 0.3)"
+                                }
+                                for error_name in error_names
+                            ]
+                            break
+                
+                if not channel_errors:
+                    channel_errors = [{"error_name": "NO ERROR", "color": "rgba(0, 0, 0, 0)"}]
+                
+                result.append({
+                    "channel_name": channel_name,
+                    "shot_number": shot_num,
+                    "errors": channel_errors
+                })
+        
         return JsonResponse(result, safe=False)
     except Exception as e:
         import traceback

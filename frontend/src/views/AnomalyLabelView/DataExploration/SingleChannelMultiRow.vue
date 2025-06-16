@@ -1441,8 +1441,7 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                   const endX = anomaly.endX;
 
                   // 获取当前通道的数据
-                  const dbSuffixPart = store.state.currentDbSuffix ? `_db_${store.state.currentDbSuffix}` : '';
-                  const cacheKey = `${channelName}${dbSuffixPart}`;
+                  const cacheKey = `${channelName}`;
                   const cached = dataCache.get(cacheKey);
                   const channelData = cached?.data;
                   if (channelData && channelData.X_value && channelData.Y_value) {
@@ -2517,8 +2516,7 @@ const updateMatchedHighlights = (chart, channelKey) => {
         });
 
         // 获取当前通道的数据，使用正确的缓存键
-        const dbSuffixPart = store.state.currentDbSuffix ? `_db_${store.state.currentDbSuffix}` : '';
-        const cacheKey = `${channelKey}${dbSuffixPart}`;
+        const cacheKey = `${channelKey}`;
         const cached = dataCache.get(cacheKey);
         const channelData = cached?.data;
         if (channelData && channelData.X_value && channelData.Y_value) {
@@ -2763,9 +2761,8 @@ watch(showFFT, async (newShowFFT) => {
           
           // 生成正确的缓存键（与store.js中的逻辑完全一致）
           const currentSampling = store.state.sampling;
-          const dbSuffixPart = store.state.currentDbSuffix ? `_db_${store.state.currentDbSuffix}` : '';
           // 默认使用downsample模式的缓存键（与store.js中fetchChannelData保持一致）
-          const cacheKey = `${channelKey}${dbSuffixPart}`;
+          const cacheKey = `${channelKey}`;
           
           // 使用dataCache.get()方法获取缓存数据
           const cached = dataCache.get(cacheKey);
@@ -2783,8 +2780,7 @@ watch(showFFT, async (newShowFFT) => {
             try {
               cachedData = await store.dispatch('fetchChannelData', { 
                 channel, 
-                forceRefresh: false,
-                db_suffix: store.state.currentDbSuffix
+                forceRefresh: false
               });
             } catch (error) {
               console.error(`获取通道数据失败: ${channelKey}`, error);

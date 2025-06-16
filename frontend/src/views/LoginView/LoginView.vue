@@ -609,7 +609,7 @@ const handleLogin = async () => {
 
   isLoading.value = true;
   try {
-    const response = await fetch('https://10.1.108.231:5000/api/verify-user', {
+    const response = await fetch('http://192.168.20.49:5000/api/verify-user', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

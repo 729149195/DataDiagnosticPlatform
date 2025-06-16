@@ -238,12 +238,9 @@ const pollCalculationProgress = (taskId) => {
         const maxConsecutiveErrors = 5; // 增加最大连续错误次数
         let progressCheckInterval = null; // 将interval变量提升到外层作用域
         
-        // console.log('启动进度轮询，任务ID:', taskId);
-        
         // 延迟启动轮询，给后端处理时间
         setTimeout(() => {
             if (!store.state.isCalculating) {
-                // console.log('计算已停止，取消轮询启动');
                 return;
             }
             
@@ -252,21 +249,19 @@ const pollCalculationProgress = (taskId) => {
                 if (!store.state.isCalculating || isRequestPending) {
                     if (!store.state.isCalculating) {
                         clearInterval(progressCheckInterval);
-                        // console.log('计算状态已停止，停止轮询');
                     }
                     return;
                 }
             
             try {
                 isRequestPending = true;
-                const response = await axios.get(`https://10.1.108.231:5000/api/calculation-progress/${taskId}`, {
+                const response = await axios.get(`http://192.168.20.49:5000/api/calculation-progress/${taskId}`, {
                     timeout: 8000 // 增加到8秒超时
                 });
                 isRequestPending = false;
                 consecutiveErrors = 0; // 重置错误计数
                 
                 const { step, progress, status } = response.data;
-                // console.log(`进度更新: ${step} - ${progress}% - ${status}`);
                 
                 // 更新后端计算进度
                 store.commit('setCalculatingProgress', {
@@ -277,7 +272,6 @@ const pollCalculationProgress = (taskId) => {
                 // 如果计算完成，开始处理渲染阶段
                 if (status === 'completed') {
                     clearInterval(progressCheckInterval);
-                    // console.log('后端计算完成，进入渲染阶段');
                     
                     // 开始渲染进度跟踪
                     store.commit('setCalculatingProgress', {
@@ -295,7 +289,6 @@ const pollCalculationProgress = (taskId) => {
                     
                 } else if (status === 'failed') {
                     clearInterval(progressCheckInterval);
-                    // console.log('后端计算失败');
                     
                     store.commit('setCalculatingProgress', {
                         step: `计算失败: ${response.data.error || step || '未知错误'}`,
@@ -311,15 +304,13 @@ const pollCalculationProgress = (taskId) => {
                 isRequestPending = false;
                 consecutiveErrors++;
                 
-                console.warn(`进度轮询错误 (${consecutiveErrors}/${maxConsecutiveErrors}):`, error.message);
+
                 
                 // 如果是404错误且错误次数不多，可能是任务还在初始化
                 if (error.response && error.response.status === 404) {
                     if (consecutiveErrors <= 3) { // 对404错误更宽容，允许最多3次404错误
-                        // console.log('任务可能还在初始化，继续轮询...');
                         return; // 继续轮询，不停止
                     } else {
-                        // console.log('任务可能已完成或不存在，停止轮询');
                         clearInterval(progressCheckInterval);
                         // 不显示错误，因为计算可能已经完成
                         return;
@@ -329,7 +320,6 @@ const pollCalculationProgress = (taskId) => {
                 // 如果连续多次轮询失败，停止轮询
                 if (consecutiveErrors >= maxConsecutiveErrors) {
                     clearInterval(progressCheckInterval);
-                    console.error('轮询失败次数过多，停止轮询');
                     
                     store.commit('setCalculatingProgress', {
                         step: '网络连接异常，但计算可能仍在进行',
@@ -353,7 +343,7 @@ const pollCalculationProgress = (taskId) => {
         }, 800); // 将轮询间隔增加到800ms，减少服务器压力
         }, 1000); // 延迟1秒启动轮询
     } catch (error) {
-        console.error('Error setting up progress polling:', error);
+        // 忽略轮询设置错误
     }
 };
 
@@ -386,17 +376,14 @@ const sendClickedChannelNames = async () => {
                 progress: 5
             });
             
-            // console.log('发送初始化请求...');
-            const initResponse = await axios.post('https://10.1.108.231:5000/api/operator-strs/init', {
-                expression: formulasarea.value,
-                db_suffix: store.state.selectedDbSuffix
+            const initResponse = await axios.post('http://192.168.20.49:5000/api/operator-strs/init', {
+                expression: formulasarea.value
             }, {
                 cancelToken: source.token,
                 timeout: 15000 // 初始化请求15秒超时
             });
             
             const taskId = initResponse.data.task_id;
-            // console.log('任务初始化成功, 任务ID:', taskId);
             
             // 更新进度显示
             store.commit('setCalculatingProgress', {
@@ -405,24 +392,19 @@ const sendClickedChannelNames = async () => {
             });
             
             // 在发送计算请求前启动轮询
-            // console.log('启动进度轮询...');
             pollCalculationProgress(taskId);
             
             // 发送实际计算请求
-            // console.log('发送计算请求...');
-            const response = await axios.post('https://10.1.108.231:5000/api/operator-strs', {
+            const response = await axios.post('http://192.168.20.49:5000/api/operator-strs', {
                 clickedChannelNames: formulasarea.value,
                 anomaly_func_str: formulasarea.value,
                 channel_mess: selectedChannels.value,
                 task_id: taskId,
-                sample_freq: store.state.unit_sampling,
-                db_suffix: store.state.selectedDbSuffix
+                sample_freq: store.state.unit_sampling
             }, {
                 cancelToken: source.token,
                 timeout: 100000 // 计算请求100秒超时
             });
-            
-            // console.log('计算请求完成，处理结果...');
             
             // 处理计算结果
             store.state.ErrorLineXScopes = response.data.data;
@@ -446,7 +428,6 @@ const sendClickedChannelNames = async () => {
             
         } catch (error) {
             // 处理错误
-            console.error('Error sending data to backend:', error);
             
             if (!axios.isCancel(error)) {
                 // 非取消错误才更新进度
@@ -472,14 +453,12 @@ const sendClickedChannelNames = async () => {
                 }, 3000);
             } else {
                 // 用户取消操作
-                // console.log('用户取消计算操作');
                 store.commit('setCalculatingStatus', false);
             }
         } finally {
             clearTimeout(timeoutId); // 清除超时计时器
         }
     } catch (error) {
-        console.error('Error in calculation process:', error);
         store.commit('setCalculatingProgress', {
             step: '初始化失败，请重试',
             progress: 0
@@ -702,7 +681,7 @@ const restoreCursorPosition = (element, cursorPosition) => {
             selection.removeAllRanges();
             selection.addRange(range);
         } catch (error) {
-            console.warn('Failed to restore cursor position:', error);
+            // 忽略光标恢复错误
         }
     }
 };
@@ -730,24 +709,38 @@ watch(
     async (newstr) => {
         if (!newstr) return;
 
-        // console.log("接收到点击的通道标识符:", newstr);
+
 
         const editableDiv = document.querySelector('.editable-div');
         if (!editableDiv) return;
 
-        // 使用全局光标位置记录进行文本插入
-        const beforeCursor = formulasarea.value.slice(0, currentCursorPosition);
-        const afterCursor = formulasarea.value.slice(currentCursorPosition);
+        // 优先使用用户当前的实际光标位置，而不是全局变量
+        const actualCursorPosition = getCaretCharacterOffsetWithin(editableDiv);
+
+        // 如果能获取到实际光标位置，使用它；否则使用全局变量作为备用
+        const insertPosition = actualCursorPosition !== undefined ? actualCursorPosition : currentCursorPosition;
+
+
+
+        // 使用实际光标位置进行文本插入
+        const beforeCursor = formulasarea.value.slice(0, insertPosition);
+        const afterCursor = formulasarea.value.slice(insertPosition);
 
         formulasarea.value = beforeCursor + newstr + afterCursor;
 
-        // 将光标放在新插入内容的后面
-        currentCursorPosition += newstr.length;
+        // 更新光标位置到插入内容的后面
+        currentCursorPosition = insertPosition + newstr.length;
 
         await nextTick();
 
         // 进行高亮处理
         highlightChannels();
+
+        // 恢复光标到正确位置
+        await nextTick();
+        if (editableDiv) {
+            restoreCursorPosition(editableDiv, currentCursorPosition);
+        }
     },
     { immediate: true }
 );
@@ -828,11 +821,11 @@ const clearFormulas = () => {
 // 获取导入的函数列表
 const loadImportedFunctions = async () => {
     try {
-        const response = await axios.get('https://10.1.108.231:5000/api/view-functions');
+        const response = await axios.get('http://192.168.20.49:5000/api/view-functions');
         importedFunctions.value = response.data.imported_functions || [];
-        console.log('导入函数列表加载成功:', importedFunctions.value);
+
     } catch (error) {
-        console.error('获取导入函数列表失败:', error);
+        // 获取导入函数列表失败
         importedFunctions.value = [];
     }
 };
@@ -881,7 +874,7 @@ const handleFunctionMouseEnter = (event) => {
                 showFunctionTooltip.value = true;
             }
         } catch (error) {
-            console.error('解析函数数据失败:', error);
+            // 解析函数数据失败
         }
     }
 };
@@ -900,13 +893,11 @@ const handleFunctionMouseLeave = () => {
 
 // 处理函数上传事件
 const handleFunctionUploaded = async () => {
-    console.log('检测到函数上传事件，重新加载函数列表');
     await loadImportedFunctions();
 };
 
 // 处理函数删除事件
 const handleFunctionDeleted = async () => {
-    console.log('检测到函数删除事件，重新加载函数列表');
     await loadImportedFunctions();
 };
 
@@ -914,8 +905,7 @@ const handleFunctionDeleted = async () => {
 
 // 在 script setup 部分添加一个新的辅助函数
 const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => {
-    // console.log("查找位置:", position, "文本:", text);
-    // console.log("可用通道标识符:", channelIdentifiers);
+
     
     // 按长度排序标识符，优先匹配较长的标识符
     const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
@@ -927,18 +917,15 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
             const idx = text.indexOf(identifier, currentIndex);
             if (idx === -1) break;
             if (position >= idx && position < idx + identifier.length) {
-                const result = {
+                return {
                     identifier,
                     start: idx,
                     end: idx + identifier.length
                 };
-                // console.log("找到标识符:", result);
-                return result;
             }
             currentIndex = idx + 1;
         }
     }
-    // console.log("未找到标识符");
     return null;
 };
 
