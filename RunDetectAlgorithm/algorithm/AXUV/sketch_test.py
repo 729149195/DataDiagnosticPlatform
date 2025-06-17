@@ -4,8 +4,9 @@ import os
 import numpy as np
 
 # 添加项目根目录到sys.path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-sys.path.insert(0, project_root)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from backend.api.pattern_matching_Qetch import match_pattern
 

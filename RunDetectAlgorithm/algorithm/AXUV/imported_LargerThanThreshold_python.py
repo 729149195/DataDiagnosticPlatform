@@ -4,6 +4,10 @@ import os
 import importlib.util
 import numpy as np
 
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 def func(Y_value, X_value=None):
     """
     适配器函数，用于调用用户导入的算法

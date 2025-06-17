@@ -1,8 +1,13 @@
+import sys
+import os
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 # 自动生成的适配器文件，用于导入的MATLAB算法: LargerThanThreshold
 import scipy.io as sio
 import numpy as np
 import subprocess
-import os
 import tempfile
 
 def func(Y_value, X_value=None):
@@ -43,7 +48,7 @@ def func(Y_value, X_value=None):
             
         # 调用MATLAB算法
         project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        matlab_file = os.path.join(project_root, uploads/LargerThanThreshold.m)
+        matlab_file = os.path.join(project_root, 'uploads/LargerThanThreshold.m')
             
         # 创建临时MATLAB脚本来调用算法
         with tempfile.NamedTemporaryFile(suffix='.m', mode='w', delete=False) as temp_script:
