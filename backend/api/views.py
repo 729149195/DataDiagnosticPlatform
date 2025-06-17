@@ -24,6 +24,10 @@ from api.verify_user import send_post_request
 from api.pattern_matching_Qetch import match_pattern  # 只导入模式匹配函数
 from pymongo import MongoClient, ASCENDING, UpdateMany
 from collections import defaultdict
+import logging
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 # 存储计算任务状态的字典
 calculation_tasks = {}
@@ -3882,3 +3886,432 @@ def upload_algorithm_files(request):
         print(error_msg)
         traceback.print_exc()
         return OrJsonResponse({'error': error_msg}, status=500)
+
+@csrf_exempt
+def import_algorithm_to_detection(request):
+    """导入算法或模板到异常检测方法"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Only POST method allowed'})
+    
+    try:
+        data = json.loads(request.body)
+        algorithm_type = data.get('type')  # 'imported_function' 或 'sketch_template'
+        algorithm_name = data.get('algorithm_name')
+        category_name = data.get('category_name')
+        source_data = data.get('source_data')
+        
+        if not all([algorithm_type, algorithm_name, category_name]):
+            return JsonResponse({'success': False, 'message': '缺少必要参数'})
+        
+        # 加载现有的算法通道映射
+        # 使用绝对路径，相对于Django项目根目录
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        algorithm_map_path = os.path.join(project_root, 'RunDetectAlgorithm', 'algorithmChannelMap.json')
+        with open(algorithm_map_path, 'r', encoding='utf-8') as f:
+            algorithm_channel_map = json.load(f)
+        
+        # 确保类别存在
+        if category_name not in algorithm_channel_map:
+            algorithm_channel_map[category_name] = {}
+        
+        if algorithm_type == 'imported_function':
+            # 处理用户导入的算法 - 算法键包含文件类型信息
+            file_type = source_data.get('fileType', '')
+            file_type_suffix = '_python' if file_type == 'Python' else '_matlab' if file_type == 'MATLAB' else ''
+            algorithm_key = f"imported_{algorithm_name}{file_type_suffix}"
+            algorithm_channel_map[category_name][algorithm_key] = []
+            
+            # 创建算法适配器文件
+            create_imported_function_adapter(algorithm_name, source_data, category_name, algorithm_key)
+            
+        elif algorithm_type == 'sketch_template':
+            # 处理手绘模板
+            algorithm_key = f"sketch_{algorithm_name}"
+            algorithm_channel_map[category_name][algorithm_key] = []
+            
+            # 创建手绘模板适配器文件
+            create_sketch_template_adapter(algorithm_name, source_data, category_name, algorithm_key)
+        
+        else:
+            return JsonResponse({'success': False, 'message': '不支持的算法类型'})
+        
+        # 保存更新后的算法通道映射
+        with open(algorithm_map_path, 'w', encoding='utf-8') as f:
+            json.dump(algorithm_channel_map, f, ensure_ascii=False, indent=2)
+        
+        return JsonResponse({'success': True, 'message': '算法导入成功'})
+        
+    except Exception as e:
+        logger.error(f"导入算法失败: {e}")
+        return JsonResponse({'success': False, 'message': f'导入失败: {str(e)}'})
+
+def create_imported_function_adapter(algorithm_name, source_data, category_name, algorithm_key):
+    """为用户导入的算法创建适配器文件"""
+    # 从imported_functions.json中获取算法信息
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    imported_functions_path = os.path.join(project_root, 'backend', 'imported_functions.json')
+    try:
+        with open(imported_functions_path, 'r', encoding='utf-8') as f:
+            imported_functions = json.load(f)
+        
+        # 查找对应的算法信息 - 需要考虑同名但不同类型的算法
+        algorithm_info = None
+        file_type_preference = source_data.get('fileType', '')  # 从前端传来的文件类型
+        
+        # 如果指定了文件类型，优先匹配对应类型的算法
+        if file_type_preference:
+            for func in imported_functions:
+                if func['name'] == algorithm_name:
+                    func_file_type = 'Python' if func['file_path'].endswith('.py') else 'MATLAB' if func['file_path'].endswith('.m') else ''
+                    if func_file_type == file_type_preference:
+                        algorithm_info = func
+                        break
+        
+        # 如果没有找到指定类型的算法，或者没有指定类型，则使用第一个匹配的算法
+        if not algorithm_info:
+            for func in imported_functions:
+                if func['name'] == algorithm_name:
+                    algorithm_info = func
+                    break
+        
+        if not algorithm_info:
+            raise Exception(f"未找到算法信息: {algorithm_name}")
+        
+        # 确定文件扩展名
+        file_path = algorithm_info['file_path']
+        if file_path.endswith('.py'):
+            file_ext = 'py'
+        elif file_path.endswith('.m'):
+            file_ext = 'm'
+        else:
+            raise Exception(f"不支持的文件类型: {file_path}")
+        
+        # 创建适配器目录
+        adapter_dir = os.path.join(project_root, 'RunDetectAlgorithm', 'algorithm', category_name)
+        os.makedirs(adapter_dir, exist_ok=True)
+        
+        if file_ext == 'py':
+            # 获取参数配置
+            parameters = source_data.get('parameters', {})
+            input_params = algorithm_info.get('input', [])
+            
+            # 创建Python适配器
+            adapter_content = f'''# 自动生成的适配器文件，用于导入的Python算法: {algorithm_name}
+import sys
+import os
+import importlib.util
+import numpy as np
+
+def func(Y_value, X_value=None):
+    """
+    适配器函数，用于调用用户导入的算法
+    """
+    try:
+        # 动态导入用户的算法文件
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        file_path = os.path.join(project_root, '{file_path}')
+        spec = importlib.util.spec_from_file_location("{algorithm_name}", file_path)
+        user_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(user_module)
+        
+        # 构造通道数据对象
+        channel_data = {{
+            'X_value': X_value if X_value is not None else np.arange(len(Y_value)),
+            'Y_value': Y_value
+        }}
+        
+        # 调用用户算法（使用配置的参数）
+        # 获取配置的参数
+        configured_params = {repr(parameters)}
+        
+        # 构建函数调用参数
+        call_args = [channel_data]  # 通道数据总是第一个参数
+        
+        # 按照函数定义的顺序添加其他参数
+        input_params = {repr(input_params)}
+        for param in input_params:
+            if param['paraName'] != 'channel_key':  # 跳过通道参数
+                param_value = configured_params.get(param['paraName'], param.get('default', 0.1))
+                # 根据参数类型进行转换
+                if param['paraType'] == '浮点数':
+                    try:
+                        param_value = float(param_value) if param_value else 0.1
+                    except:
+                        param_value = 0.1
+                elif param['paraType'] == '整数':
+                    try:
+                        param_value = int(param_value) if param_value else 1
+                    except:
+                        param_value = 1
+                call_args.append(param_value)
+        
+        # 调用算法函数
+        if hasattr(user_module, '{algorithm_name}'):
+            result = getattr(user_module, '{algorithm_name}')(*call_args)
+        else:
+            # 查找第一个可调用的函数
+            for attr_name in dir(user_module):
+                attr = getattr(user_module, attr_name)
+                if callable(attr) and not attr_name.startswith('_'):
+                    result = attr(*call_args)
+                    break
+            else:
+                raise Exception("未找到可调用的函数")
+        
+        # 处理结果，转换为异常检测格式
+        if isinstance(result, dict) and 'X_range' in result:
+            # 结果是范围格式
+            return result['X_range']
+        else:
+            # 假设结果是二维数组格式
+            return result if isinstance(result, list) else []
+            
+    except Exception as e:
+        print(f"调用用户算法 {algorithm_name} 失败: {{e}}")
+        return []
+'''
+        
+        elif file_ext == 'm':
+            # 获取参数配置
+            parameters = source_data.get('parameters', {})
+            input_params = algorithm_info.get('input', [])
+            
+            # 创建MATLAB适配器 - 使用简单的字符串拼接避免模板问题
+            matlab_adapter_code = '''# 自动生成的适配器文件，用于导入的MATLAB算法: ''' + algorithm_name + '''
+import scipy.io as sio
+import numpy as np
+import subprocess
+import os
+import tempfile
+
+def func(Y_value, X_value=None):
+    """
+    适配器函数，用于调用用户导入的MATLAB算法
+    """
+    try:
+        # 创建临时文件存储输入数据
+        with tempfile.NamedTemporaryFile(suffix='.mat', delete=False) as temp_input:
+            input_data = {
+                'X_value': X_value if X_value is not None else np.arange(len(Y_value)),
+                'Y_value': Y_value
+            }
+            # 准备算法参数
+            algorithm_params = ''' + repr(parameters) + '''
+            input_param_defs = ''' + repr(input_params) + '''
+            
+            # 构建MATLAB函数参数
+            matlab_params = {'channel_key': input_data}
+            for param in input_param_defs:
+                if param['paraName'] != 'channel_key':
+                    param_value = algorithm_params.get(param['paraName'], param.get('default', 0.1))
+                    # 类型转换
+                    if param['paraType'] == '浮点数':
+                        try:
+                            param_value = float(param_value) if param_value else 0.1
+                        except:
+                            param_value = 0.1
+                    elif param['paraType'] == '整数':
+                        try:
+                            param_value = int(param_value) if param_value else 1
+                        except:
+                            param_value = 1
+                    matlab_params[param['paraName']] = param_value
+            
+            sio.savemat(temp_input.name, matlab_params)
+            temp_input_name = temp_input.name
+            
+        # 调用MATLAB算法
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        matlab_file = os.path.join(project_root, ''' + file_path + ''')
+            
+        # 创建临时MATLAB脚本来调用算法
+        with tempfile.NamedTemporaryFile(suffix='.m', mode='w', delete=False) as temp_script:
+            # 构建MATLAB函数调用参数列表
+            param_names = ['channel_key']
+            for param in input_param_defs:
+                if param['paraName'] != 'channel_key':
+                    param_names.append(param['paraName'])
+            
+            param_list = ', '.join(param_names)
+            
+            script_content = f"""
+            load('{temp_input_name}');
+            result = ''' + algorithm_name + '''({param_list});
+            save('{temp_input_name.replace('.mat', '_output.mat')}', 'result');
+            exit;
+            """
+            temp_script.write(script_content)
+            temp_script_path = temp_script.name
+        
+        # 执行MATLAB
+        subprocess.run(['matlab', '-batch', f"run('{temp_script_path}')"], 
+                     cwd=os.path.dirname(matlab_file), check=True, capture_output=True)
+        
+        # 读取结果
+        output_file = temp_input_name.replace('.mat', '_output.mat')
+        if os.path.exists(output_file):
+            result_data = sio.loadmat(output_file)
+            result = result_data.get('result', [])
+            
+            # 清理临时文件
+            os.unlink(temp_input_name)
+            os.unlink(temp_script_path)
+            os.unlink(output_file)
+            
+            # 处理结果
+            if isinstance(result, np.ndarray):
+                return result.tolist() if result.size > 0 else []
+            else:
+                return result if isinstance(result, list) else []
+        else:
+            raise Exception("MATLAB执行失败，未生成结果文件")
+                
+    except Exception as e:
+        print(f"调用MATLAB算法 ''' + algorithm_name + ''' 失败: {e}")
+        return []
+'''
+            adapter_content = matlab_adapter_code
+        
+        # 写入适配器文件 - 使用算法键作为文件名（已包含类型信息）
+        adapter_file_path = os.path.join(adapter_dir, f'{algorithm_key}.py')
+        with open(adapter_file_path, 'w', encoding='utf-8') as f:
+            f.write(adapter_content)
+        
+        print(f"已创建算法适配器: {adapter_file_path}")
+        
+    except Exception as e:
+        raise Exception(f"创建算法适配器失败: {e}")
+
+def create_sketch_template_adapter(template_name, source_data, category_name, algorithm_key):
+    """为手绘模板创建适配器文件"""
+    # 从sketch_templates.json中获取模板信息
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sketch_templates_path = os.path.join(project_root, 'backend', 'sketch_templates.json')
+    try:
+        with open(sketch_templates_path, 'r', encoding='utf-8') as f:
+            sketch_templates = json.load(f)
+        
+        # 查找对应的模板信息 - sketch_templates.json是数组结构
+        template_info = None
+        if isinstance(sketch_templates, list):
+            # 数组结构
+            for template in sketch_templates:
+                if template.get('template_name') == template_name:
+                    template_info = template
+                    break
+        elif isinstance(sketch_templates, dict) and 'templates' in sketch_templates:
+            # 对象结构
+            for template in sketch_templates['templates']:
+                if template.get('template_name') == template_name:
+                    template_info = template
+                    break
+        
+        if not template_info:
+            raise Exception(f"未找到模板信息: {template_name}")
+        
+        # 创建适配器目录
+        adapter_dir = os.path.join(project_root, 'RunDetectAlgorithm', 'algorithm', category_name)
+        os.makedirs(adapter_dir, exist_ok=True)
+        
+        # 创建手绘模式适配器
+        adapter_content = f'''# 自动生成的适配器文件，用于手绘模板: {template_name}
+import sys
+import os
+import numpy as np
+
+# 添加项目根目录到sys.path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, project_root)
+
+from backend.api.pattern_matching_Qetch import match_pattern
+
+def func(Y_value, X_value=None):
+    """
+    适配器函数，用于调用手绘模板匹配算法
+    """
+    try:
+        # 构造时间轴（如果没有提供）
+        if X_value is None:
+            X_value = np.arange(len(Y_value))
+        
+        # 对数据进行降采样到5KHz（按照用户要求）
+        X_value_resampled, Y_value_resampled = downsample_to_5khz(X_value, Y_value)
+        
+        # 构造通道数据
+        channel_data = {{
+            'X_value': X_value_resampled,
+            'Y_value': Y_value_resampled
+        }}
+        
+        # 模板参数 - 使用安全的字符串转换
+        import json as json_module
+        template_params = json_module.dumps(template_info.get('parameters', {{}}))
+        raw_query_pattern = json_module.dumps(template_info.get('raw_query_pattern', []))
+        
+        # 解析JSON参数
+        template_params_dict = json_module.loads(template_params)
+        raw_query_pattern_list = json_module.loads(raw_query_pattern)
+        
+        # 调用模式匹配算法
+        matches = match_pattern(
+            normalized_query_pattern=raw_query_pattern_list,
+            channel_data_list=[channel_data],
+            lowpass_amplitude=template_params_dict.get('lowpassAmplitude'),
+            x_filter_range=template_params_dict.get('xFilterRange'),
+            y_filter_range=template_params_dict.get('yFilterRange'),
+            pattern_repeat_count=template_params_dict.get('patternRepeatCount'),
+            max_match_per_channel=template_params_dict.get('maxMatchPerChannel'),
+            amplitude_limit=template_params_dict.get('amplitudeLimit'),
+            time_span_limit=template_params_dict.get('timeSpanLimit')
+        )
+        
+        # 处理匹配结果，转换为异常检测格式
+        error_ranges = []
+        if matches and len(matches) > 0:
+            for match in matches[0]:  # 取第一个通道的匹配结果
+                if 'start_point' in match and 'end_point' in match:
+                    start_x = match['start_point'].get('origX', match['start_point']['x'])
+                    end_x = match['end_point'].get('origX', match['end_point']['x'])
+                    error_ranges.append([start_x, end_x])
+        
+        return error_ranges
+        
+    except Exception as e:
+        print(f"调用手绘模板 {template_name} 失败: {{e}}")
+        return []
+
+def downsample_to_5khz(x_values, y_values):
+    """
+    将数据降采样到5KHz频率
+    """
+    if len(x_values) <= 5000:
+        return x_values, y_values
+    
+    # 确定数据的时间范围
+    time_start = min(x_values)
+    time_end = max(x_values)
+    time_span = time_end - time_start
+    
+    # 基于5KHz频率计算总采样点数
+    n_samples = int(time_span * 5000)
+    
+    # 如果目标点数比原始点数多，直接返回原始数据
+    if n_samples >= len(x_values):
+        return x_values, y_values
+    
+    # 使用与views.py中相同的降采样方法
+    from backend.api.views import downsample_to_frequency
+    return downsample_to_frequency(x_values, y_values, target_freq=5000)
+'''
+        
+        # 写入适配器文件
+        adapter_file_path = os.path.join(adapter_dir, f'{algorithm_key}.py')
+        with open(adapter_file_path, 'w', encoding='utf-8') as f:
+            f.write(adapter_content)
+        
+        print(f"已创建手绘模板适配器: {adapter_file_path}")
+        
+    except Exception as e:
+        raise Exception(f"创建手绘模板适配器失败: {e}")
+
+# ... existing code ...

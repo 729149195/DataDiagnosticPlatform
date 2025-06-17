@@ -228,7 +228,11 @@ def process_channel(channel_args):
                 
                 # 运行异常检测算法
                 try:
-                    if error == 'error_axuv_Detector_channel_damage':
+                    # 检查是否是导入的算法（以 imported_ 或 sketch_ 开头）
+                    if error.startswith('imported_') or error.startswith('sketch_'):
+                        # 对于导入的算法，总是传递 X_value 和 Y_value
+                        error_indexes = moduleX.func(Y_value, X_value)
+                    elif error == 'error_axuv_Detector_channel_damage':
                         if 'ECRH0_UA' not in aux_channel_data:
                             continue
                         error_indexes = moduleX.func(Y_value, aux_channel_data['ECRH0_UA'])

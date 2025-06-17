@@ -287,9 +287,16 @@ const loadAlgorithmData = async () => {
 
 onMounted(() => {
   startMonitoring();
+  
+  // 监听算法导入事件，自动刷新算法数据
+  window.addEventListener('algorithmImported', loadAlgorithmData);
 });
+
 onBeforeUnmount(() => {
   stopMonitoring();
+  
+  // 移除事件监听器
+  window.removeEventListener('algorithmImported', loadAlgorithmData);
 });
 </script>
 

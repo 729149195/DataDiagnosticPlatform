@@ -88,11 +88,75 @@
       </el-tree>
     </div>
   </div>
+  
+  <!-- 导入算法对话框 -->
+  <el-dialog v-model="importDialogVisible" title="导入到异常检测方法" width="500px" :close-on-click-modal="false">
+    <el-form :model="importForm" label-width="100px">
+      <el-form-item label="算法名称">
+        <el-input v-model="importForm.algorithmName" placeholder="算法名称" disabled />
+      </el-form-item>
+      <el-form-item label="算法类型">
+        <el-tag :type="currentImportData?.fileType === 'Python' ? 'success' : 'warning'">
+          {{ currentImportData?.fileType || '未知' }}
+        </el-tag>
+      </el-form-item>
+      <el-form-item label="检测类别">
+        <el-select 
+          v-model="importForm.selectedCategory" 
+          placeholder="请选择现有类别或输入新类别" 
+          allow-create 
+          filterable
+          style="width: 100%">
+          <el-option v-for="category in existingCategories" :key="category" :label="category" :value="category" />
+        </el-select>
+        <div style="margin-top: 8px;">
+          <el-input 
+            v-model="importForm.categoryName" 
+            placeholder="或输入新的类别名称"
+            :disabled="!!importForm.selectedCategory" />
+        </div>
+      </el-form-item>
+      
+      <!-- 算法参数配置 -->
+      <div v-if="algorithmParameters.length > 0" class="algorithm-parameters">
+        <el-divider content-position="left">参数配置</el-divider>
+        <el-form-item 
+          v-for="param in algorithmParameters" 
+          :key="param.paraName"
+          :label="param.paraName"
+          class="parameter-item">
+          <div class="parameter-input-wrapper">
+            <el-input 
+              v-model="parameterValues[param.paraName]"
+              :placeholder="param.paraDefinition || `请输入${param.paraName}`"
+              size="small">
+              <template #append>
+                <span class="parameter-type">{{ param.paraType }}</span>
+              </template>
+            </el-input>
+            <div v-if="param.paraDefinition" class="parameter-description">
+              {{ param.paraDefinition }}
+            </div>
+            <div v-if="param.domain && param.domain !== 'None'" class="parameter-domain">
+              取值范围: {{ param.domain }}
+            </div>
+          </div>
+        </el-form-item>
+      </div>
+    </el-form>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmImport">确定导入</el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import { Document, InfoFilled } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 
 // 响应式数据
 const treeData = ref([]);
@@ -202,8 +266,133 @@ const handleNodeClick = (data) => {
 // 添加到异常检测方法
 const addToAnomalyDetection = (data) => {
   console.log('添加算法到异常检测方法:', data);
-  // TODO: 实现添加到异常检测方法的逻辑
-  // 可以触发事件或调用父组件方法
+  
+  // 显示导入对话框
+  showImportDialog(data);
+};
+
+// 导入对话框相关数据
+const importDialogVisible = ref(false);
+const importForm = ref({
+  algorithmName: '',
+  categoryName: '',
+  selectedCategory: ''
+});
+const currentImportData = ref(null);
+const existingCategories = ref([]);
+const algorithmParameters = ref([]);
+const parameterValues = ref({});
+
+// 显示导入对话框
+const showImportDialog = async (algorithmData) => {
+  currentImportData.value = algorithmData;
+  importForm.value.algorithmName = algorithmData.algorithmName;
+  importForm.value.categoryName = '';
+  importForm.value.selectedCategory = '';
+  
+  // 加载算法参数
+  await loadAlgorithmParameters(algorithmData.algorithmName, algorithmData.fileType);
+  
+  // 获取现有类别
+  await loadExistingCategories();
+  importDialogVisible.value = true;
+};
+
+// 加载现有类别
+const loadExistingCategories = async () => {
+  try {
+    const response = await fetch('http://192.168.20.49:5000/api/algorithm-channel-map');
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        existingCategories.value = Object.keys(result.data || {});
+      }
+    }
+  } catch (error) {
+    console.error('加载现有类别失败:', error);
+  }
+};
+
+// 加载算法参数
+const loadAlgorithmParameters = async (algorithmName, fileType) => {
+  try {
+    const response = await fetch('http://192.168.20.49:5000/api/view-functions');
+    if (response.ok) {
+      const result = await response.json();
+      const algorithm = result.imported_functions?.find(func => {
+        const funcFileType = func.file_path?.endsWith('.py') ? 'Python' : 
+                           func.file_path?.endsWith('.m') ? 'MATLAB' : '';
+        return func.name === algorithmName && funcFileType === fileType;
+      });
+      
+      if (algorithm && algorithm.input) {
+        // 过滤掉通道参数，只保留其他需要配置的参数
+        algorithmParameters.value = algorithm.input.filter(param => 
+          param.paraType !== '通道对象' && param.paraName !== 'channel_key'
+        );
+        
+        // 初始化参数默认值
+        parameterValues.value = {};
+        algorithmParameters.value.forEach(param => {
+          parameterValues.value[param.paraName] = param.default && param.default !== 'None' ? param.default : '';
+        });
+      } else {
+        algorithmParameters.value = [];
+        parameterValues.value = {};
+      }
+    }
+  } catch (error) {
+    console.error('加载算法参数失败:', error);
+    algorithmParameters.value = [];
+    parameterValues.value = {};
+  }
+};
+
+// 确认导入
+const confirmImport = async () => {
+  const categoryName = importForm.value.selectedCategory || importForm.value.categoryName;
+  
+  if (!categoryName.trim()) {
+    ElMessage.warning('请选择或输入类别名称');
+    return;
+  }
+  
+  if (!importForm.value.algorithmName.trim()) {
+    ElMessage.warning('算法名称不能为空');
+    return;
+  }
+  
+  try {
+    const response = await fetch('http://192.168.20.49:5000/api/import-algorithm-to-detection', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'imported_function',
+        algorithm_name: importForm.value.algorithmName,
+        category_name: categoryName,
+        source_data: {
+          ...currentImportData.value,
+          fileType: currentImportData.value.fileType,  // 传递文件类型信息
+          parameters: parameterValues.value  // 传递参数配置
+        }
+      })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      ElMessage.success('算法已成功加入异常检测方法');
+      importDialogVisible.value = false;
+      // 触发事件通知父组件刷新
+      window.dispatchEvent(new CustomEvent('algorithmImported'));
+    } else {
+      ElMessage.error(result.message || '导入失败');
+    }
+  } catch (error) {
+    console.error('导入算法失败:', error);
+    ElMessage.error('导入失败，请重试');
+  }
 };
 
 // 加载导入的算法数据
@@ -266,6 +455,42 @@ onMounted(() => {
 
   *::-webkit-scrollbar-corner {
     background: transparent;
+  }
+}
+
+/* 参数配置样式 */
+.algorithm-parameters {
+  margin-top: 16px;
+  
+  .parameter-item {
+    margin-bottom: 16px;
+    
+    .parameter-input-wrapper {
+      .parameter-type {
+        color: #909399;
+        font-size: 12px;
+        padding: 0 8px;
+        background: #f5f7fa;
+        border-left: 1px solid #dcdfe6;
+      }
+      
+      .parameter-description {
+        font-size: 12px;
+        color: #606266;
+        margin-top: 4px;
+        line-height: 1.4;
+      }
+      
+      .parameter-domain {
+        font-size: 11px;
+        color: #1890ff;
+        margin-top: 2px;
+        background: #e6f7ff;
+        padding: 2px 6px;
+        border-radius: 3px;
+        display: inline-block;
+      }
+    }
   }
 }
 

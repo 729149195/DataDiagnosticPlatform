@@ -126,11 +126,43 @@
       </el-tree>
     </div>
   </div>
+  
+  <!-- 导入模板对话框 -->
+  <el-dialog v-model="importDialogVisible" title="导入到异常检测方法" width="500px" :close-on-click-modal="false">
+    <el-form :model="importForm" label-width="100px">
+      <el-form-item label="模板名称">
+        <el-input v-model="importForm.templateName" placeholder="模板名称" disabled />
+      </el-form-item>
+      <el-form-item label="检测类别">
+        <el-select 
+          v-model="importForm.selectedCategory" 
+          placeholder="请选择现有类别或输入新类别" 
+          allow-create 
+          filterable
+          style="width: 100%">
+          <el-option v-for="category in existingCategories" :key="category" :label="category" :value="category" />
+        </el-select>
+        <div style="margin-top: 8px;">
+          <el-input 
+            v-model="importForm.categoryName" 
+            placeholder="或输入新的类别名称"
+            :disabled="!!importForm.selectedCategory" />
+        </div>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="importDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmImport">确定导入</el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import { Brush, InfoFilled } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 
 // 响应式数据
 const treeData = ref([]);
@@ -227,8 +259,89 @@ const handleNodeClick = (data) => {
 // 添加到异常检测方法
 const addToAnomalyDetection = (data) => {
   console.log('添加手绘模板到异常检测方法:', data);
-  // TODO: 实现添加到异常检测方法的逻辑
-  // 可以触发事件或调用父组件方法
+  
+  // 显示导入对话框
+  showImportDialog(data);
+};
+
+// 导入对话框相关数据
+const importDialogVisible = ref(false);
+const importForm = ref({
+  templateName: '',
+  categoryName: '',
+  selectedCategory: ''
+});
+const currentImportData = ref(null);
+const existingCategories = ref([]);
+
+// 显示导入对话框
+const showImportDialog = async (templateData) => {
+  currentImportData.value = templateData;
+  importForm.value.templateName = templateData.templateName;
+  importForm.value.categoryName = '';
+  importForm.value.selectedCategory = '';
+  
+  // 获取现有类别
+  await loadExistingCategories();
+  importDialogVisible.value = true;
+};
+
+// 加载现有类别
+const loadExistingCategories = async () => {
+  try {
+    const response = await fetch('http://192.168.20.49:5000/api/algorithm-channel-map');
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success) {
+        existingCategories.value = Object.keys(result.data || {});
+      }
+    }
+  } catch (error) {
+    console.error('加载现有类别失败:', error);
+  }
+};
+
+// 确认导入
+const confirmImport = async () => {
+  const categoryName = importForm.value.selectedCategory || importForm.value.categoryName;
+  
+  if (!categoryName.trim()) {
+    ElMessage.warning('请选择或输入类别名称');
+    return;
+  }
+  
+  if (!importForm.value.templateName.trim()) {
+    ElMessage.warning('模板名称不能为空');
+    return;
+  }
+  
+  try {
+    const response = await fetch('http://192.168.20.49:5000/api/import-algorithm-to-detection', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'sketch_template',
+        algorithm_name: importForm.value.templateName,
+        category_name: categoryName,
+        source_data: currentImportData.value
+      })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      ElMessage.success('手绘模板已成功加入异常检测方法');
+      importDialogVisible.value = false;
+      // 触发事件通知父组件刷新
+      window.dispatchEvent(new CustomEvent('algorithmImported'));
+    } else {
+      ElMessage.error(result.message || '导入失败');
+    }
+  } catch (error) {
+    console.error('导入模板失败:', error);
+    ElMessage.error('导入失败，请重试');
+  }
 };
 
 // 设置曲线画布引用
