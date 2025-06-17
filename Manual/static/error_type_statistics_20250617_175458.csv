@@ -1,0 +1,17 @@
+﻿Error Type,Count
+error_magnetics_drift,1173913
+error_hxr_saturation_counts,95834
+error_hxr_saturation_counts_ex,95830
+error_hxr_baseline_shift,95430
+error_magnetics_error_probe,36340
+error_ha_saturation,28534
+error_VisibleBrems_Saturation,20243
+error_hcn_hop,16036
+error_sxr_spectra_saturation,9781
+error_axuv_Detector_channel_damage,8342
+error_magnetics_error_FOCS,354
+error_TS_empty_amplitude,208
+error_axuv_saturation,84
+error_TS_polychromatic_damaged,35
+test,1
+34,1

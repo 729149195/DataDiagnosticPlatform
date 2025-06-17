@@ -15,6 +15,7 @@ import random
 import logging
 import traceback
 import sys
+import os
 
 import MDSplus # type: ignore
 import numpy as np
@@ -217,24 +218,53 @@ def process_channel(channel_args):
         
         # 动态导入算法模块
         for error in error_type_list:
+            # 调试信息：打印通道匹配过程
+            if channel_name == 'AXUV001':
+                logger.info(f"[DEBUG AXUV001] 检查算法 {error}，通道列表: {error_channel_map[error]}")
+                logger.info(f"[DEBUG AXUV001] 通道匹配结果: {[channel_name.lower() == c.lower() for c in error_channel_map[error]]}")
+            
             if any(channel_name.lower() == c.lower() for c in error_channel_map[error]):
                 algorithm_applied = True
-                path = f'RunDetectAlgorithm/algorithm/{detect_type}/{error}.py'
+                
+                # 使用绝对路径构造算法文件路径
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                path = os.path.join(project_root, 'RunDetectAlgorithm', 'algorithm', detect_type, f'{error}.py')
+                
+                # 调试信息：打印算法文件路径
+                if channel_name == 'AXUV001':
+                    logger.info(f"[DEBUG AXUV001] 尝试导入算法 {error}，路径: {path}")
+                    logger.info(f"[DEBUG AXUV001] 文件是否存在: {os.path.exists(path)}")
+                
                 try:
                     moduleX = import_module_from_path(error, path)
+                    if channel_name == 'AXUV001':
+                        logger.info(f"[DEBUG AXUV001] 成功导入算法模块 {error}")
                 except Exception as e:
                     logger.warning(f"导入模块 {error} 失败: {e}")
+                    if channel_name == 'AXUV001':
+                        logger.error(f"[DEBUG AXUV001] 导入算法模块 {error} 失败，详细错误: {traceback.format_exc()}")
                     continue
                 
                 # 运行异常检测算法
                 try:
+                    # 调试信息：打印算法执行参数
+                    if channel_name == 'AXUV001':
+                        logger.info(f"[DEBUG AXUV001] 执行算法 {error}")
+                        logger.info(f"[DEBUG AXUV001] Y_value长度: {len(Y_value) if Y_value is not None else 'None'}")
+                        logger.info(f"[DEBUG AXUV001] X_value长度: {len(X_value) if X_value is not None else 'None'}")
+                        logger.info(f"[DEBUG AXUV001] 算法类型判断: imported_={error.startswith('imported_')}, sketch_={error.startswith('sketch_')}")
+                    
                     # 检查是否是导入的算法（以 imported_ 或 sketch_ 开头）
                     if error.startswith('imported_') or error.startswith('sketch_'):
                         # 对于导入的算法，总是传递 X_value 和 Y_value
+                        if channel_name == 'AXUV001':
+                            logger.info(f"[DEBUG AXUV001] 调用导入算法，参数: Y_value, X_value")
                         error_indexes = moduleX.func(Y_value, X_value)
                     elif error == 'error_axuv_Detector_channel_damage':
                         if 'ECRH0_UA' not in aux_channel_data:
                             continue
+                        if channel_name == 'AXUV001':
+                            logger.info(f"[DEBUG AXUV001] 调用AXUV损坏检测算法")
                         error_indexes = moduleX.func(Y_value, aux_channel_data['ECRH0_UA'])
                     elif error == 'error_sxr_spectra_saturation':
                         if 'IP' not in aux_channel_data:
@@ -243,10 +273,21 @@ def process_channel(channel_args):
                     elif channel_type == 'TS':
                         error_indexes = moduleX.func(Y_value, X_value)
                     else:
+                        if channel_name == 'AXUV001':
+                            logger.info(f"[DEBUG AXUV001] 调用标准算法，参数: Y_value")
                         error_indexes = moduleX.func(Y_value)
+                    
+                    # 调试信息：打印算法执行结果
+                    if channel_name == 'AXUV001':
+                        logger.info(f"[DEBUG AXUV001] 算法 {error} 执行完成，结果数量: {len(error_indexes) if error_indexes else 0}")
+                        if error_indexes:
+                            logger.info(f"[DEBUG AXUV001] 检测结果: {error_indexes[:3]}...")  # 只显示前3个结果
+                            
                 except Exception as e:
                     # 算法执行失败，跳过
                     logger.warning(f"执行算法 {error} 失败: {e}")
+                    if channel_name == 'AXUV001':
+                        logger.error(f"[DEBUG AXUV001] 算法 {error} 执行失败，详细错误: {traceback.format_exc()}")
                     continue
                 
                 # 处理检测结果
