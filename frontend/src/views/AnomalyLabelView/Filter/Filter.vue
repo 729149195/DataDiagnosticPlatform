@@ -11,12 +11,12 @@
               <template #append>
                 <div class="gun-number-buttons">
                   <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
-                  <el-button size="small" @click="showStatisticsDialog" type="info" :disabled="!hasIndexLoaded || selectedGunNumbers.length === 0" title="查看炮号统计信息" icon="DataLine">
-                    统计
-                  </el-button>
                 </div>
               </template>
             </el-input>
+            <el-button size="small" @click="showStatisticsDialog" type="primary" :disabled="!hasIndexLoaded || selectedGunNumbers.length === 0" title="查看炮号统计信息" icon="DataLine">
+              总览
+            </el-button>
           </div>
         </div>
         <div class="form-item">
@@ -55,11 +55,11 @@
               <el-option v-for="shot in availableStatisticsShots" :key="shot" :label="`炮号 ${shot}`" :value="shot" />
             </el-select>
           </div>
-          <div class="controls-right">
+          <!-- <div class="controls-right">
             <el-button type="primary" @click="refreshStatistics" :loading="statisticsLoading" icon="Refresh" size="default">
               刷新统计
             </el-button>
-          </div>
+          </div> -->
         </div>
 
         <div class="statistics-content" v-if="currentShotStatistics">
@@ -949,6 +949,7 @@ const renderChannelTypesChart = () => {
         data: chartData
       }],
       credits: { enabled: false },
+      exporting: { enabled: false },
       tooltip: {
         pointFormat: '<b>{point.y}</b> 个通道<br/>',
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -1036,6 +1037,7 @@ const renderErrorTypesChart = () => {
         data: chartData
       }],
       credits: { enabled: false },
+      exporting: { enabled: false },
       tooltip: {
         pointFormat: '<b>{point.y}</b> 个异常<br/>',
         backgroundColor: 'rgba(255, 255, 255, 0.95)',
@@ -1092,6 +1094,9 @@ const renderErrorTypesChart = () => {
 
 .input-container {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .buttons {
@@ -1100,7 +1105,7 @@ const renderErrorTypesChart = () => {
 }
 
 .gun-number-input {
-  width: 100%;
+  flex: 1;
 }
 
 .db-select {
@@ -1282,10 +1287,14 @@ const renderErrorTypesChart = () => {
 /* 按钮组样式 */
 .gun-number-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   flex-shrink: 0;
   white-space: nowrap;
+}
+
+.gun-number-buttons .el-button {
+  flex-shrink: 0;
 }
 
 /* 统计对话框样式 */
