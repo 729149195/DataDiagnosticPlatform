@@ -492,10 +492,14 @@ const store = createStore({
               const key = `${channel.channel_name}_${channel.shot_number}`;
               const savedState = selectedStates.get(key);
               if (savedState) {
-                // 保留之前的选中状态
-                channel.checked = savedState.channelChecked;
-                if (channel.checked) {
-                  checkedChannelsCount++;
+                // 保留之前的选中状态，但空数据通道不能被选中
+                if (channel.status === 'empty_data') {
+                  channel.checked = false;
+                } else {
+                  channel.checked = savedState.channelChecked;
+                  if (channel.checked) {
+                    checkedChannelsCount++;
+                  }
                 }
 
                 // 保留展开/折叠状态
@@ -545,12 +549,15 @@ const store = createStore({
               }
             });
 
-            // 如果该通道类型中所有通道都被选中，则该类型也被选中
+            // 只考虑非空数据的通道
+            const validChannels = item.channels.filter(channel => channel.status !== 'empty_data');
             if (checkedChannelsCount > 0) {
-              item.checked = checkedChannelsCount === totalChannelsCount;
+              item.checked = checkedChannelsCount === validChannels.length;
             } else {
               item.checked = false;
             }
+            // 检查是否所有通道都是空数据
+            item.allChannelsEmpty = item.channels.every(channel => channel.status === 'empty_data');
           }
         });
       }
@@ -1343,12 +1350,17 @@ function mergeChannelTypeData(existingData, newData) {
         );
         if (!existingChannel) {
           existingItem.channels.push(newChannel);
+        } else {
+          // 如果通道已存在，更新状态字段
+          existingChannel.status = newChannel.status;
+          existingChannel.status_message = newChannel.status_message;
         }
       });
       // 更新通道类型的选中状态
-      existingItem.checked = existingItem.channels.every(
-        (channel) => channel.checked
-      );
+      const validChannels = existingItem.channels.filter(channel => channel.status !== 'empty_data');
+      existingItem.checked = validChannels.length > 0 && validChannels.every((channel) => channel.checked);
+      // 检查是否所有通道都是空数据
+      existingItem.allChannelsEmpty = existingItem.channels.every(channel => channel.status === 'empty_data');
     } else {
       // 如果是新的通道类型，直接添加
       mergedMap.set(newItem.channel_type, newItem);
@@ -1440,6 +1452,9 @@ function processData(rawData) {
         errors: [],
         displayedErrors: [],
         showAllErrors: false,
+        // 添加状态相关字段
+        status: item.status,
+        status_message: item.status_message,
       };
       channelTypeEntry.channels.push(channelEntry);
     }
@@ -1497,7 +1512,11 @@ function processData(rawData) {
   // 更新通道类型的选中状态
   groupedData.forEach((item) => {
     if (item.channels.length > 0) {
-      item.checked = item.channels.every((channel) => channel.checked);
+      // 只考虑非空数据的通道
+      const validChannels = item.channels.filter(channel => channel.status !== 'empty_data');
+      item.checked = validChannels.length > 0 && validChannels.every((channel) => channel.checked);
+      // 检查是否所有通道都是空数据
+      item.allChannelsEmpty = item.channels.every(channel => channel.status === 'empty_data');
     }
   });
 

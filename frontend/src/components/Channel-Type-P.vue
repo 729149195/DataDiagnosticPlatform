@@ -28,19 +28,25 @@
                                     <span :title="item.channel_type" @click.stop="toggleChannelCheckboxes(item)">{{ formatChannelType(item.channel_type) }}</span>
                                     <div class="type-header" @click.stop="toggleChannelCheckboxes(item)">
                                         <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
+                                            :disabled="item.allChannelsEmpty"
                                             class="checkbox-margin" @click.stop></el-checkbox>
                                     </div>
                                 </td>
 
                                 <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
                                     'channel-name': true,
-                                    'channel-name-last': cIndex === item.channels.length - 1
+                                    'channel-name-last': cIndex === item.channels.length - 1,
+                                    'empty-data': channel.status === 'empty_data'
                                 }"
-                                @click.stop="toggleSingleChannel(channel, item)">
+                                @click.stop="!isChannelEmpty(channel) && toggleSingleChannel(channel, item)">
                                     <div class="name-container">
                                         <span class="channel-name-text">{{ channel.channel_name }}</span>
                                         <div class="name-right">
+                                            <el-icon v-if="isChannelEmpty(channel)" class="empty-data-icon" title="数据为空或无效">
+                                                <WarningFilled />
+                                            </el-icon>
                                             <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                                                :disabled="isChannelEmpty(channel)"
                                                 class="checkbox-margin"></el-checkbox>
                                         </div>
                                     </div>
@@ -48,7 +54,7 @@
                                         {{ channel.shot_number }}
                                     </el-tag>
                                     <div class="show-more-container">
-                                        <el-button link @click.stop="toggleShowAllErrors(channel)">
+                                        <el-button link @click.stop="toggleShowAllErrors(channel)" :disabled="isChannelEmpty(channel)">
                                             {{ channel.showAllErrors ? '收起' : '展开全部异常类别' }}
                                             <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0"
                                                 class="hidden-errors">
@@ -62,11 +68,15 @@
                                     'error-column': true,
                                     'error-last':
                                         eIndex === channel.displayedErrors.length - 1 &&
-                                        cIndex !== item.channels.length - 1
+                                        cIndex !== item.channels.length - 1,
+                                    'empty-data': channel.status === 'empty_data'
                                 }"
-                                @click.stop="toggleSingleChannel(channel, item)">
+                                @click.stop="!isChannelEmpty(channel) && toggleSingleChannel(channel, item)">
                                     <div class="error-container">
-                                        <span :title="error.error_name">{{ formatError(error.error_name) }}</span>
+                                        <span v-if="isChannelEmpty(channel)" class="empty-data-text">
+                                            {{ channel.status_message || '数据为空或无效' }}
+                                        </span>
+                                        <span v-else :title="error.error_name">{{ formatError(error.error_name) }}</span>
                                     </div>
                                 </td>
                             </tr>
@@ -85,7 +95,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useStore } from 'vuex';
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, WarningFilled } from '@element-plus/icons-vue'
 
 const store = useStore();
 const loading = ref(false);
@@ -171,6 +181,11 @@ const hiddenErrorsCount = (channel) => {
     return channel.errors.length - channel.displayedErrors.length;
 };
 
+// 检查通道是否为空数据
+const isChannelEmpty = (channel) => {
+    return channel.status === 'empty_data'
+}
+
 // 更新选中的通道并同步到 Vuex Store
 const updateSelectedChannels = () => {
     if (!displayedData.value) {
@@ -178,7 +193,7 @@ const updateSelectedChannels = () => {
     }
     const selected = displayedData.value.flatMap(item =>
         item.channels
-            .filter(channel => channel.checked)
+            .filter(channel => channel.checked && !isChannelEmpty(channel))
             .map(channel => ({
                 channel_key: channel.channel_key, // 添加 channel_key
                 channel_name: channel.channel_name,
@@ -202,9 +217,13 @@ const toggleChannelCheckboxes = (item) => {
         // 点击单元格时，先切换通道类别的选中状态
         item.checked = !item.checked;
         
-        // 然后将此状态应用到所有通道
+        // 然后将此状态应用到所有非空数据通道
         item.channels.forEach((channel) => {
-            channel.checked = item.checked;
+            if (!isChannelEmpty(channel)) {
+                channel.checked = item.checked;
+            } else {
+                channel.checked = false; // 确保空数据通道不被选中
+            }
         });
         updateSelectedChannels();
     }
@@ -217,13 +236,17 @@ const updateChannelTypeCheckbox = (item) => {
         return;
     }
 
-    const allChecked = item.channels.every((channel) => channel.checked);
-    const someChecked = item.channels.some((channel) => channel.checked);
+    // 只考虑非空数据的通道
+    const validChannels = item.channels.filter(channel => !isChannelEmpty(channel));
+    const allChecked = validChannels.length > 0 && validChannels.every((channel) => channel.checked);
     
     // 如果所有通道都选中,则通道类别也选中
     // 如果部分通道选中,则通道类别不选中
     // 如果没有通道选中,则通道类别不选中
     item.checked = allChecked;
+    
+    // 检查是否所有通道都是空数据
+    item.allChannelsEmpty = item.channels.every(channel => isChannelEmpty(channel));
     
     updateSelectedChannels();
 };
@@ -240,7 +263,7 @@ const toggleShowAllErrors = (channel) => {
 
 // 切换单个通道的选中状态
 const toggleSingleChannel = (channel, item) => {
-    if (channel) {
+    if (channel && !isChannelEmpty(channel)) {
         channel.checked = !channel.checked;
         updateChannelTypeCheckbox(item);
     }
@@ -496,5 +519,37 @@ const formatChannelType = (name) => {
     justify-content: center;
     padding: 10px;
     color: #909399;
+}
+
+/* 空数据样式 */
+.empty-data {
+    opacity: 0.6;
+    background-color: #fafafa !important;
+}
+
+.empty-data-icon {
+    color: #f56c6c;
+    font-size: 16px;
+    margin-right: 4px;
+}
+
+.empty-data-text {
+    color: #909399;
+    font-style: italic;
+    font-size: 12px;
+}
+
+.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* 禁用状态的复选框样式 */
+:deep(.el-checkbox.is-disabled) {
+    opacity: 0.6;
+}
+
+:deep(.el-checkbox.is-disabled .el-checkbox__input) {
+    cursor: not-allowed;
 }
 </style>

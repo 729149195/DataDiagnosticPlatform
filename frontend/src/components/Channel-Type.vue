@@ -37,17 +37,22 @@
                       @click.stop
                     />
                     <el-checkbox v-model="item.checked" @change="toggleChannelCheckboxes(item)"
+                      :disabled="item.allChannelsEmpty"
                       class="checkbox-margin" @click.stop></el-checkbox>
                   </div>
                 </td>
                 <td v-if="eIndex === 0" :rowspan="channel.displayedErrors.length" :class="{
                   'channel-name': true,
-                  'channel-name-last': cIndex === item.channels.length - 1
+                  'channel-name-last': cIndex === item.channels.length - 1,
+                  'empty-data': channel.status === 'empty_data'
                 }"
-                @click.stop="toggleSingleChannel(channel, item)">
+                @click.stop="!isChannelEmpty(channel) && toggleSingleChannel(channel, item)">
                   <div class="name-container">
                     <span>{{ channel.channel_name }}</span>
                     <div class="name-right">
+                      <el-icon v-if="isChannelEmpty(channel)" class="empty-data-icon" title="数据为空或无效">
+                        <WarningFilled />
+                      </el-icon>
                       <!-- Use the reusable ChannelColorPicker component -->
                       <ChannelColorPicker 
                         :color="channel.color" 
@@ -57,9 +62,11 @@
                         :shotNumber="channel.shot_number"
                         :channelName="channel.channel_name"
                         class="channel-color-picker"
+                        :class="{ 'disabled': isChannelEmpty(channel) }"
                         @click.stop
                       />
                       <el-checkbox v-model="channel.checked" @change="updateChannelTypeCheckbox(item)"
+                        :disabled="isChannelEmpty(channel)"
                         class="checkbox-margin" @click.stop></el-checkbox>
                     </div>
                   </div>
@@ -67,7 +74,7 @@
                     {{ channel.shot_number }}
                   </el-tag>
                   <div class="show-more-container">
-                    <el-button link @click.stop="toggleShowAllErrors(channel)">
+                    <el-button link @click.stop="toggleShowAllErrors(channel)" :disabled="isChannelEmpty(channel)">
                       {{ channel.showAllErrors ? '全部收起' : '展开全部异常类别' }}
                       <span v-if="!channel.showAllErrors && hiddenErrorsCount(channel) > 0" style="margin-left: 5px;">({{
                         hiddenErrorsCount(channel) }})</span>
@@ -80,10 +87,14 @@
                   'error-column': true,
                   'error-last':
                     eIndex === channel.displayedErrors.length - 1 &&
-                    cIndex !== item.channels.length - 1
+                    cIndex !== item.channels.length - 1,
+                  'empty-data': channel.status === 'empty_data'
                 }"
-                @click.stop="toggleSingleChannel(channel, item)">
-                  <span :title="error.error_name">
+                @click.stop="!isChannelEmpty(channel) && toggleSingleChannel(channel, item)">
+                  <span v-if="isChannelEmpty(channel)" class="empty-data-text">
+                    {{ channel.status_message || '数据为空或无效' }}
+                  </span>
+                  <span v-else :title="error.error_name">
                     {{ formatError(error.error_name) }}
                   </span>
                 </td>
@@ -104,7 +115,7 @@
 import { ref, onMounted, computed, onUnmounted, watch } from 'vue'
 import { useStore } from 'vuex'
 import ChannelColorPicker from './ChannelColorPicker.vue'
-import { Loading } from '@element-plus/icons-vue'
+import { Loading, WarningFilled } from '@element-plus/icons-vue'
 
 const store = useStore()
 const loading = ref(false)
@@ -337,7 +348,7 @@ const updateSelectedChannels = () => {
     }
     const selected = displayedData.value.flatMap(item =>
         item.channels
-            .filter(channel => channel.checked)
+            .filter(channel => channel.checked && !isChannelEmpty(channel))
             .map(channel => ({
                 channel_key: channel.channel_key,
                 channel_name: channel.channel_name,
@@ -364,9 +375,13 @@ const toggleChannelCheckboxes = (item) => {
         // 获取通道类别复选框的新状态
         const newState = item.checked;
         
-        // 更新所有通道的选中状态
+        // 更新所有非空数据通道的选中状态
         item.channels.forEach((channel) => {
-            channel.checked = newState;
+            if (!isChannelEmpty(channel)) {
+                channel.checked = newState;
+            } else {
+                channel.checked = false; // 确保空数据通道不被选中
+            }
         });
         
         // 立即更新 Vuex store
@@ -380,11 +395,15 @@ const updateChannelTypeCheckbox = (item) => {
         return;
     }
 
-    // 检查是否所有通道都被选中
-    const allChecked = item.channels.every((channel) => channel.checked);
+    // 只考虑非空数据的通道
+    const validChannels = item.channels.filter(channel => !isChannelEmpty(channel));
+    const allChecked = validChannels.length > 0 && validChannels.every((channel) => channel.checked);
     
     // 更新通道类别复选框状态
     item.checked = allChecked;
+    
+    // 检查是否所有通道都是空数据
+    item.allChannelsEmpty = item.channels.every(channel => isChannelEmpty(channel));
     
     // 立即更新 Vuex store
     updateSelectedChannels();
@@ -419,10 +438,14 @@ const formatChannelType = (name) => {
 };
 
 const toggleSingleChannel = (channel, item) => {
-  if (channel) {
+  if (channel && !isChannelEmpty(channel)) {
     channel.checked = !channel.checked;
     updateChannelTypeCheckbox(item);
   }
+};
+
+const isChannelEmpty = (channel) => {
+  return channel.status === 'empty_data';
 };
 </script>
 
@@ -686,5 +709,37 @@ const toggleSingleChannel = (channel, item) => {
   justify-content: center;
   padding: 10px;
   color: #909399;
+}
+
+/* 空数据样式 */
+.empty-data {
+  opacity: 0.6;
+  background-color: #fafafa !important;
+}
+
+.empty-data-icon {
+  color: #f56c6c;
+  font-size: 16px;
+  margin-right: 4px;
+}
+
+.empty-data-text {
+  color: #909399;
+  font-style: italic;
+  font-size: 12px;
+}
+
+.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* 禁用状态的复选框样式 */
+:deep(.el-checkbox.is-disabled) {
+  opacity: 0.6;
+}
+
+:deep(.el-checkbox.is-disabled .el-checkbox__input) {
+  cursor: not-allowed;
 }
 </style>
