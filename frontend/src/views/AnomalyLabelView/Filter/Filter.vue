@@ -7,17 +7,14 @@
         <div class="form-item">
           <span class="label">炮　号：</span>
           <div class="input-container">
-            <el-input
-              v-model="gunNumberInput"
-              placeholder="请输入炮号，例如 1-5,7,9-12"
-              @clear="handleGunNumberClear"
-              @blur="handleGunNumberBlur"
-              @keyup.enter="onGunNumberConfirm"
-              class="gun-number-input"
-              clearable
-            >
+            <el-input v-model="gunNumberInput" placeholder="请输入炮号，例如 1-5,7,9-12" @clear="handleGunNumberClear" @blur="handleGunNumberBlur" @keyup.enter="onGunNumberConfirm" class="gun-number-input" clearable>
               <template #append>
-                <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
+                <div class="gun-number-buttons">
+                  <el-button size="small" @click="onGunNumberConfirm" type="primary" :loading="isIndexLoading">确认炮号</el-button>
+                  <el-button size="small" @click="showStatisticsDialog" type="info" :disabled="!hasIndexLoaded || selectedGunNumbers.length === 0" title="查看炮号统计信息" icon="DataLine">
+                    统计
+                  </el-button>
+                </div>
               </template>
             </el-input>
           </div>
@@ -47,16 +44,103 @@
         </el-button>
       </div>
     </div>
+
+    <!-- 统计信息对话框 -->
+    <el-dialog v-model="statisticsDialogVisible" title="炮号统计信息" width="95%" :before-close="closeStatisticsDialog" destroy-on-close top="2vh" :close-on-click-modal="false" class="statistics-dialog" :draggable="true" :align-center="false">
+      <div class="statistics-dialog-content">
+        <!-- 控制栏 -->
+        <div class="statistics-controls">
+          <div class="controls-left">
+            <el-select v-model="selectedStatisticsShot" placeholder="选择炮号" @change="onStatisticsShotChange" style="width: 200px;" size="default">
+              <el-option v-for="shot in availableStatisticsShots" :key="shot" :label="`炮号 ${shot}`" :value="shot" />
+            </el-select>
+          </div>
+          <div class="controls-right">
+            <el-button type="primary" @click="refreshStatistics" :loading="statisticsLoading" icon="Refresh" size="default">
+              刷新统计
+            </el-button>
+          </div>
+        </div>
+
+        <div class="statistics-content" v-if="currentShotStatistics">
+          <!-- 顶部：详细数据统计表格 -->
+          <div class="statistics-tables-section">
+            <div class="table-section">
+              <div class="section-header">
+                <h3>详细统计数据</h3>
+              </div>
+              <div class="table-container">
+                <el-table :data="statisticsTableData" class="statistics-table-small" stripe height="100%">
+                  <el-table-column prop="metric" label="统计项" min-width="120" />
+                  <el-table-column prop="value" label="数值" min-width="100" align="right" />
+                  <el-table-column prop="percentage" label="百分比" min-width="100" align="right" />
+                </el-table>
+              </div>
+            </div>
+
+            <div class="table-section">
+              <div class="section-header">
+                <h3>通道类型分布</h3>
+              </div>
+              <div class="table-container">
+                <el-table :data="channelTypesTableData" class="statistics-table-small" stripe height="100%">
+                  <el-table-column prop="type" label="通道类型" show-overflow-tooltip min-width="100" />
+                  <el-table-column prop="count" label="数量" width="110" align="right" />
+                  <el-table-column prop="percentage" label="占比" width="110" align="right" />
+                </el-table>
+              </div>
+            </div>
+
+            <div class="table-section" v-if="errorTypesTableData.length > 0">
+              <div class="section-header">
+                <h3>异常类型分布</h3>
+              </div>
+              <div class="table-container">
+                <el-table :data="errorTypesTableData" class="statistics-table-small" stripe height="100%">
+                  <el-table-column prop="type" label="异常类型" show-overflow-tooltip min-width="100" />
+                  <el-table-column prop="count" label="数量" width="110" align="right" />
+                  <el-table-column prop="percentage" label="占比" width="110" align="right" />
+                </el-table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部：图表可视化（横向排列） -->
+          <div class="statistics-charts-section">
+            <div class="section-header">
+              <h3>可视化图表</h3>
+            </div>
+            <div class="charts-container">
+              <div class="chart-item">
+                <div id="channelTypesChart" class="chart-canvas"></div>
+              </div>
+              <div class="chart-item" v-if="errorTypesTableData.length > 0">
+                <div id="errorTypesChart" class="chart-canvas"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div v-else-if="statisticsLoading" class="loading-container">
+          <el-skeleton :rows="8" animated />
+        </div>
+
+        <div v-else class="no-data-container">
+          <el-empty description="请选择炮号查看统计信息" />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import axios from 'axios';
 import { useStore } from 'vuex';
 import { ElMessage } from 'element-plus';
 import { debounce } from 'lodash';
 import _ from 'lodash';
+import Highcharts from 'highcharts';
 
 
 const store = useStore();
@@ -98,6 +182,13 @@ const filteredErrorsNameOptionsList = ref([]);
 // 添加索引加载状态
 const isIndexLoading = ref(false);
 const hasIndexLoaded = ref(false);
+
+// 统计对话框相关变量
+const statisticsDialogVisible = ref(false);
+const statisticsLoading = ref(false);
+const selectedStatisticsShot = ref('');
+const shotStatisticsData = ref({});
+const currentShotStatistics = ref(null);
 
 // 通用函数，用于设置选项和默认选中值
 const setOptionsAndSelectAll = (optionsRef, selectedRef, dataRef, data) => {
@@ -398,6 +489,74 @@ const handleGunNumberClear = () => {
   selectedGunNumbers.value = [];
 };
 
+// 统计相关计算属性
+const availableStatisticsShots = computed(() => {
+  return selectedGunNumbers.value.sort((a, b) => parseInt(a) - parseInt(b));
+});
+
+const statisticsTableData = computed(() => {
+  if (!currentShotStatistics.value) return [];
+
+  const stats = currentShotStatistics.value;
+  return [
+    {
+      metric: '总通道数',
+      value: stats.total_channels,
+      percentage: '100%'
+    },
+    {
+      metric: '正常通道',
+      value: stats.normal_channels,
+      percentage: stats.total_channels > 0 ? `${(stats.normal_channels / stats.total_channels * 100).toFixed(1)}%` : '0%'
+    },
+    {
+      metric: '异常通道',
+      value: stats.error_channels,
+      percentage: stats.total_channels > 0 ? `${(stats.error_channels / stats.total_channels * 100).toFixed(1)}%` : '0%'
+    },
+    {
+      metric: '总异常数',
+      value: stats.total_errors,
+      percentage: ''
+    },
+    {
+      metric: '异常率',
+      value: `${stats.error_rate}%`,
+      percentage: ''
+    }
+  ];
+});
+
+const channelTypesTableData = computed(() => {
+  if (!currentShotStatistics.value || !currentShotStatistics.value.channel_types) return [];
+
+  const channelTypes = currentShotStatistics.value.channel_types;
+  const totalChannels = currentShotStatistics.value.total_channels;
+
+  return Object.entries(channelTypes)
+    .sort(([, a], [, b]) => b - a)
+    .map(([type, count]) => ({
+      type,
+      count,
+      percentage: totalChannels > 0 ? `${(count / totalChannels * 100).toFixed(1)}%` : '0%'
+    }));
+});
+
+const errorTypesTableData = computed(() => {
+  if (!currentShotStatistics.value || !currentShotStatistics.value.error_types) return [];
+
+  const errorTypes = currentShotStatistics.value.error_types;
+  const totalErrors = currentShotStatistics.value.total_errors;
+
+  return Object.entries(errorTypes)
+    .sort(([, a], [, b]) => b - a)
+    .map(([type, count]) => ({
+      type: type.replace('error_', ''), // 移除前缀
+      count,
+      percentage: totalErrors > 0 ? `${(count / totalErrors * 100).toFixed(1)}%` : '0%'
+    }));
+});
+
 const handleChannelTypeClear = () => {
   selectedChannelTypes.value = [];
   // 清空通道类别时，也需要清空依赖于通道类别的其他选择
@@ -564,45 +723,53 @@ const onGunNumberConfirm = async () => {
     try {
       // 请求通道名索引
       const channelNameRes = await axios.get('http://192.168.20.49:5000/api/get-channel-name-index', {
-        params: { 
+        params: {
           shot_numbers: selectedGunNumbers.value.join(',')
         }
       });
-      
+
       // 检查响应是否包含错误信息
       if (channelNameRes.data.error) {
         throw new Error(`获取通道名索引失败: ${channelNameRes.data.error}`);
       }
-      
+
       // 检查是否为空对象（没有任何通道名数据）
       if (Object.keys(channelNameRes.data).length === 0) {
         console.warn(`未找到炮号 ${selectedGunNumbers.value.join(', ')} 的通道名索引`);
         ElMessage.warning(`未找到选中炮号的通道名数据，请检查炮号是否存在或索引是否已建立`);
       }
-      
+
       setOptionsAndSelectAll(channelNameOptions, selectedChannelNames, channelNameData, channelNameRes.data);
-      
+
       // 请求异常名索引
       const errorNameRes = await axios.get('http://192.168.20.49:5000/api/get-errors-name-index', {
-        params: { 
+        params: {
           shot_numbers: selectedGunNumbers.value.join(',')
         }
       });
-      
+
       // 检查响应是否包含错误信息
       if (errorNameRes.data.error) {
         throw new Error(`获取异常名索引失败: ${errorNameRes.data.error}`);
       }
-      
+
       // 检查是否为空对象（没有任何异常名数据）
       if (Object.keys(errorNameRes.data).length === 0) {
         console.warn(`未找到炮号 ${selectedGunNumbers.value.join(', ')} 的异常名索引`);
         // 这里不显示警告，因为可能确实没有异常
       }
-      
+
       setOptionsAndSelectAll(errorsNameOptions, selectederrorsNames, errorsNameData, errorNameRes.data);
       hasIndexLoaded.value = true;
       ElMessage.success('炮号确认成功，通道/异常名列表已更新');
+
+      // 预加载统计数据
+      try {
+        await loadStatisticsData();
+      } catch (error) {
+        console.warn('预加载统计数据失败:', error);
+        // 不显示错误消息，因为这只是预加载
+      }
     } catch (error) {
       console.error('通道名或异常名索引获取失败:', error);
       ElMessage.error(`获取索引失败: ${error.message || '未知错误'}`);
@@ -618,6 +785,268 @@ const onGunNumberConfirm = async () => {
     hasIndexLoaded.value = false;
   }
 };
+
+// 统计相关方法
+const showStatisticsDialog = async () => {
+  if (selectedGunNumbers.value.length === 0) {
+    ElMessage.warning('请先确认炮号');
+    return;
+  }
+
+  statisticsDialogVisible.value = true;
+  selectedStatisticsShot.value = selectedGunNumbers.value[0]; // 默认选择第一个炮号
+  await loadStatisticsData();
+};
+
+const closeStatisticsDialog = () => {
+  statisticsDialogVisible.value = false;
+  selectedStatisticsShot.value = '';
+  currentShotStatistics.value = null;
+  shotStatisticsData.value = {};
+};
+
+const loadStatisticsData = async () => {
+  if (selectedGunNumbers.value.length === 0) return;
+
+  statisticsLoading.value = true;
+  try {
+    const response = await axios.get('http://192.168.20.49:5000/api/get-shot-statistics', {
+      params: {
+        shot_numbers: selectedGunNumbers.value.join(',')
+      }
+    });
+
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+
+    // 将统计数据转换为以炮号为键的对象
+    const statisticsMap = {};
+    response.data.shot_statistics.forEach(stat => {
+      statisticsMap[stat.shot_number] = stat;
+    });
+
+    shotStatisticsData.value = statisticsMap;
+
+    // 如果已选择炮号，更新当前统计
+    if (selectedStatisticsShot.value && statisticsMap[selectedStatisticsShot.value]) {
+      currentShotStatistics.value = statisticsMap[selectedStatisticsShot.value];
+      await nextTick();
+      renderCharts();
+    }
+
+    ElMessage.success('统计数据加载成功');
+  } catch (error) {
+    console.error('加载统计数据失败:', error);
+    ElMessage.error(`加载统计数据失败: ${error.message || '未知错误'}`);
+  } finally {
+    statisticsLoading.value = false;
+  }
+};
+
+const onStatisticsShotChange = () => {
+  if (selectedStatisticsShot.value && shotStatisticsData.value[selectedStatisticsShot.value]) {
+    currentShotStatistics.value = shotStatisticsData.value[selectedStatisticsShot.value];
+    nextTick(() => {
+      renderCharts();
+    });
+  }
+};
+
+const refreshStatistics = async () => {
+  await loadStatisticsData();
+};
+
+const renderCharts = () => {
+  if (!currentShotStatistics.value) return;
+
+  // 等待DOM更新后渲染图表
+  nextTick(() => {
+    setTimeout(() => {
+      // 渲染通道类型图表
+      renderChannelTypesChart();
+
+      // 如果有异常数据，渲染异常类型图表
+      if (errorTypesTableData.value.length > 0) {
+        renderErrorTypesChart();
+      }
+    }, 100);
+  });
+};
+
+const renderChannelTypesChart = () => {
+  if (!channelTypesTableData.value || channelTypesTableData.value.length === 0) {
+    return;
+  }
+
+  const chartData = channelTypesTableData.value
+    .filter(item => item.count > 0) // 过滤掉数值为0的数据
+    .slice(0, 10) // 只取前10个数据
+    .map(item => ({
+      name: item.type,
+      y: item.count
+    }));
+
+  // 如果过滤后没有数据，则不渲染图表
+  if (chartData.length === 0) {
+    return;
+  }
+
+  try {
+    // 获取容器高度
+    const container = document.getElementById('channelTypesChart');
+    const containerHeight = container ? container.offsetHeight : 300;
+
+    Highcharts.chart('channelTypesChart', {
+      chart: {
+        type: 'column',
+        backgroundColor: 'transparent',
+        spacing: [20, 20, 20, 20],
+        height: containerHeight
+      },
+      title: {
+        text: `通道类型分布 (前10) - 炮号 ${selectedStatisticsShot.value}`,
+        style: {
+          fontSize: '14px',
+          fontWeight: '600',
+          color: '#303133'
+        }
+      },
+      xAxis: {
+        type: 'category',
+        title: {
+          text: '通道类型',
+          style: { color: '#606266', fontSize: '12px' }
+        },
+        labels: {
+          style: { color: '#606266', fontSize: '11px' }
+        }
+      },
+      yAxis: {
+        title: {
+          text: '通道数量',
+          style: { color: '#606266', fontSize: '12px' }
+        },
+        labels: {
+          style: { color: '#606266', fontSize: '11px' }
+        }
+      },
+      legend: { enabled: false },
+      plotOptions: {
+        column: {
+          colorByPoint: true,
+          colors: [
+            '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399',
+            '#53A8FF', '#85CE61', '#EEBC5A', '#F78989', '#A6A9AD'
+          ],
+          borderRadius: 3,
+          pointPadding: 0.1,
+          groupPadding: 0.1
+        }
+      },
+      series: [{
+        name: '通道数量',
+        data: chartData
+      }],
+      credits: { enabled: false },
+      tooltip: {
+        pointFormat: '<b>{point.y}</b> 个通道<br/>',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderColor: '#e4e7ed',
+        style: { fontSize: '12px' }
+      }
+    });
+  } catch (error) {
+    console.error('渲染通道类型图表失败:', error);
+  }
+};
+
+const renderErrorTypesChart = () => {
+  if (!errorTypesTableData.value || errorTypesTableData.value.length === 0) {
+    return;
+  }
+
+  const chartData = errorTypesTableData.value
+    .filter(item => item.count > 0) // 过滤掉数值为0的数据
+    .slice(0, 10) // 只取前10个数据
+    .map(item => ({
+      name: item.type,
+      y: item.count
+    }));
+
+  // 如果过滤后没有数据，则不渲染图表
+  if (chartData.length === 0) {
+    return;
+  }
+
+  try {
+    // 获取容器高度
+    const container = document.getElementById('errorTypesChart');
+    const containerHeight = container ? container.offsetHeight : 300;
+
+    Highcharts.chart('errorTypesChart', {
+      chart: {
+        type: 'bar',
+        backgroundColor: 'transparent',
+        spacing: [20, 20, 20, 20],
+        height: containerHeight
+      },
+      title: {
+        text: `异常类型分布 (前10) - 炮号 ${selectedStatisticsShot.value}`,
+        style: {
+          fontSize: '14px',
+          fontWeight: '600',
+          color: '#303133'
+        }
+      },
+      xAxis: {
+        type: 'category',
+        title: {
+          text: '异常类型',
+          style: { color: '#606266', fontSize: '12px' }
+        },
+        labels: {
+          style: { color: '#606266', fontSize: '11px' }
+        }
+      },
+      yAxis: {
+        title: {
+          text: '异常数量',
+          style: { color: '#606266', fontSize: '12px' }
+        },
+        labels: {
+          style: { color: '#606266', fontSize: '11px' }
+        }
+      },
+      legend: { enabled: false },
+      plotOptions: {
+        bar: {
+          colorByPoint: true,
+          colors: [
+            '#F56C6C', '#E6A23C', '#F78989', '#EEBC5A', '#A6A9AD',
+            '#FF7875', '#FFA940', '#FFB3B3', '#FFD666', '#B8B8B8'
+          ],
+          borderRadius: 3,
+          pointPadding: 0.1,
+          groupPadding: 0.1
+        }
+      },
+      series: [{
+        name: '异常数量',
+        data: chartData
+      }],
+      credits: { enabled: false },
+      tooltip: {
+        pointFormat: '<b>{point.y}</b> 个异常<br/>',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderColor: '#e4e7ed',
+        style: { fontSize: '12px' }
+      }
+    });
+  } catch (error) {
+    console.error('渲染异常类型图表失败:', error);
+  }
+};
 </script>
 
 <style scoped lang="scss">
@@ -630,6 +1059,7 @@ const onGunNumberConfirm = async () => {
   align-items: flex-start;
   width: 100%;
 }
+
 .filter-main {
   flex: 1 1 auto;
   min-width: 0;
@@ -705,7 +1135,7 @@ const onGunNumberConfirm = async () => {
   display: inline-flex;
   flex-direction: column;
   min-width: 200px;
-  margin-right: 20px;
+  margin-right: 6px;
 }
 
 .selected-tags {
@@ -720,7 +1150,7 @@ const onGunNumberConfirm = async () => {
 }
 
 .selected-data {
-  margin-top: 20px;
+  margin-top: 6px;
   background-color: #f9f9f9;
   padding: 10px;
   border-radius: 5px;
@@ -847,5 +1277,292 @@ const onGunNumberConfirm = async () => {
       justify-content: flex-start;
     }
   }
+}
+
+/* 按钮组样式 */
+.gun-number-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* 统计对话框样式 */
+.statistics-dialog {
+  :deep(.el-dialog) {
+    max-height: 96vh;
+    min-height: 50vh;
+    margin-top: 2vh !important;
+    margin-bottom: 2vh !important;
+    overflow: visible;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :deep(.el-dialog__body) {
+    flex: 1;
+    overflow: visible;
+    padding: 0;
+  }
+}
+
+.statistics-dialog-content {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: auto;
+}
+
+.statistics-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
+  background: linear-gradient(to right, #f9fafc, #f5f7fa);
+  border-bottom: 1px solid #e4e7ed;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.controls-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.controls-right {
+  display: flex;
+  align-items: center;
+}
+
+.statistics-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 表格区域样式 */
+.statistics-tables-section {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+  min-height: 100px;
+  max-height: 300px;
+}
+
+.table-section {
+  background: #ffffff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
+}
+
+.table-section:first-child {
+  flex: 1;
+  min-width: 250px;
+}
+
+.table-section:nth-child(2) {
+  flex: 1.5;
+  min-width: 200px;
+}
+
+.table-section:nth-child(3) {
+  flex: 1.5;
+  min-width: 200px;
+}
+
+.section-header {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 12px 16px;
+  border-bottom: 1px solid #e4e7ed;
+  flex-shrink: 0;
+}
+
+.section-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  letter-spacing: 0.5px;
+}
+
+.table-container {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 图表区域样式 */
+.statistics-charts-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: visible;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  min-height: 350px;
+}
+
+.charts-container {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  overflow: visible;
+}
+
+.chart-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 15px;
+  overflow: visible;
+  position: relative;
+}
+
+.chart-canvas {
+  flex: 1;
+  width: 100%;
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.05);
+  min-height: 280px;
+  overflow: visible;
+  position: relative;
+}
+
+.loading-container {
+  padding: 60px 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.no-data-container {
+  padding: 60px 40px;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* 表格样式优化 */
+.statistics-table-small {
+  border: none !important;
+}
+
+:deep(.statistics-table-small) {
+  font-size: 13px;
+  border: none;
+  height: 100%;
+
+  .el-table__header-wrapper {
+    overflow: visible;
+  }
+
+  .el-table__body-wrapper {
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  .el-table__header th {
+    background-color: #f5f7fa;
+    font-weight: 600;
+    color: #606266;
+    font-size: 13px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #e4e7ed;
+  }
+
+  .el-table__body td {
+    padding: 8px 12px;
+    font-size: 13px;
+    border-bottom: 1px solid #f0f2f5;
+  }
+
+  .el-table__row:hover td {
+    background-color: #ecf5ff !important;
+  }
+
+  .el-table--striped .el-table__body tr.el-table__row--striped td {
+    background: #fafbfc;
+  }
+
+  .el-table--border,
+  .el-table--group {
+    border: none;
+  }
+
+  .el-table::before {
+    display: none;
+  }
+}
+
+/* 对话框样式优化 */
+:deep(.el-dialog) {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+:deep(.el-dialog__header) {
+  background: #ffffff;
+  color: #303133;
+  padding: 16px 24px;
+  margin: 0;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+:deep(.el-dialog__title) {
+  color: #303133;
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: 0.5px;
+}
+
+:deep(.el-dialog__headerbtn) {
+  top: 16px;
+  right: 20px;
+}
+
+:deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: #909399;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+:deep(.el-dialog__headerbtn .el-dialog__close:hover) {
+  color: #606266;
+}
+
+:deep(.el-dialog__body) {
+  background: #fafbfc;
+}
+
+/* 滚动条优化 */
+:deep(.el-scrollbar__bar.is-vertical) {
+  width: 6px;
+}
+
+:deep(.el-scrollbar__thumb) {
+  background-color: rgba(144, 147, 153, 0.4);
+  border-radius: 3px;
+}
+
+:deep(.el-scrollbar__thumb:hover) {
+  background-color: rgba(144, 147, 153, 0.6);
 }
 </style>

@@ -17,6 +17,7 @@ urlpatterns = [
     path('get-channel-name-index', views.get_channel_name_index, name='get-channel-name-index'),
     path('get-errors-name-index', views.get_errors_name_index, name='get-errors-name-index'),
     path('get-error-origin-index', views.get_error_origin_index, name='get-error-origin-index'),
+    path('get-shot-statistics', views.get_shot_statistics, name='get_shot_statistics'),
 
     path('sketch-query', views.sketch_query, name='sketch_query'),
 

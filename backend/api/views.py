@@ -23,8 +23,9 @@ from api.Mds import MdsTree
 from api.verify_user import send_post_request
 from api.pattern_matching_Qetch import match_pattern  # 只导入模式匹配函数
 from pymongo import MongoClient, ASCENDING, UpdateMany
-from collections import defaultdict
+from collections import defaultdict, Counter
 import logging
+import pymongo
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -4314,4 +4315,153 @@ def downsample_to_5khz(x_values, y_values):
     except Exception as e:
         raise Exception(f"创建手绘模板适配器失败: {e}")
 
-# ... existing code ...
+@require_GET
+def get_shot_statistics(request):
+    """
+    获取指定炮号的统计信息，参考data_diagnostic_statistics.py的统计逻辑
+    """
+    shot_numbers_str = request.GET.get('shot_numbers', '')
+    if not shot_numbers_str:
+        return OrJsonResponse({'error': 'shot_numbers parameter is required'}, status=400)
+    
+    shot_numbers = [s.strip() for s in shot_numbers_str.split(',') if s.strip()]
+    if not shot_numbers:
+        return OrJsonResponse({'error': 'No valid shot numbers provided'}, status=400)
+    
+    try:
+        # 按炮号分组到对应的数据库
+        db_shot_mapping = find_databases_for_shot_numbers(shot_numbers)
+        
+        if not db_shot_mapping:
+            return OrJsonResponse({'error': 'No databases found for the provided shot numbers'}, status=404)
+        
+        # 为每个炮号生成统计信息
+        shot_statistics = {}
+        
+        for db_suffix, shots_in_db in db_shot_mapping.items():
+            try:
+                db = get_db(db_suffix)
+                struct_trees_collection = db["struct_trees"]
+                
+                # 处理该数据库中的每个炮号
+                for shot_number in shots_in_db:
+                    shot_doc = struct_trees_collection.find_one({'shot_number': shot_number})
+                    
+                    if not shot_doc:
+                        # 如果没有找到该炮号，设置空统计
+                        shot_statistics[shot_number] = {
+                            'shot_number': shot_number,
+                            'total_channels': 0,
+                            'total_errors': 0,
+                            'normal_channels': 0,
+                            'error_channels': 0,
+                            'error_rate': 0,
+                            'channel_types': {},
+                            'error_types': {},
+                            'channel_status': {},
+                            'database': f"DataDiagnosticPlatform_{db_suffix}"
+                        }
+                        continue
+                    
+                    struct_tree = shot_doc.get('struct_tree', [])
+                    
+                    # 初始化统计计数器
+                    channel_types = Counter()
+                    error_types = Counter()
+                    channel_status = Counter()
+                    
+                    total_channels = len(struct_tree)
+                    total_errors = 0
+                    normal_channels = 0
+                    
+                    for channel in struct_tree:
+                        channel_type = channel.get('channel_type', 'Unknown')
+                        error_names = channel.get('error_name', [])
+                        status = channel.get('status', 'unknown')
+                        
+                        # 统计通道类型
+                        channel_types[channel_type] += 1
+                        
+                        # 统计通道状态
+                        channel_status[status] += 1
+                        
+                        # 处理异常信息
+                        has_error = False
+                        if not error_names or error_names == [] or error_names == [''] or 'NO ERROR' in error_names:
+                            normal_channels += 1
+                        else:
+                            # 确保error_names是列表
+                            if isinstance(error_names, str):
+                                error_names = [error_names]
+                            
+                            for error_name in error_names:
+                                if error_name and error_name != 'NO ERROR' and error_name.strip():
+                                    error_types[error_name] += 1
+                                    total_errors += 1
+                                    has_error = True
+                            
+                            if not has_error:
+                                normal_channels += 1
+                    
+                    error_channels = total_channels - normal_channels
+                    error_rate = (error_channels / total_channels * 100) if total_channels > 0 else 0
+                    
+                    shot_statistics[shot_number] = {
+                        'shot_number': shot_number,
+                        'total_channels': total_channels,
+                        'total_errors': total_errors,
+                        'normal_channels': normal_channels,
+                        'error_channels': error_channels,
+                        'error_rate': round(error_rate, 2),
+                        'channel_types': dict(channel_types.most_common()),
+                        'error_types': dict(error_types.most_common()),
+                        'channel_status': dict(channel_status.most_common()),
+                        'database': f"DataDiagnosticPlatform_{db_suffix}"
+                    }
+                    
+            except Exception as e:
+                print(f"警告: 处理数据库 {db_suffix} 时出错: {str(e)}")
+                # 为该数据库中的炮号设置错误统计
+                for shot_number in shots_in_db:
+                    if shot_number not in shot_statistics:
+                        shot_statistics[shot_number] = {
+                            'shot_number': shot_number,
+                            'error': f'Database error: {str(e)}',
+                            'database': f"DataDiagnosticPlatform_{db_suffix}"
+                        }
+        
+        # 确保所有请求的炮号都有统计信息（即使是空的）
+        for shot_number in shot_numbers:
+            if shot_number not in shot_statistics:
+                shot_statistics[shot_number] = {
+                    'shot_number': shot_number,
+                    'total_channels': 0,
+                    'total_errors': 0,
+                    'normal_channels': 0,
+                    'error_channels': 0,
+                    'error_rate': 0,
+                    'channel_types': {},
+                    'error_types': {},
+                    'channel_status': {},
+                    'database': 'Not found'
+                }
+        
+        # 按炮号排序返回
+        sorted_stats = [shot_statistics[shot] for shot in sorted(shot_statistics.keys(), key=int)]
+        
+        return OrJsonResponse({
+            'shot_statistics': sorted_stats,
+            'total_shots': len(sorted_stats),
+            'summary': {
+                'total_channels': sum(stat.get('total_channels', 0) for stat in sorted_stats),
+                'total_errors': sum(stat.get('total_errors', 0) for stat in sorted_stats),
+                'average_error_rate': round(sum(stat.get('error_rate', 0) for stat in sorted_stats) / len(sorted_stats), 2) if sorted_stats else 0
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        error_msg = f"获取炮号统计信息时出错: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        return OrJsonResponse({"error": error_msg}, status=500)
