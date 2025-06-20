@@ -85,14 +85,14 @@
           </div>
 
           <!-- 右侧：手绘模式列表 -->
-          <div class="algorithm-section manual-section">
+          <!-- <div class="algorithm-section manual-section">
             <div class="section-header">
               <h3>手绘模式列表</h3>
             </div>
             <div class="section-content">
               <SketchTemplateList v-if="algorithmDialogVisible" />
             </div>
-          </div>
+          </div> -->
         </div>
       </div>
     </el-dialog>
@@ -105,7 +105,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { CircleCheck, Loading, DataBoard, Setting } from '@element-plus/icons-vue';
 import AlgorithmManager from './AlgorithmManager.vue';
 import ImportedAlgorithmList from './ImportedAlgorithmList.vue';
-import SketchTemplateList from './SketchTemplateList.vue';
+// import SketchTemplateList from './SketchTemplateList.vue';
 
 // 响应式数据
 const monitorData = ref({
