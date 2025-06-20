@@ -578,9 +578,8 @@ const isChannelEmpty = (channel) => {
   display: flex;
   flex-wrap: nowrap;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   font-family: inherit;
-  margin-bottom: 8px;
   width: 100%;
 }
 

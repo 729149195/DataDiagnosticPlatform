@@ -905,7 +905,7 @@ const renderChannelTypesChart = () => {
         height: containerHeight
       },
       title: {
-        text: `通道类型分布 (前10) - 炮号 ${selectedStatisticsShot.value}`,
+        text: `炮号 ${selectedStatisticsShot.value} 排名前10的通道类型`,
         style: {
           fontSize: '14px',
           fontWeight: '600',
@@ -934,14 +934,11 @@ const renderChannelTypesChart = () => {
       legend: { enabled: false },
       plotOptions: {
         column: {
-          colorByPoint: true,
-          colors: [
-            '#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#909399',
-            '#53A8FF', '#85CE61', '#EEBC5A', '#F78989', '#A6A9AD'
-          ],
+          colorByPoint: false,
+          color: '#409EFF',
           borderRadius: 3,
-          pointPadding: 0.1,
-          groupPadding: 0.1
+          pointPadding: 0.3,
+          groupPadding: 0.2
         }
       },
       series: [{
@@ -993,7 +990,7 @@ const renderErrorTypesChart = () => {
         height: containerHeight
       },
       title: {
-        text: `异常类型分布 (前10) - 炮号 ${selectedStatisticsShot.value}`,
+        text: `炮号 ${selectedStatisticsShot.value} 排名前10的异常类型`,
         style: {
           fontSize: '14px',
           fontWeight: '600',
@@ -1022,11 +1019,8 @@ const renderErrorTypesChart = () => {
       legend: { enabled: false },
       plotOptions: {
         bar: {
-          colorByPoint: true,
-          colors: [
-            '#F56C6C', '#E6A23C', '#F78989', '#EEBC5A', '#A6A9AD',
-            '#FF7875', '#FFA940', '#FFB3B3', '#FFD666', '#B8B8B8'
-          ],
+          colorByPoint: false,
+          color: '#409EFF',
           borderRadius: 3,
           pointPadding: 0.1,
           groupPadding: 0.1
@@ -1483,8 +1477,35 @@ const renderErrorTypesChart = () => {
   }
 
   .el-table__body-wrapper {
-    overflow-y: auto;
+    overflow-y: auto !important;
     flex: 1;
+    
+    /* 强制常显滚动条 */
+    &::-webkit-scrollbar {
+      width: 8px !important;
+      height: 8px !important;
+      display: block !important;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: #f1f1f1 !important;
+      border-radius: 4px !important;
+      display: block !important;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: #c1c1c1 !important;
+      border-radius: 4px !important;
+      display: block !important;
+    }
+    
+    &::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8 !important;
+    }
+    
+    /* Firefox滚动条样式 */
+    scrollbar-width: thin !important;
+    scrollbar-color: #c1c1c1 #f1f1f1 !important;
   }
 
   .el-table__header th {
@@ -1563,15 +1584,85 @@ const renderErrorTypesChart = () => {
 
 /* 滚动条优化 */
 :deep(.el-scrollbar__bar.is-vertical) {
-  width: 6px;
+  width: 8px;
+  opacity: 1 !important; /* 常显滚动条 */
+}
+
+:deep(.el-scrollbar__bar.is-horizontal) {
+  height: 8px;
+  opacity: 1 !important; /* 常显滚动条 */
 }
 
 :deep(.el-scrollbar__thumb) {
-  background-color: rgba(144, 147, 153, 0.4);
-  border-radius: 3px;
+  background-color: #c1c1c1;
+  border-radius: 4px;
+  opacity: 1 !important; /* 常显滚动条 */
 }
 
 :deep(.el-scrollbar__thumb:hover) {
-  background-color: rgba(144, 147, 153, 0.6);
+  background-color: #a8a8a8;
+}
+
+/* 确保Element Plus滚动条始终显示 */
+:deep(.el-scrollbar) {
+  .el-scrollbar__bar {
+    opacity: 1 !important;
+    transition: none !important;
+    display: block !important;
+  }
+  
+  &:hover .el-scrollbar__bar {
+    opacity: 1 !important;
+  }
+}
+
+/* 强制覆盖Element Plus表格的滚动条隐藏行为 */
+:deep(.statistics-table-small) {
+  .el-table__body-wrapper {
+    &::-webkit-scrollbar {
+      -webkit-appearance: none !important;
+      width: 8px !important;
+      height: 8px !important;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: #f1f1f1 !important;
+      border-radius: 4px !important;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: #c1c1c1 !important;
+      border-radius: 4px !important;
+      min-height: 20px !important;
+    }
+    
+    &::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8 !important;
+    }
+  }
+}
+
+/* 全局强制显示滚动条 */
+.table-container {
+  ::-webkit-scrollbar {
+    -webkit-appearance: none !important;
+    width: 8px !important;
+    height: 8px !important;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1 !important;
+    border-radius: 4px !important;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #c1c1c1 !important;
+    border-radius: 4px !important;
+    min-height: 20px !important;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8 !important;
+  }
 }
 </style>

@@ -446,9 +446,8 @@ const formatChannelType = (name) => {
     display: flex;
     flex-wrap: nowrap;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     width: 100%;
-    margin-bottom: 8px;
 }
 
 .channel-name-text {
