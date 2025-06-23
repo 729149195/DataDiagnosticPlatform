@@ -1745,11 +1745,32 @@ def operator_strs(request):
                 func_data['parameters'] = params_str.split(',')
 
                 ##
-                # 需要补一段输入参数转换的代码
+                # 智能参数转换：识别通道名（格式：通道名_炮号）和数字
                 ##
-                # func_data['parameters'] = [float(i) for i in func_data['parameters']]
-                if len(func_data['parameters']) > 1:  # 确保有足够的参数再访问索引1
-                    func_data['parameters'][1] = float(func_data['parameters'][1])
+                def convert_parameter(param):
+                    """智能转换参数：如果是数字则转换为float，如果是通道名则保持字符串"""
+                    param = param.strip()
+                    
+                    # 检查是否是通道名格式（包含下划线，且下划线后面是数字）
+                    if '_' in param:
+                        parts = param.split('_')
+                        if len(parts) == 2 and parts[1].isdigit():
+                            # 这是通道名格式，保持字符串
+                            return param
+                    
+                    # 尝试转换为数字
+                    try:
+                        # 先尝试转换为整数
+                        if param.isdigit() or (param.startswith('-') and param[1:].isdigit()):
+                            return int(param)
+                        # 再尝试转换为浮点数
+                        return float(param)
+                    except ValueError:
+                        # 如果都失败了，保持原始字符串
+                        return param
+                
+                # 对所有参数进行智能转换
+                func_data['parameters'] = [convert_parameter(param) for param in func_data['parameters']]
 
                 # 更新进度：函数参数解析完成
                 if task_id and task_id in calculation_tasks:
