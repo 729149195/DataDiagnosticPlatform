@@ -1,10 +1,17 @@
 {
-    "mds_latest_shot": 11661,
-    "mongo_processing_shot": 11612,
-    "mongo_latest_shot": 11611,
-    "last_update": "2025-06-05T09:12:31.297395",
-    "next_update": "2025-06-05T09:12:41.297395",
-    "is_running": true,
-    "latest_db_name": "DataDiagnosticPlatform_[11601_11656]",
-    "db_end_range": 11656
-  }
+  "mds_latest_shot": 11935,
+  "mongo_processing_shot": 11803,
+  "mongo_latest_shot": 11802,
+  "last_update": "2025-06-28T00:07:47.620787",
+  "next_update": "2025-06-28T00:07:57.620787",
+  "is_running": true,
+  "processing_progress": {
+    "current_shot": 11803,
+    "total_channels": 3358,
+    "processed_channels": 0,
+    "progress_percent": 0.0,
+    "is_processing": true
+  },
+  "latest_db_name": "DataDiagnosticPlatform_[11801_11900]",
+  "db_end_range": 11900
+}
