@@ -640,14 +640,13 @@ const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = [])
             }
         }
 
-        // 如果都不是，检查是否是简单函数（如FFT()）
+        // 如果都不是，检查是否是简单函数（如FFT()或FFT(args)）
         if (!matched) {
-            // 检查简单函数模式：字母开头，后跟字母数字，然后是()
-            const simpleFunctionMatch = content.substring(i).match(/^([A-Za-z][A-Za-z0-9_]*)\(\)/);
+            // 检查简单函数模式：字母开头，后跟字母数字，然后是(任意内容)
+            const simpleFunctionMatch = content.substring(i).match(/^([A-Za-z][A-Za-z0-9_]*)\(/);
             if (simpleFunctionMatch) {
                 const funcName = simpleFunctionMatch[1];
-                const fullMatch = simpleFunctionMatch[0];
-
+                
                 const prevChar = i > 0 ? content[i - 1] : null;
                 const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
 
@@ -656,10 +655,47 @@ const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = [])
                     tokens.push(funcName);
                     // 单独添加左括号
                     tokens.push('(');
+                    
+                    // 移动到左括号后
+                    i += simpleFunctionMatch[0].length;
+                    
+                    // 寻找匹配的右括号
+                    let parenthesesCount = 1;
+                    let j = i;
+                    while (j < content.length && parenthesesCount > 0) {
+                        if (content[j] === '(') {
+                            parenthesesCount++;
+                        } else if (content[j] === ')') {
+                            parenthesesCount--;
+                        }
+                        j++;
+                    }
+                    
+                    // 处理括号内的内容
+                    if (j > i) {
+                        const innerContent = content.substring(i, j - 1); // 不包括最后的右括号
+                        if (innerContent.trim()) {
+                            // 将内容按逗号分割并添加
+                            const parts = innerContent.split(',');
+                            for (let k = 0; k < parts.length; k++) {
+                                const part = parts[k].trim();
+                                if (part) {
+                                    tokens.push(part);
+                                }
+                                if (k < parts.length - 1) {
+                                    tokens.push(',');
+                                }
+                            }
+                        }
+                        i = j - 1; // 移动到右括号位置
+                    }
+                    
                     // 单独添加右括号
-                    tokens.push(')');
-
-                    i += fullMatch.length;
+                    if (i < content.length && content[i] === ')') {
+                        tokens.push(')');
+                        i++;
+                    }
+                    
                     matched = true;
                 }
             }
@@ -1256,7 +1292,7 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
 
 /* 内置函数特殊样式 */
 :deep(.builtin-function) {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background: #409EFF !important;
     color: white !important;
     padding: 2px 6px !important;
     border-radius: 4px !important;
@@ -1264,17 +1300,17 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
     text-decoration: none !important;
     
     &:hover {
-        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+        background: #337ecc !important;
         transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
     }
 }
 
 /* Built-in 标识样式 */
 .function-type-prefix.type-builtin {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #409EFF;
     color: white;
-    border-color: #667eea;
+    border-color: #409EFF;
 }
 
 /* 添加三角箭头指向函数名 */

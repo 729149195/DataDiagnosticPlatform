@@ -159,9 +159,10 @@ onMounted(() => {
             const chart = chartInstance.value;
             if (chart && props.containerRef && props.containerRef.value) {
                 const { clientWidth, clientHeight } = props.containerRef.value;
-                // 为X轴标签和标题预留更多空间
+                // 为X轴标签和标题预留更多空间，减去左右边距
                 const adjustedHeight = Math.max(clientHeight - 20, 300);
-                chart.setSize(clientWidth, adjustedHeight, false);
+                const adjustedWidth = Math.max(clientWidth - 100, 400); // 减去左右边距
+                chart.setSize(adjustedWidth, adjustedHeight, false);
                 chart.reflow();
             }
         });
@@ -172,9 +173,10 @@ onMounted(() => {
             const chart = chartInstance.value;
             if (chart && props.containerRef && props.containerRef.value) {
                 const { clientWidth, clientHeight } = props.containerRef.value;
-                // 为X轴标签和标题预留更多空间
+                // 为X轴标签和标题预留更多空间，减去左右边距
                 const adjustedHeight = Math.max(clientHeight - 20, 300);
-                chart.setSize(clientWidth, adjustedHeight, false);
+                const adjustedWidth = Math.max(clientWidth - 100, 400); // 减去左右边距
+                chart.setSize(adjustedWidth, adjustedHeight, false);
                 chart.reflow();
             }
         });
@@ -294,7 +296,6 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
         // 根据数据类型确定轴标签
         let xAxisTitle = 'Time (s)';
         let yAxisTitle = 'Value';
-        let chartTitle = '';
         
         // 检查是否是来自计算结果且有特殊的数据类型
         const resultData = CalculateResult.value;
@@ -302,14 +303,10 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
             if (resultData.function_type === 'FFT') {
                 xAxisTitle = 'Frequency (Hz)';
                 yAxisTitle = 'Amplitude';
-                chartTitle = `FFT - ${resultData.channel_name || 'Unknown Channel'}`;
             } else if (resultData.function_type === 'PCA') {
                 xAxisTitle = 'Time (s)';
                 yAxisTitle = 'PC1';
-                chartTitle = `PCA - ${resultData.channel_name || 'Unknown Channel'}`;
             }
-        } else if (channel && channel.channel_name) {
-            chartTitle = `${channel.channel_name}`;
         }
 
 
@@ -335,10 +332,10 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                         y: -9999
                     }
                 },
-                spacing: [10, 10, 80, 10], // 增加底部间距，为X轴标签和标题留出更多空间
+                spacing: [10, 10, 80, 80], // 增加底部和左侧间距，为轴标签和标题留出更多空间
                 marginTop: 10,
                 marginBottom: 80, // 增加底部边距，确保X轴标签和标题可见
-                marginLeft: 60, // 增加左侧边距，确保Y轴标题可见
+                marginLeft: 80, // 增加左侧边距，确保Y轴标题完全可见
                 marginRight: 20, // 右侧留出一些空间
                 reflow: true, // 确保图表会重新计算尺寸
                 events: {
@@ -378,9 +375,10 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                         if (props.containerRef && props.containerRef.value) {
                             const { clientWidth, clientHeight } = props.containerRef.value;
                             if (clientWidth > 0 && clientHeight > 0) {
-                                // 为X轴标签和标题预留更多空间
+                                // 为X轴标签和标题预留更多空间，减去左右边距
                                 const adjustedHeight = Math.max(clientHeight - 20, 300);
-                                this.setSize(clientWidth, adjustedHeight, false);
+                                const adjustedWidth = Math.max(clientWidth - 100, 400); // 减去左右边距
+                                this.setSize(adjustedWidth, adjustedHeight, false);
                             }
                         }
                     }
@@ -397,22 +395,17 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                 allowForce: false // 禁用强制boost模式
             },
             title: {
-                text: chartTitle,
-                style: {
-                    fontSize: '14px',
-                    fontWeight: 'bold',
-                    color: '#333'
-                }
+                text: '', // 不显示标题
             },
             xAxis: {
                 title: {
                     text: xAxisTitle, // 显示X轴单位标签
                     style: {
-                        fontSize: '16px',
-                        color: '#666',
-                        fontWeight: 'normal'
+                        fontSize: '18px',
+                        color: '#333',
+                        fontWeight: 'bold'
                     },
-                    margin: 10 // 标题与轴的距离
+                    margin: 15 // 标题与轴的距离
                 },
                 gridLineWidth: 1, // 恢复网格线
                 gridLineDashStyle: 'ShortDash', // 使用虚线样式
@@ -434,11 +427,11 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                 title: {
                     text: yAxisTitle, // 显示Y轴单位标签
                     style: {
-                        fontSize: '12px',
-                        color: '#666',
-                        fontWeight: 'normal'
+                        fontSize: '18px',
+                        color: '#333',
+                        fontWeight: 'bold'
                     },
-                    margin: 10 // 标题与轴的距离
+                    margin: 15 // 标题与轴的距离
                 },
                 gridLineWidth: 1, // 恢复网格线
                 gridLineDashStyle: 'ShortDash', // 使用虚线样式
@@ -957,9 +950,10 @@ const handleResize = throttle(() => {
         if (props.containerRef && props.containerRef.value) {
             const { clientWidth, clientHeight } = props.containerRef.value;
             if (clientWidth > 0 && clientHeight > 0) {
-                // 为X轴标签和标题预留更多空间
+                // 为X轴标签和标题预留更多空间，减去左右边距
                 const adjustedHeight = Math.max(clientHeight - 20, 300);
-                chartInstance.value.setSize(clientWidth, adjustedHeight, false);
+                const adjustedWidth = Math.max(clientWidth - 100, 400); // 减去左右边距
+                chartInstance.value.setSize(adjustedWidth, adjustedHeight, false);
             }
         }
 
@@ -1081,9 +1075,10 @@ watch(() => props.containerRef, (newContainerRef) => {
             if (chartInstance.value) {
                 const { clientWidth, clientHeight } = newContainerRef.value;
                 if (clientWidth > 0 && clientHeight > 0) {
-                    // 为X轴标签和标题预留更多空间
+                    // 为X轴标签和标题预留更多空间，减去左右边距
                     const adjustedHeight = Math.max(clientHeight - 20, 300);
-                    chartInstance.value.setSize(clientWidth, adjustedHeight, false);
+                    const adjustedWidth = Math.max(clientWidth - 100, 400); // 减去左右边距
+                    chartInstance.value.setSize(adjustedWidth, adjustedHeight, false);
                     chartInstance.value.reflow();
                 }
             }
