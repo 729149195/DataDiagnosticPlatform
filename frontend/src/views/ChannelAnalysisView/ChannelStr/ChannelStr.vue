@@ -40,7 +40,7 @@
                 <!-- 标识标签行 -->
                 <div class="function-tags">
                     <span v-if="currentFunctionInfo.typeLabel"
-                          :class="['function-type-prefix', `type-${currentFunctionInfo.typeLabel.toLowerCase()}`]">
+                          :class="['function-type-prefix', `type-${currentFunctionInfo.typeLabel.toLowerCase().replace('-', '')}`]">
                         [{{ currentFunctionInfo.typeLabel }}]
                     </span>
                     <span class="function-type">{{ currentFunctionInfo.type }}</span>
@@ -113,6 +113,73 @@ const importedFunctions = ref([]);
 const showFunctionTooltip = ref(false);
 const tooltipPosition = ref({ x: 0, y: 0 });
 const currentFunctionInfo = ref(null);
+
+// 定义内置函数的详细信息
+const builtInFunctions = ref({
+    'FFT': {
+        name: 'FFT',
+        type: '信号处理',
+        description: '对输入信号进行快速傅里叶变换，将时域信号转换为频域表示',
+        input: [
+            {
+                paraName: 'channel',
+                paraType: '通道对象',
+                paraDefinition: '输入通道数据，包含时间序列信号',
+                domain: '任何数值通道',
+                default: ''
+            },
+            {
+                paraName: 'frequency_limit',
+                paraType: '浮点数',
+                paraDefinition: '频率上限，用于限制FFT结果的频率范围(Hz)',
+                domain: '0.1-10000',
+                default: '1000'
+            }
+        ],
+        output: [
+            {
+                outputName: 'frequency_spectrum',
+                type: '频域数据',
+                definition: '频率-幅值对应关系，X轴为频率(Hz)，Y轴为幅值'
+            }
+        ]
+    },
+    'Pca': {
+        name: 'Pca',
+        type: '数据分析',
+        description: '主成分分析，用于数据降维和特征提取，识别数据中的主要变化模式',
+        input: [
+            {
+                paraName: 'channel',
+                paraType: '通道对象',
+                paraDefinition: '输入通道数据进行主成分分析',
+                domain: '任何数值通道',
+                default: ''
+            },
+            {
+                paraName: 'n_components',
+                paraType: '整数',
+                paraDefinition: '保留的主成分数量',
+                domain: '1-10',
+                default: '2'
+            },
+            {
+                paraName: 'window_size',
+                paraType: '整数',
+                paraDefinition: '滑动窗口大小，用于分段分析',
+                domain: '10-1000',
+                default: '100'
+            }
+        ],
+        output: [
+            {
+                outputName: 'principal_components',
+                type: '降维数据',
+                definition: '主成分数据，X轴为时间，Y轴为第一主成分值'
+            }
+        ]
+    }
+});
 
 // 更新光标位置
 const updateCursorPosition = () => {
@@ -212,7 +279,8 @@ const highlightChannels = () => {
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             } else if (simpleFunctions.includes(token)) {
                 // 处理简单函数名（如FFT, Pca）
-                return `<span style="color: #409EFF; font-weight: bold;">${token}</span>`;
+                const functionData = JSON.stringify([builtInFunctions.value[token] || {}]).replace(/"/g, '&quot;');
+                return `<span class="function-name builtin-function" data-function-name="${token}" data-function-type="builtin" data-function-list="${functionData}" style="color: #409EFF; font-weight: bold; cursor: help; text-decoration: underline;">${token}</span>`;
             } else {
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             }
@@ -848,14 +916,32 @@ const addFunctionEventListeners = () => {
 // 鼠标进入函数名时的处理
 const handleFunctionMouseEnter = (event) => {
     const functionType = event.target.getAttribute('data-function-type');
+    const functionName = event.target.getAttribute('data-function-name');
     const functionListData = event.target.getAttribute('data-function-list');
 
     if (functionListData) {
         try {
             const matchingFunctions = JSON.parse(functionListData.replace(/&quot;/g, '"'));
 
-            // 现在只处理带前缀的函数，直接显示对应的函数信息
-            if (functionType && matchingFunctions.length > 0) {
+            if (functionType === 'builtin' && matchingFunctions.length > 0) {
+                // 处理内置函数
+                const functionInfo = matchingFunctions[0];
+                currentFunctionInfo.value = {
+                    ...functionInfo,
+                    typeLabel: 'Built-in',
+                    isMultiple: false
+                };
+
+                // 计算tooltip位置，显示在函数名下方
+                const rect = event.target.getBoundingClientRect();
+                tooltipPosition.value = {
+                    x: rect.left + rect.width / 2,
+                    y: rect.bottom + 10
+                };
+
+                showFunctionTooltip.value = true;
+            } else if (functionType && matchingFunctions.length > 0) {
+                // 处理带前缀的导入函数
                 const functionInfo = matchingFunctions[0]; // 带前缀的函数只会有一个匹配项
                 const typeLabel = getFunctionTypeLabel(functionInfo.file_path);
                 currentFunctionInfo.value = {
@@ -875,6 +961,7 @@ const handleFunctionMouseEnter = (event) => {
             }
         } catch (error) {
             // 解析函数数据失败
+            console.error('解析函数数据失败:', error);
         }
     }
 };
@@ -1165,6 +1252,29 @@ const findChannelIdentifierAtPosition = (text, position, channelIdentifiers) => 
     background: #e6f7ff;
     padding: 1px 4px;
     border-radius: 2px;
+}
+
+/* 内置函数特殊样式 */
+:deep(.builtin-function) {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    
+    &:hover {
+        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    }
+}
+
+/* Built-in 标识样式 */
+.function-type-prefix.type-builtin {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-color: #667eea;
 }
 
 /* 添加三角箭头指向函数名 */

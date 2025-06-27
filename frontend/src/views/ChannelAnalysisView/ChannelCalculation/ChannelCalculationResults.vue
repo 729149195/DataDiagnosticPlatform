@@ -291,6 +291,27 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
             });
         }
 
+        // 根据数据类型确定轴标签
+        let xAxisTitle = 'Time (s)';
+        let yAxisTitle = 'Value';
+        let chartTitle = '';
+        
+        // 检查是否是来自计算结果且有特殊的数据类型
+        const resultData = CalculateResult.value;
+        if (resultData && resultData.function_type) {
+            if (resultData.function_type === 'FFT') {
+                xAxisTitle = 'Frequency (Hz)';
+                yAxisTitle = 'Amplitude';
+                chartTitle = `FFT - ${resultData.channel_name || 'Unknown Channel'}`;
+            } else if (resultData.function_type === 'PCA') {
+                xAxisTitle = 'Time (s)';
+                yAxisTitle = 'PC1';
+                chartTitle = `PCA - ${resultData.channel_name || 'Unknown Channel'}`;
+            }
+        } else if (channel && channel.channel_name) {
+            chartTitle = `${channel.channel_name}`;
+        }
+
 
 
         // 创建Highcharts配置 - 不使用全局配置，而是在每个实例中设置
@@ -376,11 +397,16 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                 allowForce: false // 禁用强制boost模式
             },
             title: {
-                text: '', // 不使用标题
+                text: chartTitle,
+                style: {
+                    fontSize: '14px',
+                    fontWeight: 'bold',
+                    color: '#333'
+                }
             },
             xAxis: {
                 title: {
-                    text: 'Time(s)', // 显示X轴单位标签
+                    text: xAxisTitle, // 显示X轴单位标签
                     style: {
                         fontSize: '16px',
                         color: '#666',
@@ -406,7 +432,7 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
             },
             yAxis: {
                 title: {
-                    text: '', // 显示Y轴单位标签
+                    text: yAxisTitle, // 显示Y轴单位标签
                     style: {
                         fontSize: '12px',
                         color: '#666',

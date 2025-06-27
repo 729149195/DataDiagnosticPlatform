@@ -30,6 +30,14 @@ import pymongo
 # 配置日志
 logger = logging.getLogger(__name__)
 
+# 导入科学计算库
+try:
+    from sklearn.decomposition import PCA
+    sklearn_available = True
+except ImportError:
+    sklearn_available = False
+    print("警告：sklearn未安装，PCA功能将不可用")
+
 # 存储计算任务状态的字典
 calculation_tasks = {}
 
@@ -1198,8 +1206,8 @@ class ExpressionParser:
     
     def tokenize(self, expression):
         """将表达式分词"""
-        # 去除所有空格
-        expression = expression.replace(" ", "")
+        # 去除多余的空格但保留函数调用中的逗号分隔符
+        expression = ' '.join(expression.split())
 
         # 实现一个简单的分词器
         self.tokens = []
@@ -1208,8 +1216,13 @@ class ExpressionParser:
         while i < len(expression):
             char = expression[i]
 
+            # 跳过空格
+            if char == ' ':
+                i += 1
+                continue
+            
             # 处理运算符和括号
-            if char in "+-*/()":
+            if char in "+-*/(),":
                 self.tokens.append(char)
                 i += 1
             # 处理数字（包括小数）
@@ -1227,7 +1240,7 @@ class ExpressionParser:
                     # 如果不是有效数字，按字符处理
                     self.tokens.append(char)
                     i = start + 1
-            # 处理通道标识符（字母开头，包含字母、数字、下划线）
+            # 处理标识符（通道标识符和函数名）
             elif char.isalpha() or char == '_':
                 start = i
                 # 继续读取直到遇到非标识符字符
@@ -1475,36 +1488,40 @@ class ExpressionParser:
                     'is_constant': True  # 标记为常量
                 }
 
-            # 处理通道标识符
+            # 处理通道标识符或函数调用
             elif token.isalpha() or '_' in token:
-                self.current += 1
-                # 获取通道数据
-                channel_key = token
-
-                # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
-                response = self.get_channel_data_func(None, channel_key)
-
-                if hasattr(response, 'content'):
-                    # 对于HttpResponse对象
-                    try:
-                        channel_data = json.loads(response.content.decode('utf-8'))
-                    except Exception:
-                        raise ValueError(f"解析通道 {channel_key} 返回数据失败")
+                # 检查是否是函数调用
+                if self.current + 1 < len(self.tokens) and self.tokens[self.current + 1] == '(':
+                    return self.parse_function_call(token)
                 else:
-                    # 对于JsonResponse对象
-                    channel_data = response
+                    self.current += 1
+                    # 获取通道数据
+                    channel_key = token
 
-                # 检查返回的数据是否有效
-                if 'error' in channel_data:
-                    raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
+                    # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
+                    response = self.get_channel_data_func(None, channel_key)
 
-                # 确保返回的数据包含所需的键
-                if 'X_value' not in channel_data or 'Y_value' not in channel_data:
-                    raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+                    if hasattr(response, 'content'):
+                        # 对于HttpResponse对象
+                        try:
+                            channel_data = json.loads(response.content.decode('utf-8'))
+                        except Exception:
+                            raise ValueError(f"解析通道 {channel_key} 返回数据失败")
+                    else:
+                        # 对于JsonResponse对象
+                        channel_data = response
 
-                # 标记为通道数据
-                channel_data['is_constant'] = False
-                return channel_data
+                    # 检查返回的数据是否有效
+                    if 'error' in channel_data:
+                        raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
+
+                    # 确保返回的数据包含所需的键
+                    if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                        raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+
+                    # 标记为通道数据
+                    channel_data['is_constant'] = False
+                    return channel_data
 
         raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
 
@@ -1515,6 +1532,177 @@ class ExpressionParser:
             return True
         except ValueError:
             return False
+    
+    def parse_function_call(self, function_name):
+        """解析函数调用"""
+        self.current += 1  # 跳过函数名
+        
+        if self.current >= len(self.tokens) or self.tokens[self.current] != '(':
+            raise ValueError(f"函数 {function_name} 缺少左括号")
+        
+        self.current += 1  # 跳过左括号
+        
+        # 解析参数列表
+        args = []
+        while self.current < len(self.tokens) and self.tokens[self.current] != ')':
+            if self.tokens[self.current] == ',':
+                self.current += 1  # 跳过逗号
+                continue
+            
+            # 解析参数（可能是通道标识符、数字或表达式）
+            arg = self.factor()
+            args.append(arg)
+            
+            # 如果下一个token不是逗号或右括号，则出错
+            if (self.current < len(self.tokens) and 
+                self.tokens[self.current] not in [',', ')']):
+                self.current += 1
+        
+        if self.current >= len(self.tokens) or self.tokens[self.current] != ')':
+            raise ValueError(f"函数 {function_name} 缺少右括号")
+        
+        self.current += 1  # 跳过右括号
+        
+        # 调用相应的函数处理
+        return self.call_builtin_function(function_name, args)
+    
+    def call_builtin_function(self, function_name, args):
+        """调用内置函数"""
+        if function_name == 'FFT':
+            return self.fft_function(args)
+        elif function_name == 'Pca':
+            return self.pca_function(args)
+        else:
+            raise ValueError(f"未知的函数: {function_name}")
+    
+    def fft_function(self, args):
+        """FFT函数实现"""
+        if len(args) < 1:
+            raise ValueError("FFT函数至少需要1个参数（通道数据）")
+        
+        # 获取通道数据
+        channel_data = args[0]
+        if channel_data.get('is_constant', False):
+            raise ValueError("FFT函数的第一个参数必须是通道数据，不能是常量")
+        
+        # 获取频率限制参数（可选）
+        frequency_limit = 1000.0  # 默认1000Hz
+        if len(args) > 1:
+            if args[1].get('is_constant', False):
+                frequency_limit = float(args[1]['Y_value'])
+            else:
+                raise ValueError("FFT函数的第二个参数（频率限制）必须是数值常量")
+        
+        # 执行FFT计算
+        x_values = np.array(channel_data['X_value'])
+        y_values = np.array(channel_data['Y_value'])
+        
+        if len(y_values) < 2:
+            raise ValueError("数据点数太少，无法进行FFT分析")
+        
+        # 计算采样间隔和频率
+        dt = (x_values[-1] - x_values[0]) / (len(x_values) - 1)
+        fs = 1.0 / dt
+        
+        # 执行FFT
+        fft_result = np.fft.fft(y_values)
+        amplitude = np.abs(fft_result)
+        freq = np.fft.fftfreq(len(y_values), d=dt)
+        
+        # 只保留正频率部分
+        positive_freq_indices = freq >= 0
+        freq_positive = freq[positive_freq_indices]
+        amplitude_positive = amplitude[positive_freq_indices]
+        
+        # 应用频率限制
+        if frequency_limit > 0:
+            freq_mask = freq_positive <= frequency_limit
+            freq_positive = freq_positive[freq_mask]
+            amplitude_positive = amplitude_positive[freq_mask]
+        
+        # 单边谱处理：除直流分量外，其他分量乘以2
+        if len(amplitude_positive) > 1:
+            amplitude_positive[1:] = amplitude_positive[1:] * 2
+        
+        return {
+            'X_value': freq_positive.tolist(),
+            'Y_value': amplitude_positive.tolist(),
+            'channel_name': f"FFT({channel_data.get('channel_name', 'unknown')})",
+            'X_unit': 'Hz',
+            'Y_unit': 'Amplitude',
+            'is_constant': False,
+            'function_type': 'FFT'
+        }
+    
+    def pca_function(self, args):
+        """PCA函数实现"""
+        if len(args) < 1:
+            raise ValueError("PCA函数至少需要1个参数（通道数据）")
+        
+        # 获取通道数据
+        channel_data = args[0]
+        if channel_data.get('is_constant', False):
+            raise ValueError("PCA函数的第一个参数必须是通道数据，不能是常量")
+        
+        # 获取主成分数量参数（可选）
+        n_components = 2  # 默认2个主成分
+        if len(args) > 1:
+            if args[1].get('is_constant', False):
+                n_components = int(args[1]['Y_value'])
+            else:
+                raise ValueError("PCA函数的第二个参数（主成分数量）必须是数值常量")
+        
+        # 获取窗口大小参数（可选）
+        window_size = 100  # 默认窗口大小
+        if len(args) > 2:
+            if args[2].get('is_constant', False):
+                window_size = int(args[2]['Y_value'])
+            else:
+                raise ValueError("PCA函数的第三个参数（窗口大小）必须是数值常量")
+        
+        # 执行PCA分析
+        x_values = np.array(channel_data['X_value'])
+        y_values = np.array(channel_data['Y_value'])
+        
+        if len(y_values) < window_size:
+            raise ValueError(f"数据点数({len(y_values)})少于窗口大小({window_size})")
+        
+        # 检查sklearn是否可用
+        if not sklearn_available:
+            raise ValueError("PCA功能需要安装scikit-learn库")
+        
+        # 创建滑动窗口数据矩阵
+        n_windows = len(y_values) - window_size + 1
+        window_data = np.zeros((n_windows, window_size))
+        
+        for i in range(n_windows):
+            window_data[i] = y_values[i:i + window_size]
+        
+        # 执行PCA
+        pca = PCA(n_components=min(n_components, window_size))
+        principal_components = pca.fit_transform(window_data)
+        
+        # 计算对应的时间轴（窗口中心时间）
+        window_centers = []
+        for i in range(n_windows):
+            center_idx = i + window_size // 2
+            window_centers.append(x_values[center_idx])
+        
+        # 返回第一主成分
+        return {
+            'X_value': window_centers,
+            'Y_value': principal_components[:, 0].tolist(),
+            'channel_name': f"PCA({channel_data.get('channel_name', 'unknown')})",
+            'X_unit': 's',
+            'Y_unit': 'PC1',
+            'is_constant': False,
+            'function_type': 'PCA',
+            'pca_info': {
+                'explained_variance_ratio': pca.explained_variance_ratio_.tolist(),
+                'n_components': n_components,
+                'window_size': window_size
+            }
+        }
 
 
 def init_calculation(request):
@@ -1796,15 +1984,64 @@ def operator_strs(request):
                     
                 return JsonResponse({"data": ret}, status=200)
             else:
-                # 在这里可以添加对channel_names的处理逻辑
+                # 在这里检查是否是内置函数，如果是则使用表达式解析器处理
                 print("operator-strs:", anomaly_func_str)
                 
                 # 更新进度：开始特殊函数处理
                 if task_id and task_id in calculation_tasks:
                     update_calculation_progress(task_id, '开始特殊函数处理', 35)
+                
+                # 定义内置函数列表
+                builtin_functions = ['FFT', 'Pca']
+                
+                # 检查是否是内置函数调用
+                is_builtin_function = False
+                for builtin_func in builtin_functions:
+                    if anomaly_func_str.startswith(builtin_func + '('):
+                        is_builtin_function = True
+                        break
+                
+                if is_builtin_function:
+                    # 使用表达式解析器处理内置函数
+                    print(f"识别到内置函数调用: {anomaly_func_str}")
                     
-                if anomaly_func_str[:3] == 'Pca':
-                    print('xxxx')
+                    # 更新进度：处理内置函数
+                    if task_id and task_id in calculation_tasks:
+                        update_calculation_progress(task_id, f'处理内置函数: {anomaly_func_str}', 45)
+                    
+                    try:
+                        # 创建表达式解析器
+                        parser = ExpressionParser(lambda req, key: get_channel_data(create_mock_request(key, sample_freq), key))
+                        
+                        # 更新进度：解析内置函数表达式
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, '解析内置函数表达式', 55)
+                        
+                        # 解析表达式
+                        result = parser.parse(anomaly_func_str)
+                        
+                        # 设置结果通道名
+                        result['channel_name'] = anomaly_func_str
+                        
+                        # 更新进度：内置函数计算完成
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, '内置函数计算完成', 85)
+                        
+                        # 标记计算完成
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, '计算完成', 100, 'completed')
+                        
+                        return JsonResponse({"data": {"result": result}}, status=200)
+                        
+                    except Exception as e:
+                        # 任务失败
+                        if task_id and task_id in calculation_tasks:
+                            update_calculation_progress(task_id, f'内置函数处理出错: {str(e)}', 0, 'failed')
+                        raise ValueError(f"处理内置函数时出错: {str(e)}")
+                        
+                elif anomaly_func_str[:3] == 'Pca':
+                    # 保留旧的Pca处理逻辑，用于向后兼容
+                    print('使用旧版Pca处理逻辑')
                     
                     # 更新进度：开始PCA分析
                     if task_id and task_id in calculation_tasks:
