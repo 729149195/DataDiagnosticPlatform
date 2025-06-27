@@ -29,4 +29,6 @@ else
     if xor(throwerror,ismember(id, except))
         error(msg)
     end
+end       error(msg)
+    end
 end

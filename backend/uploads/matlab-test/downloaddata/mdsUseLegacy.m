@@ -19,3 +19,7 @@ function mdsUseLegacy( varargin )
    end
 end
 
+d.')
+   end
+end
+

@@ -56,3 +56,7 @@ function [ result, status ] = mdsvalue( expression, varargin)
   end
   result=mdsToMatlab(result);
 end
+=err.message;
+  end
+  result=mdsToMatlab(result);
+end

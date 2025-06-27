@@ -72,3 +72,9 @@ end
 info=MDSINFO;
 end
 
+y=MDSplus_legacy_behavior;
+    MDSINFO=info;
+end
+info=MDSINFO;
+end
+

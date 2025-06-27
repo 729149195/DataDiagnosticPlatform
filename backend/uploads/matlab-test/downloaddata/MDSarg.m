@@ -8,3 +8,6 @@ function obj = MDSarg( value )
   obj = mdsFromMatlab(value);
 end
 
+;
+end
+

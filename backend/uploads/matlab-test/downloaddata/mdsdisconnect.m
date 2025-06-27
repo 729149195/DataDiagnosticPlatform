@@ -7,3 +7,6 @@ function [ status ] = mdsdisconnect( )
   status = mdsconnect('local');
 end
 
+
+end
+

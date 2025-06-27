@@ -100,3 +100,11 @@ function  result = mdsFromMatlab( thing )
   end
 end
 
+e(thing,[],1),sz);
+        otherwise
+            result = thing;
+      end
+    end
+  end
+end
+

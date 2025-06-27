@@ -1,6 +1,6 @@
 import numpy as np
-
-def LargerThanThreshold(channel_key, threshold):
+import json
+def larger_than_threshold(channel_key, threshold):
     """
     Find ranges of X_value where Y_value is greater than the threshold.
     
@@ -33,6 +33,6 @@ def LargerThanThreshold(channel_key, threshold):
     if start_idx != -1:
         ranges.append([X_value[start_idx], X_value[-1]])
     
-    # Prepare output
+    # Prepare JSON output
     result_struct = {'X_range': ranges}
-    return result_struct
+    return json.dumps(result_struct)

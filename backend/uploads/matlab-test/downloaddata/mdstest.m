@@ -95,3 +95,7 @@ function  result = mdstest( )
   result=result && mdscheck('$ == $','uint8',[1,1],1,2);
   
 end
+100,1],int32(1),int32(100));
+  result=result && mdscheck('$ == $','uint8',[1,1],1,2);
+  
+end

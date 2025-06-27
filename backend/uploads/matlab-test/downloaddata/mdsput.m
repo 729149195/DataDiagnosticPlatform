@@ -7,3 +7,5 @@ if nargin == 2 && info.useLegacy
 else
   status = mdsvalue(sprintf('treeput($,$%s)',repmat(',$',1,nargin-2)),node,expression,varargin{:});
 end
+);
+end

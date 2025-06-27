@@ -7,3 +7,5 @@ function [ obj ] = NATIVEvalue( value )
   end
   obj = mdsToMatlab(value);
 end
+);
+end

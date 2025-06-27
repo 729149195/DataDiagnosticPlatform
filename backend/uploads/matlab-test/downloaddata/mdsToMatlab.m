@@ -134,3 +134,12 @@ function  result = mdsToMatlab( mdsthing )
     end
   end
 end
+
+      if info.useLegacy
+        if ~ischar(result)
+          result = double(result);
+        end
+      end 
+    end
+  end
+end

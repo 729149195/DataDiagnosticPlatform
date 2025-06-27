@@ -671,21 +671,13 @@ const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = [])
                         j++;
                     }
                     
-                    // 处理括号内的内容
+                    // 处理括号内的内容 - 递归解析以支持嵌套表达式
                     if (j > i) {
                         const innerContent = content.substring(i, j - 1); // 不包括最后的右括号
                         if (innerContent.trim()) {
-                            // 将内容按逗号分割并添加
-                            const parts = innerContent.split(',');
-                            for (let k = 0; k < parts.length; k++) {
-                                const part = parts[k].trim();
-                                if (part) {
-                                    tokens.push(part);
-                                }
-                                if (k < parts.length - 1) {
-                                    tokens.push(',');
-                                }
-                            }
+                            // 递归解析括号内的内容，支持通道标识符、函数调用等
+                            const innerTokens = tokenizeContent(innerContent, channelIdentifiers, functionDisplayNames, importedFunctions.value);
+                            tokens.push(...innerTokens);
                         }
                         i = j - 1; // 移动到右括号位置
                     }
