@@ -13,13 +13,13 @@ def match_pattern(
     Args:
         normalized_query_pattern: 归一化后的查询模式点序列 [(x1, y1), (x2, y2), ...]
         channel_data_list: 通道数据列表，每个元素包含通道信息和数据
-        lowpass_amplitude: 低通滤波幅度（0.0001~0.1），过滤该幅度内的扰动
+        lowpass_amplitude: 低通滤波幅度，单位秒（前端输入ms自动转换），过滤该幅度内的扰动
         x_filter_range: X过滤区间（默认"ALL"）
         y_filter_range: Y过滤区间（默认"ALL"）
         pattern_repeat_count: 模式重复数量（默认0），所需要匹配的手绘模式的连续重复数量
         max_match_per_channel: 单通道获取匹配最大数量（默认100）
-        amplitude_limit_range: 匹配区间Y值幅度区间限制 [min, max]（新增）
-        time_span_limit_range: 匹配区间X值跨度区间限制 [min, max]（新增）
+        amplitude_limit_range: 匹配区间Y值幅度区间限制 [min, max]
+        time_span_limit_range: 匹配区间X值跨度区间限制 [min, max]，单位秒（前端输入ms自动转换）
         
     Returns:
         匹配结果列表，每个元素包含通道信息、匹配范围和相似度

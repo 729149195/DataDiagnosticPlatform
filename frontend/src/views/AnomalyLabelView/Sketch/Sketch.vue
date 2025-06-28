@@ -130,16 +130,16 @@
               <el-form label-width="80px" label-position="left">
                 <el-form-item label="时间区间（单位s）" label-position="top">
                   <div style="display: flex; align-items: center; width: 100%;">
-                    <el-input v-model="xFilterStart" placeholder="起点" size="small" style="width: 48%;" />
+                    <el-input v-model="xFilterStart" placeholder="下限" size="small" style="width: 48%;" />
                     <span style="margin: 0 4px;">~</span>
-                    <el-input v-model="xFilterEnd" placeholder="终点" size="small" style="width: 48%;" />
+                    <el-input v-model="xFilterEnd" placeholder="上限" size="small" style="width: 48%;" />
                   </div>
                 </el-form-item>
                 <el-form-item label="数值区间" label-position="top">
                   <div style="display: flex; align-items: center; width: 100%;">
-                    <el-input v-model="yFilterStart" placeholder="起点" size="small" style="width: 48%;" />
+                    <el-input v-model="yFilterStart" placeholder="下限" size="small" style="width: 48%;" />
                     <span style="margin: 0 4px;">~</span>
-                    <el-input v-model="yFilterEnd" placeholder="终点" size="small" style="width: 48%;" />
+                    <el-input v-model="yFilterEnd" placeholder="上限" size="small" style="width: 48%;" />
                   </div>
                 </el-form-item>
               </el-form>
@@ -153,8 +153,8 @@
                 <el-form-item label-position="top">
                   <template #label>
                     <div style="display: flex; flex-direction: column;">
-                      <span>低通滤波平滑幅度s</span>
-                      <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动(0.0001~0.1)</span>
+                      <span style="font-weight: bold;">低通滤波幅度(ms)</span>
+                      <span style="font-size: 11px; color: #888; font-weight: normal; line-height: 1.2;">滤掉小于此周期的扰动(0.1~100ms)</span>
                     </div>
                   </template>
                   <el-input v-model="lowpassAmplitude" size="small" style="width: 100%;" />
@@ -173,18 +173,18 @@
                 <el-form-item label="模式重复数">
                   <el-input v-model="patternRepeatCount" size="small" style="width: 100%;" />
                 </el-form-item>
-                <el-form-item label="指标幅度区间" label-position="top">
-                  <div style="display: flex; align-items: center; width: 100%;">
-                    <el-input v-model="amplitudeLimitStart" placeholder="起点" size="small" style="width: 48%;" />
-                    <span style="margin: 0 4px;">~</span>
-                    <el-input v-model="amplitudeLimitEnd" placeholder="终点" size="small" style="width: 48%;" />
-                  </div>
-                </el-form-item>
                 <el-form-item label="时间跨度区间（ms）" label-position="top">
                   <div style="display: flex; align-items: center; width: 100%;">
                     <el-input v-model="timeSpanLimitStart" placeholder="起点" size="small" style="width: 48%;" />
                     <span style="margin: 0 4px;">~</span>
                     <el-input v-model="timeSpanLimitEnd" placeholder="终点" size="small" style="width: 48%;" />
+                  </div>
+                </el-form-item>
+                <el-form-item label="指标幅度区间" label-position="top">
+                  <div style="display: flex; align-items: center; width: 100%;">
+                    <el-input v-model="amplitudeLimitStart" placeholder="起点" size="small" style="width: 48%;" />
+                    <span style="margin: 0 4px;">~</span>
+                    <el-input v-model="amplitudeLimitEnd" placeholder="终点" size="small" style="width: 48%;" />
                   </div>
                 </el-form-item>
               </el-form>
@@ -258,9 +258,17 @@
           </el-table-column>
           <el-table-column label="模板名称" prop="template_name" min-width="120" show-overflow-tooltip align="center" />
           <el-table-column label="模板描述" prop="description" min-width="150" show-overflow-tooltip align="center" />
-          <el-table-column label="低通滤波" width="90" align="center">
+          <el-table-column label="低通滤波(ms)" width="100" align="center">
             <template #default="scope">
-              {{ scope.row.parameters?.lowpassAmplitude || 'N/A' }}
+              <span v-if="scope.row.parameters?.lowpassAmplitude">
+                <span v-if="scope.row.parameters.lowpassAmplitude < 1">
+                  {{ Math.round(scope.row.parameters.lowpassAmplitude * 1000) }}
+                </span>
+                <span v-else>
+                  {{ scope.row.parameters.lowpassAmplitude }}
+                </span>
+              </span>
+              <span v-else>N/A</span>
             </template>
           </el-table-column>
           <el-table-column label="时间区间" width="120" align="center">
@@ -855,7 +863,7 @@ const startVisibilityCheck = () => {
 
 // 参数区相关变量
 import { reactive } from 'vue';
-const lowpassAmplitude = ref(0.03); // 低通滤波幅度，默认0.03
+const lowpassAmplitude = ref(3); // 低通滤波幅度，默认30ms
 const xFilterStart = ref('');
 const xFilterEnd = ref('');
 const yFilterStart = ref('');
@@ -970,7 +978,7 @@ const submitData = async () => {
           rawQueryPattern,
           sampling: 5,
           selectedChannels,
-          lowpassAmplitude: Number(lowpassAmplitude.value),
+          lowpassAmplitude: Number(lowpassAmplitude.value) / 1000, // 将ms转换为s
           xFilterRange: [
             xFilterStart.value === '' ? null : Number(xFilterStart.value),
             xFilterEnd.value === '' ? null : Number(xFilterEnd.value)
@@ -1119,7 +1127,7 @@ const confirmSaveTemplate = async () => {
 
     // 获取当前的参数设置
     const parameters = {
-      lowpassAmplitude: Number(lowpassAmplitude.value),
+      lowpassAmplitude: Number(lowpassAmplitude.value), // 保存ms值
       xFilterRange: [
         xFilterStart.value === '' ? null : Number(xFilterStart.value),
         xFilterEnd.value === '' ? null : Number(xFilterEnd.value)
@@ -1212,14 +1220,25 @@ const applyTemplate = (template) => {
 
     // 恢复参数设置
     const params = template.parameters || {};
-    lowpassAmplitude.value = params.lowpassAmplitude || 0.03;
+    // 处理低通滤波幅度的新旧版本兼容性
+    if (params.lowpassAmplitude) {
+      if (params.lowpassAmplitude < 1) {
+        // 旧版本：秒值，转换为ms
+        lowpassAmplitude.value = params.lowpassAmplitude * 1000;
+      } else {
+        // 新版本：已经是ms值
+        lowpassAmplitude.value = params.lowpassAmplitude;
+      }
+    } else {
+      lowpassAmplitude.value = 30; // 默认30ms
+    }
     xFilterStart.value = params.xFilterRange && params.xFilterRange[0] !== null ? params.xFilterRange[0] : '';
     xFilterEnd.value = params.xFilterRange && params.xFilterRange[1] !== null ? params.xFilterRange[1] : '';
     yFilterStart.value = params.yFilterRange && params.yFilterRange[0] !== null ? params.yFilterRange[0] : '';
     yFilterEnd.value = params.yFilterRange && params.yFilterRange[1] !== null ? params.yFilterRange[1] : '';
     patternRepeatCount.value = params.patternRepeatCount || 0;
     maxMatchPerChannel.value = params.maxMatchPerChannel || 100;
-    
+
     // 处理新旧版本兼容性：指标幅度区间
     if (params.amplitudeLimitRange && Array.isArray(params.amplitudeLimitRange)) {
       amplitudeLimitStart.value = params.amplitudeLimitRange[0] !== null ? params.amplitudeLimitRange[0] : '';
@@ -1232,7 +1251,7 @@ const applyTemplate = (template) => {
       amplitudeLimitStart.value = '';
       amplitudeLimitEnd.value = '';
     }
-    
+
     // 处理新旧版本兼容性：时间跨度区间
     if (params.timeSpanLimitRange && Array.isArray(params.timeSpanLimitRange)) {
       timeSpanLimitStart.value = params.timeSpanLimitRange[0] !== null ? params.timeSpanLimitRange[0] : '';

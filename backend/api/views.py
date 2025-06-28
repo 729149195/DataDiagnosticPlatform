@@ -3595,13 +3595,13 @@ def sketch_query(request):
     # 获取路径数据
     raw_query_pattern = data.get('rawQueryPattern')
     # 新增参数获取
-    lowpass_amplitude = data.get('lowpassAmplitude')
+    lowpass_amplitude = data.get('lowpassAmplitude')  # 前端已将ms转换为s
     x_filter_range = data.get('xFilterRange')
     y_filter_range = data.get('yFilterRange')
     pattern_repeat_count = data.get('patternRepeatCount')
     max_match_per_channel = data.get('maxMatchPerChannel')
     amplitude_limit_range = data.get('amplitudeLimitRange')
-    time_span_limit_range = data.get('timeSpanLimitRange')
+    time_span_limit_range = data.get('timeSpanLimitRange')  # 前端已将ms转换为s
     
     # selected_channels 格式为 [{'channel_name': 'B07_H', 'shot_number': '4470', 'channel_type': 'B'},...]
     # raw_query_pattern 格式为 [{'x': 0.1, 'y': 0.1, 'handleOut': {'x': 0.1, 'y': 0.1}, 'handleIn': {'x': 0.1, 'y': 0.1}},...] 为贝塞尔曲线
