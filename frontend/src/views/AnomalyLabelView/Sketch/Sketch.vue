@@ -92,22 +92,10 @@
           <!-- <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div> -->
           <div class="top-left-controls">
             <div class="drawing-mode-buttons">
-              <el-button 
-                :type="drawingMode === 'continuous' ? 'primary' : 'default'" 
-                size="small" 
-                @click="drawingMode = 'continuous'"
-                :icon="drawingMode === 'continuous' ? 'Check' : ''"
-                class="mode-button">
+              <el-button :type="drawingMode === 'continuous' ? 'primary' : 'default'" size="small" @click="drawingMode = 'continuous'" :icon="drawingMode === 'continuous' ? 'Check' : ''" class="mode-button">
                 连续绘制
               </el-button>
-              <el-button 
-                :type="drawingMode === 'single' ? 'primary' : 'default'" 
-                size="small" 
-                @click="drawingMode = 'single'"
-                :icon="drawingMode === 'single' ? 'Check' : ''"
-                class="mode-button"
-                style="margin-left: 3px;"
-                >
+              <el-button :type="drawingMode === 'single' ? 'primary' : 'default'" size="small" @click="drawingMode = 'single'" :icon="drawingMode === 'single' ? 'Check' : ''" class="mode-button" style="margin-left: 3px;">
                 单点绘制
               </el-button>
             </div>
@@ -212,20 +200,10 @@
         <canvas ref="fullscreenCanvas" id="fullscreenCanvas" class="fullscreen-whiteboard-canvas" resize></canvas>
         <div class="fullscreen-top-left-controls">
           <div class="fullscreen-drawing-mode-buttons">
-            <el-button 
-              :type="drawingMode === 'continuous' ? 'primary' : 'default'" 
-              size="small" 
-              @click="drawingMode = 'continuous'"
-              :icon="drawingMode === 'continuous' ? 'Check' : ''"
-              class="mode-button">
+            <el-button :type="drawingMode === 'continuous' ? 'primary' : 'default'" size="small" @click="drawingMode = 'continuous'" :icon="drawingMode === 'continuous' ? 'Check' : ''" class="mode-button">
               连续绘制
             </el-button>
-            <el-button 
-              :type="drawingMode === 'single' ? 'primary' : 'default'" 
-              size="small" 
-              @click="drawingMode = 'single'"
-              :icon="drawingMode === 'single' ? 'Check' : ''"
-              class="mode-button">
+            <el-button :type="drawingMode === 'single' ? 'primary' : 'default'" size="small" @click="drawingMode = 'single'" :icon="drawingMode === 'single' ? 'Check' : ''" class="mode-button">
               单点绘制
             </el-button>
           </div>
@@ -244,11 +222,11 @@
     <!-- 保存模板对话框 -->
     <el-dialog v-model="saveTemplateDialogVisible" title="保存手绘曲线模板" width="500px" :close-on-click-modal="false">
       <el-form :model="templateForm" :rules="templateRules" ref="templateFormRef">
-        <el-form-item label="模板名称" prop="templateName" >
-          <el-input v-model="templateForm.templateName" placeholder="请输入模板名称" style="margin-left: 10px;"/>
+        <el-form-item label="模板名称" prop="templateName">
+          <el-input v-model="templateForm.templateName" placeholder="请输入模板名称" style="margin-left: 10px;" />
         </el-form-item>
-        <el-form-item label="模板描述" prop="description" >
-          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="请输入模板描述（可选）" style="margin-left: 10px;"/>
+        <el-form-item label="模板描述" prop="description">
+          <el-input v-model="templateForm.description" type="textarea" :rows="3" placeholder="请输入模板描述（可选）" style="margin-left: 10px;" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -270,8 +248,8 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="模板名称" prop="template_name" min-width="120" show-overflow-tooltip  align="center"/>
-          <el-table-column label="模板描述" prop="description" min-width="150" show-overflow-tooltip  align="center"/>
+          <el-table-column label="模板名称" prop="template_name" min-width="120" show-overflow-tooltip align="center" />
+          <el-table-column label="模板描述" prop="description" min-width="150" show-overflow-tooltip align="center" />
           <el-table-column label="低通滤波" width="90" align="center">
             <template #default="scope">
               {{ scope.row.parameters?.lowpassAmplitude || 'N/A' }}
@@ -628,12 +606,12 @@ function updateHighlightBackground() {
       highlightGroup.addChild(rect);
     }
   }
-  
+
   // 确保层级顺序正确：网格在最底层，高亮背景在中层，路径保持原位置
   if (grid) {
     grid.sendToBack();
   }
-  
+
   if (highlightGroup) {
     highlightGroup.sendToBack();
     if (grid) {
@@ -1024,22 +1002,22 @@ const clearCanvas = () => {
   isClearing.value = true;
   resultsDrawerVisible.value = false;
   store.dispatch('clearMatchedResults');
-  
+
   // 重置正常模式绘制状态
   isMouseDown.value = false;
   isDragging.value = false;
   selectedSegment = null;
   selectedHandle = null;
-  
+
   // 重置全屏模式绘制状态
   fullscreenIsMouseDown.value = false;
   fullscreenIsDragging.value = false;
   fullscreenSelectedSegment = null;
   fullscreenSelectedHandle = null;
-  
+
   // 清除全屏画布保存的状态
   fullscreenPathData = null;
-  
+
   // 清除正常画布内容
   if (paperScope) {
     if (path) {
@@ -1053,7 +1031,7 @@ const clearCanvas = () => {
       highlightGroup = null;
     }
   }
-  
+
   // 清除全屏画布内容
   if (fullscreenPaperScope) {
     if (fullscreenPath) {
@@ -1065,7 +1043,7 @@ const clearCanvas = () => {
       fullscreenHighlightGroup = null;
     }
   }
-  
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       isClearing.value = false;
@@ -1764,7 +1742,7 @@ const saveFullscreenPath = () => {
     fullscreenPathData = null;
     return;
   }
-  
+
   fullscreenPathData = fullscreenPath.segments.map(segment => ({
     x: segment.point.x,
     y: segment.point.y,
@@ -1825,7 +1803,7 @@ const restoreFullscreenPath = () => {
 
   // 确保路径属性正确设置
   fullscreenPath.fullySelected = true;
-  
+
   // 恢复完路径后，更新全屏高亮辅助
   updateFullscreenHighlightBackground();
 };
@@ -1873,10 +1851,10 @@ const copyPathToFullscreen = () => {
 
     fullscreenPath.add(newSegment);
   });
-  
+
   // 确保复制的路径显示锚点和手柄
   fullscreenPath.fullySelected = true;
-  
+
   // 复制完路径后，更新全屏高亮辅助
   updateFullscreenHighlightBackground();
 };
@@ -1966,16 +1944,16 @@ const clearFullscreenCanvas = () => {
   isDragging.value = false;
   selectedSegment = null;
   selectedHandle = null;
-  
+
   // 重置全屏绘制状态
   fullscreenIsMouseDown.value = false;
   fullscreenIsDragging.value = false;
   fullscreenSelectedSegment = null;
   fullscreenSelectedHandle = null;
-  
+
   // 清除保存的全屏画布状态
   fullscreenPathData = null;
-  
+
   // 清除正常画布内容
   if (paperScope) {
     if (path) {
@@ -1989,7 +1967,7 @@ const clearFullscreenCanvas = () => {
       highlightGroup = null;
     }
   }
-  
+
   // 清除全屏画布内容
   if (fullscreenPaperScope) {
     if (fullscreenPath) {
@@ -2001,7 +1979,7 @@ const clearFullscreenCanvas = () => {
       fullscreenHighlightGroup = null;
     }
   }
-  
+
   // 清除匹配结果
   resultsDrawerVisible.value = false;
   store.dispatch('clearMatchedResults');
@@ -2163,7 +2141,7 @@ const sortedGroupedMatchedResults = computed(() => {
     return [...groupedMatchedResults.value].sort((a, b) => {
       const aValue = a.confidence || 0;
       const bValue = b.confidence || 0;
-      
+
       if (sortConfig.value.order === 'ascending') {
         return aValue - bValue;
       } else {
