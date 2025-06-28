@@ -629,22 +629,15 @@ function updateHighlightBackground() {
     }
   }
   
-  // 确保高亮背景在最底层
-  highlightGroup.sendToBack();
-  
-  // 确保路径在高亮背景之上
-  if (path) {
-    path.bringToFront();
-  }
-  
-  // 如果有网格，确保层级顺序：网格 -> 高亮背景 -> 路径
+  // 确保层级顺序正确：网格在最底层，高亮背景在中层，路径保持原位置
   if (grid) {
     grid.sendToBack();
-    if (highlightGroup) {
+  }
+  
+  if (highlightGroup) {
+    highlightGroup.sendToBack();
+    if (grid) {
       highlightGroup.insertAbove(grid);
-    }
-    if (path) {
-      path.bringToFront();
     }
   }
 }
@@ -708,6 +701,7 @@ const initPaperJs = () => {
           strokeCap: 'round',
           strokeJoin: 'round'
         });
+        path.fullySelected = true; // 确保显示锚点和手柄
         segmentInfo.value = `点数: ${path.segments.length}`;
         updateHighlightBackground();
       }
@@ -722,6 +716,7 @@ const initPaperJs = () => {
           strokeCap: 'round',
           strokeJoin: 'round'
         });
+        path.fullySelected = true; // 确保显示锚点和手柄
         segmentInfo.value = `点数: ${path.segments.length}`;
       } else {
         // 添加新点并连线
@@ -1249,9 +1244,6 @@ const applyTemplate = (template) => {
       // 选中所有锚点
       path.fullySelected = true;
 
-      // 确保路径在最上层
-      path.bringToFront();
-
       // 更新段点信息显示
       segmentInfo.value = `点数: ${path.segments.length}`;
 
@@ -1643,6 +1635,7 @@ const initFullscreenPaper = () => {
         strokeCap: 'round',
         strokeJoin: 'round'
       });
+      fullscreenPath.fullySelected = true; // 确保显示锚点和手柄
       updateFullscreenHighlightBackground();
       saveFullscreenPath(); // 保存状态
     } else if (drawingMode.value === 'single') {
@@ -1656,6 +1649,7 @@ const initFullscreenPaper = () => {
           strokeCap: 'round',
           strokeJoin: 'round'
         });
+        fullscreenPath.fullySelected = true; // 确保显示锚点和手柄
       } else {
         // 添加新点并连线
         if (event.point.x >= fullscreenPath.lastSegment.point.x) {
@@ -1831,7 +1825,6 @@ const restoreFullscreenPath = () => {
 
   // 确保路径属性正确设置
   fullscreenPath.fullySelected = true;
-  fullscreenPath.visible = true;
   
   // 恢复完路径后，更新全屏高亮辅助
   updateFullscreenHighlightBackground();
@@ -1880,6 +1873,10 @@ const copyPathToFullscreen = () => {
 
     fullscreenPath.add(newSegment);
   });
+  
+  // 确保复制的路径显示锚点和手柄
+  fullscreenPath.fullySelected = true;
+  
   // 复制完路径后，更新全屏高亮辅助
   updateFullscreenHighlightBackground();
 };
@@ -1948,21 +1945,14 @@ const applyFullscreenDrawing = () => {
 
   // 确保路径属性正确设置
   path.fullySelected = true;
-  path.visible = true;
-  
-  // 确保路径在最上层
-  path.bringToFront();
 
   // 更新段点信息
   segmentInfo.value = `点数: ${path.segments.length}`;
 
-  // 先强制重绘，再更新高亮背景
-  paperScope.view.draw();
-  
   // 更新主画板高亮辅助
   updateHighlightBackground();
 
-  // 再次强制重绘确保显示
+  // 强制重绘确保显示
   paperScope.view.draw();
 
   // 关闭弹窗
