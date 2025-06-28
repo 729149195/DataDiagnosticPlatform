@@ -106,7 +106,7 @@
                 @click="drawingMode = 'single'"
                 :icon="drawingMode === 'single' ? 'Check' : ''"
                 class="mode-button"
-                style="margin-left: 3px; impor"
+                style="margin-left: 3px;"
                 >
                 单点绘制
               </el-button>
@@ -210,7 +210,6 @@
       </template>
       <div class="fullscreen-canvas-container">
         <canvas ref="fullscreenCanvas" id="fullscreenCanvas" class="fullscreen-whiteboard-canvas" resize></canvas>
-        <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
         <div class="fullscreen-top-left-controls">
           <div class="fullscreen-drawing-mode-buttons">
             <el-button 
@@ -232,6 +231,9 @@
           </div>
         </div>
         <div class="fullscreen-buttons">
+          <el-button type="danger" @click="clearFullscreenCanvas" class="clear-button" style="margin-right: 8px;">
+            清除
+          </el-button>
           <el-button type="primary" @click="applyFullscreenDrawing" class="apply-button">
             应用
           </el-button>
@@ -626,9 +628,25 @@ function updateHighlightBackground() {
       highlightGroup.addChild(rect);
     }
   }
+  
+  // 确保高亮背景在最底层
   highlightGroup.sendToBack();
-  if (grid) highlightGroup.insertBelow(grid);
-  else if (path) highlightGroup.insertBelow(path);
+  
+  // 确保路径在高亮背景之上
+  if (path) {
+    path.bringToFront();
+  }
+  
+  // 如果有网格，确保层级顺序：网格 -> 高亮背景 -> 路径
+  if (grid) {
+    grid.sendToBack();
+    if (highlightGroup) {
+      highlightGroup.insertAbove(grid);
+    }
+    if (path) {
+      path.bringToFront();
+    }
+  }
 }
 
 // 初始化Paper.js
@@ -787,9 +805,10 @@ const handleKeyDown = (e) => {
 
   // 只有在非输入元素上且按下Delete或Backspace键时才清除画布
   // 这样可以避免用户在参数输入框中删除文字时意外清空画布内容
+  // 键盘清除功能同样清空正常模式和全屏模式的所有内容
   if (!isInputElement && (e.key === 'Delete' || e.key === 'Backspace')) {
     e.preventDefault(); // 防止默认行为
-    clearCanvas();
+    clearCanvas(); // 统一使用clearCanvas函数，清空所有模式的内容
   }
 };
 
@@ -1011,12 +1030,22 @@ const clearCanvas = () => {
   resultsDrawerVisible.value = false;
   store.dispatch('clearMatchedResults');
   
-  // 重置绘制状态
+  // 重置正常模式绘制状态
   isMouseDown.value = false;
   isDragging.value = false;
   selectedSegment = null;
   selectedHandle = null;
   
+  // 重置全屏模式绘制状态
+  fullscreenIsMouseDown.value = false;
+  fullscreenIsDragging.value = false;
+  fullscreenSelectedSegment = null;
+  fullscreenSelectedHandle = null;
+  
+  // 清除全屏画布保存的状态
+  fullscreenPathData = null;
+  
+  // 清除正常画布内容
   if (paperScope) {
     if (path) {
       path.remove();
@@ -1029,6 +1058,19 @@ const clearCanvas = () => {
       highlightGroup = null;
     }
   }
+  
+  // 清除全屏画布内容
+  if (fullscreenPaperScope) {
+    if (fullscreenPath) {
+      fullscreenPath.remove();
+      fullscreenPath = null;
+    }
+    if (fullscreenHighlightGroup) {
+      fullscreenHighlightGroup.remove();
+      fullscreenHighlightGroup = null;
+    }
+  }
+  
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       isClearing.value = false;
@@ -1206,6 +1248,9 @@ const applyTemplate = (template) => {
 
       // 选中所有锚点
       path.fullySelected = true;
+
+      // 确保路径在最上层
+      path.bringToFront();
 
       // 更新段点信息显示
       segmentInfo.value = `点数: ${path.segments.length}`;
@@ -1522,6 +1567,8 @@ let fullscreenSelectedHandle = null;  // 全屏选中手柄
 // 全屏绘制模式状态
 const fullscreenIsMouseDown = ref(false);
 const fullscreenIsDragging = ref(false);
+// 全屏画布独立状态存储
+let fullscreenPathData = null; // 存储全屏画布的路径数据
 
 // 打开全屏绘图弹窗
 const openFullscreenCanvas = () => {
@@ -1537,9 +1584,13 @@ const openFullscreenCanvas = () => {
       fullscreenCanvas.value.addEventListener('touchstart', passiveTouchHandler, { passive: true });
     }
 
-    // 如果原画布有内容，复制到全屏画布
-    if (path && path.segments && path.segments.length > 0) {
+    // 优先恢复全屏画布的独立状态，如果没有则尝试从原画布复制
+    if (fullscreenPathData && fullscreenPathData.length > 0) {
+      restoreFullscreenPath();
+    } else if (path && path.segments && path.segments.length > 0) {
       copyPathToFullscreen();
+      // 复制后保存到全屏独立状态
+      saveFullscreenPath();
     }
   }, 100);
 };
@@ -1580,7 +1631,6 @@ const initFullscreenPaper = () => {
       if (fullscreenPath) {
         fullscreenPath.remove();
         fullscreenPath = null;
-        segmentInfo.value = '';
         if (fullscreenHighlightGroup) {
           fullscreenHighlightGroup.remove();
           fullscreenHighlightGroup = null;
@@ -1593,8 +1643,8 @@ const initFullscreenPaper = () => {
         strokeCap: 'round',
         strokeJoin: 'round'
       });
-      segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
       updateFullscreenHighlightBackground();
+      saveFullscreenPath(); // 保存状态
     } else if (drawingMode.value === 'single') {
       // 单点绘制模式
       if (!fullscreenPath) {
@@ -1606,15 +1656,14 @@ const initFullscreenPaper = () => {
           strokeCap: 'round',
           strokeJoin: 'round'
         });
-        segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
       } else {
         // 添加新点并连线
         if (event.point.x >= fullscreenPath.lastSegment.point.x) {
           fullscreenPath.add(event.point);
-          segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
         }
       }
       updateFullscreenHighlightBackground();
+      saveFullscreenPath(); // 保存状态
     }
   };
   tool.onMouseDrag = (event) => {
@@ -1623,6 +1672,7 @@ const initFullscreenPaper = () => {
     if (fullscreenSelectedSegment) {
       fullscreenSelectedSegment.point = fullscreenSelectedSegment.point.add(event.delta);
       updateFullscreenHighlightBackground();
+      saveFullscreenPath(); // 保存状态
       return;
     }
     if (fullscreenSelectedHandle) {
@@ -1632,6 +1682,7 @@ const initFullscreenPaper = () => {
         fullscreenSelectedHandle.segment.handleOut = fullscreenSelectedHandle.segment.handleOut.add(event.delta);
       }
       updateFullscreenHighlightBackground();
+      saveFullscreenPath(); // 保存状态
       return;
     }
 
@@ -1639,8 +1690,8 @@ const initFullscreenPaper = () => {
     if (drawingMode.value === 'continuous' && fullscreenPath && fullscreenIsMouseDown.value) {
       if (!fullscreenPath.lastSegment || event.point.x >= fullscreenPath.lastSegment.point.x) {
         fullscreenPath.add(event.point);
-        segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
         updateFullscreenHighlightBackground();
+        saveFullscreenPath(); // 保存状态
       }
     }
   };
@@ -1651,20 +1702,22 @@ const initFullscreenPaper = () => {
       fullscreenSelectedSegment = null;
       fullscreenSelectedHandle = null;
       updateFullscreenHighlightBackground();
+      saveFullscreenPath(); // 保存状态
       return;
     }
 
     // 只有在连续绘制模式下才进行路径简化
     if (drawingMode.value === 'continuous' && fullscreenPath && fullscreenPath.segments.length > 1 && fullscreenIsDragging.value) {
-      const segmentCount = fullscreenPath.segments.length;
       if (!fullscreenPath.fullySelected) {
         fullscreenPath.simplify(10);
         fullscreenPath.fullySelected = true;
-        const newSegmentCount = fullscreenPath.segments.length;
-        const percentage = 100 - Math.round(newSegmentCount / segmentCount * 100);
-        segmentInfo.value = `简化前点数: ${segmentCount}, 简化后点数: ${newSegmentCount}, 减少: ${percentage}%`;
         updateFullscreenHighlightBackground();
       }
+    }
+
+    // 无论是否简化，都保存状态
+    if (fullscreenPath && fullscreenPath.segments.length > 0) {
+      saveFullscreenPath();
     }
 
     fullscreenIsDragging.value = false;
@@ -1709,6 +1762,79 @@ const createFullscreenGrid = (width, height) => {
   // 将网格置于底层
   grid.sendToBack();
   return grid;
+};
+
+// 保存全屏画布路径数据
+const saveFullscreenPath = () => {
+  if (!fullscreenPath || !fullscreenPath.segments || fullscreenPath.segments.length === 0) {
+    fullscreenPathData = null;
+    return;
+  }
+  
+  fullscreenPathData = fullscreenPath.segments.map(segment => ({
+    x: segment.point.x,
+    y: segment.point.y,
+    handleIn: segment.handleIn ? {
+      x: segment.handleIn.x,
+      y: segment.handleIn.y
+    } : null,
+    handleOut: segment.handleOut ? {
+      x: segment.handleOut.x,
+      y: segment.handleOut.y
+    } : null
+  }));
+};
+
+// 恢复全屏画布路径数据
+const restoreFullscreenPath = () => {
+  if (!fullscreenPathData || !fullscreenPaperScope) {
+    return;
+  }
+
+  // 删除现有路径
+  if (fullscreenPath) {
+    fullscreenPath.remove();
+  }
+
+  // 激活全屏Paper.js作用域
+  fullscreenPaperScope.activate();
+
+  // 创建新路径
+  fullscreenPath = new Paper.Path();
+  fullscreenPath.strokeColor = 'black';
+  fullscreenPath.strokeWidth = 2;
+  fullscreenPath.strokeCap = 'round';
+  fullscreenPath.strokeJoin = 'round';
+
+  // 恢复所有段点和手柄
+  fullscreenPathData.forEach(segmentData => {
+    const newSegment = new Paper.Segment(
+      new Paper.Point(segmentData.x, segmentData.y)
+    );
+
+    if (segmentData.handleIn) {
+      newSegment.handleIn = new Paper.Point(
+        segmentData.handleIn.x,
+        segmentData.handleIn.y
+      );
+    }
+
+    if (segmentData.handleOut) {
+      newSegment.handleOut = new Paper.Point(
+        segmentData.handleOut.x,
+        segmentData.handleOut.y
+      );
+    }
+
+    fullscreenPath.add(newSegment);
+  });
+
+  // 确保路径属性正确设置
+  fullscreenPath.fullySelected = true;
+  fullscreenPath.visible = true;
+  
+  // 恢复完路径后，更新全屏高亮辅助
+  updateFullscreenHighlightBackground();
 };
 
 // 将原始画布的路径复制到全屏画布
@@ -1760,14 +1886,31 @@ const copyPathToFullscreen = () => {
 
 // 将全屏画布的路径应用到原始画布
 const applyFullscreenDrawing = () => {
-  if (!fullscreenPath || !fullscreenPath.segments || !paperScope) {
+  // 检查全屏路径是否存在且有段点
+  if (!fullscreenPath || !fullscreenPath.segments || fullscreenPath.segments.length === 0) {
     closeFullscreenCanvas();
     return;
   }
 
-  // 删除原始路径
+  if (!paperScope) {
+    closeFullscreenCanvas();
+    return;
+  }
+
+  // 确保全屏路径数据是最新的
+  saveFullscreenPath();
+
+  // 激活正常画布的Paper.js作用域
+  paperScope.activate();
+
+  // 删除原始路径和高亮背景
   if (path) {
     path.remove();
+    path = null;
+  }
+  if (highlightGroup) {
+    highlightGroup.remove();
+    highlightGroup = null;
   }
 
   // 计算缩放因子
@@ -1775,28 +1918,26 @@ const applyFullscreenDrawing = () => {
   const scaleY = paperCanvas.value.offsetHeight / fullscreenCanvas.value.offsetHeight;
 
   // 创建新路径
-  path = new paperScope.Path({
-    strokeColor: 'black',
-    strokeWidth: 2,
-    strokeCap: 'round',
-    strokeJoin: 'round'
-  });
+  path = new Paper.Path();
+  path.strokeColor = 'black';
+  path.strokeWidth = 2;
+  path.strokeCap = 'round';
+  path.strokeJoin = 'round';
 
   // 复制所有段点和手柄
   fullscreenPath.segments.forEach(segment => {
-    const newSegment = new paperScope.Segment(
-      new paperScope.Point(segment.point.x * scaleX, segment.point.y * scaleY)
-    );
+    const scaledPoint = new Paper.Point(segment.point.x * scaleX, segment.point.y * scaleY);
+    const newSegment = new Paper.Segment(scaledPoint);
 
     if (segment.handleIn) {
-      newSegment.handleIn = new paperScope.Point(
+      newSegment.handleIn = new Paper.Point(
         segment.handleIn.x * scaleX,
         segment.handleIn.y * scaleY
       );
     }
 
     if (segment.handleOut) {
-      newSegment.handleOut = new paperScope.Point(
+      newSegment.handleOut = new Paper.Point(
         segment.handleOut.x * scaleX,
         segment.handleOut.y * scaleY
       );
@@ -1805,11 +1946,24 @@ const applyFullscreenDrawing = () => {
     path.add(newSegment);
   });
 
+  // 确保路径属性正确设置
+  path.fullySelected = true;
+  path.visible = true;
+  
+  // 确保路径在最上层
+  path.bringToFront();
+
   // 更新段点信息
   segmentInfo.value = `点数: ${path.segments.length}`;
 
-  // 复制完路径后，更新主画板高亮辅助
+  // 先强制重绘，再更新高亮背景
+  paperScope.view.draw();
+  
+  // 更新主画板高亮辅助
   updateHighlightBackground();
+
+  // 再次强制重绘确保显示
+  paperScope.view.draw();
 
   // 关闭弹窗
   closeFullscreenCanvas();
@@ -1817,23 +1971,50 @@ const applyFullscreenDrawing = () => {
 
 // 清除全屏画布
 const clearFullscreenCanvas = () => {
+  // 重置正常模式绘制状态
+  isMouseDown.value = false;
+  isDragging.value = false;
+  selectedSegment = null;
+  selectedHandle = null;
+  
   // 重置全屏绘制状态
   fullscreenIsMouseDown.value = false;
   fullscreenIsDragging.value = false;
   fullscreenSelectedSegment = null;
   fullscreenSelectedHandle = null;
   
+  // 清除保存的全屏画布状态
+  fullscreenPathData = null;
+  
+  // 清除正常画布内容
+  if (paperScope) {
+    if (path) {
+      path.remove();
+      path = null;
+    }
+    segmentInfo.value = '';
+    // 清除高亮
+    if (highlightGroup) {
+      highlightGroup.remove();
+      highlightGroup = null;
+    }
+  }
+  
+  // 清除全屏画布内容
   if (fullscreenPaperScope) {
     if (fullscreenPath) {
       fullscreenPath.remove();
       fullscreenPath = null;
     }
-    segmentInfo.value = '';
     if (fullscreenHighlightGroup) {
       fullscreenHighlightGroup.remove();
       fullscreenHighlightGroup = null;
     }
   }
+  
+  // 清除匹配结果
+  resultsDrawerVisible.value = false;
+  store.dispatch('clearMatchedResults');
 };
 
 // 关闭全屏绘图弹窗
