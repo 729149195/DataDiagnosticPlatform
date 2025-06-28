@@ -68,7 +68,7 @@
                   type="primary"
                   plain
                 >
-                  取消选中
+                  取消全部选中
                 </el-button>
                 <!-- <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" /> -->
               </span>
@@ -119,7 +119,7 @@
                   type="primary"
                   plain
                 >
-                  取消选中
+                  取消全部选中
                 </el-button>
               </span>
               <div class="scrollbar-container">
@@ -2608,7 +2608,7 @@ const clearAllSelectedChannels = () => {
   store.dispatch('clearAllSelectedChannels');
   
   ElMessage({
-    message: '已取消选中所有通道',
+    message: '已取消全部选中通道',
     type: 'success'
   });
 };
