@@ -1807,6 +1807,20 @@ const sortedGroupedMatchedResults = computed(() => {
     return groupedMatchedResults.value;
   }
 
+  // 特殊处理：如果按匹配度排序，则进行全局排序，忽略分组
+  if (sortConfig.value.prop === 'confidence') {
+    return [...groupedMatchedResults.value].sort((a, b) => {
+      const aValue = a.confidence || 0;
+      const bValue = b.confidence || 0;
+      
+      if (sortConfig.value.order === 'ascending') {
+        return aValue - bValue;
+      } else {
+        return bValue - aValue;
+      }
+    });
+  }
+
   // 按组分类
   const groupMap = new Map();
   groupedMatchedResults.value.forEach(item => {
@@ -1927,6 +1941,15 @@ const objectSpanMethod = ({ row, column, rowIndex, columnIndex }) => {
 
   // 区间幅度列需要合并
   if (columnIndex === 1) {
+    // 如果按匹配度排序，不进行合并，每行单独显示
+    if (sortConfig.value.prop === 'confidence') {
+      return {
+        rowspan: 1,
+        colspan: 1
+      };
+    }
+
+    // 其他情况下按原逻辑合并
     if (isGroupStart(rowIndex)) {
       // 计算当前组有多少行
       let rowCount = 1;
