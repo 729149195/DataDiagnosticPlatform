@@ -38,7 +38,7 @@
               <Filter />
             </el-card>
             <el-card class="table" shadow="never" v-if="selectedButton === 'anay'">
-              <span style="display: flex; align-items: center; margin-bottom: 5px;">
+              <span style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
@@ -60,6 +60,16 @@
                       <InfoFilled />
                     </el-icon>
                   </el-tooltip></span>
+                <el-button 
+                  size="small" 
+                  :disabled="!hasSelectedChannels"
+                  @click="clearAllSelectedChannels"
+                  :icon="CircleClose"
+                  type="primary"
+                  plain
+                >
+                  取消选中
+                </el-button>
                 <!-- <el-switch class="color_table_switch" v-model="color_table_value" style="--el-switch-on-color: #409EFF; --el-switch-off-color: #409EFF" active-text="通道颜色" inactive-text="异常颜色" /> -->
               </span>
               <div class="scrollbar-container">
@@ -74,7 +84,7 @@
               </div>
             </el-card>
             <el-card class="table" shadow="never" v-if="selectedButton === 'channel'">
-              <span style="display: flex;margin-bottom: 5px; justify-content: space-between;">
+              <span style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
                 <span class="title">可视化配置<el-tooltip placement="right" effect="light">
                     <template #content>
                       <div style="max-width: 320px">
@@ -101,6 +111,16 @@
                       <InfoFilled />
                     </el-icon>
                   </el-tooltip></span>
+                <el-button 
+                  size="small" 
+                  :disabled="!hasSelectedChannels"
+                  @click="clearAllSelectedChannels"
+                  :icon="CircleClose"
+                  type="primary"
+                  plain
+                >
+                  取消选中
+                </el-button>
               </span>
               <div class="scrollbar-container">
                 <el-scrollbar :always="false">
@@ -769,7 +789,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, reactive, onBeforeUnmount, nextTick } from 'vue';
 import { useStore } from 'vuex';
-import { Upload, Refresh, TrendCharts } from '@element-plus/icons-vue'
+import { Upload, Refresh, TrendCharts, CircleClose } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import Highcharts from 'highcharts';
 import 'highcharts/modules/boost';
@@ -2576,6 +2596,22 @@ const chartAreaHeight = computed(() => {
   // 使用减去一些像素的方式，确保高度略微小于容器，避免滚动条
   return isSecondSectionCollapsed.value ? 'calc(81vh - 5px)' : 'calc(50vh - 5px)';
 })
+
+// 检查是否有选中的通道
+const hasSelectedChannels = computed(() => {
+  return selectedChannels.value && selectedChannels.value.length > 0;
+});
+
+// 清空所有选中的通道
+const clearAllSelectedChannels = () => {
+  // 调用store中的action来清空所有选中的通道
+  store.dispatch('clearAllSelectedChannels');
+  
+  ElMessage({
+    message: '已取消选中所有通道',
+    type: 'success'
+  });
+};
 </script>
 
 <style scoped lang="scss">

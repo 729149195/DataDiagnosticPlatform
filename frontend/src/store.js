@@ -730,6 +730,31 @@ const store = createStore({
     setCalculationErrorRanges(state, ranges) {
       state.calculationErrorRanges = ranges || [];
     },
+    clearAllSelectedChannels(state) {
+      // 1. 清空selectedChannels
+      state.selectedChannels = [];
+      
+      // 2. 更新displayedData中所有通道的checked状态
+      if (state.displayedData && state.displayedData.length > 0) {
+        state.displayedData.forEach(item => {
+          if (item.channels) {
+            // 取消选中所有通道
+            item.channels.forEach(channel => {
+              channel.checked = false;
+            });
+            // 取消选中通道类别
+            item.checked = false;
+            // 重置allChannelsEmpty状态
+            item.allChannelsEmpty = item.channels.every(channel => channel.status === 'empty_data');
+          }
+        });
+      }
+      
+      // 3. 触发缓存重新评估
+      dataCache.keys().forEach((key) => {
+        dataCache.touch(key);
+      });
+    },
   },
   actions: {
     async fetchStructTree({ commit, dispatch }, filterParams = []) {
@@ -1303,6 +1328,9 @@ const store = createStore({
     },
     updateShowFFT({ commit }, value) {
       commit("updateShowFFT", value);
+    },
+    clearAllSelectedChannels({ commit }) {
+      commit('clearAllSelectedChannels');
     },
   },
 });
