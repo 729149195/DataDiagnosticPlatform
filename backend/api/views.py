@@ -1295,6 +1295,14 @@ class ExpressionParser:
 
     def add_operands(self, left, right):
         """执行加法运算，支持通道数据与常量的运算"""
+        print(f"加法运算调试:")
+        left_y = left.get('Y_value', [])
+        right_y = right.get('Y_value', [])
+        left_y_len = len(left_y) if isinstance(left_y, list) else f"scalar({left_y})"
+        right_y_len = len(right_y) if isinstance(right_y, list) else f"scalar({right_y})"
+        print(f"  left: is_constant={left.get('is_constant')}, channel_name={left.get('channel_name')}, Y_len={left_y_len}")
+        print(f"  right: is_constant={right.get('is_constant')}, channel_name={right.get('channel_name')}, Y_len={right_y_len}")
+        
         # 如果两个都是常量，返回常量结果
         if left.get('is_constant', False) and right.get('is_constant', False):
             result_value = left['Y_value'] + right['Y_value']
@@ -1313,6 +1321,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [y + constant_value for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', 'unknown')
+            right_name = right.get('channel_name', str(constant_value))
+            result['channel_name'] = f"({left_name}+{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 如果左操作数是常量
@@ -1323,6 +1338,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [y + constant_value for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', str(constant_value))
+            right_name = right.get('channel_name', 'unknown')
+            result['channel_name'] = f"({left_name}+{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 两个都是通道数据
@@ -1334,6 +1356,15 @@ class ExpressionParser:
 
         # 执行加法
         result['Y_value'] = [x + y for x, y in zip(result['Y_value'], right_y)]
+        
+        # 更新channel_name为表达式表示
+        left_name = left.get('channel_name', 'unknown')
+        right_name = right.get('channel_name', 'unknown')
+        result['channel_name'] = f"({left_name}+{right_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
+        print(f"加法运算结果: channel_name={result['channel_name']}, is_expression_result={result.get('is_expression_result')}")
+        
         return result
 
     def subtract_operands(self, left, right):
@@ -1356,6 +1387,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [y - constant_value for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', 'unknown')
+            right_name = right.get('channel_name', str(constant_value))
+            result['channel_name'] = f"({left_name}-{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 如果左操作数是常量
@@ -1366,6 +1404,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [constant_value - y for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', str(constant_value))
+            right_name = right.get('channel_name', 'unknown')
+            result['channel_name'] = f"({left_name}-{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 两个都是通道数据
@@ -1377,6 +1422,13 @@ class ExpressionParser:
 
         # 执行减法
         result['Y_value'] = [x - y for x, y in zip(result['Y_value'], right_y)]
+        
+        # 更新channel_name为表达式表示
+        left_name = left.get('channel_name', 'unknown')
+        right_name = right.get('channel_name', 'unknown')
+        result['channel_name'] = f"({left_name}-{right_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
         return result
     
     def term(self):
@@ -1415,6 +1467,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [y * constant_value for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', 'unknown')
+            right_name = right.get('channel_name', str(constant_value))
+            result['channel_name'] = f"({left_name}*{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 如果左操作数是常量
@@ -1425,6 +1484,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [y * constant_value for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', str(constant_value))
+            right_name = right.get('channel_name', 'unknown')
+            result['channel_name'] = f"({left_name}*{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 两个都是通道数据
@@ -1436,6 +1502,13 @@ class ExpressionParser:
 
         # 执行乘法
         result['Y_value'] = [x * y for x, y in zip(result['Y_value'], right_y)]
+        
+        # 更新channel_name为表达式表示
+        left_name = left.get('channel_name', 'unknown')
+        right_name = right.get('channel_name', 'unknown')
+        result['channel_name'] = f"({left_name}*{right_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
         return result
 
     def divide_operands(self, left, right):
@@ -1462,6 +1535,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [y / constant_value for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', 'unknown')
+            right_name = right.get('channel_name', str(constant_value))
+            result['channel_name'] = f"({left_name}/{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 如果左操作数是常量
@@ -1472,6 +1552,13 @@ class ExpressionParser:
             if not isinstance(result['Y_value'], list):
                 result['Y_value'] = [result['Y_value']]
             result['Y_value'] = [constant_value / y if y != 0 else float('inf') for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', str(constant_value))
+            right_name = right.get('channel_name', 'unknown')
+            result['channel_name'] = f"({left_name}/{right_name})"
+            result['is_expression_result'] = True
+            
             return result
 
         # 两个都是通道数据
@@ -1483,6 +1570,13 @@ class ExpressionParser:
 
         # 执行除法，避免除以0
         result['Y_value'] = [x / y if y != 0 else float('inf') for x, y in zip(result['Y_value'], right_y)]
+        
+        # 更新channel_name为表达式表示
+        left_name = left.get('channel_name', 'unknown')
+        right_name = right.get('channel_name', 'unknown')
+        result['channel_name'] = f"({left_name}/{right_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
         return result
     
     def factor(self):
@@ -1556,7 +1650,9 @@ class ExpressionParser:
                         else:
                             # 在表达式运算或内置函数中，获取实际通道数据
                             print(f"表达式运算 - 识别通道键: {channel_key}，获取通道数据")
-                            return self._get_channel_data_safely(channel_key)
+                            result = self._get_channel_data_safely(channel_key)
+                            print(f"factor方法返回的通道数据: channel_name={result.get('channel_name')}, is_constant={result.get('is_constant')}")
+                            return result
                     else:
                         # 不是标准通道键格式，尝试获取通道数据
                         return self._get_channel_data_safely(channel_key)
@@ -1587,7 +1683,13 @@ class ExpressionParser:
 
             # 标记为通道数据
             channel_data['is_constant'] = False
+            
+            # 确保channel_name字段正确设置
+            if 'channel_name' not in channel_data:
+                channel_data['channel_name'] = channel_key
+            
             print(f"成功获取通道 {channel_key} 数据，数据点数: {len(channel_data.get('Y_value', []))}")
+            print(f"通道数据的channel_name: {channel_data.get('channel_name')}")
             return channel_data
         
         except Exception as e:
@@ -1847,6 +1949,17 @@ class ExpressionParser:
             parameters = []
             parameter_strings = []  # 用于构建函数调用字符串
             
+            print(f"导入函数 {function_name} 参数调试:")
+            for i, arg in enumerate(args):
+                print(f"  参数 {i}: 类型={type(arg)}")
+                if isinstance(arg, dict):
+                    print(f"    字典键: {list(arg.keys())}")
+                    print(f"    is_constant: {arg.get('is_constant', 'None')}")
+                    print(f"    is_channel_name: {arg.get('is_channel_name', 'None')}")
+                    print(f"    is_expression_result: {arg.get('is_expression_result', 'None')}")
+                    print(f"    channel_name: {arg.get('channel_name', 'None')}")
+                    print(f"    function_type: {arg.get('function_type', 'None')}")
+            
             for arg in args:
                 if arg.get('is_constant', False):
                     # 常量参数直接使用数值
@@ -1859,6 +1972,13 @@ class ExpressionParser:
                     channel_name = arg['channel_name']
                     parameters.append(channel_name)
                     parameter_strings.append(channel_name)
+                    
+                elif arg.get('is_expression_result', False):
+                    # 这是表达式运算的结果，使用表达式字符串作为标识符
+                    expr_str = arg.get('channel_name', 'expression_result')
+                    parameters.append(expr_str)
+                    parameter_strings.append(expr_str)
+                    print(f"处理表达式结果参数: {expr_str}")
                     
                 elif arg.get('function_type') == 'imported':
                     # 这是一个导入函数的执行结果，传递函数调用字符串
