@@ -39,6 +39,7 @@ import 'highcharts/modules/boost';  // 引入Boost模块以提高大数据集的
 import 'highcharts/modules/accessibility';  // 引入无障碍模块
 import { useStore } from 'vuex';
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, toRaw } from "vue";
+import axios from 'axios';
 
 // 设置Highcharts全局配置
 Highcharts.setOptions({
@@ -46,7 +47,6 @@ Highcharts.setOptions({
         enabled: false // 禁用无障碍功能，避免相关错误
     }
 });
-
 
 // 获取 Vuex 状态
 const store = useStore();
@@ -58,6 +58,76 @@ const channelDataCache = computed(() => store.state.channelDataCache);
 const chartContainerRef = ref(null);
 const resultData = ref(null);
 const chartInstance = ref(null);
+
+// 导入的函数列表
+const importedFunctions = ref([]);
+
+// 定义内置函数的详细信息
+const builtInFunctions = ref({
+    'FFT': {
+        name: 'FFT',
+        type: '信号处理',
+        description: '对输入信号进行快速傅里叶变换，将时域信号转换为频域表示',
+        input: [
+            {
+                paraName: 'channel',
+                paraType: '通道对象',
+                paraDefinition: '输入通道数据，包含时间序列信号',
+                domain: '任何数值通道',
+                default: ''
+            },
+            {
+                paraName: 'frequency_limit',
+                paraType: '浮点数',
+                paraDefinition: '频率上限，用于限制FFT结果的频率范围(Hz)',
+                domain: '0.1-10000',
+                default: '1000'
+            }
+        ],
+        output: [
+            {
+                outputName: 'frequency_spectrum',
+                type: '频域数据',
+                definition: '频率-幅值对应关系，X轴为频率(Hz)，Y轴为幅值'
+            }
+        ]
+    },
+    'Pca': {
+        name: 'Pca',
+        type: '数据分析',
+        description: '主成分分析，用于数据降维和特征提取，识别数据中的主要变化模式',
+        input: [
+            {
+                paraName: 'channel',
+                paraType: '通道对象',
+                paraDefinition: '输入通道数据进行主成分分析',
+                domain: '任何数值通道',
+                default: ''
+            },
+            {
+                paraName: 'n_components',
+                paraType: '整数',
+                paraDefinition: '保留的主成分数量',
+                domain: '1-10',
+                default: '2'
+            },
+            {
+                paraName: 'window_size',
+                paraType: '整数',
+                paraDefinition: '滑动窗口大小，用于分段分析',
+                domain: '10-1000',
+                default: '100'
+            }
+        ],
+        output: [
+            {
+                outputName: 'principal_components',
+                type: '降维数据',
+                definition: '主成分数据，X轴为时间，Y轴为第一主成分值'
+            }
+        ]
+    }
+});
 
 // 计算状态和进度 
 const isCalculating = computed(() => store.state.isCalculating);
@@ -129,6 +199,10 @@ onUnmounted(() => {
         chartResizeObserver.unobserve(props.containerRef.value);
         chartResizeObserver.disconnect();
     }
+
+    // 移除函数事件监听器
+    window.removeEventListener('functionUploaded', handleFunctionUploaded);
+    window.removeEventListener('functionDeleted', handleFunctionDeleted);
 });
 
 // 处理键盘事件 - 改为绑定到容器元素而非全局
@@ -142,7 +216,14 @@ const handleKeyDown = (e) => {
 };
 
 // 组件挂载时初始化
-onMounted(() => {
+onMounted(async () => {
+    // 获取导入的函数列表
+    await loadImportedFunctions();
+
+    // 监听函数上传事件
+    window.addEventListener('functionUploaded', handleFunctionUploaded);
+    window.addEventListener('functionDeleted', handleFunctionDeleted);
+
     // 添加键盘事件监听 - 改为绑定到容器元素
     if (chartContainerRef.value) {
         chartContainerRef.value.addEventListener('keydown', handleKeyDown);
@@ -308,8 +389,6 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                 yAxisTitle = 'PC1';
             }
         }
-
-
 
         // 创建Highcharts配置 - 不使用全局配置，而是在每个实例中设置
         const options = {
@@ -490,8 +569,7 @@ const drawChart = (xValues, yValues, channel, channelKey, errorRanges = null) =>
                     },
                     states: {
                         hover: {
-                            enabled: true, // 启用悬停状态，避免与boost冲突
-                            lineWidthPlus: 1
+                            enabled: false // 禁用悬停状态，避免曲线高亮加粗
                         }
                     },
                     turboThreshold: 10000, // 设置合理的阈值，避免与boost冲突
@@ -903,8 +981,6 @@ const addErrorRangesToChart = (chart, errorRanges) => {
     }
 };
 
-
-
 // 监听计算异常区域数据的变化
 const calculationErrorRanges = computed(() => store.state.calculationErrorRanges);
 watch(calculationErrorRanges, (newRanges, oldRanges) => {
@@ -1003,15 +1079,45 @@ const highlightedChannelName = computed(() => {
         return acc;
     }, {});
 
-    // 解析通道名称中的标识符
-    const tokens = tokenizeChannelName(channelName, channelIdentifiers);
+    // 获取带前缀的函数显示名称列表（不包括括号，用于高亮识别）
+    const functionDisplayNames = [];
+    importedFunctions.value.forEach(func => {
+        const typeLabel = getFunctionTypeLabel(func.file_path);
+        if (typeLabel) {
+            // 添加紧凑格式（用于高亮识别）：[Python]functionName
+            functionDisplayNames.push(`[${typeLabel}]${func.name}`);
+        }
+    });
+
+    // 解析通道名称中的标识符和函数
+    const tokens = tokenizeContent(channelName, channelIdentifiers, functionDisplayNames);
+
+    // 简单函数列表（如FFT, Pca等）
+    const simpleFunctions = ['FFT', 'Pca']; // 可以根据需要扩展
 
     // 生成高亮内容
     const highlightedContent = tokens
         .map((token) => {
+            // 处理通道标识符
             if (channelIdentifiers.includes(token)) {
                 const color = colors[token] || '#409EFF';
                 return `<span class="tag" style="background-color: ${color};">${token}</span>`;
+            } else if (functionDisplayNames.includes(token)) {
+                // 处理带前缀的导入函数名
+                const match = token.match(/^\[(\w+)\](.+)$/);
+                if (match) {
+                    const [, typeLabel, funcName] = match;
+                    const matchingFunction = importedFunctions.value.find(func =>
+                        func.name === funcName && getFunctionTypeLabel(func.file_path) === typeLabel
+                    );
+                    if (matchingFunction) {
+                        return `<span class="function-name" style="color: #409EFF; font-weight: bold;">${token}</span>`;
+                    }
+                }
+                return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            } else if (simpleFunctions.includes(token)) {
+                // 处理内置函数名（如FFT, Pca）
+                return `<span class="function-name builtin-function" style="color: #409EFF; font-weight: bold;">${token}</span>`;
             } else {
                 return token.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
             }
@@ -1021,12 +1127,14 @@ const highlightedChannelName = computed(() => {
     return highlightedContent;
 });
 
-// 解析通道名称中的通道标识符
-const tokenizeChannelName = (content, channelIdentifiers) => {
+// 解析内容中的通道标识符和函数（从 ChannelStr.vue 移植）
+const tokenizeContent = (content, channelIdentifiers, functionDisplayNames = []) => {
     if (!content) return [];
 
     // 对channelIdentifiers按长度降序排序，确保先匹配较长的标识符
     const sortedIdentifiers = [...channelIdentifiers].sort((a, b) => b.length - a.length);
+    // 对带前缀的函数名按长度降序排序，优先匹配
+    const sortedFunctionDisplayNames = [...functionDisplayNames].sort((a, b) => b.length - a.length);
 
     // 运算符列表
     const operators = ['+', '-', '*', '/', '(', ')'];
@@ -1035,9 +1143,9 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
     let i = 0;
 
     while (i < content.length) {
-        // 先检查是否是通道标识符
         let matched = false;
 
+        // 先检查是否是通道标识符
         for (const identifier of sortedIdentifiers) {
             if (content.substring(i, i + identifier.length) === identifier) {
                 tokens.push(identifier);
@@ -1047,7 +1155,128 @@ const tokenizeChannelName = (content, channelIdentifiers) => {
             }
         }
 
-        // 如果不是通道标识符，再检查是否是运算符
+        // 如果不是通道标识符，检查是否是带前缀的函数名
+        if (!matched) {
+            for (const funcDisplayName of sortedFunctionDisplayNames) {
+                // funcDisplayName 格式: [Python]functionName 或 [Matlab]functionName
+                const match = funcDisplayName.match(/^\[(\w+)\](.+)$/);
+                if (!match) continue;
+
+                const [, typeLabel, funcName] = match;
+
+                // 1. 检查带空格和括号的完整版本（如 "[Python] functionName()"）
+                const funcWithSpaceAndBrackets = `[${typeLabel}] ${funcName}()`;
+                if (content.substring(i, i + funcWithSpaceAndBrackets.length) === funcWithSpaceAndBrackets) {
+                    const prevChar = i > 0 ? content[i - 1] : null;
+                    const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                    if (validBefore) {
+                        tokens.push(funcDisplayName); // [Python]functionName - 用于高亮
+                        const spaceAndFuncLength = `[${typeLabel}] ${funcName}`.length;
+                        i += spaceAndFuncLength; // 移动到左括号位置
+
+                        // 单独处理左括号和右括号
+                        if (content[i] === '(') {
+                            tokens.push('(');
+                            i++;
+                        }
+                        if (content[i] === ')') {
+                            tokens.push(')');
+                            i++;
+                        }
+
+                        matched = true;
+                        break;
+                    }
+                }
+
+                // 2. 检查带空格但没有括号的版本（如 "[Python] functionName"）
+                const funcWithSpace = `[${typeLabel}] ${funcName}`;
+                if (!matched && content.substring(i, i + funcWithSpace.length) === funcWithSpace) {
+                    const prevChar = i > 0 ? content[i - 1] : null;
+                    const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                    if (validBefore) {
+                        const nextChar = i + funcWithSpace.length < content.length ? content[i + funcWithSpace.length] : null;
+                        const validAfter = !nextChar || !/[a-zA-Z0-9]/.test(nextChar);
+
+                        if (validAfter) {
+                            tokens.push(funcDisplayName); // [Python]functionName - 用于高亮
+                            i += funcWithSpace.length;
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 3. 检查紧凑格式（如 "[Python]functionName"）
+                if (!matched && content.substring(i, i + funcDisplayName.length) === funcDisplayName) {
+                    const prevChar = i > 0 ? content[i - 1] : null;
+                    const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                    if (validBefore) {
+                        tokens.push(funcDisplayName);
+                        i += funcDisplayName.length;
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 如果都不是，检查是否是简单函数（如FFT()或FFT(args)）
+        if (!matched) {
+            const simpleFunctionMatch = content.substring(i).match(/^([A-Za-z][A-Za-z0-9_]*)\(/);
+            if (simpleFunctionMatch) {
+                const funcName = simpleFunctionMatch[1];
+                
+                const prevChar = i > 0 ? content[i - 1] : null;
+                const validBefore = !prevChar || !/[a-zA-Z0-9\]]/.test(prevChar);
+
+                if (validBefore) {
+                    // 添加函数名（不包括括号）
+                    tokens.push(funcName);
+                    // 单独添加左括号
+                    tokens.push('(');
+                    
+                    // 移动到左括号后
+                    i += simpleFunctionMatch[0].length;
+                    
+                    // 寻找匹配的右括号
+                    let parenthesesCount = 1;
+                    let j = i;
+                    while (j < content.length && parenthesesCount > 0) {
+                        if (content[j] === '(') {
+                            parenthesesCount++;
+                        } else if (content[j] === ')') {
+                            parenthesesCount--;
+                        }
+                        j++;
+                    }
+                    
+                    // 处理括号内的内容 - 递归解析以支持嵌套表达式
+                    if (j > i) {
+                        const innerContent = content.substring(i, j - 1); // 不包括最后的右括号
+                        if (innerContent.trim()) {
+                            // 递归解析括号内的内容，支持通道标识符、函数调用等
+                            const innerTokens = tokenizeContent(innerContent, channelIdentifiers, functionDisplayNames);
+                            tokens.push(...innerTokens);
+                        }
+                        i = j - 1; // 移动到右括号位置
+                    }
+                    
+                    // 单独添加右括号
+                    if (i < content.length && content[i] === ')') {
+                        tokens.push(')');
+                        i++;
+                    }
+                    
+                    matched = true;
+                }
+            }
+        }
+
+        // 如果都不是，检查是否是运算符
         if (!matched) {
             const char = content[i];
             if (operators.includes(char)) {
@@ -1085,6 +1314,47 @@ watch(() => props.containerRef, (newContainerRef) => {
         });
     }
 }, { immediate: true });
+
+// 获取导入的函数列表
+const loadImportedFunctions = async () => {
+    try {
+        const response = await axios.get('http://192.168.20.49:5000/api/view-functions');
+        importedFunctions.value = response.data.imported_functions || [];
+    } catch (error) {
+        // 获取导入函数列表失败
+        importedFunctions.value = [];
+    }
+};
+
+// 辅助函数：根据文件路径获取函数类型标识
+const getFunctionTypeLabel = (filePath) => {
+    if (filePath && filePath.endsWith('.py')) {
+        return 'Python';
+    } else if (filePath && filePath.endsWith('.m')) {
+        return 'Matlab';
+    }
+    return '';
+};
+
+// 处理函数上传事件
+const handleFunctionUploaded = async () => {
+    await loadImportedFunctions();
+};
+
+// 处理函数删除事件
+const handleFunctionDeleted = async () => {
+    await loadImportedFunctions();
+};
+
+// 监听导入函数列表变化，重新高亮（当函数上传或删除时会触发）
+watch(
+    importedFunctions,
+    () => {
+        // 导入函数列表变化时，highlightedChannelName 会自动重新计算
+        // 因为它是一个 computed 属性，依赖于 importedFunctions
+    },
+    { deep: true }
+);
 
 </script>
 
@@ -1287,5 +1557,31 @@ watch(() => props.containerRef, (newContainerRef) => {
     vertical-align: middle;
     overflow: hidden;
     white-space: nowrap;
+}
+
+/* 函数名高亮样式 */
+:deep(.function-name) {
+    display: inline;
+    color: #409EFF !important;
+    font-weight: bold !important;
+    cursor: default;
+    text-decoration: underline;
+    margin: 0 2px;
+}
+
+/* 内置函数特殊样式 */
+:deep(.builtin-function) {
+    background: #409EFF !important;
+    color: white !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    font-weight: 600 !important;
+    text-decoration: none !important;
+    
+    &:hover {
+        background: #337ecc !important;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+    }
 }
 </style>
