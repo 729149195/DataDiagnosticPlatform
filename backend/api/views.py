@@ -14,6 +14,7 @@ from django.utils import timezone
 from datetime import datetime
 import unicodedata  # 添加这一行来导入unicodedata模块
 import inspect  # 添加inspect模块导入
+import importlib.util  # 添加importlib工具模块导入
 from django.views.decorators.csrf import csrf_exempt  # 添加CSRF豁免
 from django.views.decorators.http import require_GET
 from django.conf import settings
@@ -1197,6 +1198,7 @@ class ExpressionParser:
         self.get_channel_data_func = get_channel_data_func
         self.tokens = []
         self.current = 0
+        self.context_stack = []  # 用于跟踪解析上下文
     
     def parse(self, expression):
         """解析表达式并计算结果"""
@@ -1205,11 +1207,11 @@ class ExpressionParser:
         return self.expression()
     
     def tokenize(self, expression):
-        """将表达式分词"""
+        """将表达式分词 - 增强版支持函数前缀"""
         # 去除多余的空格但保留函数调用中的逗号分隔符
         expression = ' '.join(expression.split())
 
-        # 实现一个简单的分词器
+        # 实现增强的分词器
         self.tokens = []
         i = 0
 
@@ -1219,6 +1221,29 @@ class ExpressionParser:
             # 跳过空格
             if char == ' ':
                 i += 1
+                continue
+            
+            # 处理函数类型前缀 [Python] 或 [Matlab]
+            if char == '[':
+                start = i
+                # 查找配对的右括号
+                bracket_count = 1
+                i += 1
+                while i < len(expression) and bracket_count > 0:
+                    if expression[i] == '[':
+                        bracket_count += 1
+                    elif expression[i] == ']':
+                        bracket_count -= 1
+                    i += 1
+                
+                # 检查是否是函数类型前缀
+                prefix = expression[start:i]
+                if prefix in ['[Python]', '[Matlab]']:
+                    self.tokens.append(prefix)
+                else:
+                    # 如果不是已知的前缀，按字符处理
+                    self.tokens.append('[')
+                    i = start + 1
                 continue
             
             # 处理运算符和括号
@@ -1461,7 +1486,7 @@ class ExpressionParser:
         return result
     
     def factor(self):
-        """解析括号、通道标识符和数字常量"""
+        """解析括号、通道标识符、数字常量和函数调用（支持前缀）"""
         if self.current < len(self.tokens):
             token = self.tokens[self.current]
 
@@ -1488,40 +1513,98 @@ class ExpressionParser:
                     'is_constant': True  # 标记为常量
                 }
 
-            # 处理通道标识符或函数调用
+            # 处理函数类型前缀
+            elif token in ['[Python]', '[Matlab]']:
+                prefix = token
+                self.current += 1
+                
+                # 下一个token应该是函数名
+                if self.current < len(self.tokens):
+                    function_name = self.tokens[self.current]
+                    # 检查是否是函数调用（有左括号）
+                    if (self.current + 1 < len(self.tokens) and 
+                        self.tokens[self.current + 1] == '('):
+                        return self.parse_function_call(function_name, prefix)
+                    else:
+                        raise ValueError(f"期望在 {prefix} 后有函数调用")
+                else:
+                    raise ValueError(f"期望在 {prefix} 后有函数名")
+
+            # 处理通道标识符或函数调用（无前缀）
             elif token.isalpha() or '_' in token:
                 # 检查是否是函数调用
                 if self.current + 1 < len(self.tokens) and self.tokens[self.current + 1] == '(':
                     return self.parse_function_call(token)
                 else:
                     self.current += 1
-                    # 获取通道数据
+                    # 处理通道标识符
                     channel_key = token
 
-                    # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
-                    response = self.get_channel_data_func(None, channel_key)
-
-                    if hasattr(response, 'content'):
-                        # 对于HttpResponse对象
-                        try:
-                            channel_data = json.loads(response.content.decode('utf-8'))
-                        except Exception:
-                            raise ValueError(f"解析通道 {channel_key} 返回数据失败")
+                    # 检查是否是通道键格式（通道名_炮号）
+                    if '_' in channel_key and len(channel_key.split('_')) == 2:
+                        # 根据上下文决定处理方式
+                        if self.should_return_channel_string():
+                            # 在导入函数参数中，返回通道名字符串
+                            print(f"导入函数参数 - 识别通道键: {channel_key}，返回通道名字符串")
+                            return {
+                                'X_value': [],
+                                'Y_value': channel_key,  # 使用通道名作为值
+                                'channel_name': channel_key,
+                                'is_constant': False,
+                                'is_channel_name': True  # 标记这是一个通道名参数
+                            }
+                        else:
+                            # 在表达式运算或内置函数中，获取实际通道数据
+                            print(f"表达式运算 - 识别通道键: {channel_key}，获取通道数据")
+                            return self._get_channel_data_safely(channel_key)
                     else:
-                        # 对于JsonResponse对象
-                        channel_data = response
+                        # 不是标准通道键格式，尝试获取通道数据
+                        return self._get_channel_data_safely(channel_key)
+    
+    def _get_channel_data_safely(self, channel_key):
+        """安全地获取通道数据，失败时回退到通道名字符串"""
+        try:
+            # 直接使用传入的函数获取通道数据，传递None作为请求参数（由函数内部处理）
+            response = self.get_channel_data_func(None, channel_key)
 
-                    # 检查返回的数据是否有效
-                    if 'error' in channel_data:
-                        raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
+            if hasattr(response, 'content'):
+                # 对于HttpResponse对象
+                try:
+                    channel_data = json.loads(response.content.decode('utf-8'))
+                except Exception:
+                    raise ValueError(f"解析通道 {channel_key} 返回数据失败")
+            else:
+                # 对于JsonResponse对象
+                channel_data = response
 
-                    # 确保返回的数据包含所需的键
-                    if 'X_value' not in channel_data or 'Y_value' not in channel_data:
-                        raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+            # 检查返回的数据是否有效
+            if 'error' in channel_data:
+                raise ValueError(f"获取通道 {channel_key} 数据失败: {channel_data['error']}")
 
-                    # 标记为通道数据
-                    channel_data['is_constant'] = False
-                    return channel_data
+            # 确保返回的数据包含所需的键
+            if 'X_value' not in channel_data or 'Y_value' not in channel_data:
+                raise ValueError(f"通道 {channel_key} 返回数据格式不正确，缺少 X_value 或 Y_value")
+
+            # 标记为通道数据
+            channel_data['is_constant'] = False
+            print(f"成功获取通道 {channel_key} 数据，数据点数: {len(channel_data.get('Y_value', []))}")
+            return channel_data
+        
+        except Exception as e:
+            # 获取通道数据失败时，根据上下文决定处理方式
+            if self.should_return_channel_string():
+                print(f"导入函数参数 - 获取通道 {channel_key} 数据失败: {str(e)}，回退到通道名字符串")
+                return {
+                    'X_value': [],
+                    'Y_value': channel_key,  # 使用通道名作为值
+                    'channel_name': channel_key,
+                    'is_constant': False,
+                    'is_channel_name': True  # 标记这是一个通道名参数
+                }
+            else:
+                # 在表达式运算中，失败就是失败
+                print(f"表达式运算 - 获取通道 {channel_key} 数据失败: {str(e)}")
+                raise ValueError(f"获取通道 {channel_key} 数据失败: {str(e)}")
 
         raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
 
@@ -1533,8 +1616,8 @@ class ExpressionParser:
         except ValueError:
             return False
     
-    def parse_function_call(self, function_name):
-        """解析函数调用"""
+    def parse_function_call(self, function_name, prefix=None):
+        """解析函数调用 - 增强版支持前缀和嵌套表达式"""
         self.current += 1  # 跳过函数名
         
         if self.current >= len(self.tokens) or self.tokens[self.current] != '(':
@@ -1542,29 +1625,178 @@ class ExpressionParser:
         
         self.current += 1  # 跳过左括号
         
+        # 推入函数调用上下文
+        context_info = {
+            'type': 'function_call',
+            'function_name': function_name,
+            'prefix': prefix,
+            'is_imported_function': bool(prefix or function_name not in ['FFT', 'Pca'])
+        }
+        self.context_stack.append(context_info)
+        
         # 解析参数列表
         args = []
+        arg_index = 0
         while self.current < len(self.tokens) and self.tokens[self.current] != ')':
             if self.tokens[self.current] == ',':
                 self.current += 1  # 跳过逗号
+                arg_index += 1
                 continue
             
-            # 解析参数（可能是通道标识符、数字或表达式）
-            arg = self.factor()
+            # 推入参数上下文
+            param_context = {
+                'type': 'function_argument',
+                'function_name': function_name,
+                'arg_index': arg_index,
+                'is_imported_function': context_info['is_imported_function']
+            }
+            self.context_stack.append(param_context)
+            
+            # 解析参数 - 支持完整的表达式（包括嵌套函数调用）
+            arg = self.expression()
+            
+            # 弹出参数上下文
+            self.context_stack.pop()
+            
             args.append(arg)
             
-            # 如果下一个token不是逗号或右括号，则出错
+            # 如果下一个token是逗号，继续解析下一个参数
             if (self.current < len(self.tokens) and 
-                self.tokens[self.current] not in [',', ')']):
-                self.current += 1
+                self.tokens[self.current] == ','):
+                continue
+            # 如果下一个token是右括号，结束参数解析
+            elif (self.current < len(self.tokens) and 
+                  self.tokens[self.current] == ')'):
+                break
+            else:
+                # 如果既不是逗号也不是右括号，可能有语法错误
+                if self.current < len(self.tokens):
+                    raise ValueError(f"函数 {function_name} 参数解析错误，意外的token: {self.tokens[self.current]}")
+                else:
+                    raise ValueError(f"函数 {function_name} 参数解析未完成")
         
         if self.current >= len(self.tokens) or self.tokens[self.current] != ')':
             raise ValueError(f"函数 {function_name} 缺少右括号")
         
         self.current += 1  # 跳过右括号
         
+        # 弹出函数调用上下文
+        self.context_stack.pop()
+        
         # 调用相应的函数处理
-        return self.call_builtin_function(function_name, args)
+        return self.call_function(function_name, args, prefix)
+    
+    def should_return_channel_string(self):
+        """判断当前上下文是否应该返回通道名字符串而不是通道数据"""
+        # 检查是否在导入函数的参数中，且这个参数是单独的通道名
+        for context in reversed(self.context_stack):
+            if context.get('type') == 'function_argument':
+                # 如果是导入函数的参数
+                if context.get('is_imported_function', False):
+                    # 需要进一步检查是否是单独的通道名（非表达式）
+                    return self._is_single_channel_argument()
+        return False
+    
+    def _is_single_channel_argument(self):
+        """检查当前是否是单独的通道名参数（非表达式）"""
+        # 如果下一个token是运算符，说明这是表达式的一部分
+        if self.current < len(self.tokens):
+            next_token = self.tokens[self.current]
+            if next_token in ['+', '-', '*', '/', '(']:
+                return False  # 这是表达式，不是单独的通道名
+        
+        # 检查前一个token是否是运算符
+        if self.current > 1:
+            prev_token = self.tokens[self.current - 2]  # current已经+1了，所以-2
+            if prev_token in ['+', '-', '*', '/', ')']:
+                return False  # 这是表达式的一部分
+        
+        return True  # 看起来是单独的通道名
+    
+    def is_in_expression_context(self):
+        """判断是否在表达式运算上下文中（需要实际数据）"""
+        # 如果没有函数上下文，或者在内置函数中，都需要实际数据
+        for context in reversed(self.context_stack):
+            if context.get('type') == 'function_argument':
+                # 在内置函数参数中，需要实际数据
+                return not context.get('is_imported_function', False)
+        return True  # 默认需要实际数据
+    
+    def parse_function_argument(self):
+        """专门用于解析函数参数 - 对于导入函数，通道名参数返回字符串表示"""
+        if self.current < len(self.tokens):
+            token = self.tokens[self.current]
+
+            # 处理括号表达式
+            if token == '(':
+                self.current += 1
+                result = self.expression()
+
+                # 必须有匹配的右括号
+                if self.current < len(self.tokens) and self.tokens[self.current] == ')':
+                    self.current += 1
+                    return result
+                else:
+                    raise ValueError("缺少右括号")
+
+            # 处理数字常量
+            elif self.is_number(token):
+                self.current += 1
+                # 返回数字常量，格式与通道数据一致
+                return {
+                    'X_value': [],  # 数字常量没有X轴数据
+                    'Y_value': float(token),  # 数字常量作为标量值
+                    'channel_name': str(token),
+                    'is_constant': True  # 标记为常量
+                }
+
+            # 处理函数类型前缀
+            elif token in ['[Python]', '[Matlab]']:
+                prefix = token
+                self.current += 1
+                
+                # 下一个token应该是函数名
+                if self.current < len(self.tokens):
+                    function_name = self.tokens[self.current]
+                    # 检查是否是函数调用（有左括号）
+                    if (self.current + 1 < len(self.tokens) and 
+                        self.tokens[self.current + 1] == '('):
+                        return self.parse_function_call(function_name, prefix)
+                    else:
+                        raise ValueError(f"期望在 {prefix} 后有函数调用")
+                else:
+                    raise ValueError(f"期望在 {prefix} 后有函数名")
+
+            # 处理通道标识符或函数调用（无前缀）
+            elif token.isalpha() or '_' in token:
+                # 检查是否是函数调用
+                if self.current + 1 < len(self.tokens) and self.tokens[self.current + 1] == '(':
+                    return self.parse_function_call(token)
+                else:
+                    # 对于导入函数的参数，如果看起来是通道名，直接返回通道名字符串
+                    self.current += 1
+                    return {
+                        'X_value': [],
+                        'Y_value': token,  # 直接使用token作为值
+                        'channel_name': token,
+                        'is_constant': False,
+                        'is_channel_name': True  # 标记这是一个通道名参数
+                    }
+
+        raise ValueError(f"意外的标记: {self.tokens[self.current] if self.current < len(self.tokens) else 'EOF'}")
+    
+    def call_function(self, function_name, args, prefix=None):
+        """调用函数（内置函数或导入函数）"""
+        # 如果有前缀，说明是导入函数
+        if prefix:
+            return self.call_imported_function(function_name, args, prefix)
+        else:
+            # 检查是否是内置函数
+            if function_name in ['FFT', 'Pca']:
+                return self.call_builtin_function(function_name, args)
+            else:
+                # 可能是无前缀的导入函数，尝试调用
+                return self.call_imported_function(function_name, args, None)
     
     def call_builtin_function(self, function_name, args):
         """调用内置函数"""
@@ -1573,7 +1805,145 @@ class ExpressionParser:
         elif function_name == 'Pca':
             return self.pca_function(args)
         else:
-            raise ValueError(f"未知的函数: {function_name}")
+            raise ValueError(f"未知的内置函数: {function_name}")
+    
+    def call_imported_function(self, function_name, args, prefix=None):
+        """调用导入函数 - 重写版本支持正确的参数处理"""
+        try:
+            # 从imported_functions.json中查找函数信息
+            if not os.path.exists(FUNCTIONS_FILE_PATH):
+                raise ValueError("导入函数配置文件不存在")
+
+            with open(FUNCTIONS_FILE_PATH, "r", encoding='utf-8') as f:
+                functions_data = json.load(f)
+
+            # 根据前缀确定函数类型
+            preferred_extension = None
+            if prefix == '[Python]':
+                preferred_extension = '.py'
+            elif prefix == '[Matlab]':
+                preferred_extension = '.m'
+
+            # 查找匹配的函数
+            all_matches = [d for d in functions_data if d.get('name') == function_name]
+
+            matched_func = None
+            if preferred_extension:
+                # 优先查找指定类型的函数
+                for func in all_matches:
+                    file_path = func.get('file_path', '')
+                    if file_path.endswith(preferred_extension):
+                        matched_func = func
+                        break
+
+            # 如果没找到指定类型的函数，使用第一个匹配的函数
+            if not matched_func and all_matches:
+                matched_func = all_matches[0]
+
+            if not matched_func:
+                raise ValueError(f"未找到导入函数: {function_name}")
+
+            # 构建函数调用的参数数据 - 重写版本
+            parameters = []
+            parameter_strings = []  # 用于构建函数调用字符串
+            
+            for arg in args:
+                if arg.get('is_constant', False):
+                    # 常量参数直接使用数值
+                    param_value = arg['Y_value']
+                    parameters.append(param_value)
+                    parameter_strings.append(str(param_value))
+                    
+                elif arg.get('is_channel_name', False):
+                    # 通道名参数直接使用通道名字符串
+                    channel_name = arg['channel_name']
+                    parameters.append(channel_name)
+                    parameter_strings.append(channel_name)
+                    
+                elif arg.get('function_type') == 'imported':
+                    # 这是一个导入函数的执行结果，传递函数调用字符串
+                    func_str = arg.get('channel_name', 'unknown_function')
+                    parameters.append(func_str)
+                    parameter_strings.append(func_str)
+                    
+                elif arg.get('function_type') == 'FFT':
+                    # 这是FFT函数的结果，传递函数调用字符串
+                    func_str = arg.get('channel_name', 'FFT_result')
+                    parameters.append(func_str)
+                    parameter_strings.append(func_str)
+                    
+                else:
+                    # 通道数据或其他类型 - 对于导入函数，应该传递通道名而不是数据
+                    if 'channel_name' in arg:
+                        channel_name = arg['channel_name']
+                        # 检查是否是通道键格式（通道名_炮号）
+                        if '_' in channel_name and not channel_name.startswith('('):
+                            # 这看起来像是通道键，直接使用
+                            parameters.append(channel_name)
+                            parameter_strings.append(channel_name)
+                        else:
+                            # 这是其他类型的数据，使用通道名或标识符
+                            parameters.append(channel_name)
+                            parameter_strings.append(channel_name)
+                    else:
+                        # 回退到未知标识符
+                        parameters.append('unknown')
+                        parameter_strings.append('unknown')
+
+            # 构建函数调用字符串
+            if prefix:
+                original_func_str = f"{prefix}{function_name}({','.join(parameter_strings)})"
+            else:
+                original_func_str = f"{function_name}({','.join(parameter_strings)})"
+
+            print(f"调用导入函数: {original_func_str}")
+            print(f"参数列表: {parameters}")
+
+            # 准备调用execute_function的数据
+            execute_data = {
+                "matched_function": matched_func,
+                "target_file_name": function_name,
+                "parameters": parameters,
+                "original_func_str": original_func_str
+            }
+
+            # 调用execute_function执行导入函数
+            result = execute_function(execute_data)
+
+            if 'error' in result:
+                raise ValueError(f"执行导入函数失败: {result['error']}")
+
+            # 处理返回结果
+            if 'result' in result:
+                function_result = result['result']
+                # 确保返回格式与通道数据一致
+                if not isinstance(function_result, dict):
+                    # 如果返回的不是字典，转换为标准格式
+                    return {
+                        'X_value': [],
+                        'Y_value': function_result,
+                        'channel_name': original_func_str,
+                        'is_constant': True
+                    }
+                else:
+                    # 确保有必要的键
+                    if 'X_value' not in function_result:
+                        function_result['X_value'] = []
+                    if 'Y_value' not in function_result:
+                        function_result['Y_value'] = []
+                    if 'channel_name' not in function_result:
+                        function_result['channel_name'] = original_func_str
+                    
+                    function_result['is_constant'] = False
+                    function_result['function_type'] = 'imported'
+                    print(f"导入函数 {function_name} 执行成功，返回数据点数: {len(function_result.get('Y_value', []))}")
+                    return function_result
+            else:
+                raise ValueError("导入函数返回结果格式错误")
+
+        except Exception as e:
+            print(f"调用导入函数 {function_name} 失败: {str(e)}")
+            raise ValueError(f"调用导入函数 {function_name} 失败: {str(e)}")
     
     def fft_function(self, args):
         """FFT函数实现"""
@@ -1890,13 +2260,24 @@ def operator_strs(request):
             if os.path.exists(functions_file_path):
                 with open(functions_file_path, "r", encoding='utf-8') as f:
                     functions_data = json.load(f)
+                    # 添加详细调试信息
+                    print(f"从文件读取到的函数数据类型: {type(functions_data)}")
+                    print(f"函数数据长度: {len(functions_data) if isinstance(functions_data, list) else '不是列表'}")
+                    for i, item in enumerate(functions_data):
+                        print(f"条目 {i}: 类型={type(item)}, 内容={item}")
             else:
                 functions_data = []
+                print("函数文件不存在，使用空列表")
             
             # 根据文件名和类型查找导入的函数
             is_import_func = False
             matched_function = None
             for function in functions_data:
+                # 检查function是否为字典类型，过滤掉无效条目
+                if not isinstance(function, dict):
+                    print(f"警告：跳过无效的函数条目（不是字典类型）: {function}")
+                    continue
+                
                 file_path = function.get('file_path', '')
                 # 提取文件名（不含扩展名）
                 file_basename = os.path.splitext(os.path.basename(file_path))[0]
