@@ -90,16 +90,40 @@
         <div class="canvas-container">
           <canvas ref="paperCanvas" id="paperCanvas" class="whiteboard-canvas" resize></canvas>
           <!-- <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div> -->
+          <div class="top-left-controls">
+            <div class="drawing-mode-buttons">
+              <el-button 
+                :type="drawingMode === 'continuous' ? 'primary' : 'default'" 
+                size="small" 
+                @click="drawingMode = 'continuous'"
+                :icon="drawingMode === 'continuous' ? 'Check' : ''"
+                class="mode-button">
+                连续绘制
+              </el-button>
+              <el-button 
+                :type="drawingMode === 'single' ? 'primary' : 'default'" 
+                size="small" 
+                @click="drawingMode = 'single'"
+                :icon="drawingMode === 'single' ? 'Check' : ''"
+                class="mode-button"
+                style="margin-left: 3px; impor"
+                >
+                单点绘制
+              </el-button>
+            </div>
+          </div>
           <div class="buttons">
-            <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
-              查询
-            </el-button>
-            <el-button type="danger" @click="clearCanvas" class="clear-button" style="margin-left: 8px;">
-              清除
-            </el-button>
-            <el-button type="success" @click="saveTemplate" class="save-template-button" style="margin-left: 8px;">
-              保存模板
-            </el-button>
+            <div class="action-buttons">
+              <el-button type="primary" :icon="Search" @click="submitData" class="search-button">
+                查询
+              </el-button>
+              <el-button type="danger" @click="clearCanvas" class="clear-button" style="margin-left: 8px;">
+                清除
+              </el-button>
+              <el-button type="success" @click="saveTemplate" class="save-template-button" style="margin-left: 8px;">
+                保存模板
+              </el-button>
+            </div>
           </div>
           <div class="zoom-button">
             <el-button type="primary" :icon="FullScreen" circle @click="openFullscreenCanvas"></el-button>
@@ -187,8 +211,28 @@
       <div class="fullscreen-canvas-container">
         <canvas ref="fullscreenCanvas" id="fullscreenCanvas" class="fullscreen-whiteboard-canvas" resize></canvas>
         <div class="segment-info" v-if="segmentInfo">{{ segmentInfo }}</div>
+        <div class="fullscreen-top-left-controls">
+          <div class="fullscreen-drawing-mode-buttons">
+            <el-button 
+              :type="drawingMode === 'continuous' ? 'primary' : 'default'" 
+              size="small" 
+              @click="drawingMode = 'continuous'"
+              :icon="drawingMode === 'continuous' ? 'Check' : ''"
+              class="mode-button">
+              连续绘制
+            </el-button>
+            <el-button 
+              :type="drawingMode === 'single' ? 'primary' : 'default'" 
+              size="small" 
+              @click="drawingMode = 'single'"
+              :icon="drawingMode === 'single' ? 'Check' : ''"
+              class="mode-button">
+              单点绘制
+            </el-button>
+          </div>
+        </div>
         <div class="fullscreen-buttons">
-          <el-button type="primary" @click="applyFullscreenDrawing">
+          <el-button type="primary" @click="applyFullscreenDrawing" class="apply-button">
             应用
           </el-button>
         </div>
@@ -250,6 +294,13 @@
           <el-table-column label="重复数" width="80" align="center">
             <template #default="scope">
               {{ scope.row.parameters?.patternRepeatCount || 0 }}
+            </template>
+          </el-table-column>
+          <el-table-column label="绘制模式" width="90" align="center">
+            <template #default="scope">
+              <el-tag :type="scope.row.parameters?.drawingMode === 'single' ? 'warning' : 'primary'" size="small">
+                {{ scope.row.parameters?.drawingMode === 'single' ? '单点绘制' : '连续绘制' }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="匹配上限" width="90" align="center">
@@ -609,22 +660,66 @@ const initPaperJs = () => {
       paperCanvas.value.focus();
     }
 
+    isMouseDown.value = true;
+    isDragging.value = false;
+
+    // 检查是否点击了现有路径上的段点或手柄
+    if (path) {
+      const hitResult = path.hitTest(event.point, hitOptions);
+      if (hitResult) {
+        if (hitResult.type === 'segment') {
+          selectedSegment = hitResult.segment;
+          return;
+        } else if (hitResult.type === 'handle-in' || hitResult.type === 'handle-out') {
+          selectedHandle = hitResult;
+          return;
+        }
+      }
+    }
+
     selectedSegment = null;
     selectedHandle = null;
-    if (!path) {
-      path = new paperScope.Path({
-        segments: [event.point],
-        strokeColor: 'black',
-        strokeWidth: 2,
-        strokeCap: 'round',
-        strokeJoin: 'round'
-      });
+
+    if (drawingMode.value === 'continuous') {
+      // 连续绘制模式
+      if (!path) {
+        path = new paperScope.Path({
+          segments: [event.point],
+          strokeColor: 'black',
+          strokeWidth: 2,
+          strokeCap: 'round',
+          strokeJoin: 'round'
+        });
+        segmentInfo.value = `点数: ${path.segments.length}`;
+        updateHighlightBackground();
+      }
+    } else if (drawingMode.value === 'single') {
+      // 单点绘制模式
+      if (!path) {
+        // 创建新路径和第一个点
+        path = new paperScope.Path({
+          segments: [event.point],
+          strokeColor: 'black',
+          strokeWidth: 2,
+          strokeCap: 'round',
+          strokeJoin: 'round'
+        });
+        segmentInfo.value = `点数: ${path.segments.length}`;
+      } else {
+        // 添加新点并连线
+        if (event.point.x >= path.lastSegment.point.x) {
+          path.add(event.point);
+          segmentInfo.value = `点数: ${path.segments.length}`;
+        }
+      }
       updateHighlightBackground();
     }
   };
 
   // 鼠标拖动事件
   tool.onMouseDrag = (event) => {
+    isDragging.value = true;
+
     if (selectedSegment) {
       selectedSegment.point = selectedSegment.point.add(event.delta);
       updateHighlightBackground();
@@ -639,22 +734,30 @@ const initPaperJs = () => {
       updateHighlightBackground();
       return;
     }
-    if (path && (!path.lastSegment || event.point.x >= path.lastSegment.point.x)) {
-      path.add(event.point);
-      segmentInfo.value = `点数: ${path.segments.length}`;
-      updateHighlightBackground();
+
+    // 只有在连续绘制模式下才允许拖拽绘制
+    if (drawingMode.value === 'continuous' && path && isMouseDown.value) {
+      if (!path.lastSegment || event.point.x >= path.lastSegment.point.x) {
+        path.add(event.point);
+        segmentInfo.value = `点数: ${path.segments.length}`;
+        updateHighlightBackground();
+      }
     }
   };
 
   // 鼠标释放事件
   tool.onMouseUp = (event) => {
+    isMouseDown.value = false;
+
     if (selectedSegment || selectedHandle) {
       selectedSegment = null;
       selectedHandle = null;
       updateHighlightBackground();
       return;
     }
-    if (path && path.segments.length > 1) {
+
+    // 只有在连续绘制模式下才进行路径简化
+    if (drawingMode.value === 'continuous' && path && path.segments.length > 1 && isDragging.value) {
       const segmentCount = path.segments.length;
       if (!path.fullySelected) {
         path.simplify(10);
@@ -665,6 +768,8 @@ const initPaperJs = () => {
         updateHighlightBackground();
       }
     }
+
+    isDragging.value = false;
     updateHighlightBackground();
   };
 };
@@ -754,6 +859,22 @@ const maxMatchPerChannel = ref(100); // 单通道获取匹配最大数量，默�
 const activeTab = ref('range');
 const amplitudeLimit = ref(''); // 新增：指标幅度限制
 const timeSpanLimit = ref(''); // 新增：时间跨度限制
+
+// 绘制模式相关变量
+const drawingMode = ref('continuous'); // 'continuous'连续绘制 | 'single'单点绘制
+const isMouseDown = ref(false); // 鼠标按下状态
+const isDragging = ref(false); // 是否正在拖拽
+
+// 监听绘制模式变化
+watch(drawingMode, (newMode, oldMode) => {
+  if (newMode !== oldMode) {
+    // 重置绘制状态
+    isMouseDown.value = false;
+    isDragging.value = false;
+    fullscreenIsMouseDown.value = false;
+    fullscreenIsDragging.value = false;
+  }
+});
 
 // 模板相关变量
 const saveTemplateDialogVisible = ref(false);
@@ -889,6 +1010,13 @@ const clearCanvas = () => {
   isClearing.value = true;
   resultsDrawerVisible.value = false;
   store.dispatch('clearMatchedResults');
+  
+  // 重置绘制状态
+  isMouseDown.value = false;
+  isDragging.value = false;
+  selectedSegment = null;
+  selectedHandle = null;
+  
   if (paperScope) {
     if (path) {
       path.remove();
@@ -965,7 +1093,8 @@ const confirmSaveTemplate = async () => {
       patternRepeatCount: Number(patternRepeatCount.value),
       maxMatchPerChannel: Number(maxMatchPerChannel.value),
       amplitudeLimit: amplitudeLimit.value === '' ? null : Number(amplitudeLimit.value),
-      timeSpanLimit: timeSpanLimit.value === '' ? null : Number(timeSpanLimit.value)
+      timeSpanLimit: timeSpanLimit.value === '' ? null : Number(timeSpanLimit.value),
+      drawingMode: drawingMode.value  // 保存绘制模式
     };
 
     // 发送保存请求
@@ -1047,6 +1176,10 @@ const applyTemplate = (template) => {
     maxMatchPerChannel.value = params.maxMatchPerChannel || 100;
     amplitudeLimit.value = params.amplitudeLimit !== null ? params.amplitudeLimit : '';
     timeSpanLimit.value = params.timeSpanLimit !== null ? params.timeSpanLimit : '';
+    // 恢复绘制模式
+    if (params.drawingMode) {
+      drawingMode.value = params.drawingMode;
+    }
 
     // 恢复手绘曲线
     if (template.raw_query_pattern && template.raw_query_pattern.length > 0 && paperScope) {
@@ -1386,6 +1519,9 @@ let fullscreenPath = null;
 let fullscreenHighlightGroup = null; // 全屏高亮区间
 let fullscreenSelectedSegment = null; // 全屏选中段点
 let fullscreenSelectedHandle = null;  // 全屏选中手柄
+// 全屏绘制模式状态
+const fullscreenIsMouseDown = ref(false);
+const fullscreenIsDragging = ref(false);
 
 // 打开全屏绘图弹窗
 const openFullscreenCanvas = () => {
@@ -1419,8 +1555,9 @@ const initFullscreenPaper = () => {
   createFullscreenGrid(fullscreenCanvas.value.offsetWidth, fullscreenCanvas.value.offsetHeight);
   const tool = new fullscreenPaperScope.Tool();
   tool.onMouseDown = (event) => {
-    fullscreenSelectedSegment = null;
-    fullscreenSelectedHandle = null;
+    fullscreenIsMouseDown.value = true;
+    fullscreenIsDragging.value = false;
+
     // 检查是否点击了现有路径上的段点或手柄
     if (fullscreenPath) {
       const hitResult = fullscreenPath.hitTest(event.point, hitOptions);
@@ -1434,25 +1571,55 @@ const initFullscreenPaper = () => {
         }
       }
     }
-    if (fullscreenPath) {
-      fullscreenPath.remove();
-      fullscreenPath = null;
-      segmentInfo.value = '';
-      if (fullscreenHighlightGroup) {
-        fullscreenHighlightGroup.remove();
-        fullscreenHighlightGroup = null;
+
+    fullscreenSelectedSegment = null;
+    fullscreenSelectedHandle = null;
+
+    if (drawingMode.value === 'continuous') {
+      // 连续绘制模式 - 创建新路径前先清除旧路径
+      if (fullscreenPath) {
+        fullscreenPath.remove();
+        fullscreenPath = null;
+        segmentInfo.value = '';
+        if (fullscreenHighlightGroup) {
+          fullscreenHighlightGroup.remove();
+          fullscreenHighlightGroup = null;
+        }
       }
+      fullscreenPath = new fullscreenPaperScope.Path({
+        segments: [event.point],
+        strokeColor: 'black',
+        strokeWidth: 2,
+        strokeCap: 'round',
+        strokeJoin: 'round'
+      });
+      segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
+      updateFullscreenHighlightBackground();
+    } else if (drawingMode.value === 'single') {
+      // 单点绘制模式
+      if (!fullscreenPath) {
+        // 创建新路径和第一个点
+        fullscreenPath = new fullscreenPaperScope.Path({
+          segments: [event.point],
+          strokeColor: 'black',
+          strokeWidth: 2,
+          strokeCap: 'round',
+          strokeJoin: 'round'
+        });
+        segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
+      } else {
+        // 添加新点并连线
+        if (event.point.x >= fullscreenPath.lastSegment.point.x) {
+          fullscreenPath.add(event.point);
+          segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
+        }
+      }
+      updateFullscreenHighlightBackground();
     }
-    fullscreenPath = new fullscreenPaperScope.Path({
-      segments: [event.point],
-      strokeColor: 'black',
-      strokeWidth: 2,
-      strokeCap: 'round',
-      strokeJoin: 'round'
-    });
-    updateFullscreenHighlightBackground();
   };
   tool.onMouseDrag = (event) => {
+    fullscreenIsDragging.value = true;
+
     if (fullscreenSelectedSegment) {
       fullscreenSelectedSegment.point = fullscreenSelectedSegment.point.add(event.delta);
       updateFullscreenHighlightBackground();
@@ -1467,20 +1634,28 @@ const initFullscreenPaper = () => {
       updateFullscreenHighlightBackground();
       return;
     }
-    if (fullscreenPath && (!fullscreenPath.lastSegment || event.point.x >= fullscreenPath.lastSegment.point.x)) {
-      fullscreenPath.add(event.point);
-      segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
-      updateFullscreenHighlightBackground();
+
+    // 只有在连续绘制模式下才允许拖拽绘制
+    if (drawingMode.value === 'continuous' && fullscreenPath && fullscreenIsMouseDown.value) {
+      if (!fullscreenPath.lastSegment || event.point.x >= fullscreenPath.lastSegment.point.x) {
+        fullscreenPath.add(event.point);
+        segmentInfo.value = `点数: ${fullscreenPath.segments.length}`;
+        updateFullscreenHighlightBackground();
+      }
     }
   };
   tool.onMouseUp = (event) => {
+    fullscreenIsMouseDown.value = false;
+
     if (fullscreenSelectedSegment || fullscreenSelectedHandle) {
       fullscreenSelectedSegment = null;
       fullscreenSelectedHandle = null;
       updateFullscreenHighlightBackground();
       return;
     }
-    if (fullscreenPath && fullscreenPath.segments.length > 1) {
+
+    // 只有在连续绘制模式下才进行路径简化
+    if (drawingMode.value === 'continuous' && fullscreenPath && fullscreenPath.segments.length > 1 && fullscreenIsDragging.value) {
       const segmentCount = fullscreenPath.segments.length;
       if (!fullscreenPath.fullySelected) {
         fullscreenPath.simplify(10);
@@ -1491,6 +1666,8 @@ const initFullscreenPaper = () => {
         updateFullscreenHighlightBackground();
       }
     }
+
+    fullscreenIsDragging.value = false;
     updateFullscreenHighlightBackground();
   };
 };
@@ -1640,6 +1817,12 @@ const applyFullscreenDrawing = () => {
 
 // 清除全屏画布
 const clearFullscreenCanvas = () => {
+  // 重置全屏绘制状态
+  fullscreenIsMouseDown.value = false;
+  fullscreenIsDragging.value = false;
+  fullscreenSelectedSegment = null;
+  fullscreenSelectedHandle = null;
+  
   if (fullscreenPaperScope) {
     if (fullscreenPath) {
       fullscreenPath.remove();
@@ -1650,9 +1833,6 @@ const clearFullscreenCanvas = () => {
       fullscreenHighlightGroup.remove();
       fullscreenHighlightGroup = null;
     }
-    // 重置全屏选中段点和手柄
-    fullscreenSelectedSegment = null;
-    fullscreenSelectedHandle = null;
   }
 };
 
@@ -2180,10 +2360,43 @@ const handleAmplitudeCellClick = (clickedRow) => {
   color: #333;
 }
 
+.top-left-controls {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+}
+
 .buttons {
   position: absolute;
   bottom: 0px;
   right: 6px;
+  display: flex;
+  align-items: flex-end;
+}
+
+.drawing-mode-buttons {
+  display: flex;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 4px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.mode-button {
+  font-size: 12px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.mode-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
 }
 
 .zoom-button {
@@ -2192,6 +2405,8 @@ const handleAmplitudeCellClick = (clickedRow) => {
   right: 6px;
   z-index: 10;
 }
+
+
 
 .fullscreen-canvas-container {
   position: relative;
@@ -2220,12 +2435,31 @@ const handleAmplitudeCellClick = (clickedRow) => {
   isolation: isolate;
 }
 
+.fullscreen-top-left-controls {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  z-index: 10;
+}
+
 .fullscreen-buttons {
   position: absolute;
   bottom: 20px;
   right: 20px;
   display: flex;
-  gap: 10px;
+  align-items: flex-end;
+}
+
+.fullscreen-drawing-mode-buttons {
+  display: flex;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 6px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+}
+
+.apply-button {
+  min-width: 80px;
 }
 
 .custom-dialog-header {
