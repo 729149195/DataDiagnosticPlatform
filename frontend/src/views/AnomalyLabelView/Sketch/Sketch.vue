@@ -173,11 +173,19 @@
                 <el-form-item label="模式重复数">
                   <el-input v-model="patternRepeatCount" size="small" style="width: 100%;" />
                 </el-form-item>
-                <el-form-item label="指标幅度" label-position="top">
-                  <el-input v-model="amplitudeLimit" placeholder="留空为不限制" size="small" style="width: 100%;" />
+                <el-form-item label="指标幅度区间" label-position="top">
+                  <div style="display: flex; align-items: center; width: 100%;">
+                    <el-input v-model="amplitudeLimitStart" placeholder="起点" size="small" style="width: 48%;" />
+                    <span style="margin: 0 4px;">~</span>
+                    <el-input v-model="amplitudeLimitEnd" placeholder="终点" size="small" style="width: 48%;" />
+                  </div>
                 </el-form-item>
-                <el-form-item label="时间跨度" label-position="top">
-                  <el-input v-model="timeSpanLimit" placeholder="留空为不限制" size="small" style="width: 100%;" />
+                <el-form-item label="时间跨度区间（ms）" label-position="top">
+                  <div style="display: flex; align-items: center; width: 100%;">
+                    <el-input v-model="timeSpanLimitStart" placeholder="起点" size="small" style="width: 48%;" />
+                    <span style="margin: 0 4px;">~</span>
+                    <el-input v-model="timeSpanLimitEnd" placeholder="终点" size="small" style="width: 48%;" />
+                  </div>
                 </el-form-item>
               </el-form>
             </el-tab-pane>
@@ -288,18 +296,24 @@
               {{ scope.row.parameters?.maxMatchPerChannel || 'N/A' }}
             </template>
           </el-table-column>
-          <el-table-column label="指标幅度" width="100" align="center">
+          <el-table-column label="指标幅度区间" width="120" align="center">
             <template #default="scope">
-              <span v-if="scope.row.parameters?.amplitudeLimit !== null && scope.row.parameters?.amplitudeLimit !== undefined">
+              <span v-if="scope.row.parameters?.amplitudeLimitRange && scope.row.parameters.amplitudeLimitRange[0] !== null">
+                {{ scope.row.parameters.amplitudeLimitRange[0] }}~{{ scope.row.parameters.amplitudeLimitRange[1] }}
+              </span>
+              <span v-else-if="scope.row.parameters?.amplitudeLimit !== null && scope.row.parameters?.amplitudeLimit !== undefined">
                 {{ scope.row.parameters.amplitudeLimit }}
               </span>
               <span v-else>不限制</span>
             </template>
           </el-table-column>
-          <el-table-column label="时间跨度" width="100" align="center">
+          <el-table-column label="时间跨度区间(ms)" width="130" align="center">
             <template #default="scope">
-              <span v-if="scope.row.parameters?.timeSpanLimit !== null && scope.row.parameters?.timeSpanLimit !== undefined">
-                {{ scope.row.parameters.timeSpanLimit }}
+              <span v-if="scope.row.parameters?.timeSpanLimitRange && scope.row.parameters.timeSpanLimitRange[0] !== null">
+                {{ scope.row.parameters.timeSpanLimitRange[0] }}~{{ scope.row.parameters.timeSpanLimitRange[1] }}
+              </span>
+              <span v-else-if="scope.row.parameters?.timeSpanLimit !== null && scope.row.parameters?.timeSpanLimit !== undefined">
+                {{ Math.round(scope.row.parameters.timeSpanLimit * 1000) }}
               </span>
               <span v-else>不限制</span>
             </template>
@@ -849,8 +863,10 @@ const yFilterEnd = ref('');
 const patternRepeatCount = ref(0); // 模式重复数量，默认0
 const maxMatchPerChannel = ref(100); // 单通道获取匹配最大数量，默认100
 const activeTab = ref('range');
-const amplitudeLimit = ref(''); // 新增：指标幅度限制
-const timeSpanLimit = ref(''); // 新增：时间跨度限制
+const amplitudeLimitStart = ref(''); // 新增：指标幅度区间起点
+const amplitudeLimitEnd = ref(''); // 新增：指标幅度区间终点
+const timeSpanLimitStart = ref(''); // 新增：时间跨度区间起点（ms）
+const timeSpanLimitEnd = ref(''); // 新增：时间跨度区间终点（ms）
 
 // 绘制模式相关变量
 const drawingMode = ref('continuous'); // 'continuous'连续绘制 | 'single'单点绘制
@@ -965,8 +981,15 @@ const submitData = async () => {
           ],
           patternRepeatCount: Number(patternRepeatCount.value),
           maxMatchPerChannel: Number(maxMatchPerChannel.value),
-          amplitudeLimit: amplitudeLimit.value === '' ? null : Number(amplitudeLimit.value),
-          timeSpanLimit: timeSpanLimit.value === '' ? null : Number(timeSpanLimit.value)
+          amplitudeLimitRange: [
+            amplitudeLimitStart.value === '' ? null : Number(amplitudeLimitStart.value),
+            amplitudeLimitEnd.value === '' ? null : Number(amplitudeLimitEnd.value)
+          ],
+          timeSpanLimitRange: [
+            // 将毫秒转换为秒
+            timeSpanLimitStart.value === '' ? null : Number(timeSpanLimitStart.value) / 1000,
+            timeSpanLimitEnd.value === '' ? null : Number(timeSpanLimitEnd.value) / 1000
+          ]
         })
       });
 
@@ -1107,8 +1130,15 @@ const confirmSaveTemplate = async () => {
       ],
       patternRepeatCount: Number(patternRepeatCount.value),
       maxMatchPerChannel: Number(maxMatchPerChannel.value),
-      amplitudeLimit: amplitudeLimit.value === '' ? null : Number(amplitudeLimit.value),
-      timeSpanLimit: timeSpanLimit.value === '' ? null : Number(timeSpanLimit.value),
+      amplitudeLimitRange: [
+        amplitudeLimitStart.value === '' ? null : Number(amplitudeLimitStart.value),
+        amplitudeLimitEnd.value === '' ? null : Number(amplitudeLimitEnd.value)
+      ],
+      timeSpanLimitRange: [
+        // 保存毫秒值
+        timeSpanLimitStart.value === '' ? null : Number(timeSpanLimitStart.value),
+        timeSpanLimitEnd.value === '' ? null : Number(timeSpanLimitEnd.value)
+      ],
       drawingMode: drawingMode.value  // 保存绘制模式
     };
 
@@ -1189,8 +1219,33 @@ const applyTemplate = (template) => {
     yFilterEnd.value = params.yFilterRange && params.yFilterRange[1] !== null ? params.yFilterRange[1] : '';
     patternRepeatCount.value = params.patternRepeatCount || 0;
     maxMatchPerChannel.value = params.maxMatchPerChannel || 100;
-    amplitudeLimit.value = params.amplitudeLimit !== null ? params.amplitudeLimit : '';
-    timeSpanLimit.value = params.timeSpanLimit !== null ? params.timeSpanLimit : '';
+    
+    // 处理新旧版本兼容性：指标幅度区间
+    if (params.amplitudeLimitRange && Array.isArray(params.amplitudeLimitRange)) {
+      amplitudeLimitStart.value = params.amplitudeLimitRange[0] !== null ? params.amplitudeLimitRange[0] : '';
+      amplitudeLimitEnd.value = params.amplitudeLimitRange[1] !== null ? params.amplitudeLimitRange[1] : '';
+    } else if (params.amplitudeLimit !== null && params.amplitudeLimit !== undefined) {
+      // 兼容旧版本单个值，转换为相同的起止值
+      amplitudeLimitStart.value = params.amplitudeLimit;
+      amplitudeLimitEnd.value = params.amplitudeLimit;
+    } else {
+      amplitudeLimitStart.value = '';
+      amplitudeLimitEnd.value = '';
+    }
+    
+    // 处理新旧版本兼容性：时间跨度区间
+    if (params.timeSpanLimitRange && Array.isArray(params.timeSpanLimitRange)) {
+      timeSpanLimitStart.value = params.timeSpanLimitRange[0] !== null ? params.timeSpanLimitRange[0] : '';
+      timeSpanLimitEnd.value = params.timeSpanLimitRange[1] !== null ? params.timeSpanLimitRange[1] : '';
+    } else if (params.timeSpanLimit !== null && params.timeSpanLimit !== undefined) {
+      // 兼容旧版本单个值，转换为相同的起止值，注意这里是毫秒值
+      const msValue = params.timeSpanLimit * 1000; // 旧版本可能存储的是秒值
+      timeSpanLimitStart.value = msValue;
+      timeSpanLimitEnd.value = msValue;
+    } else {
+      timeSpanLimitStart.value = '';
+      timeSpanLimitEnd.value = '';
+    }
     // 恢复绘制模式
     if (params.drawingMode) {
       drawingMode.value = params.drawingMode;
@@ -3146,11 +3201,10 @@ const handleAmplitudeCellClick = (clickedRow) => {
 
 /* 标签页内容区域样式 */
 :deep(.el-tab-pane) {
-  padding: 6px 3px;
+  padding: 0px 3px;
   background: transparent;
   border-radius: 6px;
   margin-top: -2px;
-  min-height: 180px;
   backdrop-filter: none;
   border: none;
 }

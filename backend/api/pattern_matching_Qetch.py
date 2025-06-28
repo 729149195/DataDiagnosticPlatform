@@ -5,8 +5,8 @@ def match_pattern(
     y_filter_range=None,
     pattern_repeat_count=None,
     max_match_per_channel=None,
-    amplitude_limit=None,  # 新增：指标幅度限制
-    time_span_limit=None   # 新增：时间跨度限制
+    amplitude_limit_range=None,  # 新增：指标幅度区间限制
+    time_span_limit_range=None   # 新增：时间跨度区间限制
 ):
     """
     在多个通道数据channel_data_list中查找与查询模式normalized_query_pattern匹配的部分
@@ -18,8 +18,8 @@ def match_pattern(
         y_filter_range: Y过滤区间（默认"ALL"）
         pattern_repeat_count: 模式重复数量（默认0），所需要匹配的手绘模式的连续重复数量
         max_match_per_channel: 单通道获取匹配最大数量（默认100）
-        amplitude_limit: 匹配区间Y值幅度限制（新增）
-        time_span_limit: 匹配区间X值跨度限制（新增）
+        amplitude_limit_range: 匹配区间Y值幅度区间限制 [min, max]（新增）
+        time_span_limit_range: 匹配区间X值跨度区间限制 [min, max]（新增）
         
     Returns:
         匹配结果列表，每个元素包含通道信息、匹配范围和相似度
@@ -852,11 +852,38 @@ def match_pattern(
 
         results = [r for r in results if in_x_range(r) and in_y_range(r)]
 
-        # ========== 新增：指标幅度和时间跨度过滤 ==========
-        if amplitude_limit is not None:
-            results = [r for r in results if r['amplitude'] is not None and r['amplitude'] <= amplitude_limit]
-        if time_span_limit is not None:
-            results = [r for r in results if r['timeSpan'] is not None and r['timeSpan'] <= time_span_limit]
+        # ========== 新增：指标幅度和时间跨度区间过滤 ==========
+        if amplitude_limit_range is not None and len(amplitude_limit_range) == 2:
+            min_amp, max_amp = amplitude_limit_range
+            if min_amp is not None and max_amp is not None:
+                if min_amp == max_amp:
+                    # 当起始值和结束值相同时，作为绝对定值处理（小于等于该值）
+                    results = [r for r in results if r['amplitude'] is not None and r['amplitude'] <= min_amp]
+                else:
+                    # 区间过滤
+                    results = [r for r in results if r['amplitude'] is not None and min_amp <= r['amplitude'] <= max_amp]
+            elif min_amp is not None:
+                # 只有最小值
+                results = [r for r in results if r['amplitude'] is not None and r['amplitude'] >= min_amp]
+            elif max_amp is not None:
+                # 只有最大值
+                results = [r for r in results if r['amplitude'] is not None and r['amplitude'] <= max_amp]
+        
+        if time_span_limit_range is not None and len(time_span_limit_range) == 2:
+            min_time, max_time = time_span_limit_range
+            if min_time is not None and max_time is not None:
+                if min_time == max_time:
+                    # 当起始值和结束值相同时，作为绝对定值处理（小于等于该值）
+                    results = [r for r in results if r['timeSpan'] is not None and r['timeSpan'] <= min_time]
+                else:
+                    # 区间过滤
+                    results = [r for r in results if r['timeSpan'] is not None and min_time <= r['timeSpan'] <= max_time]
+            elif min_time is not None:
+                # 只有最小值
+                results = [r for r in results if r['timeSpan'] is not None and r['timeSpan'] >= min_time]
+            elif max_time is not None:
+                # 只有最大值
+                results = [r for r in results if r['timeSpan'] is not None and r['timeSpan'] <= max_time]
 
         # ========== 数量过滤 ==========
         if max_match_per_channel is not None:
