@@ -570,8 +570,8 @@ import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
 const store = useStore();
-const username = ref('qidongkai');
-const password = ref('123');
+const username = ref('');
+const password = ref('');
 const router = useRouter();
 const isLoading = ref(false);
 const showPassword = ref(false);
