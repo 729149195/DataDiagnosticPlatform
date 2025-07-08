@@ -1249,7 +1249,7 @@ class ExpressionParser:
                 continue
             
             # 处理运算符和括号
-            if char in "+-*/(),":
+            if char in "+-*/(),&|!":
                 self.tokens.append(char)
                 i += 1
             # 处理数字（包括小数）
@@ -1280,6 +1280,34 @@ class ExpressionParser:
         return self.tokens
     
     def expression(self):
+        """解析逻辑或运算（最低优先级）"""
+        return self.logical_or()
+
+    def logical_or(self):
+        """解析逻辑或运算 (|)"""
+        result = self.logical_and()
+
+        while self.current < len(self.tokens) and self.tokens[self.current] == '|':
+            operator = self.tokens[self.current]
+            self.current += 1
+            right = self.logical_and()
+            result = self.or_operands(result, right)
+
+        return result
+
+    def logical_and(self):
+        """解析逻辑与运算 (&)"""
+        result = self.arithmetic_expression()
+
+        while self.current < len(self.tokens) and self.tokens[self.current] == '&':
+            operator = self.tokens[self.current]
+            self.current += 1
+            right = self.arithmetic_expression()
+            result = self.and_operands(result, right)
+
+        return result
+
+    def arithmetic_expression(self):
         """解析加减运算"""
         result = self.term()
 
@@ -1580,14 +1608,207 @@ class ExpressionParser:
         result['is_expression_result'] = True  # 标记为表达式结果
         
         return result
+
+    def and_operands(self, left, right):
+        """执行逻辑与运算，支持通道数据与常量的运算"""
+        print(f"逻辑与运算调试:")
+        left_y = left.get('Y_value', [])
+        right_y = right.get('Y_value', [])
+        left_y_len = len(left_y) if isinstance(left_y, list) else f"scalar({left_y})"
+        right_y_len = len(right_y) if isinstance(right_y, list) else f"scalar({right_y})"
+        print(f"  left: is_constant={left.get('is_constant')}, channel_name={left.get('channel_name')}, Y_len={left_y_len}")
+        print(f"  right: is_constant={right.get('is_constant')}, channel_name={right.get('channel_name')}, Y_len={right_y_len}")
+        
+        # 如果两个都是常量，返回常量结果
+        if left.get('is_constant', False) and right.get('is_constant', False):
+            result_value = 1 if (left['Y_value'] != 0 and right['Y_value'] != 0) else 0
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"({left['channel_name']}&{right['channel_name']})",
+                'is_constant': True
+            }
+        
+        # 如果右操作数是常量
+        if right.get('is_constant', False):
+            constant_value = right['Y_value']
+            result = left.copy()
+            # 确保左操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            # 逻辑与：两个值都非0则为1，否则为0
+            result['Y_value'] = [1 if (y != 0 and constant_value != 0) else 0 for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', 'unknown')
+            right_name = right.get('channel_name', str(constant_value))
+            result['channel_name'] = f"({left_name}&{right_name})"
+            result['is_expression_result'] = True
+            
+            return result
+
+        # 如果左操作数是常量
+        if left.get('is_constant', False):
+            constant_value = left['Y_value']
+            result = right.copy()
+            # 确保右操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            # 逻辑与：两个值都非0则为1，否则为0
+            result['Y_value'] = [1 if (y != 0 and constant_value != 0) else 0 for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', str(constant_value))
+            right_name = right.get('channel_name', 'unknown')
+            result['channel_name'] = f"({left_name}&{right_name})"
+            result['is_expression_result'] = True
+            
+            return result
+
+        # 两个都是通道数据
+        min_len = min(len(left['X_value']), len(right['X_value']))
+        result = left.copy()
+        result['X_value'] = left['X_value'][:min_len]
+        result['Y_value'] = left['Y_value'][:min_len]
+        right_y = right['Y_value'][:min_len]
+
+        # 执行逻辑与：两个值都非0则为1，否则为0
+        result['Y_value'] = [1 if (x != 0 and y != 0) else 0 for x, y in zip(result['Y_value'], right_y)]
+        
+        # 更新channel_name为表达式表示
+        left_name = left.get('channel_name', 'unknown')
+        right_name = right.get('channel_name', 'unknown')
+        result['channel_name'] = f"({left_name}&{right_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
+        print(f"逻辑与运算结果: channel_name={result['channel_name']}, is_expression_result={result.get('is_expression_result')}")
+        
+        return result
+
+    def or_operands(self, left, right):
+        """执行逻辑或运算，支持通道数据与常量的运算"""
+        print(f"逻辑或运算调试:")
+        left_y = left.get('Y_value', [])
+        right_y = right.get('Y_value', [])
+        left_y_len = len(left_y) if isinstance(left_y, list) else f"scalar({left_y})"
+        right_y_len = len(right_y) if isinstance(right_y, list) else f"scalar({right_y})"
+        print(f"  left: is_constant={left.get('is_constant')}, channel_name={left.get('channel_name')}, Y_len={left_y_len}")
+        print(f"  right: is_constant={right.get('is_constant')}, channel_name={right.get('channel_name')}, Y_len={right_y_len}")
+        
+        # 如果两个都是常量，返回常量结果
+        if left.get('is_constant', False) and right.get('is_constant', False):
+            result_value = 1 if (left['Y_value'] != 0 or right['Y_value'] != 0) else 0
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"({left['channel_name']}|{right['channel_name']})",
+                'is_constant': True
+            }
+        
+        # 如果右操作数是常量
+        if right.get('is_constant', False):
+            constant_value = right['Y_value']
+            result = left.copy()
+            # 确保左操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            # 逻辑或：至少一个值非0则为1，否则为0
+            result['Y_value'] = [1 if (y != 0 or constant_value != 0) else 0 for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', 'unknown')
+            right_name = right.get('channel_name', str(constant_value))
+            result['channel_name'] = f"({left_name}|{right_name})"
+            result['is_expression_result'] = True
+            
+            return result
+
+        # 如果左操作数是常量
+        if left.get('is_constant', False):
+            constant_value = left['Y_value']
+            result = right.copy()
+            # 确保右操作数的Y_value是列表
+            if not isinstance(result['Y_value'], list):
+                result['Y_value'] = [result['Y_value']]
+            # 逻辑或：至少一个值非0则为1，否则为0
+            result['Y_value'] = [1 if (y != 0 or constant_value != 0) else 0 for y in result['Y_value']]
+            
+            # 更新channel_name为表达式表示
+            left_name = left.get('channel_name', str(constant_value))
+            right_name = right.get('channel_name', 'unknown')
+            result['channel_name'] = f"({left_name}|{right_name})"
+            result['is_expression_result'] = True
+            
+            return result
+
+        # 两个都是通道数据
+        min_len = min(len(left['X_value']), len(right['X_value']))
+        result = left.copy()
+        result['X_value'] = left['X_value'][:min_len]
+        result['Y_value'] = left['Y_value'][:min_len]
+        right_y = right['Y_value'][:min_len]
+
+        # 执行逻辑或：至少一个值非0则为1，否则为0
+        result['Y_value'] = [1 if (x != 0 or y != 0) else 0 for x, y in zip(result['Y_value'], right_y)]
+        
+        # 更新channel_name为表达式表示
+        left_name = left.get('channel_name', 'unknown')
+        right_name = right.get('channel_name', 'unknown')
+        result['channel_name'] = f"({left_name}|{right_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
+        print(f"逻辑或运算结果: channel_name={result['channel_name']}, is_expression_result={result.get('is_expression_result')}")
+        
+        return result
+
+    def not_operand(self, operand):
+        """执行逻辑非运算"""
+        print(f"逻辑非运算调试:")
+        operand_y = operand.get('Y_value', [])
+        operand_y_len = len(operand_y) if isinstance(operand_y, list) else f"scalar({operand_y})"
+        print(f"  operand: is_constant={operand.get('is_constant')}, channel_name={operand.get('channel_name')}, Y_len={operand_y_len}")
+        
+        # 如果是常量，返回常量结果
+        if operand.get('is_constant', False):
+            result_value = 1 if operand['Y_value'] == 0 else 0
+            return {
+                'X_value': [],
+                'Y_value': result_value,
+                'channel_name': f"(!{operand['channel_name']})",
+                'is_constant': True
+            }
+        
+        # 对于通道数据
+        result = operand.copy()
+        # 确保Y_value是列表
+        if not isinstance(result['Y_value'], list):
+            result['Y_value'] = [result['Y_value']]
+        
+        # 逻辑非：0变为1，非0变为0
+        result['Y_value'] = [1 if y == 0 else 0 for y in result['Y_value']]
+        
+        # 更新channel_name为表达式表示
+        operand_name = operand.get('channel_name', 'unknown')
+        result['channel_name'] = f"(!{operand_name})"
+        result['is_expression_result'] = True  # 标记为表达式结果
+        
+        print(f"逻辑非运算结果: channel_name={result['channel_name']}, is_expression_result={result.get('is_expression_result')}")
+        
+        return result
     
     def factor(self):
-        """解析括号、通道标识符、数字常量和函数调用（支持前缀）"""
+        """解析括号、通道标识符、数字常量和函数调用（支持前缀），以及一元非运算符"""
         if self.current < len(self.tokens):
             token = self.tokens[self.current]
 
+            # 处理一元非运算符
+            if token == '!':
+                self.current += 1
+                operand = self.factor()
+                return self.not_operand(operand)
+
             # 处理括号表达式
-            if token == '(':
+            elif token == '(':
                 self.current += 1
                 result = self.expression()
 
@@ -2343,7 +2564,14 @@ def operator_strs(request):
                     file_extension = '.m'
 
         # 原有的函数调用判断逻辑（不带前缀的函数）
-        is_function_call = end_idx > 0 and anomaly_func_str[0].isalpha() and ')' in anomaly_func_str[end_idx:]
+        # 需要检查从开始到'('之间的所有字符是否构成有效的函数名（只能包含字母、数字、下划线）
+        is_function_call = False
+        if end_idx > 0 and ')' in anomaly_func_str[end_idx:]:
+            potential_function_name = anomaly_func_str[:end_idx]
+            # 检查是否是有效的函数名（只包含字母、数字、下划线，且以字母开头）
+            is_function_call = (potential_function_name.isidentifier() and 
+                              potential_function_name[0].isalpha() and
+                              not any(op in potential_function_name for op in ['+', '-', '*', '/', '&', '|', '!']))
 
         # 如果是带前缀的函数调用，也认为是函数调用
         if is_prefixed_function:
@@ -2588,7 +2816,7 @@ def operator_strs(request):
                 update_calculation_progress(task_id, '开始表达式解析', 30)
                 
             # 检查表达式是否包含括号或运算符
-            if '(' in anomaly_func_str or ')' in anomaly_func_str or any(op in anomaly_func_str for op in ['+', '-', '*', '/']):
+            if '(' in anomaly_func_str or ')' in anomaly_func_str or any(op in anomaly_func_str for op in ['+', '-', '*', '/', '&', '|', '!']):
                 # 使用表达式解析器处理带括号和运算优先级的表达式
                 print(f"正在解析复杂表达式: {anomaly_func_str}")
                 
