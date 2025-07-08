@@ -296,10 +296,16 @@ const avatarStyle = computed(() => {
   };
 });
 
-const logout = () => {
-  store.commit('setperson', '');
-  store.commit('setauthority', 0);
-  router.push('/');
+const logout = async () => {
+  // 使用新的platformLogout函数，它会处理cookie清除和页面跳转
+  if (window.platformLogout) {
+    await window.platformLogout();
+  } else {
+    // 如果authManager未加载，使用原有逻辑
+    store.commit('setperson', '');
+    store.commit('setauthority', 0);
+    router.push('/');
+  }
 };
 
 const selectButton = (button) => {

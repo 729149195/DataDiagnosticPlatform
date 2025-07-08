@@ -27,6 +27,8 @@ from pymongo import MongoClient, ASCENDING, UpdateMany
 from collections import defaultdict, Counter
 import logging
 import pymongo
+import csv
+import os
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -3243,6 +3245,44 @@ def verify_user(request):
             return JsonResponse({'success': False, 'message': result['message']})
             
         return JsonResponse({'success': True, 'message': result.get('message', '')})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+@csrf_exempt
+def verify_username(request):
+    """
+    仅验证用户名是否存在（用于主平台集成）
+    """
+    try:
+        data = json.loads(request.body)
+        username = data.get('username')
+        
+        if not username:
+            return JsonResponse({'success': False, 'message': '用户名不能为空'}, status=400)
+        
+        # 读取用户列表文件
+        user_list_path = os.path.join('static', 'user_list.csv')
+        if not os.path.exists(user_list_path):
+            return JsonResponse({'success': False, 'message': '用户列表文件不存在'}, status=500)
+        
+        # 查找用户
+        with open(user_list_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row['username'] == username:
+                    # 找到用户，返回权限信息
+                    authority = int(row.get('power', 0))
+                    real_name = row.get('real_name', username)
+                    return JsonResponse({
+                        'success': True, 
+                        'message': f'用户 {real_name} 验证成功',
+                        'authority': authority,
+                        'real_name': real_name
+                    })
+        
+        # 用户不存在
+        return JsonResponse({'success': False, 'message': '用户不存在'}, status=404)
+        
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
 

@@ -26,6 +26,7 @@ urlpatterns = [
     path('view-functions', views.view_imported_functions, name='view_imported_functions'),
     path('execute', views.execute_function, name='execute_function'),
     path('verify-user', views.verify_user, name='verify_user'),
+    path('verify-username', views.verify_username, name='verify_username'),
     path('sync-error-data', views.sync_error_data, name='sync_error_data'),
     path('delete-error-data', views.delete_error_data, name='delete_error_data'),
     path('get-ddp-dbs', views.get_datadiagnosticplatform_dbs, name='get_ddp_dbs'),

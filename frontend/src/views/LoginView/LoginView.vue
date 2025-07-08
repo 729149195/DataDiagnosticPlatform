@@ -565,7 +565,7 @@ input[type="password"] {
 </style>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { useStore } from 'vuex';
 
@@ -626,9 +626,14 @@ const handleLogin = async () => {
     const data = await response.json();
 
     if (data.success) {
+      // 登录成功后设置cookie
+      if (window.AuthManager) {
+        window.AuthManager.setAuthData(username.value, data.authority || 0);
+      }
+      
       store.commit("setperson", username.value);
       store.commit("setUserMessage", data.message);
-      store.commit("setauthority", data.message);
+      store.commit("setauthority", data.authority || 0);
       router.push({ name: 'AnomalyLabelView' });
     } else {
       formErrors.password = data.message || '登录失败，请重试';
@@ -639,4 +644,19 @@ const handleLogin = async () => {
     isLoading.value = false;
   }
 };
+
+// 组件挂载时检查cookie登录状态
+onMounted(() => {
+  // 检查是否已有cookie登录状态
+  if (window.AuthManager && window.AuthManager.isLoggedIn()) {
+    const user = window.AuthManager.getCurrentUser();
+    if (user) {
+      // 已登录，直接跳转
+      store.commit("setperson", user.username);
+      store.commit("setauthority", user.authority);
+      store.commit("setUserMessage", "自动登录成功");
+      router.push({ name: 'AnomalyLabelView' });
+    }
+  }
+});
 </script>
