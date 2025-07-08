@@ -21,13 +21,19 @@ app.use(store)
 window.vueStore = store
 window.vueRouter = router
 
-// 检查是否有cookie登录状态，如果有则自动登录
-if (window.autoLoginCheck && window.autoLoginCheck()) {
-  console.log('自动登录成功')
-  // 如果当前在登录页面且已登录，跳转到主页面
-  if (router.currentRoute.value.path === '/') {
-    router.push({ name: 'AnomalyLabelView' })
+// 检查是否有cookie登录状态，如果有则自动登录（但不在登录页面执行，避免冲突）
+router.isReady().then(() => {
+  const currentPath = router.currentRoute.value.path;
+  
+  // 只在非登录页面执行cookie自动登录检查
+  if (currentPath !== '/' && window.autoLoginCheck && window.autoLoginCheck()) {
+    console.log('Cookie自动登录成功');
   }
-}
+  
+  // 如果在登录页面，让LoginView组件处理自动登录逻辑
+  if (currentPath === '/') {
+    console.log('在登录页面，由LoginView处理自动登录');
+  }
+});
 
 app.mount('#app')

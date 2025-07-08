@@ -645,17 +645,67 @@ const handleLogin = async () => {
   }
 };
 
-// 组件挂载时检查cookie登录状态
-onMounted(() => {
-  // 检查是否已有cookie登录状态
-  if (window.AuthManager && window.AuthManager.isLoggedIn()) {
-    const user = window.AuthManager.getCurrentUser();
-    if (user) {
-      // 已登录，直接跳转
-      store.commit("setperson", user.username);
-      store.commit("setauthority", user.authority);
-      store.commit("setUserMessage", "自动登录成功");
-      router.push({ name: 'AnomalyLabelView' });
+// 组件挂载时检查登录状态
+onMounted(async () => {
+  // 1. 首先检查URL参数
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlUsername = urlParams.get('username') || urlParams.get('user');
+  const action = urlParams.get('action');
+  
+  // 如果是注销操作
+  if (action === 'logout') {
+    console.log('检测到注销操作，执行注销...');
+    if (window.platformLogout) {
+      await window.platformLogout();
+    } else if (window.AuthManager) {
+      window.AuthManager.clearAuthData();
+      store.commit('setperson', '');
+      store.commit('setauthority', 0);
+      store.commit('setUserMessage', '');
+    }
+    // 清除URL参数
+    const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+    window.history.replaceState({}, document.title, newUrl);
+    console.log('注销操作完成');
+    return;
+  }
+  
+  // 2. 检查URL参数是否有用户名（主平台跳转登录）
+  if (urlUsername) {
+    console.log('检测到URL参数用户名:', urlUsername);
+    // 使用URL参数中的用户名自动登录
+    if (window.platformLogin) {
+      isLoading.value = true;
+      try {
+        const result = await window.platformLogin(urlUsername);
+        if (result.success) {
+          console.log('URL参数自动登录成功');
+          // 清除URL中的参数，避免刷新时重复登录
+          const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+          window.history.replaceState({}, document.title, newUrl);
+          return; // 登录成功后直接返回，不再检查cookie
+        } else {
+          console.error('URL参数自动登录失败:', result.message);
+          formErrors.username = result.message || '自动登录失败';
+        }
+      } catch (error) {
+        console.error('URL参数自动登录异常:', error);
+        formErrors.username = '自动登录失败，请手动登录';
+      } finally {
+        isLoading.value = false;
+      }
+    }
+     } else {
+     // 3. 如果没有URL参数，检查是否已有cookie登录状态
+    if (window.AuthManager && window.AuthManager.isLoggedIn()) {
+      const user = window.AuthManager.getCurrentUser();
+      if (user) {
+        // 已登录，直接跳转
+        store.commit("setperson", user.username);
+        store.commit("setauthority", user.authority);
+        store.commit("setUserMessage", "自动登录成功");
+        router.push({ name: 'AnomalyLabelView' });
+      }
     }
   }
 });
