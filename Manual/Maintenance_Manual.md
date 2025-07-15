@@ -1,5 +1,5 @@
 前端启动：
-cd frontend
+cd /home/diag/DataDiagnostic/DataDiagnosticPlatform/frontend
 npm install
 
 MongoDB数据库配置：
