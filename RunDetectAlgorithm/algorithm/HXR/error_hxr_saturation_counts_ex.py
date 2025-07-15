@@ -30,10 +30,10 @@ def func(Y_value_error):
     i = 0
     # minV = np.min(Y_value_error[50000]) * 1.1
     while i < len(Y_value_error):
-        if Y_value_error[i] >= 1:
+        if Y_value_error[i] < 1:
             start = i
             i += 1
-            while i < len(Y_value_error) and Y_value_error[i] >= 1:
+            while i < len(Y_value_error) and Y_value_error[i] < 1:
                 i += 1
             if i - start > 1:
                 ranges.append([start, i-1])
