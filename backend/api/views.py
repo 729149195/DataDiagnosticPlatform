@@ -5502,13 +5502,13 @@ def get_error_statistics_files(request):
     
     Query参数:
     - page: 页码 (默认: 1)
-    - page_size: 每页数量 (默认: 20, 最大: 100)
+    - page_size: 每页数量 (默认: 20, 最大: 500)
     - search: 搜索关键词 (可选)
     """
     try:
         # 获取查询参数
         page = int(request.GET.get('page', 1))
-        page_size = min(int(request.GET.get('page_size', 20)), 100)  # 限制最大每页100个
+        page_size = min(int(request.GET.get('page_size', 20)), 500)  # 限制最大每页100个
         search = request.GET.get('search', '').strip()
         
         # 确保页码和页面大小为正数
