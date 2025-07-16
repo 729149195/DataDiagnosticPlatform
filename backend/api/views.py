@@ -5492,3 +5492,130 @@ def get_shot_statistics(request):
         print(error_msg)
         traceback.print_exc()
         return OrJsonResponse({"error": error_msg}, status=500)
+
+@require_GET
+def get_error_statistics_files(request):
+    """
+    获取Errors_Result_Statistics文件夹中的文件名列表，支持分页
+    
+    Query参数:
+    - page: 页码 (默认: 1)
+    - page_size: 每页数量 (默认: 20, 最大: 100)
+    - search: 搜索关键词 (可选)
+    """
+    try:
+        # 获取查询参数
+        page = int(request.GET.get('page', 1))
+        page_size = min(int(request.GET.get('page_size', 20)), 100)  # 限制最大每页100个
+        search = request.GET.get('search', '').strip()
+        
+        # 确保页码和页面大小为正数
+        if page < 1:
+            page = 1
+        if page_size < 1:
+            page_size = 20
+        
+        # 获取Errors_Result_Statistics文件夹路径
+        import os
+        from django.conf import settings
+        
+        # 获取项目根目录
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        errors_folder = os.path.join(project_root, 'Errors_Result_Statistics')
+        
+        # 检查文件夹是否存在
+        if not os.path.exists(errors_folder):
+            return JsonResponse({
+                'error': 'Errors_Result_Statistics folder not found',
+                'files': [],
+                'pagination': {
+                    'page': page,
+                    'page_size': page_size,
+                    'total_files': 0,
+                    'total_pages': 0
+                }
+            })
+        
+        # 获取所有JSON文件
+        all_files = []
+        for filename in os.listdir(errors_folder):
+            if filename.endswith('.json'):
+                # 如果指定了搜索关键词，进行过滤
+                if search and search.lower() not in filename.lower():
+                    continue
+                all_files.append(filename)
+        
+        # 按炮号数值从大到小排序（最新的优先显示）
+        def extract_shot_number(filename):
+            """从文件名中提取炮号数值"""
+            if filename.startswith('shot_') and '_errors.json' in filename:
+                try:
+                    shot_str = filename.replace('shot_', '').replace('_errors.json', '')
+                    return int(shot_str)
+                except (ValueError, TypeError):
+                    return 0  # 如果无法解析为数字，返回0
+            return 0  # 不符合命名规则的文件返回0
+        
+        # 按炮号数值从大到小排序
+        all_files.sort(key=extract_shot_number, reverse=True)
+        
+        # 计算分页信息
+        total_files = len(all_files)
+        total_pages = (total_files + page_size - 1) // page_size
+        
+        # 确保页码在有效范围内
+        if page > total_pages and total_pages > 0:
+            page = total_pages
+        
+        # 计算当前页的文件
+        start_index = (page - 1) * page_size
+        end_index = start_index + page_size
+        current_page_files = all_files[start_index:end_index]
+        
+        # 为每个文件获取基本信息
+        files_info = []
+        for filename in current_page_files:
+            file_path = os.path.join(errors_folder, filename)
+            try:
+                file_stat = os.stat(file_path)
+                file_size_mb = file_stat.st_size / (1024 * 1024)  # 转换为MB
+                
+                # 尝试从文件名提取炮号信息
+                shot_number = None
+                if filename.startswith('shot_') and '_errors.json' in filename:
+                    shot_number = filename.replace('shot_', '').replace('_errors.json', '')
+                
+                files_info.append({
+                    'filename': filename,
+                    'file_size_mb': round(file_size_mb, 2),
+                    'shot_number': shot_number,
+                    'modified_time': datetime.fromtimestamp(file_stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                })
+            except Exception as e:
+                # 如果获取文件信息失败，仍然返回文件名
+                files_info.append({
+                    'filename': filename,
+                    'file_size_mb': 0,
+                    'shot_number': None,
+                    'modified_time': None,
+                    'error': str(e)
+                })
+        
+        return JsonResponse({
+            'files': files_info,
+            'pagination': {
+                'page': page,
+                'page_size': page_size,
+                'total_files': total_files,
+                'total_pages': total_pages,
+                'has_next': page < total_pages,
+                'has_previous': page > 1
+            }
+        })
+        
+    except Exception as e:
+        import traceback
+        return JsonResponse({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }, status=500)

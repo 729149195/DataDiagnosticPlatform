@@ -1,0 +1,974 @@
+{
+  "shot_number": "4",
+  "export_time": "2025-07-15 18:01:11",
+  "channels": {
+    "FLUX001": {
+      "channel_name": "FLUX001",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:42",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX002": {
+      "channel_name": "FLUX002",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:42",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX003": {
+      "channel_name": "FLUX003",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:43",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX004": {
+      "channel_name": "FLUX004",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:43",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX005": {
+      "channel_name": "FLUX005",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:43",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX006": {
+      "channel_name": "FLUX006",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:44",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX007": {
+      "channel_name": "FLUX007",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:44",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX008": {
+      "channel_name": "FLUX008",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:44",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX009": {
+      "channel_name": "FLUX009",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:45",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX010": {
+      "channel_name": "FLUX010",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:45",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:42",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX011": {
+      "channel_name": "FLUX011",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:45",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:40",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX012": {
+      "channel_name": "FLUX012",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:45",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:42",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX013": {
+      "channel_name": "FLUX013",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:46",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX014": {
+      "channel_name": "FLUX014",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:46",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX015": {
+      "channel_name": "FLUX015",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:46",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:40",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "FLUX016": {
+      "channel_name": "FLUX016",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:47",
+          "time_segments": [
+            [
+              -7.0,
+              -5.750010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_magnetics_error_probe",
+          "detection_time": "2025-04-30 04:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -4.000010013580322
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP001n": {
+      "channel_name": "MP001n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:33",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP001t": {
+      "channel_name": "MP001t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:38",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP002n": {
+      "channel_name": "MP002n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:33",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP002t": {
+      "channel_name": "MP002t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:38",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP003n": {
+      "channel_name": "MP003n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:33",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP003t": {
+      "channel_name": "MP003t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:38",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP004n": {
+      "channel_name": "MP004n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:34",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP004t": {
+      "channel_name": "MP004t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:38",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP005n": {
+      "channel_name": "MP005n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:34",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP005t": {
+      "channel_name": "MP005t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:39",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP006n": {
+      "channel_name": "MP006n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:34",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP006t": {
+      "channel_name": "MP006t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:39",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP007n": {
+      "channel_name": "MP007n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:35",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP007t": {
+      "channel_name": "MP007t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:39",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP008n": {
+      "channel_name": "MP008n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:35",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP008t": {
+      "channel_name": "MP008t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:40",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP009n": {
+      "channel_name": "MP009n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:35",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP009t": {
+      "channel_name": "MP009t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:40",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP010n": {
+      "channel_name": "MP010n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:35",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP010t": {
+      "channel_name": "MP010t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:40",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP011n": {
+      "channel_name": "MP011n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:36",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP011t": {
+      "channel_name": "MP011t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:40",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP012n": {
+      "channel_name": "MP012n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:36",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP012t": {
+      "channel_name": "MP012t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP013n": {
+      "channel_name": "MP013n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:36",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP013t": {
+      "channel_name": "MP013t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP014n": {
+      "channel_name": "MP014n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:37",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP014t": {
+      "channel_name": "MP014t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP015n": {
+      "channel_name": "MP015n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:37",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP015t": {
+      "channel_name": "MP015t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:41",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP016n": {
+      "channel_name": "MP016n",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:37",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "MP016t": {
+      "channel_name": "MP016t",
+      "channel_type": "MP",
+      "errors": [
+        {
+          "error_type": "error_magnetics_drift",
+          "detection_time": "2025-05-13 19:17:42",
+          "time_segments": [
+            [
+              -7.0,
+              -2.0000500679016113
+            ]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    }
+  },
+  "statistics": {
+    "total_channels_with_errors": 48,
+    "total_error_count": 56,
+    "error_types": [
+      "error_magnetics_error_probe",
+      "error_magnetics_drift"
+    ]
+  }
+}

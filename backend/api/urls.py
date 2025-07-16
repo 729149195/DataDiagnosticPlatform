@@ -52,4 +52,7 @@ urlpatterns = [
     path('algorithm-channel-channels/<str:category_name>/<str:algorithm_name>/<str:channel_name>', views.delete_algorithm_channel_channel, name='delete_algorithm_channel_channel'),
     path('algorithm-upload-files', views.upload_algorithm_files, name='upload_algorithm_files'),
     path('import-algorithm-to-detection', views.import_algorithm_to_detection, name='import_algorithm_to_detection'),
+    
+    # 错误统计文件管理
+    path('error-statistics-files', views.get_error_statistics_files, name='get_error_statistics_files'),
 ]
