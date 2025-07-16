@@ -47,9 +47,9 @@
           </el-button>
         </el-tooltip>
       </div>
-      <!-- 异常统计文件菜单按钮 -->
-      <el-tooltip content="错误统计文件列表" placement="right" effect="light">
-          <el-button type="primary" @click="openErrorFileDialog" :icon="Menu">
+      <!-- 异常文件汇总列表 -->
+      <el-tooltip content="异常文件汇总列表" placement="right" effect="light">
+          <el-button type="primary" @click="openErrorFileDialog" :icon="Finished">
           </el-button>
       </el-tooltip>
     </div>
@@ -165,7 +165,7 @@
 <script setup>
 // 监控状态显示组件，包含状态获取和倒计时逻辑
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
-import { CircleCheck, Loading, DataBoard, Setting, Menu, Download } from '@element-plus/icons-vue';
+import { CircleCheck, Loading, DataBoard, Setting, Download, Finished } from '@element-plus/icons-vue';
 import AlgorithmManager from './AlgorithmManager.vue';
 import ImportedAlgorithmList from './ImportedAlgorithmList.vue';
 // import SketchTemplateList from './SketchTemplateList.vue';
