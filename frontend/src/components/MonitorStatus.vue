@@ -48,7 +48,7 @@
         </el-tooltip>
       </div>
       <!-- 异常统计文件菜单按钮 -->
-      <el-tooltip content="错误统计文件列表" placement="top" effect="light">
+      <el-tooltip content="错误统计文件列表" placement="right" effect="light">
           <el-button type="primary" @click="openErrorFileDialog" :icon="Menu">
           </el-button>
       </el-tooltip>
@@ -103,22 +103,28 @@
     </el-dialog>
   </div>
   <!-- 错误统计文件列表对话框 -->
-  <el-dialog v-model="errorFileDialogVisible" title="异常统计文件列表" width="900px" :close-on-click-modal="false" :close-on-press-escape="true" destroy-on-close append-to-body top="10vh" class="error-file-dialog">
+  <el-dialog v-model="errorFileDialogVisible" title="异常统计文件列表" width="1200px" :close-on-click-modal="false" :close-on-press-escape="true" destroy-on-close append-to-body top="10vh" class="error-file-dialog">
     <div class="error-file-list-dialog">
       <div class="file-list-header">
-        <span class="file-list-title">异常统计文件</span>
-        <el-pagination
-          background
-          layout="prev, pager, next"
-          :total="errorFilePagination.total_files"
-          :page-size="errorFilePagination.page_size"
-          :current-page="errorFilePagination.page"
-          @current-change="handleErrorFilePageChange"
-          class="file-pagination"
-        />
+        <div class="file-list-actions">
+          <el-input v-model="searchShot" placeholder="输入炮号，例如1-5,7,9-12" style="width: 200px; margin-right: 12px;" clearable @keyup.enter="handleSearch" />
+          <el-button type="primary" @click="handleSearch">查询</el-button>
+        </div>
+        <div class="file-list-download-btn">
+          <el-button type="primary" icon="Download" :disabled="selectedFiles.length === 0">下载选中文件</el-button>
+        </div>
       </div>
       <div class="file-list-content">
-        <el-table :data="errorFileList" border stripe style="width: 100%; min-height: 200px; border-radius: 8px;" class="error-file-table">
+        <el-table 
+          :data="errorFileList" 
+          border 
+          stripe 
+          style="width: 100%; min-height: 200px; border-radius: 8px;" 
+          class="error-file-table" 
+          :row-class-name="tableRowClassName"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="55" />
           <el-table-column prop="filename" label="文件名" min-width="320" />
           <el-table-column prop="file_size_mb" label="大小 (MB)" min-width="100">
             <template #default="scope">
@@ -139,13 +145,26 @@
           </el-table-column>
         </el-table>
       </div>
+      <!-- 分页器移动到底部并居中 -->
+      <div class="file-pagination-bottom">
+        <el-pagination
+          background
+          layout="sizes, prev, pager, next, jumper"
+          :page-sizes="[10, 20, 50, 100, 200, 500]"
+          :total="errorFilePagination.total_files"
+          :page-size="errorFilePagination.page_size"
+          :current-page="errorFilePagination.page"
+          @current-change="handleErrorFilePageChange"
+          @size-change="handlePageSizeChange"
+        />
+      </div>
     </div>
   </el-dialog>
 </template>
 
 <script setup>
 // 监控状态显示组件，包含状态获取和倒计时逻辑
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { CircleCheck, Loading, DataBoard, Setting, Menu, Download } from '@element-plus/icons-vue';
 import AlgorithmManager from './AlgorithmManager.vue';
 import ImportedAlgorithmList from './ImportedAlgorithmList.vue';
@@ -186,6 +205,13 @@ const errorFilePagination = ref({
   total_files: 0,
   total_pages: 1
 });
+const searchShot = ref('');
+const highlightShot = ref(null);
+
+// 新增：选择相关数据
+const selectedFiles = ref([]);
+const selectAll = ref(false);
+const isIndeterminate = ref(false);
 
 // 计算属性：处理进度
 const processingProgress = computed(() => {
@@ -342,13 +368,20 @@ const loadAlgorithmData = async () => {
 // 打开错误统计文件对话框
 const openErrorFileDialog = () => {
   errorFileDialogVisible.value = true;
+  searchShot.value = '';
+  highlightShot.value = null;
+  selectedFiles.value = [];
+  selectAll.value = false;
+  isIndeterminate.value = false;
   fetchErrorFileList(1);
 };
 
 // 获取错误统计文件列表
-const fetchErrorFileList = async (page = 1) => {
+const fetchErrorFileList = async (page = 1, shot = '', highlight = false) => {
   try {
-    const res = await fetch(`http://192.168.20.49:5000/api/error-statistics-files?page=${page}&page_size=${errorFilePagination.value.page_size}`);
+    let url = `http://192.168.20.49:5000/api/error-statistics-files?page=${page}&page_size=${errorFilePagination.value.page_size}`;
+    if (shot) url += `&search=${encodeURIComponent(shot)}`;
+    const res = await fetch(url);
     const result = await res.json();
     if (result.files) {
       errorFileList.value = result.files;
@@ -356,16 +389,121 @@ const fetchErrorFileList = async (page = 1) => {
       errorFilePagination.value.page_size = result.pagination.page_size;
       errorFilePagination.value.total_files = result.pagination.total_files;
       errorFilePagination.value.total_pages = result.pagination.total_pages;
+      
+      // 重置选择状态
+      selectedFiles.value = [];
+      selectAll.value = false;
+      isIndeterminate.value = false;
+      
+      if (highlight && result.files.length > 0) {
+        highlightShot.value = shot;
+        // 等待DOM更新后滚动到高亮行
+        await nextTick();
+        const row = document.querySelector('.highlight-row');
+        if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        highlightShot.value = null;
+      }
     }
   } catch (e) {
     errorFileList.value = [];
     errorFilePagination.value = { page: 1, page_size: 10, total_files: 0, total_pages: 1 };
+    highlightShot.value = null;
+    selectedFiles.value = [];
+    selectAll.value = false;
+    isIndeterminate.value = false;
   }
 };
 
 // 分页切换
 const handleErrorFilePageChange = (page) => {
-  fetchErrorFileList(page);
+  fetchErrorFileList(page, searchShot.value, !!highlightShot.value);
+};
+
+// 分页大小改变
+const handlePageSizeChange = (size) => {
+  errorFilePagination.value.page_size = size;
+  errorFilePagination.value.page = 1; // 重置到第一页
+  fetchErrorFileList(1, searchShot.value, !!highlightShot.value);
+};
+
+// 搜索炮号
+const handleSearch = async () => {
+  if (!searchShot.value) {
+    fetchErrorFileList(1);
+    return;
+  }
+  // 先请求第一页，查找该炮号所在文件的页码
+  let url = `http://192.168.20.49:5000/api/error-statistics-files?page=1&page_size=${errorFilePagination.value.page_size}&search=${encodeURIComponent(searchShot.value)}`;
+  const res = await fetch(url);
+  const result = await res.json();
+  if (result.files && result.files.length > 0) {
+    // 直接跳转到第一页并高亮
+    errorFileList.value = result.files;
+    errorFilePagination.value.page = result.pagination.page;
+    errorFilePagination.value.page_size = result.pagination.page_size;
+    errorFilePagination.value.total_files = result.pagination.total_files;
+    errorFilePagination.value.total_pages = result.pagination.total_pages;
+    
+    // 重置选择状态
+    selectedFiles.value = [];
+    selectAll.value = false;
+    isIndeterminate.value = false;
+    
+    highlightShot.value = searchShot.value;
+    await nextTick();
+    const row = document.querySelector('.highlight-row');
+    if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    // 没有找到，重置高亮
+    highlightShot.value = null;
+    selectedFiles.value = [];
+    selectAll.value = false;
+    isIndeterminate.value = false;
+  }
+};
+
+// 表格选择变化
+const handleSelectionChange = (selection) => {
+  selectedFiles.value = selection;
+  updateSelectAllState();
+};
+
+// 全选状态变化
+const handleSelectAllChange = (val) => {
+  if (val) {
+    // 全选当前页
+    selectedFiles.value = [...errorFileList.value];
+  } else {
+    // 取消全选
+    selectedFiles.value = [];
+  }
+  updateSelectAllState();
+};
+
+// 更新全选状态
+const updateSelectAllState = () => {
+  const currentPageCount = errorFileList.value.length;
+  const selectedCount = selectedFiles.value.length;
+  
+  if (selectedCount === 0) {
+    selectAll.value = false;
+    isIndeterminate.value = false;
+  } else if (selectedCount === currentPageCount) {
+    selectAll.value = true;
+    isIndeterminate.value = false;
+  } else {
+    selectAll.value = false;
+    isIndeterminate.value = true;
+  }
+};
+
+// 表格高亮行
+const tableRowClassName = ({ row }) => {
+  if (highlightShot.value && row.shot_number == highlightShot.value) {
+    return 'highlight-row';
+  }
+  return '';
 };
 
 onMounted(() => {
@@ -649,19 +787,26 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   margin: 12px 0 8px 0;
 }
-.file-list-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-  letter-spacing: 1px;
+.file-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.file-pagination {
-  .el-pagination {
-    font-size: 14px;
-  }
+.file-list-download-btn {
+  display: flex;
+  align-items: center;
+  margin-left: 16px;
 }
 .file-list-content {
   margin-top: 8px;
+  max-height: 600px;
+  overflow-y: auto;
+}
+.file-pagination-bottom {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 18px 0 6px 0;
 }
 .error-file-table {
   border-radius: 8px;
@@ -689,5 +834,10 @@ onBeforeUnmount(() => {
     font-size: 14px;
     padding: 4px 12px;
   }
+}
+// 表格高亮行样式
+:deep(.highlight-row) {
+  background: #fffbe6 !important;
+  transition: background 0.3s;
 }
 </style>

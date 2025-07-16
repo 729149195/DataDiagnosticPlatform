@@ -5536,12 +5536,70 @@ def get_error_statistics_files(request):
                 }
             })
         
+        # 解析搜索条件，支持打印机式输入（如：1-10,25）
+        def parse_search_condition(search_str):
+            """解析搜索条件，支持范围（如：1-10）和单个值（如：25）的组合"""
+            if not search_str:
+                return None
+            
+            target_shots = set()
+            # 按逗号分割多个条件
+            conditions = search_str.split(',')
+            
+            for condition in conditions:
+                condition = condition.strip()
+                if not condition:
+                    continue
+                
+                # 检查是否是范围（包含连字符）
+                if '-' in condition:
+                    try:
+                        # 解析范围，如 "1-10"
+                        parts = condition.split('-')
+                        if len(parts) == 2:
+                            start = int(parts[0].strip())
+                            end = int(parts[1].strip())
+                            # 添加范围内的所有炮号
+                            for shot in range(start, end + 1):
+                                target_shots.add(shot)
+                    except (ValueError, IndexError):
+                        # 如果解析失败，忽略这个条件
+                        continue
+                else:
+                    # 单个炮号
+                    try:
+                        shot = int(condition)
+                        target_shots.add(shot)
+                    except ValueError:
+                        # 如果解析失败，忽略这个条件
+                        continue
+            
+            return target_shots if target_shots else None
+        
+        # 检查文件是否匹配搜索条件
+        def is_file_matched(filename, target_shots):
+            """检查文件是否匹配搜索条件"""
+            if not target_shots:
+                return True  # 没有搜索条件时，匹配所有文件
+            
+            # 从文件名提取炮号
+            if filename.startswith('shot_') and '_errors.json' in filename:
+                try:
+                    shot_str = filename.replace('shot_', '').replace('_errors.json', '')
+                    shot_number = int(shot_str)
+                    return shot_number in target_shots
+                except (ValueError, TypeError):
+                    return False
+            return False
+        
         # 获取所有JSON文件
         all_files = []
+        target_shots = parse_search_condition(search)
+        
         for filename in os.listdir(errors_folder):
             if filename.endswith('.json'):
-                # 如果指定了搜索关键词，进行过滤
-                if search and search.lower() not in filename.lower():
+                # 如果指定了搜索条件，进行精确匹配
+                if not is_file_matched(filename, target_shots):
                     continue
                 all_files.append(filename)
         
