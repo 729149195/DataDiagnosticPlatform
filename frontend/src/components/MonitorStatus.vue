@@ -111,7 +111,7 @@
           <el-button type="primary" @click="handleSearch">查询</el-button>
         </div>
         <div class="file-list-download-btn">
-          <el-button type="primary" icon="Download" :disabled="selectedFiles.length === 0">下载选中文件</el-button>
+          <el-button type="primary" icon="Download" :disabled="selectedFiles.length === 0" :loading="downloadLoading" @click="handleBatchDownload">下载选中文件</el-button>
         </div>
       </div>
       <div class="file-list-content">
@@ -139,8 +139,8 @@
           </el-table-column>
           <el-table-column prop="modified_time" label="修改时间" min-width="180" />
           <el-table-column label="操作" min-width="100" align="center">
-            <template #default>
-              <el-button type="primary" size="small" icon="Download" disabled>下载</el-button>
+            <template #default="scope">
+              <el-button type="primary" size="small" icon="Download" @click="handleSingleDownload(scope.row)">下载</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -169,6 +169,9 @@ import { CircleCheck, Loading, DataBoard, Setting, Menu, Download } from '@eleme
 import AlgorithmManager from './AlgorithmManager.vue';
 import ImportedAlgorithmList from './ImportedAlgorithmList.vue';
 // import SketchTemplateList from './SketchTemplateList.vue';
+import { ElMessage } from 'element-plus';
+
+const downloadLoading = ref(false);
 
 // 响应式数据
 const monitorData = ref({
@@ -504,6 +507,43 @@ const tableRowClassName = ({ row }) => {
     return 'highlight-row';
   }
   return '';
+};
+
+// 单文件下载
+const handleSingleDownload = (row) => {
+  if (!row || !row.filename) return;
+  const url = `http://192.168.20.49:5000/api/download-error-file?filename=${encodeURIComponent(row.filename)}`;
+  // 直接新窗口下载
+  window.open(url, '_blank');
+};
+
+// 批量下载
+const handleBatchDownload = async () => {
+  if (selectedFiles.value.length === 0) return;
+  downloadLoading.value = true;
+  try {
+    const filenames = selectedFiles.value.map(f => f.filename);
+    const res = await fetch('http://192.168.20.49:5000/api/download-error-files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filenames })
+    });
+    if (!res.ok) throw new Error('下载失败');
+    const blob = await res.blob();
+    // 生成下载链接
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'error_files.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  } catch (e) {
+    ElMessage.error('下载失败，请重试');
+  } finally {
+    downloadLoading.value = false;
+  }
 };
 
 onMounted(() => {

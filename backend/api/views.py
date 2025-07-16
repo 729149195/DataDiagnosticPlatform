@@ -7,7 +7,7 @@ import time
 import gzip
 import MDSplus # type: ignore
 import numpy as np
-from django.http import JsonResponse, HttpResponse
+from django.http import JsonResponse, HttpResponse, FileResponse, Http404
 import uuid
 import threading
 from django.utils import timezone
@@ -16,8 +16,10 @@ import unicodedata  # 添加这一行来导入unicodedata模块
 import inspect  # 添加inspect模块导入
 import importlib.util  # 添加importlib工具模块导入
 from django.views.decorators.csrf import csrf_exempt  # 添加CSRF豁免
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
 from django.conf import settings
+import zipfile
+from io import BytesIO
 
 from api.self_algorithm_utils import period_condition_anomaly
 from api.Mds import MdsTree
@@ -5677,3 +5679,57 @@ def get_error_statistics_files(request):
             'error': str(e),
             'traceback': traceback.format_exc()
         }, status=500)
+
+@require_GET
+def download_error_file(request):
+    """
+    单个错误统计文件下载接口，参数filename
+    """
+    import os
+    from django.http import FileResponse, Http404
+    filename = request.GET.get('filename', '').strip()
+    if not filename or not filename.endswith('.json'):
+        return JsonResponse({'error': '参数错误'}, status=400)
+    # 获取文件路径
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    errors_folder = os.path.join(project_root, 'Errors_Result_Statistics')
+    file_path = os.path.join(errors_folder, filename)
+    if not os.path.exists(file_path):
+        return JsonResponse({'error': '文件不存在'}, status=404)
+    # 返回文件流
+    response = FileResponse(open(file_path, 'rb'), as_attachment=True, filename=filename)
+    response['Content-Type'] = 'application/json'
+    return response
+
+@csrf_exempt
+@require_POST
+def download_error_files(request):
+    """
+    批量下载错误统计文件，前端POST json: { filenames: ["shot_4_errors.json", ...] }
+    返回zip压缩包
+    """
+    import os
+    try:
+        data = json.loads(request.body)
+        filenames = data.get('filenames', [])
+        if not isinstance(filenames, list) or not filenames:
+            return JsonResponse({'error': '参数错误'}, status=400)
+        # 获取文件路径
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        errors_folder = os.path.join(project_root, 'Errors_Result_Statistics')
+        # 创建zip流
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for filename in filenames:
+                if not filename.endswith('.json'):
+                    continue
+                file_path = os.path.join(errors_folder, filename)
+                if os.path.exists(file_path):
+                    zipf.write(file_path, arcname=filename)
+        zip_buffer.seek(0)
+        response = HttpResponse(zip_buffer, content_type='application/zip')
+        response['Content-Disposition'] = 'attachment; filename="error_files.zip"'
+        return response
+    except Exception as e:
+        import traceback
+        return JsonResponse({'error': str(e), 'traceback': traceback.format_exc()}, status=500)

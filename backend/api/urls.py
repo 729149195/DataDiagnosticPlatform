@@ -55,4 +55,6 @@ urlpatterns = [
     
     # 错误统计文件管理
     path('error-statistics-files', views.get_error_statistics_files, name='get_error_statistics_files'),
+    path('download-error-file', views.download_error_file, name='download_error_file'),
+    path('download-error-files', views.download_error_files, name='download_error_files'),
 ]
