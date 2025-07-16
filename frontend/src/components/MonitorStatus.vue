@@ -47,6 +47,11 @@
           </el-button>
         </el-tooltip>
       </div>
+      <!-- 异常统计文件菜单按钮 -->
+      <el-tooltip content="错误统计文件列表" placement="top" effect="light">
+          <el-button type="primary" @click="openErrorFileDialog" :icon="Menu">
+          </el-button>
+      </el-tooltip>
     </div>
 
     <!-- 算法编辑对话框 -->
@@ -97,12 +102,51 @@
       </div>
     </el-dialog>
   </div>
+  <!-- 错误统计文件列表对话框 -->
+  <el-dialog v-model="errorFileDialogVisible" title="异常统计文件列表" width="900px" :close-on-click-modal="false" :close-on-press-escape="true" destroy-on-close append-to-body top="10vh" class="error-file-dialog">
+    <div class="error-file-list-dialog">
+      <div class="file-list-header">
+        <span class="file-list-title">异常统计文件</span>
+        <el-pagination
+          background
+          layout="prev, pager, next"
+          :total="errorFilePagination.total_files"
+          :page-size="errorFilePagination.page_size"
+          :current-page="errorFilePagination.page"
+          @current-change="handleErrorFilePageChange"
+          class="file-pagination"
+        />
+      </div>
+      <div class="file-list-content">
+        <el-table :data="errorFileList" border stripe style="width: 100%; min-height: 200px; border-radius: 8px;" class="error-file-table">
+          <el-table-column prop="filename" label="文件名" min-width="320" />
+          <el-table-column prop="file_size_mb" label="大小 (MB)" min-width="100">
+            <template #default="scope">
+              <span>{{ scope.row.file_size_mb || '--' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="shot_number" label="炮号" min-width="100">
+            <template #default="scope">
+              <el-tag v-if="scope.row.shot_number" type="success">{{ scope.row.shot_number }}</el-tag>
+              <span v-else>--</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="modified_time" label="修改时间" min-width="180" />
+          <el-table-column label="操作" min-width="100" align="center">
+            <template #default>
+              <el-button type="primary" size="small" icon="Download" disabled>下载</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
+  </el-dialog>
 </template>
 
 <script setup>
 // 监控状态显示组件，包含状态获取和倒计时逻辑
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
-import { CircleCheck, Loading, DataBoard, Setting } from '@element-plus/icons-vue';
+import { CircleCheck, Loading, DataBoard, Setting, Menu, Download } from '@element-plus/icons-vue';
 import AlgorithmManager from './AlgorithmManager.vue';
 import ImportedAlgorithmList from './ImportedAlgorithmList.vue';
 // import SketchTemplateList from './SketchTemplateList.vue';
@@ -132,6 +176,16 @@ const algorithmData = ref({});
 
 let monitorTimer = null;
 let countdownTimer = null;
+
+// 错误统计文件对话框相关数据
+const errorFileDialogVisible = ref(false);
+const errorFileList = ref([]);
+const errorFilePagination = ref({
+  page: 1,
+  page_size: 10,
+  total_files: 0,
+  total_pages: 1
+});
 
 // 计算属性：处理进度
 const processingProgress = computed(() => {
@@ -285,6 +339,35 @@ const loadAlgorithmData = async () => {
   }
 };
 
+// 打开错误统计文件对话框
+const openErrorFileDialog = () => {
+  errorFileDialogVisible.value = true;
+  fetchErrorFileList(1);
+};
+
+// 获取错误统计文件列表
+const fetchErrorFileList = async (page = 1) => {
+  try {
+    const res = await fetch(`http://192.168.20.49:5000/api/error-statistics-files?page=${page}&page_size=${errorFilePagination.value.page_size}`);
+    const result = await res.json();
+    if (result.files) {
+      errorFileList.value = result.files;
+      errorFilePagination.value.page = result.pagination.page;
+      errorFilePagination.value.page_size = result.pagination.page_size;
+      errorFilePagination.value.total_files = result.pagination.total_files;
+      errorFilePagination.value.total_pages = result.pagination.total_pages;
+    }
+  } catch (e) {
+    errorFileList.value = [];
+    errorFilePagination.value = { page: 1, page_size: 10, total_files: 0, total_pages: 1 };
+  }
+};
+
+// 分页切换
+const handleErrorFilePageChange = (page) => {
+  fetchErrorFileList(page);
+};
+
 onMounted(() => {
   startMonitoring();
 
@@ -428,8 +511,11 @@ onBeforeUnmount(() => {
 /* 编辑算法按钮样式 */
 .edit-algorithm-section {
   margin-left: 8px;
+  margin-right: 6px;
   display: flex;
   justify-content: center;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 算法对话框样式 */
@@ -543,5 +629,65 @@ onBeforeUnmount(() => {
 .manual-section .section-header {
   background: #fdf6ec;
   color: #e6a23c;
+}
+
+// 新增：错误统计文件列表对话框样式
+.error-file-dialog {
+  .el-dialog__body {
+    padding: 0 0 16px 0;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+}
+.error-file-list-dialog {
+  padding: 0 16px 8px 16px;
+  min-height: 200px;
+}
+.file-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 12px 0 8px 0;
+}
+.file-list-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+  letter-spacing: 1px;
+}
+.file-pagination {
+  .el-pagination {
+    font-size: 14px;
+  }
+}
+.file-list-content {
+  margin-top: 8px;
+}
+.error-file-table {
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 15px;
+  th {
+    background: #f5f7fa !important;
+    color: #409eff;
+    font-weight: 600;
+    font-size: 15px;
+    border-bottom: 1.5px solid #e4e7ed;
+  }
+  td {
+    font-size: 15px;
+    padding: 10px 0;
+    border-bottom: 1px solid #ebeef5;
+  }
+  .el-tag {
+    font-size: 14px;
+    border-radius: 4px;
+    padding: 0 8px;
+  }
+  .el-button {
+    border-radius: 4px;
+    font-size: 14px;
+    padding: 4px 12px;
+  }
 }
 </style>
