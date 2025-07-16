@@ -689,34 +689,88 @@ def RUN(shot_list, channel_list, db_name, reset=False):
             print(f"  为炮号 {shot_num} 创建索引数据...")
             create_shot_index(db, str(shot_num), combined_shot_struct_tree)
             
+            # 导出当前炮号的异常数据为JSON文件
+            print(f"  为炮号 {shot_num} 导出异常数据JSON文件...")
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            export_shot_errors_to_json(db, str(shot_num), project_root)
+            
         except Exception as e:
             logger.error(f"更新炮号 {shot_num} 的完整结构树到MongoDB时发生异常: {e}")
         
-        shot_end = time.time()
-        print(f'已完成炮号 {shot_num} 的全部处理，总运行时间: {round(shot_end-shot_start, 2)}s')
-
-        # === 新增：每炮统计信息单独存储 ===
+        # === 新增：每炮统计信息单独存储（独立的try-except确保一定会执行） ===
+        try:
+            # 确保当前炮号在统计数据中存在，如果不存在则创建默认值
+            if str(shot_num) not in data_statistics["by_shot"]:
+                data_statistics["by_shot"][str(shot_num)] = {
+                    "total": 0,
+                    "processed": 0,
+                    "status_counts": {
+                        "success": 0,
+                        "failed": 0,
+                        "data_read_failed": 0,
+                        "empty_data": 0,
+                        "no_algorithm": 0,
+                        "no_matched_algorithm": 0,
+                        "processing_error": 0
+                    }
+                }
+                logger.warning(f"炮号 {shot_num} 在统计数据中不存在，已创建默认统计信息")
+            
+            # 安全获取统计数据，提供默认值
+            shot_data = data_statistics["by_shot"][str(shot_num)]
+            
         # 构建当前炮号的统计信息
         shot_statistics = {
             "shot_number": str(shot_num),
-            "total_channels_expected": data_statistics["by_shot"][str(shot_num)]["total"],
-            "total_channels_processed": data_statistics["by_shot"][str(shot_num)]["processed"],
-            "status_counts": data_statistics["by_shot"][str(shot_num)]["status_counts"],
+                "total_channels_expected": shot_data.get("total", 0),
+                "total_channels_processed": shot_data.get("processed", 0),
+                "status_counts": shot_data.get("status_counts", {}),
             "problem_channels": {
                 status: [
-                    c for c in data_statistics["problem_channels"][status]
-                    if c["shot_number"] == str(shot_num)
+                        c for c in data_statistics["problem_channels"].get(status, [])
+                        if c.get("shot_number") == str(shot_num)
                 ]
                 for status in data_statistics["problem_channels"]
             },
-            # 可以根据需要添加其它字段
+                "processing_completed": True,  # 标记该炮号已完成处理
+                "struct_tree_channels": len(combined_shot_struct_tree) if combined_shot_struct_tree else 0
         }
+            
         # 存储到MongoDB
         data_stats_collection.update_one(
             {"shot_number": str(shot_num)},
             {"$set": shot_statistics},
             upsert=True
         )
+            print(f"  已将炮号 {shot_num} 的统计信息存储到MongoDB")
+        except Exception as e:
+            logger.error(f"存储炮号 {shot_num} 的统计信息到MongoDB时发生异常: {e}")
+            print(f"  警告：炮号 {shot_num} 的统计信息存储失败: {e}")
+            
+            # 即使出错，也尝试存储一个最基本的记录
+            try:
+                basic_statistics = {
+                    "shot_number": str(shot_num),
+                    "total_channels_expected": 0,
+                    "total_channels_processed": 0,
+                    "status_counts": {},
+                    "problem_channels": {},
+                    "processing_completed": True,
+                    "struct_tree_channels": len(combined_shot_struct_tree) if combined_shot_struct_tree else 0,
+                    "error_during_stats_storage": str(e)
+                }
+                data_stats_collection.update_one(
+                    {"shot_number": str(shot_num)},
+                    {"$set": basic_statistics},
+                    upsert=True
+                )
+                print(f"  已存储炮号 {shot_num} 的基本统计信息（包含错误信息）")
+            except Exception as e2:
+                logger.error(f"存储炮号 {shot_num} 的基本统计信息也失败: {e2}")
+                print(f"  严重错误：炮号 {shot_num} 的统计信息完全无法存储")
+        
+        shot_end = time.time()
+        print(f'已完成炮号 {shot_num} 的全部处理，总运行时间: {round(shot_end-shot_start, 2)}s')
     
     # 打印统计信息
     print("\n---- 数据处理统计 ----")
@@ -743,6 +797,87 @@ def RUN(shot_list, channel_list, db_name, reset=False):
     
     print(f"\n总处理通道数: {processed_channels}/{total_channels}")
     print("所有索引数据已成功存储到MongoDB的index集合中")
+
+def export_shot_errors_to_json(db, shot_number, project_root_path):
+    """将指定炮号的异常数据导出为JSON文件"""
+    errors_collection = db["errors_data"]
+    
+    # 创建输出文件夹
+    output_dir = os.path.join(project_root_path, "Errors_Result_Statistics")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"已创建输出目录: {output_dir}")
+    
+    # 查询当前炮号的所有异常数据
+    try:
+        error_docs = list(errors_collection.find({"shot_number": shot_number}))
+        
+        if not error_docs:
+            print(f"  炮号 {shot_number} 没有异常数据，跳过JSON导出")
+            return
+        
+        # 组织数据结构：按通道名分组
+        shot_errors = {
+            "shot_number": shot_number,
+            "export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "channels": {}
+        }
+        
+        for error_doc in error_docs:
+            channel_number = error_doc.get("channel_number", "")
+            error_type = error_doc.get("error_type", "")
+            data = error_doc.get("data", [])
+            
+            # 确保data格式正确并提取异常信息
+            if len(data) >= 2 and len(data[1]) > 0:
+                error_info = data[1][0]  # 获取第一个异常信息
+                
+                # 初始化通道数据结构
+                if channel_number not in shot_errors["channels"]:
+                    shot_errors["channels"][channel_number] = {
+                        "channel_name": channel_number,
+                        "channel_type": error_info.get("diagnostic_name", ""),
+                        "errors": []
+                    }
+                
+                # 添加异常信息
+                error_detail = {
+                    "error_type": error_type,
+                    "detection_time": error_info.get("diagonistic_time", ""),
+                    "time_segments": error_info.get("X_error", []),
+                    "error_description": error_info.get("error_description", ""),
+                    "detector": error_info.get("person", "mechine")
+                }
+                
+                shot_errors["channels"][channel_number]["errors"].append(error_detail)
+        
+        # 计算统计信息
+        total_channels = len(shot_errors["channels"])
+        total_errors = sum(len(channel["errors"]) for channel in shot_errors["channels"].values())
+        
+        shot_errors["statistics"] = {
+            "total_channels_with_errors": total_channels,
+            "total_error_count": total_errors,
+            "error_types": list(set(
+                error["error_type"] 
+                for channel in shot_errors["channels"].values() 
+                for error in channel["errors"]
+            ))
+        }
+        
+        # 保存为JSON文件
+        output_file = os.path.join(output_dir, f"shot_{shot_number}_errors.json")
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(shot_errors, f, ensure_ascii=False, indent=2, cls=JsonEncoder)
+        
+        print(f"  已将炮号 {shot_number} 的异常数据导出到: {output_file}")
+        print(f"    - 异常通道数: {total_channels}")
+        print(f"    - 总异常数: {total_errors}")
+        print(f"    - 异常类型: {len(shot_errors['statistics']['error_types'])} 种")
+        
+    except Exception as e:
+        logger.error(f"导出炮号 {shot_number} 的异常数据到JSON文件时发生异常: {e}")
+        print(f"  导出炮号 {shot_number} 的异常数据失败: {e}")
 
 def create_shot_index(db, shot_number, struct_tree_data):
     """为单个炮号的结构树创建索引数据并存储到MongoDB"""

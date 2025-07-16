@@ -1,0 +1,56 @@
+{
+  "shot_number": "100",
+  "export_time": "2024-12-19 15:30:45",
+  "channels": {
+    "AXUV001": {
+      "channel_name": "AXUV001",
+      "channel_type": "AXUV",
+      "errors": [
+        {
+          "error_type": "error_axuv_saturation",
+          "detection_time": "2024-12-19 15:25:32",
+          "time_segments": [
+            [0.5, 1.2],
+            [3.8, 4.1]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        },
+        {
+          "error_type": "error_axuv_Detector_channel_damage",
+          "detection_time": "2024-12-19 15:25:33",
+          "time_segments": [
+            [2.1, 2.8]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    },
+    "HXR012": {
+      "channel_name": "HXR012",
+      "channel_type": "HXR",
+      "errors": [
+        {
+          "error_type": "error_hxr_saturation_amplitude",
+          "detection_time": "2024-12-19 15:25:35",
+          "time_segments": [
+            [1.5, 2.0],
+            [4.2, 4.8]
+          ],
+          "error_description": "",
+          "detector": "mechine"
+        }
+      ]
+    }
+  },
+  "statistics": {
+    "total_channels_with_errors": 2,
+    "total_error_count": 3,
+    "error_types": [
+      "error_axuv_saturation",
+      "error_axuv_Detector_channel_damage",
+      "error_hxr_saturation_amplitude"
+    ]
+  }
+} 
