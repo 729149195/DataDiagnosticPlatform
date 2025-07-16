@@ -529,6 +529,7 @@ class BatchProcessor:
                     for proc in self.processes:
                         db = self.mongo_client[proc.db_name]
                         struct_trees = db["struct_trees"]
+                        stats_collection = db["data_statistics"]
                         
                         # 按顺序找第一个未完成的炮号
                         current_processing_shot = None
@@ -575,7 +576,7 @@ class BatchProcessor:
                         shots_completed = 0
                         for shot in range(proc.start_shot, proc.end_shot + 1):
                             shot_str = str(shot)
-                            doc = struct_trees.find_one({"shot_number": shot_str})
+                            struct_doc = struct_trees.find_one({"shot_number": shot_str})
                             expected = proc.expected_channels_map.get(shot_str, 0)
                             
                             # 检查炮号是否完成的逻辑要与当前炮号判断逻辑一致
@@ -583,10 +584,11 @@ class BatchProcessor:
                                 # 如果期望通道数为0，跳过这个炮号（认为该炮号无需处理）
                                 shots_completed += 1
                                 continue
-                            elif doc and "struct_tree" in doc:
-                                actual_channels = len(doc["struct_tree"])
-                                if actual_channels >= expected:
-                                    # 通道数达到期望值，认为该炮号已完成
+                            elif struct_doc and "struct_tree" in struct_doc:
+                                actual_channels = len(struct_doc["struct_tree"])
+                                stats_doc = stats_collection.find_one({"shot_number": shot_str})
+                                if actual_channels >= expected and stats_doc and stats_doc.get("processing_completed", False):
+                                    # 通道数达到期望值且已标记完成，认为该炮号已完成
                                     shots_completed += 1
                                 else:
                                     # 通道数未达到期望值，停止计数

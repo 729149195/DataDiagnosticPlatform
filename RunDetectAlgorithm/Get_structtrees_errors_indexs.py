@@ -715,38 +715,34 @@ def RUN(shot_list, channel_list, db_name, reset=False):
                     }
                 }
                 logger.warning(f"炮号 {shot_num} 在统计数据中不存在，已创建默认统计信息")
-            
             # 安全获取统计数据，提供默认值
             shot_data = data_statistics["by_shot"][str(shot_num)]
-            
-        # 构建当前炮号的统计信息
-        shot_statistics = {
-            "shot_number": str(shot_num),
+            # 构建当前炮号的统计信息
+            shot_statistics = {
+                "shot_number": str(shot_num),
                 "total_channels_expected": shot_data.get("total", 0),
                 "total_channels_processed": shot_data.get("processed", 0),
                 "status_counts": shot_data.get("status_counts", {}),
-            "problem_channels": {
-                status: [
+                "problem_channels": {
+                    status: [
                         c for c in data_statistics["problem_channels"].get(status, [])
                         if c.get("shot_number") == str(shot_num)
-                ]
-                for status in data_statistics["problem_channels"]
-            },
+                    ]
+                    for status in data_statistics["problem_channels"]
+                },
                 "processing_completed": True,  # 标记该炮号已完成处理
                 "struct_tree_channels": len(combined_shot_struct_tree) if combined_shot_struct_tree else 0
-        }
-            
-        # 存储到MongoDB
-        data_stats_collection.update_one(
-            {"shot_number": str(shot_num)},
-            {"$set": shot_statistics},
-            upsert=True
-        )
+            }
+            # 存储到MongoDB
+            data_stats_collection.update_one(
+                {"shot_number": str(shot_num)},
+                {"$set": shot_statistics},
+                upsert=True
+            )
             print(f"  已将炮号 {shot_num} 的统计信息存储到MongoDB")
         except Exception as e:
             logger.error(f"存储炮号 {shot_num} 的统计信息到MongoDB时发生异常: {e}")
             print(f"  警告：炮号 {shot_num} 的统计信息存储失败: {e}")
-            
             # 即使出错，也尝试存储一个最基本的记录
             try:
                 basic_statistics = {

@@ -134,7 +134,7 @@ def get_latest_mongo_db_info():
         ddp_dbs = [name for name in db_names if name.startswith("DataDiagnosticPlatform")]
         
         if not ddp_dbs:
-            return None, 0, 0
+            return None, 0, 0, 0  # 新增返回processing_shot
             
         # 解析数据库名称获取范围
         db_ranges = []
@@ -152,17 +152,17 @@ def get_latest_mongo_db_info():
                 db_ranges.append((name, start, end))
         
         if not db_ranges:
-            return None, 0, 0
+            return None, 0, 0, 0
             
         # 按结束炮号排序，获取最新的数据库
         db_ranges.sort(key=lambda x: x[2], reverse=True)
         latest_db_name, db_start, db_end = db_ranges[0]
-        
-        # 获取该数据库中实际存在的最大炮号
         db = MONGO_CLIENT[latest_db_name]
+        
+        # 获取struct_trees中所有shot_number，取最大，作为processing_shot
+        processing_shot = db_start
         if 'struct_trees' in db.list_collection_names():
             struct_trees = db['struct_trees']
-            # 获取所有炮号并转换为整数
             shot_numbers = []
             for doc in struct_trees.find({}, {'shot_number': 1}):
                 try:
@@ -171,16 +171,26 @@ def get_latest_mongo_db_info():
                         shot_numbers.append(shot_num)
                 except (ValueError, TypeError):
                     continue
-            
-            mongo_latest_shot = max(shot_numbers) if shot_numbers else db_start
-        else:
-            mongo_latest_shot = db_start
-            
-        return latest_db_name, mongo_latest_shot, db_end
+            if shot_numbers:
+                processing_shot = max(shot_numbers)
+        
+        # 获取index集合中key为shot_number的文档，index_data所有key的最大值，作为mongo_latest_shot
+        mongo_latest_shot = db_start
+        if 'index' in db.list_collection_names():
+            index_col = db['index']
+            index_doc = index_col.find_one({"key": "shot_number"})
+            if index_doc and "index_data" in index_doc:
+                shot_keys = list(index_doc["index_data"].keys())
+                # 过滤掉非数字key
+                shot_keys = [int(k) for k in shot_keys if str(k).isdigit()]
+                if shot_keys:
+                    mongo_latest_shot = max(shot_keys)
+        
+        return latest_db_name, mongo_latest_shot, db_end, processing_shot
         
     except Exception as e:
         print(f"获取MongoDB信息失败: {e}")
-        return None, 0, 0
+        return None, 0, 0, 0
 
 def get_mds_latest_shot():
     """获取MDS+最新炮号"""
@@ -218,22 +228,22 @@ def monitor_loop():
             mds_latest = get_mds_latest_shot()
             
             # 获取MongoDB信息
-            latest_db_name, mongo_latest, db_end = get_latest_mongo_db_info()
+            latest_db_name, mongo_latest, db_end, processing_shot = get_latest_mongo_db_info()
             
-            # 计算正在处理的炮号（MongoDB最新炮号+1，但不超过MDS+最新炮号）
-            if mongo_latest < mds_latest:
-                processing_shot = mongo_latest + 1
+            # 计算正在处理的炮号（processing_shot+1，但不超过MDS+最新炮号）
+            if processing_shot < mds_latest:
+                processing_shot_display = processing_shot
             else:
-                processing_shot = mongo_latest
+                processing_shot_display = processing_shot
             
             # 获取处理进度信息
-            progress_info = get_processing_progress(processing_shot, latest_db_name)
+            progress_info = get_processing_progress(processing_shot_display, latest_db_name)
                 
             # 更新全局状态
             with monitor_lock:
                 monitor_status.update({
                     'mds_latest_shot': mds_latest,
-                    'mongo_processing_shot': processing_shot,
+                    'mongo_processing_shot': processing_shot_display,
                     'mongo_latest_shot': mongo_latest,
                     'last_update': current_time.isoformat(),
                     'next_update': (current_time + timedelta(seconds=10)).isoformat(),
@@ -245,9 +255,9 @@ def monitor_loop():
                 # 每次更新后写入文件
                 write_status_to_file(monitor_status)
             
-            print(f"[监控更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
+            print(f"[监控更新] MDS+最新: {mds_latest}, MongoDB已完成: {mongo_latest}, 正在处理: {processing_shot_display}")
             if progress_info['is_processing']:
-                print(f"[处理进度] 炮号 {processing_shot}: {progress_info['processed_channels']}/{progress_info['total_channels']} ({progress_info['progress_percent']}%)")
+                print(f"[处理进度] 炮号 {processing_shot_display}: {progress_info['processed_channels']}/{progress_info['total_channels']} ({progress_info['progress_percent']}%)")
             
         except Exception as e:
             print(f"监控循环出错: {e}")
@@ -284,22 +294,22 @@ def start_monitor():
         mds_latest = get_mds_latest_shot()
         
         # 获取MongoDB信息
-        latest_db_name, mongo_latest, db_end = get_latest_mongo_db_info()
+        latest_db_name, mongo_latest, db_end, processing_shot = get_latest_mongo_db_info()
         
         # 计算正在处理的炮号
-        if mongo_latest < mds_latest:
-            processing_shot = mongo_latest + 1
+        if processing_shot < mds_latest:
+            processing_shot_display = processing_shot + 1
         else:
-            processing_shot = mongo_latest
+            processing_shot_display = processing_shot
         
         # 获取处理进度信息
-        progress_info = get_processing_progress(processing_shot, latest_db_name)
+        progress_info = get_processing_progress(processing_shot_display, latest_db_name)
             
         # 更新全局状态
         with monitor_lock:
             monitor_status.update({
                 'mds_latest_shot': mds_latest,
-                'mongo_processing_shot': processing_shot,
+                'mongo_processing_shot': processing_shot_display,
                 'mongo_latest_shot': mongo_latest,
                 'last_update': current_time.isoformat(),
                 'next_update': (current_time + timedelta(seconds=10)).isoformat(),
@@ -310,9 +320,9 @@ def start_monitor():
             })
             write_status_to_file(monitor_status)
         
-        print(f"[立即更新] MDS+最新: {mds_latest}, MongoDB最新: {mongo_latest}, 正在处理: {processing_shot}")
+        print(f"[立即更新] MDS+最新: {mds_latest}, MongoDB已完成: {mongo_latest}, 正在处理: {processing_shot_display}")
         if progress_info['is_processing']:
-            print(f"[处理进度] 炮号 {processing_shot}: {progress_info['processed_channels']}/{progress_info['total_channels']} ({progress_info['progress_percent']}%)")
+            print(f"[处理进度] 炮号 {processing_shot_display}: {progress_info['processed_channels']}/{progress_info['total_channels']} ({progress_info['progress_percent']}%)")
         
     except Exception as e:
         print(f"立即更新监控状态出错: {e}")
