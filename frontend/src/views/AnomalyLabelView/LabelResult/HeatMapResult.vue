@@ -487,48 +487,84 @@ const HeatMapRef = ref(null)
 // 添加通用的下载函数
 const downloadFile = async (blob, suggestedName, fileType = 'json') => {
   try {
-    // 根据文件类型设置accept选项
-    const acceptOptions = {
-      'json': {
-        'application/json': ['.json'],
-      },
-      'png': {
-        'image/png': ['.png'],
-      },
-      'svg': {
-        'image/svg+xml': ['.svg'],
-      }
-    };
+    // 检查是否支持 showSaveFilePicker API
+    if (window.showSaveFilePicker) {
+      // 根据文件类型设置accept选项
+      const acceptOptions = {
+        'json': {
+          'application/json': ['.json'],
+        },
+        'png': {
+          'image/png': ['.png'],
+        },
+        'svg': {
+          'image/svg+xml': ['.svg'],
+        }
+      };
 
-    // 使用 showSaveFilePicker API 来显示保存对话框
-    const handle = await window.showSaveFilePicker({
-      suggestedName: suggestedName,
-      types: [{
-        description: '导出文件',
-        accept: acceptOptions[fileType] || acceptOptions['json'],
-      }],
-    });
+      // 使用 showSaveFilePicker API 来显示保存对话框
+      const handle = await window.showSaveFilePicker({
+        suggestedName: suggestedName,
+        types: [{
+          description: '导出文件',
+          accept: acceptOptions[fileType] || acceptOptions['json'],
+        }],
+      });
 
-    // 创建 FileSystemWritableFileStream 来写入数据
-    const writable = await handle.createWritable();
-    await writable.write(blob);
-    await writable.close();
+      // 创建 FileSystemWritableFileStream 来写入数据
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
 
-    // 显示成功提示
-    ElMessage({
-      message: '文件保存成功',
-      type: 'success',
-    });
+      // 显示成功提示
+      ElMessage({
+        message: '文件保存成功',
+        type: 'success',
+      });
+    } else {
+      // 回退到传统的下载方法
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = suggestedName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // 显示成功提示
+      ElMessage({
+        message: '文件下载成功',
+        type: 'success',
+      });
+    }
   } catch (err) {
     if (err.name === 'AbortError') {
       // 用户取消保存，不显示错误
       return;
     }
     console.error('保存文件时出错:', err);
-    ElMessage({
-      message: '保存文件失败，请重试',
-      type: 'error',
-    });
+    // 如果新API失败，尝试回退到传统方法
+    try {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = suggestedName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      ElMessage({
+        message: '文件下载成功',
+        type: 'success',
+      });
+    } catch (fallbackErr) {
+      console.error('回退下载方法也失败:', fallbackErr);
+      ElMessage({
+        message: '保存文件失败，请重试',
+        type: 'error',
+      });
+    }
   }
 };
 
