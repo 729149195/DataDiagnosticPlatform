@@ -137,7 +137,12 @@
               <span v-else>--</span>
             </template>
           </el-table-column>
-          <el-table-column prop="modified_time" label="修改时间" min-width="180" />
+          <el-table-column prop="modified_time" label="修改时间" min-width="180">
+            <template #default="scope">
+              <span v-if="scope.row.modified_time">{{ formatModifiedTime(scope.row.modified_time) }}</span>
+              <span v-else>--</span>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" min-width="100" align="center">
             <template #default="scope">
               <el-button type="primary" size="small" icon="Download" @click="handleSingleDownload(scope.row)">下载</el-button>
@@ -507,6 +512,27 @@ const tableRowClassName = ({ row }) => {
     return 'highlight-row';
   }
   return '';
+};
+
+// 格式化修改时间，加8小时
+const formatModifiedTime = (timeString) => {
+  if (!timeString) return '--';
+  try {
+    const date = new Date(timeString);
+    // 加8小时
+    date.setHours(date.getHours() + 8);
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  } catch (error) {
+    return timeString; // 如果解析失败，返回原始字符串
+  }
 };
 
 // 单文件下载

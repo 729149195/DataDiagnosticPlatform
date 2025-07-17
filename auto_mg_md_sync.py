@@ -7,6 +7,9 @@ from RunDetectAlgorithm.mdsConn import currentShot
 from datetime import datetime
 import threading
 
+# 新增：用于重跑最新数据库缺失炮号的函数
+import os
+
 MG_DB_PREFIX = "DataDiagnosticPlatform_"
 MG_DB_PATTERN = re.compile(r"DataDiagnosticPlatform_\[(\d+)_(\d+)\]")
 MDSPLUS_TREE = 'exl50u'
@@ -294,10 +297,56 @@ def print_progress(mg_latest, md_latest, mode, batch_start=None, batch_end=None)
         print(f"本次处理区间: {batch_start} - {batch_end}")
     print("================================================\n")
 
+# 新增：用于重跑最新数据库缺失炮号的函数
+def check_and_rerun_latest_db(mongo_client):
+    """
+    检查最新的DataDiagnosticPlatform_[start_end]数据库，
+    如果data_statistics不存在或与struct_trees不一致，则调用rerun_selected_shots.py重跑缺失炮号。
+    """
+    shot_ranges = get_all_mg_shot_ranges(mongo_client)
+    if not shot_ranges:
+        return
+    latest_start, latest_end = max(shot_ranges)
+    db_name = f"DataDiagnosticPlatform_[{latest_start}_{latest_end}]"
+    db = mongo_client[db_name]
+
+    # 获取struct_trees中的所有炮号
+    struct_shots = set(db["struct_trees"].distinct("shot_number"))
+    try:
+        stats_shots = set(db["data_statistics"].distinct("shot_number"))
+    except Exception:
+        stats_shots = set()
+
+    # 判断需要重跑的炮号
+    if not stats_shots:
+        # data_statistics不存在，重跑所有炮号
+        shots_to_rerun = struct_shots
+    else:
+        # 找出struct_trees有但data_statistics没有的炮号
+        shots_to_rerun = struct_shots - stats_shots
+
+    if shots_to_rerun:
+        # 调用rerun_selected_shots.py重跑缺失炮号
+        shots_list = sorted(shots_to_rerun, key=lambda x: int(x))
+        shots_str = ",".join(shots_list)
+        cmd = [
+            "python", "rerun_selected_shots.py",
+            "--db", db_name,
+            "--shots", shots_str,
+            "--reset"
+        ]
+        print(f"[数据一致性检查] 需要重跑以下炮号: {shots_str}")
+        subprocess.run(cmd, check=True)
+    else:
+        print("[数据一致性检查] data_statistics和struct_trees已一致，无需重跑")
+
 def main_loop():
     mongo_client = MongoClient("mongodb://localhost:27017")
     
     while True:
+        # 每轮开始前先检查最新数据库的数据一致性
+        print("[主循环] 检查最新数据库data_statistics和struct_trees一致性...")
+        check_and_rerun_latest_db(mongo_client)
         # 每轮开始前先合并数据库
         print("[主循环] 检查轮次开始，先进行数据库合并...")
         merge_databases(mongo_client)

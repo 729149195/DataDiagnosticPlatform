@@ -16,6 +16,7 @@ import logging
 import traceback
 import sys
 import os
+import pytz
 
 import MDSplus # type: ignore
 import numpy as np
@@ -55,6 +56,12 @@ def import_module_from_path(module_name, file_path):
 def remove_digits(s: str) -> str:
     """去掉字符串中的所有数字"""
     return re.match(r'^[^\d]*', s)[0]
+
+def get_china_time():
+    """获取中国时区的当前时间字符串"""
+    china_tz = pytz.timezone('Asia/Shanghai')
+    china_time = datetime.now(china_tz)
+    return china_time.strftime("%Y-%m-%d %H:%M:%S")
 
 
 DBS = {
@@ -309,7 +316,7 @@ def process_channel(channel_args):
                         'error_type': error,
                         "shot_number": str(shot_num),
                         'X_error': list(X_value_error),
-                        'diagonistic_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        'diagonistic_time': get_china_time(),
                         "error_description": '',
                     }]]
                     
@@ -815,7 +822,7 @@ def export_shot_errors_to_json(db, shot_number, project_root_path):
         # 组织数据结构：按通道名分组
         shot_errors = {
             "shot_number": shot_number,
-            "export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "export_time": get_china_time(),
             "channels": {}
         }
         

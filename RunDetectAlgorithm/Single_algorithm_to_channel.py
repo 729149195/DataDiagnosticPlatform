@@ -20,6 +20,7 @@ import importlib.util
 import random
 from datetime import datetime
 import os
+import pytz
 
 import numpy as np
 from pymongo import MongoClient, ASCENDING, UpdateMany
@@ -92,6 +93,12 @@ def import_module_from_path(module_name, file_path):
 def remove_digits(s: str) -> str:
     """去掉字符串中的所有数字"""
     return re.match(r'^[^\d]*', s)[0]
+
+def get_china_time():
+    """获取中国时区的当前时间字符串"""
+    china_tz = pytz.timezone('Asia/Shanghai')
+    china_time = datetime.now(china_tz)
+    return china_time.strftime("%Y-%m-%d %H:%M:%S")
 
 def get_target_databases():
     """获取所有以DataDiagnosticPlatform开头的MongoDB数据库"""
@@ -228,7 +235,7 @@ def process_channel(channel_data, algorithm_module):
                 'error_type': algorithm_module.__name__,
                 "shot_number": str(shot_num),
                 'X_error': list(X_value_error),
-                'diagonistic_time': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                'diagonistic_time': get_china_time(),
                 "error_description": '',
             }]]
             

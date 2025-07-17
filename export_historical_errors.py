@@ -15,6 +15,7 @@ from datetime import datetime
 from pymongo import MongoClient
 from tqdm import tqdm
 import logging
+import pytz
 
 # 配置日志
 logging.basicConfig(
@@ -37,6 +38,12 @@ class JsonEncoder(json.JSONEncoder):
             return obj.tolist()
         else:
             return super(JsonEncoder, self).default(obj)
+
+def get_china_time():
+    """获取中国时区的当前时间字符串"""
+    china_tz = pytz.timezone('Asia/Shanghai')
+    china_time = datetime.now(china_tz)
+    return china_time.strftime("%Y-%m-%d %H:%M:%S")
 
 def get_database_ranges(start_shot, end_shot, batch_size=100):
     """
@@ -97,7 +104,7 @@ def export_shot_errors_to_json(db, shot_number, project_root_path):
         # 组织数据结构：按通道名分组
         shot_errors = {
             "shot_number": shot_number,
-            "export_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "export_time": get_china_time(),
             "channels": {}
         }
         
