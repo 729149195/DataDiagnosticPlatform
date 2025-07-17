@@ -767,11 +767,6 @@ const saveAnomaly = () => {
         });
       }
 
-      // 更新高亮线条
-      const highlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${currentAnomaly.id}`);
-      if (highlightSeries) {
-        highlightSeries.remove(false);
-      }
 
       // 获取异常区域内的数据点
       const data = channelDataCache.value[payload.channelName];
@@ -868,14 +863,6 @@ const closeAnomalyForm = () => {
 const deleteAnomaly = () => {
   if (currentAnomaly && currentAnomaly.id) {
     const chart = window.chartInstances?.[currentAnomaly.channelName];
-    if (chart) {
-      // 删除高亮线条
-      const highlightSeries = chart.series.find(s => s.options.id === `anomaly-highlight-${currentAnomaly.id}`);
-      if (highlightSeries) {
-        highlightSeries.remove(false);
-      }
-    }
-
     store.dispatch('deleteAnomaly', {
       channelName: currentAnomaly.channelName,
       anomalyId: currentAnomaly.id
@@ -1434,81 +1421,6 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                       }
                     }
                   });
-
-                  // 添加高亮线条，使异常区域更加精确
-                  const pointsInRange = [];
-                  const startX = anomaly.startX;
-                  const endX = anomaly.endX;
-
-                  // 获取当前通道的数据
-                  const cacheKey = `${channelName}`;
-                  const cached = dataCache.get(cacheKey);
-                  const channelData = cached?.data;
-                  if (channelData && channelData.X_value && channelData.Y_value) {
-                    // 找到区间内的所有点
-                    for (let i = 0; i < channelData.X_value.length; i++) {
-                      if (channelData.X_value[i] >= startX && channelData.X_value[i] <= endX) {
-                        pointsInRange.push([channelData.X_value[i], channelData.Y_value[i]]);
-                      }
-                    }
-
-                    // 如果没有足够点，添加区间端点
-                    if (pointsInRange.length < 2) {
-                      // 找到最接近区间边界的点
-                      let startIdx = -1;
-                      let endIdx = -1;
-                      let minStartDiff = Infinity;
-                      let minEndDiff = Infinity;
-
-                      for (let i = 0; i < channelData.X_value.length; i++) {
-                        const startDiff = Math.abs(channelData.X_value[i] - startX);
-                        const endDiff = Math.abs(channelData.X_value[i] - endX);
-
-                        if (startDiff < minStartDiff) {
-                          minStartDiff = startDiff;
-                          startIdx = i;
-                        }
-
-                        if (endDiff < minEndDiff) {
-                          minEndDiff = endDiff;
-                          endIdx = i;
-                        }
-                      }
-
-                      if (startIdx !== -1) {
-                        pointsInRange.push([startX, channelData.Y_value[startIdx]]);
-                      }
-
-                      if (endIdx !== -1) {
-                        pointsInRange.push([endX, channelData.Y_value[endIdx]]);
-                      }
-                    }
-
-                    // 确保点按X轴排序
-                    pointsInRange.sort((a, b) => a[0] - b[0]);
-
-                    // 添加高亮线条
-                    if (pointsInRange.length > 0) {
-                      chart.addSeries({
-                        id: `anomaly-highlight-${anomaly.id}`,
-                        name: `异常区域-${anomaly.id}`,
-                        data: pointsInRange,
-                        color: 'rgba(255, 165, 0, 0.8)',
-                        lineWidth: 2,
-                        zIndex: 10,
-                        marker: {
-                          enabled: false
-                        },
-                        states: {
-                          hover: {
-                            lineWidthPlus: 0
-                          }
-                        },
-                        enableMouseTracking: false,
-                        showInLegend: false
-                      });
-                    }
-                  }
 
                   const anomalyEndX = chart.xAxis[0].toPixels(anomaly.endX);
                   const buttonWidth = 6;
@@ -2085,39 +1997,6 @@ const drawChart = (data, errorsData, channelName, color, xUnit, yUnit, channelTy
                 endIdx = i;
               }
             }
-
-            if (startIdx !== -1) {
-              pointsInRange.push([startX, data.Y_value[startIdx]]);
-            }
-
-            if (endIdx !== -1) {
-              pointsInRange.push([endX, data.Y_value[endIdx]]);
-            }
-          }
-
-          // 确保点按X轴排序
-          pointsInRange.sort((a, b) => a[0] - b[0]);
-
-          // 添加高亮线条
-          if (pointsInRange.length > 0) {
-            chart.addSeries({
-              id: `anomaly-highlight-${anomaly.id}`,
-              name: `异常区域-${anomaly.id}`,
-              data: pointsInRange,
-              color: anomaly.isStored ? 'rgba(255, 0, 0, 0.8)' : 'rgba(255, 165, 0, 0.8)',
-              lineWidth: 2,
-              zIndex: 10,
-              marker: {
-                enabled: false
-              },
-              states: {
-                hover: {
-                  lineWidthPlus: 0
-                }
-              },
-              enableMouseTracking: false,
-              showInLegend: false
-            });
           }
         });
       }
